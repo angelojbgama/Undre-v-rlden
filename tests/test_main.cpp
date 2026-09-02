@@ -1,4 +1,5 @@
 #include "engine/core/color_rgba8.h"
+#include "engine/core/coordinates.h"
 #include "engine/core/fixed_timestep.h"
 #include "engine/core/game_metrics.h"
 #include "engine/core/image_data.h"
@@ -7,10 +8,16 @@
 #include "engine/platform/presentation.h"
 #include "engine/render/animation.h"
 #include "engine/render/bitmap_font.h"
+#include "engine/render/camera_2d.h"
 #include "engine/render/framebuffer.h"
 #include "engine/render/image.h"
 #include "engine/render/renderer_2d.h"
 #include "engine/render/sprite.h"
+#include "engine/world/collision.h"
+#include "engine/world/collision_grid.h"
+#include "engine/world/runtime_map.h"
+#include "engine/world/tile.h"
+#include "engine/world/tile_layer.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -427,6 +434,309 @@ void testWicDecoder() {
 #endif
 }
 
+void testWorldCoordinates() {
+    using underworld::core::floorDiv;
+    using underworld::core::floorMod;
+    expect(floorDiv(0, 16) == 0 && floorDiv(15, 16) == 0,
+           "world floor division keeps pixels 0 through 15 in tile zero");
+    expect(floorDiv(16, 16) == 1 && floorDiv(17, 16) == 1,
+           "world floor division advances at the positive tile boundary");
+    expect(floorDiv(-1, 16) == -1 && floorDiv(-15, 16) == -1,
+           "negative world pixels floor into tile minus one");
+    expect(floorDiv(-16, 16) == -1 && floorDiv(-17, 16) == -2,
+           "negative exact and crossed tile boundaries use mathematical floor");
+    expect(floorMod(0, 16) == 0 && floorMod(15, 16) == 15 &&
+               floorMod(16, 16) == 0 && floorMod(17, 16) == 1,
+           "positive floor modulo identifies the pixel inside a tile");
+    expect(floorMod(-1, 16) == 15 && floorMod(-15, 16) == 1 &&
+               floorMod(-16, 16) == 0 && floorMod(-17, 16) == 15,
+           "negative floor modulo remains in the range zero through tileSize minus one");
+    expect(underworld::core::worldToTile({0, 0}, 16) == underworld::core::TileCoord{0, 0} &&
+               underworld::core::worldToTile({17, -17}, 16) ==
+                   underworld::core::TileCoord{1, -2},
+           "worldToTile uses explicit floor conversion on both axes");
+    expect(underworld::core::tileToWorld({3, -2}, 16) ==
+               underworld::core::WorldPointI{48, -32},
+           "tileToWorld returns the tile top-left in world pixels");
+    bool badDivisorRejected = false;
+    try {
+        [[maybe_unused]] const auto result = floorDiv(1, 0);
+    } catch (const std::invalid_argument&) {
+        badDivisorRejected = true;
+    }
+    expect(badDivisorRejected, "coordinate conversion rejects a non-positive tile size");
+    bool coordinateOverflowRejected = false;
+    try {
+        [[maybe_unused]] const auto result = underworld::core::tileToWorld(
+            {std::numeric_limits<int>::max(), 0}, 16);
+    } catch (const std::overflow_error&) {
+        coordinateOverflowRejected = true;
+    }
+    expect(coordinateOverflowRejected, "tileToWorld rejects coordinate overflow");
+}
+
+void testTilesAndLayers() {
+    using underworld::world::TileAtlasLayout;
+    using underworld::world::TileFlags;
+    using underworld::world::TileRef;
+    TileAtlasLayout atlas(304, 192, 16);
+    expect(atlas.columns() == 19 && atlas.rows() == 12 && atlas.tileCount() == 228,
+           "audited tile atlas layout is 19 by 12");
+    expect(atlas.sourceRect(0) == underworld::core::RectI{0, 0, 16, 16},
+           "tile index zero remains a usable atlas cell");
+    expect(atlas.sourceRect(20) == underworld::core::RectI{16, 16, 16, 16},
+           "tile index converts to source row and column centrally");
+    expect(atlas.sourceRect(227) == underworld::core::RectI{288, 176, 16, 16},
+           "last valid atlas tile resolves to the final cell");
+    bool badTileIndexRejected = false;
+    try {
+        [[maybe_unused]] const auto source = atlas.sourceRect(228);
+    } catch (const std::out_of_range&) {
+        badTileIndexRejected = true;
+    }
+    expect(badTileIndexRejected, "tile source index outside atlas is rejected");
+    bool misalignedAtlasRejected = false;
+    try {
+        [[maybe_unused]] TileAtlasLayout invalid(303, 192, 16);
+    } catch (const std::invalid_argument&) {
+        misalignedAtlasRejected = true;
+    }
+    expect(misalignedAtlasRejected, "atlas dimensions must align to tile size");
+
+    underworld::world::TileLayer layer("ground", 3, 2);
+    expect(layer.width() == 3 && layer.height() == 2 && layer.visible(),
+           "valid tile layer preserves dimensions and visibility");
+    expect(!layer.cell(0, 0).has_value() && !layer.cell(2, 1).has_value(),
+           "new tile layer cells are explicitly empty");
+    const TileRef tileZero{{1, 0}, TileFlags::flipX};
+    layer.set(2, 1, tileZero);
+    expect(layer.cell(2, 1) == tileZero &&
+               underworld::world::hasFlag(layer.cell(2, 1)->flags, TileFlags::flipX),
+           "tile layer stores TileRef including tile zero and flip flag");
+    layer.set(2, 1, std::nullopt);
+    expect(!layer.cell(2, 1), "tile layer can clear a cell back to empty");
+    layer.setVisible(false);
+    expect(!layer.visible(), "tile layer visibility is independent data");
+    bool layerBoundsRejected = false;
+    try {
+        [[maybe_unused]] const auto& outside = layer.cell(3, 0);
+    } catch (const std::out_of_range&) {
+        layerBoundsRejected = true;
+    }
+    expect(layerBoundsRejected, "tile layer public access checks bounds");
+    bool badLayerDimensionsRejected = false;
+    try {
+        [[maybe_unused]] underworld::world::TileLayer invalid("bad", 0, 2);
+    } catch (const std::invalid_argument&) {
+        badLayerDimensionsRejected = true;
+    }
+    expect(badLayerDimensionsRejected, "tile layer rejects invalid dimensions");
+    bool hugeLayerRejected = false;
+    try {
+        [[maybe_unused]] underworld::world::TileLayer huge(
+            "huge", std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    } catch (const std::length_error&) {
+        hugeLayerRejected = true;
+    }
+    expect(hugeLayerRejected, "tile layer rejects impossible storage before allocation");
+}
+
+void testRuntimeMap() {
+    underworld::world::RuntimeMap map(64, 48, 16);
+    expect(map.widthTiles() == 64 && map.heightTiles() == 48 && map.tileSize() == 16,
+           "RuntimeMap stores tile dimensions and explicit tile size");
+    expect(map.worldWidthPixels() == 1024 && map.worldHeightPixels() == 768,
+           "RuntimeMap safely derives world pixel dimensions");
+    const auto ground = map.addLayer("ground");
+    const auto foreground = map.addLayer("foreground", false);
+    expect(map.layerCount() == 2 && map.layer(ground).name() == "ground" &&
+               !map.layer(foreground).visible(),
+           "RuntimeMap owns separately named tile layers");
+
+    const underworld::world::TileRef wall{{1, 49}, underworld::world::TileFlags::none};
+    map.layer(ground).set(4, 5, wall);
+    expect(!map.collision().isSolid(4, 5),
+           "changing a visual tile does not change collision");
+    map.collision().setSolid(4, 5, true);
+    expect(map.layer(ground).cell(4, 5) == wall,
+           "changing collision does not change the visual tile");
+
+    bool mapLayerBoundsRejected = false;
+    try {
+        [[maybe_unused]] const auto& outside = map.layer(2);
+    } catch (const std::out_of_range&) {
+        mapLayerBoundsRejected = true;
+    }
+    expect(mapLayerBoundsRejected, "RuntimeMap checks layer indices");
+    bool invalidMapRejected = false;
+    try {
+        [[maybe_unused]] underworld::world::RuntimeMap invalid(0, 4, 16);
+    } catch (const std::invalid_argument&) {
+        invalidMapRejected = true;
+    }
+    expect(invalidMapRejected, "RuntimeMap rejects invalid dimensions");
+    bool mapExtentOverflowRejected = false;
+    try {
+        [[maybe_unused]] underworld::world::RuntimeMap huge(
+            std::numeric_limits<int>::max(), 1, 16);
+    } catch (const std::length_error&) {
+        mapExtentOverflowRejected = true;
+    }
+    expect(mapExtentOverflowRejected, "RuntimeMap rejects world pixel extent overflow");
+}
+
+void testCameraAndCulling() {
+    using underworld::render::Camera2D;
+    using underworld::render::VisibleTileRange;
+    Camera2D camera(272, 224);
+    expect(camera.position() == underworld::core::WorldPointI{0, 0},
+           "camera starts at world origin");
+    expect(camera.worldToLogical({20, 30}) == underworld::core::LogicalPointI{20, 30},
+           "camera at zero preserves world coordinates");
+    camera.setPosition({5, 7});
+    expect(camera.worldToLogical({20, 30}) == underworld::core::LogicalPointI{15, 23} &&
+               camera.logicalToWorld({15, 23}) == underworld::core::WorldPointI{20, 30},
+           "world and logical camera transforms are inverse");
+
+    camera.setPosition({-20, -30});
+    camera.clampToWorld(1024, 768);
+    expect(camera.position() == underworld::core::WorldPointI{0, 0},
+           "camera clamps left and top boundaries");
+    camera.setPosition({5000, 5000});
+    camera.clampToWorld(1024, 768);
+    expect(camera.position() == underworld::core::WorldPointI{752, 544},
+           "camera clamps right and bottom boundaries");
+    camera.setPosition({100, 100});
+    camera.clampToWorld(100, 100);
+    expect(camera.position() == underworld::core::WorldPointI{0, 0},
+           "map smaller than viewport deterministically fixes camera at origin");
+
+    camera.setPosition({0, 0});
+    expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{0, 0, 16, 13},
+           "aligned camera sees exactly 17 by 14 tiles");
+    camera.setPosition({1, 1});
+    expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{0, 0, 17, 14},
+           "one-pixel camera offset includes partial tiles on every edge");
+    camera.setPosition({15, 15});
+    expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{0, 0, 17, 14},
+           "camera at pixel 15 remains smoothly off-grid");
+    camera.setPosition({16, 16});
+    expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{1, 1, 17, 14},
+           "camera at tile boundary advances first visible tile without a gap");
+    camera.setPosition({17, 17});
+    expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{1, 1, 18, 15},
+           "camera after tile boundary includes new partial far-edge tiles");
+
+    camera.setPosition({1, 1});
+    const auto largeMapRange = camera.visibleTiles(1024, 1024, 16);
+    expect(largeMapRange.tileCount() == 270,
+           "large-map culling consults only 18 by 15 visible cells");
+    expect(largeMapRange.tileCount() < 1024U * 1024U,
+           "visible range cost is independent of total map cell count");
+    camera.setPosition({1024 * 16 - 272, 1024 * 16 - 224});
+    const auto farEdge = camera.visibleTiles(1024, 1024, 16);
+    expect(farEdge.lastX == 1023 && farEdge.lastY == 1023,
+           "visible range remains inside map at far boundary");
+}
+
+void testCollisionGridAndAabb() {
+    using underworld::world::AabbI;
+    underworld::world::CollisionGrid grid(10, 10);
+    expect(!grid.isSolid(0, 0) && !grid.isSolid(9, 9),
+           "new collision grid cells are empty");
+    expect(grid.isSolid(-1, 0) && grid.isSolid(10, 0) && grid.isSolid(0, -1),
+           "collision policy treats outside the map as solid");
+    grid.setSolid(2, 1, true);
+    expect(grid.isSolid(2, 1), "collision grid stores a solid cell");
+
+    const auto free = underworld::world::querySolidTiles(grid, {16, 16, 10, 10}, 16);
+    expect(!free.collides && free.cellsTested == 1,
+           "AABB fully in free space checks only its covered cell");
+    const auto solid = underworld::world::querySolidTiles(grid, {32, 16, 10, 10}, 16);
+    expect(solid.collides, "AABB directly over a solid tile collides");
+    const auto partial = underworld::world::querySolidTiles(grid, {26, 16, 10, 10}, 16);
+    expect(partial.collides, "AABB partially overlapping a solid tile collides");
+    const auto touching = underworld::world::querySolidTiles(grid, {22, 16, 10, 10}, 16);
+    expect(!touching.collides, "half-open AABB touching a wall without overlap is free");
+    const auto outside = underworld::world::querySolidTiles(grid, {-1, 16, 10, 10}, 16);
+    expect(outside.collides && outside.cellsTested == 1,
+           "AABB outside world is rejected without scanning the grid");
+    const auto fourCells = underworld::world::querySolidTiles(grid, {15, 31, 2, 2}, 16);
+    expect(fourCells.cellsTested <= 4,
+           "AABB broad phase visits only covered neighboring cells");
+    bool collisionBoundsRejected = false;
+    try {
+        grid.setSolid(10, 0, true);
+    } catch (const std::out_of_range&) {
+        collisionBoundsRejected = true;
+    }
+    expect(collisionBoundsRejected, "collision mutation checks map bounds");
+}
+
+void testCollisionMovement() {
+    using underworld::world::AabbI;
+    using underworld::world::CollisionGrid;
+    CollisionGrid verticalWall(8, 8);
+    for (int y = 0; y < 8; ++y) {
+        verticalWall.setSolid(3, y, true);
+    }
+    AabbI bodyX{32, 32, 10, 10};
+    const auto xResult = underworld::world::moveAgainstSolidTiles(
+        verticalWall, bodyX, 20, 0, 16);
+    expect(bodyX.x == 38 && xResult.movedX == 6 && xResult.blockedX,
+           "axis resolution stops X movement exactly against a wall");
+
+    CollisionGrid horizontalWall(8, 8);
+    for (int x = 0; x < 8; ++x) {
+        horizontalWall.setSolid(x, 3, true);
+    }
+    AabbI bodyY{32, 32, 10, 10};
+    const auto yResult = underworld::world::moveAgainstSolidTiles(
+        horizontalWall, bodyY, 0, 20, 16);
+    expect(bodyY.y == 38 && yResult.movedY == 6 && yResult.blockedY,
+           "axis resolution stops Y movement exactly against a wall");
+
+    AabbI sliding{38, 20, 10, 10};
+    const auto slideResult = underworld::world::moveAgainstSolidTiles(
+        verticalWall, sliding, 5, 8, 16);
+    expect(sliding.x == 38 && sliding.y == 28 && slideResult.blockedX &&
+               !slideResult.blockedY,
+           "separate-axis resolution slides along a wall");
+
+    CollisionGrid corridorGrid(8, 5);
+    for (int x = 0; x < 8; ++x) {
+        corridorGrid.setSolid(x, 1, true);
+        corridorGrid.setSolid(x, 3, true);
+    }
+    AabbI corridorBody{16, 35, 10, 10};
+    const auto corridorResult = underworld::world::moveAgainstSolidTiles(
+        corridorGrid, corridorBody, 64, 0, 16);
+    expect(corridorBody.x == 80 && corridorBody.y == 35 &&
+               !corridorResult.blockedX && !corridorResult.blockedY,
+           "body smaller than a tile passes through a one-tile corridor");
+
+    CollisionGrid cornerGrid(8, 8);
+    for (int y = 0; y < 8; ++y) {
+        cornerGrid.setSolid(3, y, true);
+    }
+    for (int x = 0; x < 8; ++x) {
+        cornerGrid.setSolid(x, 3, true);
+    }
+    AabbI corner{38, 38, 10, 10};
+    const auto cornerResult = underworld::world::moveAgainstSolidTiles(
+        cornerGrid, corner, 3, 3, 16);
+    expect(corner == AabbI{38, 38, 10, 10} && cornerResult.blockedX &&
+               cornerResult.blockedY,
+           "axis resolution cannot tunnel diagonally through a solid corner");
+
+    CollisionGrid boundary(4, 4);
+    AabbI edge{1, 1, 10, 10};
+    const auto edgeResult = underworld::world::moveAgainstSolidTiles(
+        boundary, edge, -20, -20, 16);
+    expect(edge.x == 0 && edge.y == 0 && edgeResult.blockedX && edgeResult.blockedY,
+           "movement respects solid outer world boundary");
+}
+
 void testPresentationRect() {
     using underworld::platform::calculatePresentationRect;
 
@@ -506,6 +816,12 @@ int main() {
         testBitmapFontMapping();
         testAssetCache();
         testWicDecoder();
+        testWorldCoordinates();
+        testTilesAndLayers();
+        testRuntimeMap();
+        testCameraAndCulling();
+        testCollisionGridAndAabb();
+        testCollisionMovement();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/pixel_buffer_view.h"
+#include "engine/platform/debug_input.h"
 #include "engine/platform/image_decoder.h"
 
 #include <filesystem>
@@ -27,6 +28,7 @@ public:
     virtual void log(LogLevel level, std::string_view message) const = 0;
     [[nodiscard]] virtual ImageDecoder& imageDecoder() noexcept = 0;
     [[nodiscard]] virtual std::filesystem::path executableDirectory() const = 0;
+    [[nodiscard]] virtual DebugInputState consumeDebugInput() noexcept = 0;
 };
 
 } // namespace underworld::platform

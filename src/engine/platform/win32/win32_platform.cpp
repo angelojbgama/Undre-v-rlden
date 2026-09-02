@@ -29,7 +29,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 2 Renderer";
+constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 3 Tile World";
 
 class Win32Platform final : public Platform {
 public:
@@ -193,6 +193,12 @@ public:
         }
     }
 
+    [[nodiscard]] DebugInputState consumeDebugInput() noexcept override {
+        DebugInputState result = debugInput_;
+        debugInput_.toggleCollisionPressed = false;
+        return result;
+    }
+
 private:
     [[nodiscard]] bool initializeDpiAwareness() const noexcept {
         if (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != FALSE) {
@@ -334,6 +340,15 @@ private:
         case WM_GETMINMAXINFO:
             applyMinimumWindowSize(*reinterpret_cast<MINMAXINFO*>(lParam));
             return 0;
+        case WM_KEYDOWN:
+            updateDebugKey(wParam, true, (lParam & (1LL << 30)) != 0);
+            return 0;
+        case WM_KEYUP:
+            updateDebugKey(wParam, false, false);
+            return 0;
+        case WM_KILLFOCUS:
+            debugInput_ = {};
+            return 0;
         case WM_DPICHANGED: {
             const auto* suggested = reinterpret_cast<const RECT*>(lParam);
             SetWindowPos(window_, nullptr, suggested->left, suggested->top,
@@ -357,6 +372,25 @@ private:
         }
         default:
             return DefWindowProcW(window_, message, wParam, lParam);
+        }
+    }
+
+    void updateDebugKey(WPARAM key, bool down, bool wasDown) noexcept {
+        switch (key) {
+        case 'A': debugInput_.cameraLeft = down; break;
+        case 'D': debugInput_.cameraRight = down; break;
+        case 'W': debugInput_.cameraUp = down; break;
+        case 'S': debugInput_.cameraDown = down; break;
+        case VK_LEFT: debugInput_.bodyLeft = down; break;
+        case VK_RIGHT: debugInput_.bodyRight = down; break;
+        case VK_UP: debugInput_.bodyUp = down; break;
+        case VK_DOWN: debugInput_.bodyDown = down; break;
+        case 'C':
+            if (down && !wasDown) {
+                debugInput_.toggleCollisionPressed = true;
+            }
+            break;
+        default: break;
         }
     }
 
@@ -396,6 +430,7 @@ private:
     int clientHeight_{};
     Win32Clock clock_{};
     Win32ImageDecoder imageDecoder_{};
+    DebugInputState debugInput_{};
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};
     int dibHeight_{};
