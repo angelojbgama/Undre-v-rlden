@@ -1,7 +1,9 @@
 #pragma once
 
 #include "engine/core/pixel_buffer_view.h"
+#include "engine/platform/image_decoder.h"
 
+#include <filesystem>
 #include <string_view>
 
 namespace underworld::platform {
@@ -23,6 +25,8 @@ public:
     [[nodiscard]] virtual double nowSeconds() const noexcept = 0;
     virtual bool present(core::PixelBufferView surface) = 0;
     virtual void log(LogLevel level, std::string_view message) const = 0;
+    [[nodiscard]] virtual ImageDecoder& imageDecoder() noexcept = 0;
+    [[nodiscard]] virtual std::filesystem::path executableDirectory() const = 0;
 };
 
 } // namespace underworld::platform

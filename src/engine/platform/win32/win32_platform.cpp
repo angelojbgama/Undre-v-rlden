@@ -11,13 +11,16 @@
 #include "engine/platform/platform.h"
 #include "engine/platform/presentation.h"
 #include "engine/platform/win32/win32_clock.h"
+#include "engine/platform/win32/win32_image_decoder.h"
 #include "game/game.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -26,7 +29,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld - Phase 1 CPU Framebuffer";
+constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 2 Renderer";
 
 class Win32Platform final : public Platform {
 public:
@@ -167,6 +170,27 @@ public:
         line.push_back('\n');
         OutputDebugStringA(line.c_str());
         std::clog << line;
+    }
+
+    [[nodiscard]] ImageDecoder& imageDecoder() noexcept override { return imageDecoder_; }
+
+    [[nodiscard]] std::filesystem::path executableDirectory() const override {
+        std::wstring path(260, L'\0');
+        for (;;) {
+            const DWORD length = GetModuleFileNameW(
+                nullptr, path.data(), static_cast<DWORD>(path.size()));
+            if (length == 0) {
+                throw std::runtime_error("Could not determine the executable directory");
+            }
+            if (length < path.size()) {
+                path.resize(length);
+                return std::filesystem::path(path).parent_path();
+            }
+            if (path.size() > 32768U) {
+                throw std::runtime_error("Executable path is unexpectedly long");
+            }
+            path.resize(path.size() * 2U);
+        }
     }
 
 private:
@@ -371,6 +395,7 @@ private:
     int clientWidth_{};
     int clientHeight_{};
     Win32Clock clock_{};
+    Win32ImageDecoder imageDecoder_{};
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};
     int dibHeight_{};

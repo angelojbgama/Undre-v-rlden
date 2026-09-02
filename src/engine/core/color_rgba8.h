@@ -12,6 +12,8 @@ struct ColorRGBA8 final {
     std::uint8_t g{};
     std::uint8_t b{};
     std::uint8_t a{};
+
+    [[nodiscard]] constexpr bool operator==(const ColorRGBA8&) const noexcept = default;
 };
 
 static_assert(std::is_standard_layout_v<ColorRGBA8>);
