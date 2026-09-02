@@ -1,0 +1,23 @@
+# Licensed local assets - DO NOT DISTRIBUTE
+/Dungeon Underworld/
+/Dungeon Underworld.zip
+
+# Build output
+/build/
+
+# MSVC output
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# IDE/local
+.vs/
+.vscode/
+*.suo
+*.user
+
+# Common local/generated files
+*.log
+.DS_Store
+Thumbs.db
