@@ -8,6 +8,8 @@ struct InputState final {
     bool moveDown{};
     bool moveLeft{};
     bool moveRight{};
+    bool primaryAttackPressed{};
+    bool secondaryAttackPressed{};
 
     void clear() noexcept { *this = {}; }
     [[nodiscard]] constexpr bool operator==(const InputState&) const noexcept = default;

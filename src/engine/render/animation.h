@@ -14,7 +14,12 @@ namespace underworld::render {
 struct AnimationFrame final {
     SpriteFrame sprite{};
     std::uint32_t durationTicks{1};
-    std::vector<std::string> markers{}; // Data only; gameplay does not consume markers yet.
+    std::vector<std::string> markers{};
+};
+
+struct AnimationMarkerEvent final {
+    std::string_view marker{};
+    std::size_t frameIndex{};
 };
 
 class AnimationClip final {
@@ -39,7 +44,8 @@ private:
 class Animator final {
 public:
     void play(std::shared_ptr<const AnimationClip> clip, bool restart = true);
-    void updateTicks(std::uint64_t ticks) noexcept;
+    void updateTicks(std::uint64_t ticks);
+    void updateTicks(std::uint64_t ticks, std::vector<AnimationMarkerEvent>& events);
     void setPlaying(bool playing) noexcept { playing_ = playing && clip_ != nullptr; }
 
     [[nodiscard]] bool hasClip() const noexcept { return clip_ != nullptr; }
@@ -48,6 +54,7 @@ public:
     [[nodiscard]] std::uint32_t elapsedFrameTicks() const noexcept { return elapsedFrameTicks_; }
     [[nodiscard]] const AnimationClip& clip() const;
     [[nodiscard]] const AnimationFrame& currentFrame() const;
+    [[nodiscard]] bool finished() const noexcept { return clip_ != nullptr && !playing_; }
 
 private:
     std::shared_ptr<const AnimationClip> clip_{};

@@ -9,6 +9,7 @@
 
 #include "engine/core/game_metrics.h"
 #include "engine/platform/platform.h"
+#include "engine/platform/action_edge_buffer.h"
 #include "engine/platform/presentation.h"
 #include "engine/platform/win32/win32_clock.h"
 #include "engine/platform/win32/win32_image_decoder.h"
@@ -30,7 +31,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 4 Player";
+constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 5 Combat";
 
 class Win32Platform final : public Platform {
 public:
@@ -194,11 +195,15 @@ public:
         }
     }
 
-    [[nodiscard]] InputState inputState() const noexcept override { return inputState_; }
+    [[nodiscard]] InputState consumeInputState() noexcept override {
+        InputState result = inputState_;
+        actionEdges_.applyNext(result);
+        return result;
+    }
 
     [[nodiscard]] DebugInputState consumeDebugInput() noexcept override {
         DebugInputState result = debugInput_;
-        debugInput_.toggleCollisionPressed = false;
+        debugInput_ = {};
         return result;
     }
 
@@ -353,6 +358,7 @@ private:
             keyDown_.fill(false);
             inputState_.clear();
             debugInput_ = {};
+            actionEdges_.clear();
             return 0;
         case WM_DPICHANGED: {
             const auto* suggested = reinterpret_cast<const RECT*>(lParam);
@@ -390,10 +396,28 @@ private:
         inputState_.moveDown = keyDown_['S'] || keyDown_[VK_DOWN];
 
         switch (key) {
+        case 'Z':
+            if (down && !wasDown) { actionEdges_.pushPrimary(); }
+            break;
+        case 'X':
+            if (down && !wasDown) { actionEdges_.pushSecondary(); }
+            break;
         case 'C':
             if (down && !wasDown) {
                 debugInput_.toggleCollisionPressed = true;
             }
+            break;
+        case VK_F1:
+            if (down && !wasDown) { debugInput_.toggleCollisionBodyPressed = true; }
+            break;
+        case VK_F2:
+            if (down && !wasDown) { debugInput_.toggleHurtboxPressed = true; }
+            break;
+        case VK_F3:
+            if (down && !wasDown) { debugInput_.toggleHitboxPressed = true; }
+            break;
+        case VK_F4:
+            if (down && !wasDown) { debugInput_.toggleInteractionPressed = true; }
             break;
         default: break;
         }
@@ -438,6 +462,7 @@ private:
     std::array<bool, 256> keyDown_{};
     InputState inputState_{};
     DebugInputState debugInput_{};
+    ActionEdgeBuffer actionEdges_{};
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};
     int dibHeight_{};

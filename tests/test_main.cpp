@@ -5,6 +5,7 @@
 #include "engine/core/image_data.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/platform/image_decoder.h"
+#include "engine/platform/action_edge_buffer.h"
 #include "engine/platform/input_state.h"
 #include "engine/platform/presentation.h"
 #include "engine/render/animation.h"
@@ -15,14 +16,23 @@
 #include "engine/render/renderer_2d.h"
 #include "engine/render/sprite.h"
 #include "engine/simulation/player_command.h"
+#include "engine/simulation/entity_handle.h"
+#include "engine/simulation/events.h"
 #include "engine/world/collision.h"
 #include "engine/world/collision_grid.h"
 #include "engine/world/runtime_map.h"
 #include "engine/world/tile.h"
 #include "engine/world/tile_layer.h"
 #include "game/command_builder.h"
+#include "game/actor_render_order.h"
+#include "game/combat_debug.h"
+#include "game/effect_system.h"
+#include "game/gameplay/attack_definitions.h"
+#include "game/gameplay/combat_system.h"
+#include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
+#include "game/training_puppet.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -247,6 +257,24 @@ void testImagesAndBlits() {
     underworld::core::ImageData overflowCandidate{
         std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 0, {}};
     expect(!overflowCandidate.isValid(), "invalid external dimensions and stride are safe");
+
+    underworld::render::Image nonsquare(makeImageData(
+        2, 3, {red, green, blue, white, black, ColorRGBA8{255, 255, 0, 255}}));
+    underworld::render::Framebuffer rotated(3, 2);
+    underworld::render::Renderer2D rotationRenderer(rotated);
+    rotationRenderer.drawImageRegionQuarterTurn(
+        nonsquare, {0, 0, 2, 3}, 0, 0, underworld::render::QuarterTurn::r90);
+    expect(framebufferPixel(rotated, 0, 0) == black &&
+               framebufferPixel(rotated, 1, 0) == blue &&
+               framebufferPixel(rotated, 2, 0) == red &&
+               framebufferPixel(rotated, 0, 1) == ColorRGBA8{255, 255, 0, 255} &&
+               framebufferPixel(rotated, 2, 1) == green,
+           "90-degree pixel rotation handles a non-square source without interpolation");
+    rotationRenderer.drawImageRegionQuarterTurn(
+        nonsquare, {0, 0, 2, 3}, 0, 0, underworld::render::QuarterTurn::r270);
+    expect(framebufferPixel(rotated, 0, 0) == green &&
+               framebufferPixel(rotated, 2, 1) == black,
+           "270-degree pixel rotation preserves orientation and channels");
 }
 
 void testAlphaBlending() {
@@ -334,6 +362,30 @@ void testAnimationAndSpriteAnchor() {
                framebufferPixel(framebuffer, 1, 1) == ColorRGBA8{0, 0, 255, 255} &&
                framebufferPixel(framebuffer, 3, 1) == ColorRGBA8{255, 0, 0, 255},
            "flipped sprite transforms its anchor without duplicating the image");
+
+    auto markerImage = std::make_shared<const underworld::render::Image>(
+        makeImageData(4, 1, {ColorRGBA8{}, ColorRGBA8{}, ColorRGBA8{}, ColorRGBA8{}}));
+    auto markerSheet = std::make_shared<const underworld::render::SpriteSheet>(markerImage);
+    std::vector<underworld::render::AnimationFrame> markerFrames{
+        {{{0, 0, 1, 1}, {}, {}, false}, 2, {}},
+        {{{1, 0, 1, 1}, {}, {}, false}, 3, {"attack_on"}},
+        {{{2, 0, 1, 1}, {}, {}, false}, 1, {"middle"}},
+        {{{3, 0, 1, 1}, {}, {}, false}, 2, {"attack_off"}}};
+    auto markerClip = std::make_shared<const underworld::render::AnimationClip>(
+        "markers", markerSheet, std::move(markerFrames), false);
+    underworld::render::Animator markerAnimator;
+    markerAnimator.play(markerClip);
+    std::vector<underworld::render::AnimationMarkerEvent> markerEvents;
+    markerAnimator.updateTicks(1, markerEvents);
+    expect(markerEvents.empty(), "animation marker is not repeated during a frame");
+    markerAnimator.updateTicks(1, markerEvents);
+    expect(markerEvents.size() == 1 && markerEvents[0].marker == "attack_on",
+           "animation marker emits exactly once when entering its frame");
+    markerEvents.clear();
+    markerAnimator.updateTicks(4, markerEvents);
+    expect(markerEvents.size() == 2 && markerEvents[0].marker == "middle" &&
+               markerEvents[1].marker == "attack_off",
+           "multi-frame tick advance preserves every intermediate marker in order");
 }
 
 void testBitmapFontMapping() {
@@ -788,6 +840,13 @@ underworld::simulation::PlayerCommand movementCommand(
     return {tick, playerId, static_cast<std::uint32_t>(tick), {x, y}};
 }
 
+underworld::simulation::PlayerCommand actionCommand(
+    std::uint64_t tick, bool primary, bool secondary, int x = 0, int y = 0,
+    underworld::simulation::PlayerId playerId = {0}) {
+    return {tick, playerId, static_cast<std::uint32_t>(tick), {x, y},
+            {primary, secondary}};
+}
+
 void testPlayerMovementAndFacing() {
     namespace gameplay = underworld::game::gameplay;
     underworld::world::CollisionGrid openGrid(256, 256);
@@ -961,6 +1020,30 @@ void testPlayerVisualAndCameraFollow() {
     expect(visual.animator().clip().id() == "walk.up" && !visual.flipX(),
            "up-facing walk selects the dedicated audited sheet row");
 
+    underworld::game::PlayerVisual::DirectionalClips sword{
+        makeTestClip("sword.down", false), makeTestClip("sword.up", false),
+        makeTestClip("sword.side", false)};
+    underworld::game::PlayerVisual::DirectionalClips bow{
+        makeTestClip("bow.down", false), makeTestClip("bow.up", false),
+        makeTestClip("bow.side", false)};
+    underworld::game::PlayerVisual combatVisual(
+        {makeTestClip("idle2.down", true), makeTestClip("idle2.up", true),
+         makeTestClip("idle2.side", true)},
+        {makeTestClip("walk2.down", true), makeTestClip("walk2.up", true),
+         makeTestClip("walk2.side", true)},
+        std::move(sword), std::move(bow));
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right,
+                        gameplay::PlayerActionState::swordAttack, 2);
+    expect(combatVisual.animator().clip().id() == "sword.side" && combatVisual.flipX(),
+           "right sword attack reuses the side-left clip with horizontal flip");
+    expect(combatVisual.consumeMarkerEvents().size() == 1,
+           "PlayerVisual forwards attack animation markers exactly once");
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::up,
+                        gameplay::PlayerActionState::bowAttack, 0);
+    expect(combatVisual.animator().clip().id() == "bow.up" &&
+               combatVisual.animator().frameIndex() == 0,
+           "changing attack action starts the selected bow clip once at frame zero");
+
     underworld::render::Camera2D camera(272, 224);
     camera.centerOn({500, 400});
     camera.clampToWorld(1024, 768);
@@ -974,6 +1057,329 @@ void testPlayerVisualAndCameraFollow() {
     camera.clampToWorld(1024, 768);
     expect(camera.position() == underworld::core::WorldPointI{752, 544},
            "camera follow clamps at right and bottom world edges");
+}
+
+void testActionCommandsAndPlayerAttackState() {
+    namespace gameplay = underworld::game::gameplay;
+    underworld::game::CommandBuilder builder;
+    underworld::platform::InputState input{};
+    input.primaryAttackPressed = true;
+    auto primary = builder.build(30, {4}, input);
+    expect(primary.tick == 30 && primary.playerId == underworld::simulation::PlayerId{4} &&
+               primary.sequence == 0 && primary.actions.primaryAttackPressed &&
+               !primary.actions.secondaryAttackPressed,
+           "primary action edge survives the command boundary with tick/id/sequence");
+    input.primaryAttackPressed = false;
+    auto heldWithoutEdge = builder.build(31, {4}, input);
+    expect(!heldWithoutEdge.actions.primaryAttackPressed,
+           "held input without a new edge does not repeat an attack command");
+    input.secondaryAttackPressed = true;
+    auto secondary = builder.build(32, {4}, input);
+    expect(secondary.actions.secondaryAttackPressed && secondary.sequence == 2,
+           "secondary action edge is preserved and sequence remains deterministic");
+    input.primaryAttackPressed = true;
+    auto simultaneous = builder.build(33, {4}, input);
+    expect(simultaneous.actions.primaryAttackPressed &&
+               !simultaneous.actions.secondaryAttackPressed,
+           "primary attack deterministically wins simultaneous primary/secondary input");
+
+    underworld::platform::ActionEdgeBuffer edges;
+    edges.pushPrimary(); // A down/up pair can complete before the next fixed tick.
+    underworld::platform::InputState sampled{};
+    edges.applyNext(sampled);
+    expect(sampled.primaryAttackPressed && edges.pendingPrimary() == 0,
+           "short action edge remains queued until exactly one fixed tick consumes it");
+    sampled = {};
+    edges.applyNext(sampled);
+    expect(!sampled.primaryAttackPressed,
+           "consumed edge does not repeat while the physical key remains without transition");
+    edges.pushPrimary();
+    edges.pushPrimary();
+    sampled = {};
+    edges.applyNext(sampled);
+    expect(sampled.primaryAttackPressed && edges.pendingPrimary() == 1,
+           "multiple physical transitions are queued one per fixed tick");
+    edges.pushSecondary();
+    edges.clear();
+    sampled = {};
+    edges.applyNext(sampled);
+    expect(!sampled.primaryAttackPressed && !sampled.secondaryAttackPressed,
+           "focus-loss clear removes all pending action edges and prevents ghost attacks");
+
+    underworld::world::CollisionGrid grid(64, 64);
+    gameplay::Player player({0}, {100, 100});
+    player.update(actionCommand(1, true, false, 1, 0), grid, 16);
+    const auto lockedPosition = player.subpixelPosition();
+    const auto firstAttack = player.attackInstance();
+    expect(player.actionState() == gameplay::PlayerActionState::swordAttack && firstAttack != 0,
+           "primary command starts a sword attack instance");
+    expect(player.subpixelPosition() == lockedPosition &&
+               player.facing() == gameplay::FacingDirection::down,
+           "attack start locks movement and captures the existing facing");
+    player.update(actionCommand(2, true, false, 0, -1), grid, 16);
+    expect(player.attackInstance() == firstAttack &&
+               player.facing() == gameplay::FacingDirection::down &&
+               player.subpixelPosition() == lockedPosition,
+           "active attack ignores retrigger, direction changes, and movement");
+    player.finishAttack();
+    player.update(actionCommand(3, false, false, 1, 0), grid, 16);
+    expect(player.actionState() == gameplay::PlayerActionState::none &&
+               player.motionState() == gameplay::PlayerMotionState::walk &&
+               player.subpixelPosition().x > lockedPosition.x,
+           "movement resumes after attack recovery completes");
+    player.update(actionCommand(4, false, true), grid, 16);
+    expect(player.actionState() == gameplay::PlayerActionState::bowAttack &&
+               player.attackInstance() != firstAttack,
+           "secondary command starts a distinct bow attack instance");
+    expect(player.hurtbox().bounds == underworld::world::AabbI{94, 78, 14, 22} &&
+               player.collisionBody() == underworld::world::AabbI{96, 92, 10, 8},
+           "Player Hurtbox and CollisionBody have independent dimensions and offsets");
+    expect(player.interactionArea().bounds.width == 22 &&
+               player.interactionArea().bounds != player.hurtbox().bounds,
+           "InteractionArea is distinct from damage and physical boxes");
+}
+
+void testEntityHandlesAndActorOrder() {
+    underworld::simulation::EntityHandlePool pool;
+    const auto first = pool.create();
+    const auto second = pool.create();
+    expect(pool.valid(first) && pool.valid(second) && first != second,
+           "created runtime entity handles are valid and distinct");
+    expect(pool.destroy(first) && !pool.valid(first),
+           "destroyed entity handle becomes invalid");
+    const auto reused = pool.create();
+    expect(reused.index == first.index && reused.generation != first.generation &&
+               pool.valid(reused) && !pool.valid(first),
+           "reused slot changes generation and never revives the stale handle");
+    expect(underworld::game::actorRendersBefore({100, reused}, {120, second}),
+           "actor with lower feet Y renders first");
+    const bool stableTie = reused.index < second.index
+        ? underworld::game::actorRendersBefore({100, reused}, {100, second})
+        : underworld::game::actorRendersBefore({100, second}, {100, reused});
+    expect(stableTie, "equal-Y actor ordering uses a stable EntityHandle tie-breaker");
+
+    underworld::game::CombatDebugVisibility debug;
+    underworld::platform::DebugInputState hurtOnly{};
+    hurtOnly.toggleHurtboxPressed = true;
+    debug.apply(hurtOnly);
+    expect(debug.hurtbox && !debug.hitbox && !debug.collisionBody && !debug.interaction,
+           "Hurtbox debug visibility toggles independently from every other box");
+    underworld::platform::DebugInputState hitOnly{};
+    hitOnly.toggleHitboxPressed = true;
+    debug.apply(hitOnly);
+    expect(debug.hurtbox && debug.hitbox && !debug.collisionBody && !debug.interaction,
+           "Hitbox debug visibility toggles without changing Hurtbox visibility");
+}
+
+underworld::game::gameplay::CombatTarget makeCombatTarget(
+    underworld::simulation::EntityHandle handle, underworld::core::WorldPointI feet,
+    underworld::game::gameplay::Faction faction, int health) {
+    return {handle, faction, feet,
+            {{feet.x - 5, feet.y - 8, 10, 8}},
+            {{feet.x - 7, feet.y - 22, 14, 22}, true},
+            underworld::game::gameplay::Health{health}, 0, false};
+}
+
+void testCombatSystem() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+    underworld::world::CollisionGrid grid(32, 32);
+    simulation::EntityHandlePool pool;
+    const auto attacker = pool.create();
+    const auto targetHandle = pool.create();
+    auto target = makeCombatTarget(targetHandle, {100, 100}, gameplay::Faction::enemy, 5);
+    gameplay::CombatSystem combat;
+    simulation::EventBuffer events;
+    gameplay::Hitbox swing{{90, 78, 24, 24}, attacker, gameplay::Faction::player,
+                           1, {1, 8}, 8, 0, true};
+    expect(combat.resolve(swing, target, grid, 16, events) && target.health.current == 4,
+           "valid hit applies damage through CombatSystem");
+    expect(target.feet.x == 108 && events.events().size() == 1 &&
+               std::holds_alternative<simulation::EntityDamaged>(events.events()[0]),
+           "successful damage emits EntityDamaged and deterministic knockback");
+    expect(!combat.resolve(swing, target, grid, 16, events) && target.health.current == 4,
+           "same attack instance cannot damage the same target twice");
+    gameplay::Hitbox secondSwing = swing;
+    secondSwing.attackInstance = 2;
+    expect(!combat.resolve(secondSwing, target, grid, 16, events),
+           "new attack is ignored during target invulnerability");
+    for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks; ++tick) {
+        gameplay::tickInvulnerability(target);
+    }
+    secondSwing.bounds = target.hurtbox.bounds;
+    expect(combat.resolve(secondSwing, target, grid, 16, events) && target.health.current == 3,
+           "new attack damages after invulnerability expires");
+
+    auto sameFaction = makeCombatTarget(pool.create(), {100, 100}, gameplay::Faction::player, 3);
+    expect(!combat.resolve(swing, sameFaction, grid, 16, events) && sameFaction.health.current == 3,
+           "Player faction cannot damage Player faction");
+    gameplay::Hitbox enemySwing = swing;
+    enemySwing.owner = targetHandle;
+    enemySwing.faction = gameplay::Faction::enemy;
+    auto enemyTarget = makeCombatTarget(pool.create(), {100, 100}, gameplay::Faction::enemy, 3);
+    expect(!combat.resolve(enemySwing, enemyTarget, grid, 16, events),
+           "Enemy faction cannot damage Enemy faction");
+    auto ownerTarget = makeCombatTarget(attacker, {100, 100}, gameplay::Faction::enemy, 3);
+    expect(!combat.resolve(swing, ownerTarget, grid, 16, events),
+           "attack owner can never damage itself");
+
+    auto defeated = makeCombatTarget(pool.create(), {160, 100}, gameplay::Faction::enemy, 1);
+    gameplay::Hitbox lethal{{150, 78, 24, 24}, attacker, gameplay::Faction::player,
+                            10, {1, 0}, 0, 0, true};
+    simulation::EventBuffer lethalEvents;
+    expect(combat.resolve(lethal, defeated, grid, 16, lethalEvents) &&
+               defeated.health.current == 0 && !defeated.hurtbox.enabled,
+           "lethal damage clamps Health to zero and disables Hurtbox");
+    const auto defeatedCount = std::count_if(
+        lethalEvents.events().begin(), lethalEvents.events().end(),
+        [](const simulation::SimulationEvent& event) {
+            return std::holds_alternative<simulation::EntityDefeated>(event);
+        });
+    expect(defeatedCount == 1, "EntityDefeated emits exactly once");
+    expect(!combat.resolve(lethal, defeated, grid, 16, lethalEvents) &&
+               lethalEvents.events().size() == 2,
+           "defeated target cannot emit damage or defeat again");
+
+    underworld::world::CollisionGrid wallGrid(16, 16);
+    wallGrid.setSolid(7, 6, true);
+    auto nearWall = makeCombatTarget(pool.create(), {107, 104}, gameplay::Faction::enemy, 3);
+    gameplay::Hitbox wallKnock{{95, 80, 20, 24}, attacker, gameplay::Faction::player,
+                               20, {1, 16}, 16, 0, true};
+    [[maybe_unused]] const bool wallHit = combat.resolve(
+        wallKnock, nearWall, wallGrid, 16, events);
+    expect(nearWall.collisionBody.bounds.x + nearWall.collisionBody.bounds.width <= 112,
+           "knockback reuses tile collision and cannot cross a wall");
+
+    auto knockedUp = makeCombatTarget(pool.create(), {200, 200}, gameplay::Faction::enemy, 3);
+    gameplay::Hitbox upward{{190, 175, 20, 25}, attacker, gameplay::Faction::player,
+                            21, {1, 7}, 0, -7, true};
+    const int beforeUp = knockedUp.feet.y;
+    expect(combat.resolve(upward, knockedUp, grid, 16, events) &&
+               knockedUp.feet.y == beforeUp - 7,
+           "upward sword knockback displaces target in facing direction");
+
+    const gameplay::CollisionBody collisionBefore = target.collisionBody;
+    target.hurtbox.bounds.width += 3;
+    expect(target.collisionBody.bounds == collisionBefore.bounds,
+           "changing Hurtbox does not alter CollisionBody");
+    gameplay::Hitbox independent = swing;
+    independent.bounds.width += 4;
+    expect(independent.bounds != target.hurtbox.bounds,
+           "Hitbox data is independent from Hurtbox data");
+
+    expect(gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::down) ==
+               underworld::world::AabbI{90, 99, 20, 18} &&
+               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::up) ==
+               underworld::world::AabbI{90, 73, 20, 19} &&
+               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::left) ==
+               underworld::world::AabbI{73, 82, 21, 18} &&
+               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::right) ==
+               underworld::world::AabbI{106, 82, 21, 18},
+           "sword Hitboxes are explicit per facing and anchored to feet");
+    expect(gameplay::swordAttack.totalTicks == 24 && gameplay::bowAttack.totalTicks == 16 &&
+               gameplay::swordAttack.kind == gameplay::AttackKind::meleeHitbox &&
+               gameplay::bowAttack.kind == gameplay::AttackKind::projectile,
+           "Sword and Bow share small immutable AttackDefinition data");
+}
+
+void testProjectilesAndEffects() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+    simulation::EntityHandlePool pool;
+    const auto owner = pool.create();
+    gameplay::CombatSystem combat;
+    gameplay::ProjectileSystem projectiles(pool);
+    underworld::world::CollisionGrid grid(64, 64);
+    simulation::EventBuffer events;
+    auto target = makeCombatTarget(pool.create(), {120, 100}, gameplay::Faction::enemy, 3);
+    [[maybe_unused]] const auto targetProjectile = projectiles.spawn(
+        owner, gameplay::Faction::player, 100, {100, 90},
+        gameplay::FacingDirection::right, {1, 6});
+    std::array<gameplay::CombatTarget*, 1> targets{&target};
+    for (int tick = 0; tick < 8 && !projectiles.projectiles().empty(); ++tick) {
+        projectiles.update(grid, 16, targets, combat, events);
+    }
+    expect(projectiles.projectiles().empty() && target.health.current == 2,
+           "projectile hits a valid Hurtbox once and is destroyed");
+    expect(std::any_of(events.events().begin(), events.events().end(),
+                       [](const simulation::SimulationEvent& event) {
+                           const auto* impact = std::get_if<simulation::ProjectileImpact>(&event);
+                           return impact && impact->kind == simulation::ProjectileImpactKind::target;
+                       }),
+           "projectile target impact is emitted for VFX observers");
+
+    gameplay::ProjectileSystem wallProjectiles(pool);
+    underworld::world::CollisionGrid wall(64, 64);
+    wall.setSolid(7, 6, true);
+    [[maybe_unused]] const auto wallProjectile = wallProjectiles.spawn(
+        owner, gameplay::Faction::player, 101, {108, 100},
+        gameplay::FacingDirection::right, {1, 6});
+    std::array<gameplay::CombatTarget*, 0> noTargets{};
+    wallProjectiles.update(wall, 16, noTargets, combat, events);
+    expect(wallProjectiles.projectiles().empty(),
+           "pixel-substepped fast projectile cannot tunnel through a solid tile");
+
+    gameplay::ProjectileSystem ownerFiltered(pool);
+    auto ownerAsTarget = makeCombatTarget(owner, {104, 100}, gameplay::Faction::enemy, 3);
+    [[maybe_unused]] const auto filteredProjectile = ownerFiltered.spawn(
+        owner, gameplay::Faction::player, 102, {100, 90},
+        gameplay::FacingDirection::down, {1, 6});
+    std::array<gameplay::CombatTarget*, 1> ownerTarget{&ownerAsTarget};
+    ownerFiltered.update(grid, 16, ownerTarget, combat, events);
+    expect(ownerAsTarget.health.current == 3,
+           "projectile owner filtering prevents self-hit regardless of faction");
+
+    gameplay::ProjectileSystem expiring(pool);
+    [[maybe_unused]] const auto expiringProjectile = expiring.spawn(
+        owner, gameplay::Faction::player, 103, {500, 500},
+        gameplay::FacingDirection::right, {1, 0});
+    for (std::uint32_t tick = 0; tick < gameplay::Projectile::lifetimeTicks; ++tick) {
+        expiring.update(grid, 16, noTargets, combat, events);
+    }
+    expect(expiring.projectiles().empty(), "projectile expires and releases its handle at TTL");
+
+    auto impactClip = makeTestClip("impact.test", false);
+    underworld::game::EffectSystem effects(impactClip);
+    effects.spawnImpact({10, 20});
+    expect(effects.effects().size() == 1, "transient VFX spawns independently of gameplay");
+    effects.update(impactClip->durationTicks());
+    expect(effects.effects().empty(), "finished transient VFX removes itself automatically");
+
+    expect(gameplay::directionVector(gameplay::FacingDirection::up) ==
+               underworld::core::WorldPointI{0, -1} &&
+               gameplay::directionVector(gameplay::FacingDirection::down) ==
+               underworld::core::WorldPointI{0, 1} &&
+               gameplay::directionVector(gameplay::FacingDirection::left) ==
+               underworld::core::WorldPointI{-1, 0} &&
+               gameplay::directionVector(gameplay::FacingDirection::right) ==
+               underworld::core::WorldPointI{1, 0},
+           "projectile direction vectors cover all four facings");
+
+    gameplay::ProjectileSystem directions(pool);
+    const std::array<gameplay::FacingDirection, 4> facings{
+        gameplay::FacingDirection::up, gameplay::FacingDirection::down,
+        gameplay::FacingDirection::left, gameplay::FacingDirection::right};
+    for (std::size_t index = 0; index < facings.size(); ++index) {
+        [[maybe_unused]] const auto projectile = directions.spawn(
+            owner, gameplay::Faction::player, 200 + index, {400, 400}, facings[index], {1, 0});
+    }
+    directions.update(grid, 16, noTargets, combat, events);
+    const auto& moved = directions.projectiles();
+    expect(moved[0].position == underworld::core::WorldPointI{400, 396} &&
+               moved[1].position == underworld::core::WorldPointI{400, 404} &&
+               moved[2].position == underworld::core::WorldPointI{396, 400} &&
+               moved[3].position == underworld::core::WorldPointI{404, 400},
+           "ProjectileSystem moves Up/Down/Left/Right by configured speed per tick");
+
+    gameplay::ProjectileSystem invulnerableImpact(pool);
+    auto invulnerable = makeCombatTarget(pool.create(), {120, 100}, gameplay::Faction::enemy, 3);
+    invulnerable.invulnerabilityTicks = 5;
+    [[maybe_unused]] const auto invulnerableArrow = invulnerableImpact.spawn(
+        owner, gameplay::Faction::player, 300, {108, 90}, gameplay::FacingDirection::right, {1, 6});
+    std::array<gameplay::CombatTarget*, 1> invulnerableTarget{&invulnerable};
+    invulnerableImpact.update(grid, 16, invulnerableTarget, combat, events);
+    expect(invulnerableImpact.projectiles().empty() && invulnerable.health.current == 3,
+           "arrow impacts a valid invulnerable Hurtbox without applying damage or piercing");
 }
 
 void testPresentationRect() {
@@ -1065,6 +1471,10 @@ int main() {
         testPlayerMovementAndFacing();
         testPlayerCollision();
         testPlayerVisualAndCameraFollow();
+        testActionCommandsAndPlayerAttackState();
+        testEntityHandlesAndActorOrder();
+        testCombatSystem();
+        testProjectilesAndEffects();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

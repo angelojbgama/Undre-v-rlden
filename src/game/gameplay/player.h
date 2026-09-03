@@ -3,6 +3,8 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/player_command.h"
 #include "engine/world/collision.h"
+#include "game/gameplay/combat_types.h"
+#include "game/gameplay/facing_direction.h"
 
 #include <cstdint>
 
@@ -10,16 +12,15 @@ namespace underworld::world { class CollisionGrid; }
 
 namespace underworld::game::gameplay {
 
-enum class FacingDirection {
-    down,
-    up,
-    left,
-    right,
-};
-
 enum class PlayerMotionState {
     idle,
     walk,
+};
+
+enum class PlayerActionState {
+    none,
+    swordAttack,
+    bowAttack,
 };
 
 struct PlayerMovementConfig final {
@@ -42,6 +43,12 @@ struct SubpixelPosition final {
 
 class Player final {
 public:
+    static constexpr int maximumHealth = 5;
+    static constexpr int hurtboxWidth = 14;
+    static constexpr int hurtboxHeight = 22;
+    static constexpr int hurtboxOffsetX = -7;
+    static constexpr int hurtboxOffsetY = -22;
+
     Player(simulation::PlayerId id, core::WorldPointI feetPosition,
            PlayerMovementConfig config = {});
 
@@ -58,6 +65,13 @@ public:
     [[nodiscard]] const world::MovementResult& lastMovement() const noexcept {
         return lastMovement_;
     }
+    [[nodiscard]] PlayerActionState actionState() const noexcept { return actionState_; }
+    [[nodiscard]] AttackInstanceId attackInstance() const noexcept { return attackInstance_; }
+    [[nodiscard]] Health& health() noexcept { return health_; }
+    [[nodiscard]] const Health& health() const noexcept { return health_; }
+    [[nodiscard]] Hurtbox hurtbox() const noexcept;
+    [[nodiscard]] InteractionArea interactionArea() const noexcept;
+    void finishAttack() noexcept { actionState_ = PlayerActionState::none; }
 
 private:
     simulation::PlayerId id_{};
@@ -66,9 +80,14 @@ private:
     FacingDirection facing_{FacingDirection::down};
     PlayerMotionState motionState_{PlayerMotionState::idle};
     world::MovementResult lastMovement_{};
+    PlayerActionState actionState_{PlayerActionState::none};
+    AttackInstanceId attackInstance_{};
+    AttackInstanceId nextAttackInstance_{1};
+    Health health_{maximumHealth};
 };
 
 [[nodiscard]] const char* facingName(FacingDirection facing) noexcept;
 [[nodiscard]] const char* motionStateName(PlayerMotionState state) noexcept;
+[[nodiscard]] const char* actionStateName(PlayerActionState state) noexcept;
 
 } // namespace underworld::game::gameplay

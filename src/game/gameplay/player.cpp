@@ -59,10 +59,24 @@ void Player::update(const simulation::PlayerCommand& command,
     if (command.playerId != id_) {
         throw std::invalid_argument("player command targets a different player id");
     }
-    const int moveX = command.movement.x;
-    const int moveY = command.movement.y;
+    int moveX = command.movement.x;
+    int moveY = command.movement.y;
     if (moveX < -1 || moveX > 1 || moveY < -1 || moveY > 1) {
         throw std::invalid_argument("player movement intent must be in the range -1 through 1");
+    }
+
+    if (actionState_ == PlayerActionState::none) {
+        if (command.actions.primaryAttackPressed) {
+            actionState_ = PlayerActionState::swordAttack;
+            attackInstance_ = nextAttackInstance_++;
+        } else if (command.actions.secondaryAttackPressed) {
+            actionState_ = PlayerActionState::bowAttack;
+            attackInstance_ = nextAttackInstance_++;
+        }
+    }
+    if (actionState_ != PlayerActionState::none) {
+        moveX = 0;
+        moveY = 0;
     }
 
     motionState_ = moveX == 0 && moveY == 0
@@ -107,6 +121,17 @@ void Player::update(const simulation::PlayerCommand& command,
                       : target.y;
 }
 
+Hurtbox Player::hurtbox() const noexcept {
+    const auto feet = feetPosition();
+    return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
+             hurtboxWidth, hurtboxHeight}, !health_.depleted()};
+}
+
+InteractionArea Player::interactionArea() const noexcept {
+    const auto feet = feetPosition();
+    return {{feet.x - 11, feet.y - 14, 22, 18}, true};
+}
+
 const char* facingName(FacingDirection facing) noexcept {
     switch (facing) {
     case FacingDirection::down: return "DOWN";
@@ -119,6 +144,15 @@ const char* facingName(FacingDirection facing) noexcept {
 
 const char* motionStateName(PlayerMotionState state) noexcept {
     return state == PlayerMotionState::walk ? "WALK" : "IDLE";
+}
+
+const char* actionStateName(PlayerActionState state) noexcept {
+    switch (state) {
+    case PlayerActionState::none: return "NONE";
+    case PlayerActionState::swordAttack: return "SWORD";
+    case PlayerActionState::bowAttack: return "BOW";
+    }
+    return "UNKNOWN";
 }
 
 } // namespace underworld::game::gameplay

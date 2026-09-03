@@ -45,7 +45,13 @@ void Animator::play(std::shared_ptr<const AnimationClip> clip, bool restart) {
     playing_ = true;
 }
 
-void Animator::updateTicks(std::uint64_t ticks) noexcept {
+void Animator::updateTicks(std::uint64_t ticks) {
+    std::vector<AnimationMarkerEvent> ignored;
+    updateTicks(ticks, ignored);
+}
+
+void Animator::updateTicks(std::uint64_t ticks,
+                           std::vector<AnimationMarkerEvent>& events) {
     if (!playing_ || !clip_ || ticks == 0) {
         return;
     }
@@ -64,6 +70,11 @@ void Animator::updateTicks(std::uint64_t ticks) noexcept {
             frameIndex_ = 0;
         } else {
             playing_ = false;
+        }
+        if (playing_) {
+            for (const std::string& marker : clip_->frames()[frameIndex_].markers) {
+                events.push_back({marker, frameIndex_});
+            }
         }
     }
 }

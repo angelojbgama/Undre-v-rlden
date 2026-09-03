@@ -1,0 +1,31 @@
+#pragma once
+
+#include "game/gameplay/combat_types.h"
+
+#include <vector>
+
+namespace underworld::simulation { class EventBuffer; }
+namespace underworld::world { class CollisionGrid; }
+
+namespace underworld::game::gameplay {
+
+class CombatSystem final {
+public:
+    static constexpr std::uint32_t invulnerabilityDurationTicks = 12;
+
+    [[nodiscard]] bool resolve(const Hitbox& attack, CombatTarget& target,
+                               const world::CollisionGrid& collision, int tileSize,
+                               simulation::EventBuffer& events);
+    void finishAttack(AttackInstanceId attack) noexcept;
+
+private:
+    struct HitRecord final {
+        AttackInstanceId attack{};
+        simulation::EntityHandle target{};
+    };
+    std::vector<HitRecord> hits_;
+};
+
+[[nodiscard]] bool overlaps(world::AabbI left, world::AabbI right) noexcept;
+
+} // namespace underworld::game::gameplay

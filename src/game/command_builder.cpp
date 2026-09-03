@@ -9,7 +9,10 @@ simulation::PlayerCommand CommandBuilder::build(
     const platform::InputState& input) noexcept {
     const int moveX = (input.moveRight ? 1 : 0) - (input.moveLeft ? 1 : 0);
     const int moveY = (input.moveDown ? 1 : 0) - (input.moveUp ? 1 : 0);
-    return {tick, playerId, nextSequence_++, {moveX, moveY}};
+    // Primary has explicit priority when both edges reach the same fixed tick.
+    const bool primary = input.primaryAttackPressed;
+    const bool secondary = input.secondaryAttackPressed && !primary;
+    return {tick, playerId, nextSequence_++, {moveX, moveY}, {primary, secondary}};
 }
 
 } // namespace underworld::game

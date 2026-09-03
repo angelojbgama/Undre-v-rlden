@@ -29,7 +29,8 @@ public:
     virtual void log(LogLevel level, std::string_view message) const = 0;
     [[nodiscard]] virtual ImageDecoder& imageDecoder() noexcept = 0;
     [[nodiscard]] virtual std::filesystem::path executableDirectory() const = 0;
-    [[nodiscard]] virtual InputState inputState() const noexcept = 0;
+    // Held state is copied every tick; queued action edges are consumed one at a time.
+    [[nodiscard]] virtual InputState consumeInputState() noexcept = 0;
     [[nodiscard]] virtual DebugInputState consumeDebugInput() noexcept = 0;
 };
 

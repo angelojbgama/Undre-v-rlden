@@ -67,6 +67,66 @@ void Renderer2D::drawImageRegionFlipX(const Image& image, core::RectI source, in
     drawImageRegionImpl(image, source, destinationX, destinationY, true);
 }
 
+void Renderer2D::drawImageRegionQuarterTurn(const Image& image, core::RectI source,
+                                             int destinationX, int destinationY,
+                                             QuarterTurn rotation) {
+    if (rotation == QuarterTurn::r0) {
+        drawImageRegion(image, source, destinationX, destinationY);
+        return;
+    }
+    const std::int64_t sourceRight = static_cast<std::int64_t>(source.x) + source.width;
+    const std::int64_t sourceBottom = static_cast<std::int64_t>(source.y) + source.height;
+    if (source.empty() || source.x < 0 || source.y < 0 || sourceRight > image.width() ||
+        sourceBottom > image.height()) {
+        throw std::out_of_range("image source rectangle is outside the image");
+    }
+    const bool swapsAxes = rotation == QuarterTurn::r90 || rotation == QuarterTurn::r270;
+    const int outputWidth = swapsAxes ? source.height : source.width;
+    const int outputHeight = swapsAxes ? source.width : source.height;
+    const int left = std::max(destinationX, 0);
+    const int top = std::max(destinationY, 0);
+    const int right = static_cast<int>(std::min<std::int64_t>(
+        static_cast<std::int64_t>(destinationX) + outputWidth, target_.width()));
+    const int bottom = static_cast<int>(std::min<std::int64_t>(
+        static_cast<std::int64_t>(destinationY) + outputHeight, target_.height()));
+    if (left >= right || top >= bottom) {
+        return;
+    }
+    const auto& bytes = image.bytes();
+    auto targetPixels = target_.pixels();
+    for (int y = top; y < bottom; ++y) {
+        for (int x = left; x < right; ++x) {
+            const int dx = x - destinationX;
+            const int dy = y - destinationY;
+            int sx{};
+            int sy{};
+            switch (rotation) {
+            case QuarterTurn::r90:
+                sx = dy;
+                sy = source.height - 1 - dx;
+                break;
+            case QuarterTurn::r180:
+                sx = source.width - 1 - dx;
+                sy = source.height - 1 - dy;
+                break;
+            case QuarterTurn::r270:
+                sx = source.width - 1 - dy;
+                sy = dx;
+                break;
+            case QuarterTurn::r0: break;
+            }
+            const std::size_t offset = static_cast<std::size_t>(source.y + sy) * image.stride() +
+                                       static_cast<std::size_t>(source.x + sx) * 4U;
+            const core::ColorRGBA8 color{bytes[offset], bytes[offset + 1U], bytes[offset + 2U],
+                                         bytes[offset + 3U]};
+            auto& destination = targetPixels[static_cast<std::size_t>(y) *
+                                                  static_cast<std::size_t>(target_.width()) +
+                                              static_cast<std::size_t>(x)];
+            blend(color, destination);
+        }
+    }
+}
+
 void Renderer2D::drawImageRegionImpl(const Image& image, core::RectI source, int destinationX,
                                      int destinationY, bool flipX) {
     const std::int64_t sourceRight = static_cast<std::int64_t>(source.x) + source.width;

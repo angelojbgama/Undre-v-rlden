@@ -17,11 +17,18 @@ struct MovementIntent final {
     [[nodiscard]] constexpr bool operator==(const MovementIntent&) const noexcept = default;
 };
 
+struct ActionIntent final {
+    bool primaryAttackPressed{};
+    bool secondaryAttackPressed{};
+    [[nodiscard]] constexpr bool operator==(const ActionIntent&) const noexcept = default;
+};
+
 struct PlayerCommand final {
     Tick tick{};
     PlayerId playerId{};
     std::uint32_t sequence{};
     MovementIntent movement{};
+    ActionIntent actions{};
 };
 
 } // namespace underworld::simulation
