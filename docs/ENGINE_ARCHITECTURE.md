@@ -12,9 +12,9 @@ As decisões detalhadas de ordem e escopo pertencem ao `ROADMAP.md`; regras oper
 
 ### 1.0 Baseline implementada
 
-O commit validado da Fase 5 é
-`4a2f440bf82e653e51a925a505443101103d735d`, com MSVC 2022 x64,
-C++20, `/W4`, 0 warnings e 243 checks.
+O commit de código validado da Fase 6 é
+`4fa4474a770f5c8e195d51161cb69c38277c4e99`, com MSVC 2022 x64,
+C++20, `/W4`, 0 warnings e 296 checks.
 
 Além das bases das Fases 0–4, o código já contém:
 
@@ -30,9 +30,17 @@ EntityDamaged / EntityDefeated / ProjectileImpact
 ProjectileSystem / EffectSystem
 animation markers
 actor Y-sort
+DefinitionId + catálogos imutáveis
+AttackKey(owner, localAttackInstance)
+CombatantState + CombatTargetRef/CombatResolution
+AttackDefinition + ProjectileDefinition
+EnemyDefinition + EnemyInstance + EnemyFactory
+BehaviorProfile + FSM Idle/Wander/Chase/Attack/Dead
+EnemyVisualSet + EnemyVisualInstance
+Evil Soldier melee + Skull ranged
 ```
 
-A Fase 6, Creature Engine reutilizável, é o próximo incremento. `.dmap`, editor,
+A Fase 7, objetos/pickups/HUD/inventário, é o próximo incremento. `.dmap`, editor,
 save, loot/XP, NPCs, quests e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
@@ -700,18 +708,17 @@ VFX são transitórios e não são entidades persistentes por obrigação.
 
 ---
 
-## 11. Engine de criaturas — direção arquitetural aprovada
+## 11. Engine de criaturas — implementada na Fase 6
 
 O objetivo é tornar a adição de monstros majoritariamente uma operação de conteúdo.
 
-Ideal futuro:
+Forma atual para adicionar criaturas:
 
 ```text
 register assets/clips
 + EnemyDefinition
 + BehaviorProfile
 + AttackDefinitions
-+ rewards metadata
 + spawn/map placement
 ```
 
@@ -729,9 +736,6 @@ EnemyDefinition
     movement parameters
     attacks
     BehaviorProfileId
-    loot table id quando existir
-    xp reward quando existir
-    tags/capabilities
 ```
 
 Estado runtime contém somente mutações:
@@ -755,21 +759,17 @@ Não copiar catálogos inteiros para cada instância.
 
 Comportamentos reutilizáveis formam uma máquina de estados explícita e observável.
 
-Estados candidatos:
+Estados implementados:
 
 ```text
 Idle
 Wander
-Sleep
-Wake
 Chase
 Attack
-Retreat
-Stunned   # somente quando necessário
 Dead
 ```
 
-Nem toda criatura usa todos.
+Sleep, Wake, Retreat e Stunned permanecem deferidos até existir mecânica concreta.
 
 Transições dependem de condições claras:
 
@@ -779,14 +779,13 @@ target válido
 attack range
 cooldown
 timer
-health threshold
-dano recebido
-perception query
+health esgotada
 ```
 
 Evitar `if (enemy == ...)` espalhado pela engine.
 
-Comportamento especializado pequeno é aceitável quando uma criatura realmente possui uma mecânica única.
+O wander segue sequência determinística baseada no handle; chase usa distância inteira,
+histerese detection/disengage e colisão existente do mapa. Não há pathfinding ou LOS.
 
 ### Dano, morte e recompensas
 
@@ -812,7 +811,7 @@ despawn ou world delta persistente
 
 Creature não atualiza diretamente HUD, quest, save ou XP do Player.
 
-Loot/XP pertencem às fases próprias; antes disso apenas preservar referências/dados mínimos se houver consumidor real.
+Loot/XP pertencem às fases próprias e nenhum metadata especulativo foi adicionado.
 
 ---
 

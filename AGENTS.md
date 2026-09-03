@@ -230,7 +230,10 @@ FASE 5 — fundação reutilizável de combate
 CONCLUÍDA
 
 FASE 6 — Creature Engine reutilizável
-PRÓXIMA / EM ANDAMENTO
+CONCLUÍDA
+
+FASE 7 — objetos + pickups + HUD + inventário
+PRÓXIMA
 ```
 
 Baseline registrada:
@@ -239,9 +242,9 @@ Baseline registrada:
 Compiler: MSVC 2022 x64
 Language: C++20
 Warnings: 0
-Tests: PASS — 243 checks
+Tests: PASS — 296 checks
 git diff --check: PASS
-Phase 5 commit: 4a2f440bf82e653e51a925a505443101103d735d
+Phase 6 code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
 ```
 
 A baseline inclui:
@@ -260,10 +263,19 @@ EntityDamaged / EntityDefeated / ProjectileImpact
 ProjectileSystem / EffectSystem
 animation markers
 actor Y-sort
+DefinitionId e catálogos imutáveis
+AttackKey(owner, localAttackInstance)
+CombatantState / CombatTargetRef / CombatResolution
+AttackDefinition / ProjectileDefinition direcionais
+EnemyDefinition / EnemyInstance / EnemyFactory
+BehaviorProfile + FSM Idle/Wander/Chase/Attack/Dead
+EnemyVisualSet / EnemyVisualInstance
+Evil Soldier melee + Skull ranged
 ```
 
-Ainda não existem `.dmap`, editor, save, ECS completo, IA ou Creature Engine. Nenhuma
-dependência externa foi adicionada e os assets licenciados continuam fora do Git.
+Ainda não existem `.dmap`, editor, save, ECS completo, pathfinding, loot/XP ou IA
+avançada. Nenhuma dependência externa foi adicionada e os assets licenciados continuam
+fora do Git.
 
 ## Estado local prevalece
 
@@ -1515,8 +1527,8 @@ Ordem de desenvolvimento de referência:
 
 4  Player + InputState + PlayerCommand       DONE
 5  Combate mínimo                            DONE
-6  Criaturas / inimigo reutilizável          NEXT / IN PROGRESS
-7  Objetos + pickup + HUD + inventário
+6  Criaturas / inimigo reutilizável          DONE
+7  Objetos + pickup + HUD + inventário       NEXT
 8  .dmap + transições + save
 9  Map Maker
 10 NPC + diálogo

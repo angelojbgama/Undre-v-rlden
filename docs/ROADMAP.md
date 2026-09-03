@@ -39,8 +39,8 @@ FASE 3 — Tilemap + câmera + colisão                      DONE
 FASE 4 — Player + InputState + PlayerCommand             DONE
          + movimento + animação + camera follow
 FASE 5 — Combat Foundation + vertical slice de combate   DONE
-FASE 6 — Creature Engine reutilizável                    NEXT / IN PROGRESS
-FASE 7 — Objetos + pickup + HUD + inventário
+FASE 6 — Creature Engine reutilizável                    DONE
+FASE 7 — Objetos + pickup + HUD + inventário            NEXT
 FASE 8 — .dmap + transições + save
 FASE 9 — Map Maker
 FASE 10 — NPC + diálogo
@@ -50,13 +50,13 @@ FASE 13 — Headless + replay + auditoria multiplayer
 FASE 14 — Networking
 ```
 
-Baseline validada da Fase 5:
+Baseline validada da Fase 6:
 
 ```text
-commit: 4a2f440bf82e653e51a925a505443101103d735d
+code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
 MSVC 2022 x64 / C++20 / W4
 warnings: 0
-tests: PASS — 243 checks
+tests: PASS — 296 checks
 git diff --check: PASS
 ```
 
@@ -459,7 +459,7 @@ Espada e flecha usam a mesma fundação de identidade/dano/eventos, com Training
 
 ## Status
 
-**Próxima / em andamento.**
+**Concluída e publicada no commit `4fa4474a770f5c8e195d51161cb69c38277c4e99`.**
 
 ## Objetivo
 
@@ -472,48 +472,27 @@ assets/clips
 + EnemyDefinition
 + BehaviorProfile
 + AttackDefinitions
-+ stats/reward metadata
-+ spawn
++ spawn em memória
 ```
 
-## Fase 6A — Definition + runtime + factory
-
-Criar:
+## Capacidades implementadas
 
 ```text
-EnemyDefinition
-Creature/Enemy runtime state
 DefinitionId
-factory/spawner boundary
+AttackKey(owner, localAttackInstance)
+CombatantState + CombatTargetRef temporária
+AttackDefinition + DirectionalBoxes
+ProjectileDefinition + orientação canônica
+EnemyDefinition + EnemyInstance
+EnemyFactory
+BehaviorProfile
+EnemyVisualSet + EnemyVisualInstance
 ```
 
-Definição contém dados imutáveis compartilhados; runtime contém apenas estado mutável.
+Definições são imutáveis e compartilhadas; instâncias possuem handles, posição
+fixed-point, health, estado, timers, cooldowns e ataque ativo independentes.
 
-Não copiar definição inteira por criatura.
-
-### Dados candidatos
-
-Somente conforme uso real:
-
-```text
-visual/animation set
-body/hurtbox metadata
-faction
-health/stats
-movement parameters
-attacks
-BehaviorProfileId
-```
-
-Loot/XP podem existir apenas como referências/metadados se houver necessidade concreta; seus sistemas pertencem a fases posteriores.
-
----
-
-## Fase 6B — BehaviorProfile + FSM
-
-Implementar estados reutilizáveis exigidos pelo primeiro inimigo.
-
-Candidatos:
+### FSM implementada
 
 ```text
 Idle
@@ -523,48 +502,47 @@ Attack
 Dead
 ```
 
-Adicionar somente quando o conteúdo exigir:
+Estados ainda deferidos:
 
 ```text
 Sleep
 Wake
 Retreat
-Stunned
+Stunned / Flee / Guard
 ```
 
-Transições dependem de condições claras:
+Transições atuais usam:
 
 - distância;
 - target válido;
 - attack range;
 - cooldown;
 - timer;
-- dano recebido;
-- health threshold;
-- perception/query quando necessária.
+- health esgotada.
 
-Debug deve permitir observar estado atual/transições.
+O HUD de debug exibe o estado atual de cada inimigo; histórico detalhado de transições
+permanece opcional para uma ferramenta futura.
 
 ---
 
-## Fase 6C — escolha de ataques
+### Conteúdo que comprovou reuso
 
-A IA escolhe entre `AttackDefinition`s válidas por condição/range/cooldown.
+```text
+enemy.evil_soldier
+    behavior.soldier.melee
+    attack.soldier.sword
 
-Não espalhar:
-
-```cpp
-if (enemy == SKULL) ...
-if (enemy == SOLDIER) ...
+enemy.skull
+    behavior.skull.ranged
+    attack.skull.arrow
+    projectile.skull.arrow (sprite canônico Right)
 ```
 
-Comportamento especializado pequeno é permitido quando a criatura possuir mecânica realmente única.
+Soldier e Skull usam o mesmo seletor de ataques, FSM, `CombatSystem`,
+`ProjectileSystem`, event stream e lifecycle de handles. Uma terceira definição sintética
+nos testes reutiliza o profile melee apenas alterando dados.
 
----
-
-## Fase 6D — dano, morte e eventos
-
-Creature usa o mesmo `CombatSystem` da Fase 5.
+### Dano, morte e eventos
 
 Fluxo:
 
@@ -577,40 +555,20 @@ Health
     ↓
 Dead
     ↓
-death animation/marker
+death animation
     ↓
 EntityDefeated
     ↓
-despawn/world delta/reward observers futuros
+despawn + invalidação do EntityHandle
 ```
 
-Creature não modifica diretamente HUD, quest, save ou XP.
-
----
-
-## Fase 6E — prova de extensibilidade
-
-Depois do primeiro inimigo funcionar, adicionar um segundo perfil suficientemente diferente, por exemplo:
-
-```text
-slime/basic melee
-+
-skull/ranged
-```
-
-ou:
-
-```text
-slime
-+
-soldier melee
-```
-
-O segundo caso deve reutilizar fundação existente e revelar apenas as generalizações realmente necessárias.
+Creature não modifica diretamente HUD, quest, save ou XP. Entity-vs-entity body
+blocking, line of sight e pathfinding continuam conscientemente deferidos.
 
 ## Marco
 
-Ao menos dois comportamentos/inimigos provam que a engine aceita conteúdo novo sem novo framework paralelo.
+Evil Soldier melee e Skull ranged coexistem com Player e Training Puppet no mapa,
+usando a mesma fundação sem sistemas de combate/projéteis específicos por criatura.
 
 ---
 
