@@ -92,5 +92,7 @@ private:
 [[nodiscard]] core::WorldPointI directionVector(FacingDirection facing) noexcept;
 [[nodiscard]] core::WorldPointI addOffset(core::WorldPointI feet,
                                           core::WorldPointI offset) noexcept;
+[[nodiscard]] std::uint8_t clockwiseQuarterTurns(FacingDirection canonical,
+                                                  FacingDirection target) noexcept;
 
 } // namespace underworld::game::gameplay

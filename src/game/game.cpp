@@ -24,7 +24,7 @@ constexpr core::FixedStepConfig fixedStepConfig{
 int run(platform::Platform& platform) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
-    Phase5Demo demo(platform.imageDecoder(),
+    Phase6Demo demo(platform.imageDecoder(),
                     findLicensedAssetRoot(platform.executableDirectory()));
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 

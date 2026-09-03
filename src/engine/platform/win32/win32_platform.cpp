@@ -31,7 +31,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 5 Combat";
+constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 6 Creature Engine";
 
 class Win32Platform final : public Platform {
 public:

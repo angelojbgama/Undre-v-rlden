@@ -148,4 +148,18 @@ core::WorldPointI addOffset(core::WorldPointI feet, core::WorldPointI offset) no
     return {feet.x + offset.x, feet.y + offset.y};
 }
 
+std::uint8_t clockwiseQuarterTurns(FacingDirection canonical,
+                                   FacingDirection target) noexcept {
+    const auto quarter = [](FacingDirection facing) noexcept -> int {
+        switch (facing) {
+        case FacingDirection::up: return 0;
+        case FacingDirection::right: return 1;
+        case FacingDirection::down: return 2;
+        case FacingDirection::left: return 3;
+        }
+        return 0;
+    };
+    return static_cast<std::uint8_t>((quarter(target) - quarter(canonical) + 4) % 4);
+}
+
 } // namespace underworld::game::gameplay

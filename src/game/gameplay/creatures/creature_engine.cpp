@@ -11,6 +11,16 @@
 namespace underworld::game::gameplay::creatures {
 namespace {
 
+const simulation::DefinitionId soldierBehavior{"behavior.soldier.melee"};
+const simulation::DefinitionId skullBehavior{"behavior.skull.ranged"};
+const simulation::DefinitionId soldierEnemy{"enemy.evil_soldier"};
+const simulation::DefinitionId skullEnemy{"enemy.skull"};
+const simulation::DefinitionId soldierVisual{"visual.enemy.evil_soldier"};
+const simulation::DefinitionId skullVisual{"visual.enemy.skull"};
+const simulation::DefinitionId soldierSword{"attack.soldier.sword"};
+const simulation::DefinitionId skullArrowAttack{"attack.skull.arrow"};
+const simulation::DefinitionId skullArrowProjectile{"projectile.skull.arrow"};
+
 std::int64_t squaredDistance(core::WorldPointI left, core::WorldPointI right) noexcept {
     const std::int64_t dx = static_cast<std::int64_t>(right.x) - left.x;
     const std::int64_t dy = static_cast<std::int64_t>(right.y) - left.y;
@@ -343,6 +353,57 @@ const char* behaviorStateName(BehaviorState state) noexcept {
     case BehaviorState::dead: return "DEAD";
     }
     return "UNKNOWN";
+}
+
+const simulation::DefinitionId& soldierBehaviorId() { return soldierBehavior; }
+const simulation::DefinitionId& skullBehaviorId() { return skullBehavior; }
+const simulation::DefinitionId& soldierEnemyId() { return soldierEnemy; }
+const simulation::DefinitionId& skullEnemyId() { return skullEnemy; }
+const simulation::DefinitionId& soldierVisualId() { return soldierVisual; }
+const simulation::DefinitionId& skullVisualId() { return skullVisual; }
+const simulation::DefinitionId& soldierSwordAttackId() { return soldierSword; }
+const simulation::DefinitionId& skullArrowAttackId() { return skullArrowAttack; }
+const simulation::DefinitionId& skullArrowProjectileId() { return skullArrowProjectile; }
+
+BehaviorProfile makeSoldierBehaviorProfile() {
+    return {soldierBehavior, 100, 132, 60, 90};
+}
+
+BehaviorProfile makeSkullBehaviorProfile() {
+    return {skullBehavior, 150, 184, 75, 90};
+}
+
+EnemyDefinition makeSoldierEnemyDefinition() {
+    return {soldierEnemy, soldierVisual, soldierBehavior, Faction::enemy, 3, 256,
+            {-5, -8, 10, 8}, {-7, -22, 14, 22}, {soldierSword}};
+}
+
+EnemyDefinition makeSkullEnemyDefinition() {
+    return {skullEnemy, skullVisual, skullBehavior, Faction::enemy, 3, 192,
+            {-5, -8, 10, 8}, {-7, -22, 14, 22}, {skullArrowAttack}};
+}
+
+AttackDefinition makeSoldierSwordAttackDefinition() {
+    DirectionalBoxes boxes{{{
+        {-10, -1, 20, 18}, {-10, -27, 20, 19},
+        {-27, -18, 21, 18}, {6, -18, 21, 18},
+    }}};
+    return {soldierSword, AttackKind::meleeHitbox, {1, 7}, 24, 45, 0, 27,
+            simulation::DefinitionId{"visual.action.soldier.sword"}, boxes,
+            std::nullopt};
+}
+
+AttackDefinition makeSkullArrowAttackDefinition() {
+    return {skullArrowAttack, AttackKind::projectile, {1, 5}, 16, 60, 0, 120,
+            simulation::DefinitionId{"visual.action.skull.arrow"}, std::nullopt,
+            skullArrowProjectile};
+}
+
+ProjectileDefinition makeSkullArrowProjectileDefinition() {
+    return {skullArrowProjectile,
+            simulation::DefinitionId{"visual.projectile.skull.arrow"},
+            FacingDirection::right, 4, 120, 6, 6,
+            {{{{0, 3}, {0, -20}, {-12, -10}, {12, -10}}}}};
 }
 
 } // namespace underworld::game::gameplay::creatures

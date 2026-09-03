@@ -27,6 +27,7 @@
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
+#include "game/enemy_visual.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
@@ -1688,6 +1689,244 @@ void testCreatureDefinitionsAndBehavior() {
     }
     expect(blocked.feetPosition().x < 213 && blocked.feetPosition().x >= blockedStart,
            "Chase reuses tile collision and cannot cross a solid wall");
+
+    const auto soldierAttack = creatures::makeSoldierSwordAttackDefinition();
+    const auto skullAttack = creatures::makeSkullArrowAttackDefinition();
+    const auto skullProjectile = creatures::makeSkullArrowProjectileDefinition();
+    expect(soldierAttack.id == creatures::soldierSwordAttackId() &&
+               soldierAttack.kind == gameplay::AttackKind::meleeHitbox &&
+               soldierAttack.meleeHitboxes.has_value(),
+           "Evil Soldier melee behavior is declared by reusable AttackDefinition data");
+    expect(skullAttack.id == creatures::skullArrowAttackId() &&
+               skullAttack.kind == gameplay::AttackKind::projectile &&
+               skullAttack.projectileDefinitionId == creatures::skullArrowProjectileId() &&
+               skullProjectile.canonicalFacing == gameplay::FacingDirection::right,
+           "Skull ranged behavior references a reusable right-oriented projectile definition");
+    expect(creatures::makeSoldierEnemyDefinition().attackIds.front() ==
+               creatures::soldierSwordAttackId() &&
+               creatures::makeSkullEnemyDefinition().attackIds.front() ==
+               creatures::skullArrowAttackId(),
+           "concrete enemy definitions select attacks without enemy-type branches");
+
+    underworld::game::EnemyVisualCatalog visualCatalog;
+    const auto idleClip = makeTestClip("enemy.idle", true);
+    const auto walkClip = makeTestClip("enemy.walk", true);
+    const auto deathClip = makeTestClip("enemy.death", false);
+    const auto attackClip = makeTestClip("enemy.attack", false);
+    underworld::game::DirectionalAnimationClips idleClips{idleClip, idleClip, idleClip};
+    underworld::game::DirectionalAnimationClips walkClips{walkClip, walkClip, walkClip};
+    underworld::game::DirectionalAnimationClips deathClips{deathClip, deathClip, deathClip};
+    underworld::game::DirectionalAnimationClips attackClips{
+        attackClip, attackClip, attackClip};
+    underworld::game::EnemyVisualSet visualSet{
+        visualId, idleClips, walkClips, deathClips,
+        {{simulation::DefinitionId{"visual.attack.test"}, attackClips}}};
+    visualCatalog.add(std::move(visualSet));
+    expect(visualCatalog.find(visualId) != nullptr && visualCatalog.ids().size() == 1,
+           "EnemyVisualCatalog exposes renderer data independently from EnemyDefinition");
+
+    auto visualEnemy = factory.create(enemyId, {200, 200});
+    underworld::game::EnemyVisualInstance enemyVisual(
+        visualEnemy.handle(), visualCatalog.require(visualId));
+    enemyVisual.update(visualEnemy, 0);
+    expect(enemyVisual.animator().clip().id() == "enemy.idle",
+           "enemy visual selects idle clip from BehaviorState");
+    static_cast<void>(behavior.update(visualEnemy, playerHandle, {214, 200}, true,
+                                      profile, attacks, openGrid, 16));
+    static_cast<void>(behavior.update(visualEnemy, playerHandle, {214, 200}, true,
+                                      profile, attacks, openGrid, 16));
+    enemyVisual.update(visualEnemy, 0);
+    expect(enemyVisual.animator().clip().id() == "enemy.attack",
+           "enemy visual resolves attack clips through visualActionId");
+    enemyVisual.update(visualEnemy, 2);
+    const auto enemyMarkers = enemyVisual.consumeMarkerEvents();
+    enemyVisual.update(visualEnemy, 1);
+    expect(enemyMarkers.size() == 1 && enemyMarkers[0].marker == "future.marker" &&
+               enemyVisual.consumeMarkerEvents().empty(),
+           "enemy attack markers are emitted once through the shared Animator timeline");
+    static_cast<void>(visualEnemy.combatant().health.applyDamage(99));
+    static_cast<void>(behavior.update(visualEnemy, playerHandle, {214, 200}, true,
+                                      profile, attacks, openGrid, 16));
+    enemyVisual.update(visualEnemy, 0);
+    expect(enemyVisual.animator().clip().id() == "enemy.death" &&
+               visualEnemy.state() == creatures::BehaviorState::dead,
+           "depleted enemy enters Dead and selects a non-looping death clip");
+    enemyVisual.update(visualEnemy, deathClip->durationTicks());
+    expect(enemyVisual.animator().finished(),
+           "enemy death visual exposes completion for despawn and handle release");
+}
+
+void testCreatureCombatIntegration() {
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+
+    gameplay::AttackCatalog attacks;
+    attacks.add(gameplay::makePlayerSwordAttackDefinition());
+    attacks.add(creatures::makeSoldierSwordAttackDefinition());
+    attacks.add(creatures::makeSkullArrowAttackDefinition());
+    gameplay::ProjectileCatalog projectileDefinitions;
+    projectileDefinitions.add(gameplay::makePlayerArrowProjectileDefinition());
+    projectileDefinitions.add(creatures::makeSkullArrowProjectileDefinition());
+    creatures::BehaviorCatalog behaviors;
+    behaviors.add(creatures::makeSoldierBehaviorProfile());
+    behaviors.add(creatures::makeSkullBehaviorProfile());
+    creatures::EnemyCatalog definitions;
+    definitions.add(creatures::makeSoldierEnemyDefinition());
+    definitions.add(creatures::makeSkullEnemyDefinition());
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    simulation::EntityHandlePool handles;
+    const auto playerHandle = handles.create();
+    gameplay::Player player({0}, playerHandle, {200, 200});
+    creatures::EnemyFactory factory(
+        handles, definitions, behaviors, attacks, projectileDefinitions, visuals);
+    auto soldier = factory.create(creatures::soldierEnemyId(), {220, 200},
+                                  gameplay::FacingDirection::left);
+    auto skull = factory.create(creatures::skullEnemyId(), {260, 200},
+                                gameplay::FacingDirection::left);
+    creatures::EnemyBehaviorSystem behavior;
+    underworld::world::CollisionGrid grid(64, 64);
+    simulation::EventBuffer events;
+    gameplay::CombatSystem combat;
+
+    const auto& soldierProfile = behaviors.require(creatures::soldierBehaviorId());
+    static_cast<void>(behavior.update(soldier, playerHandle, player.feetPosition(), true,
+                                      soldierProfile, attacks, grid, 16));
+    const auto soldierAttack = behavior.update(
+        soldier, playerHandle, player.feetPosition(), true,
+        soldierProfile, attacks, grid, 16);
+    expect(soldierAttack.attackStarted && soldier.activeAttack() &&
+               soldier.activeAttack()->key.owner == soldier.handle() &&
+               soldier.activeAttack()->key.localInstance == 1,
+           "Soldier FSM begins a reusable owner-scoped melee attack");
+    const auto& active = *soldier.activeAttack();
+    const auto direction = gameplay::directionVector(active.lockedFacing);
+    gameplay::Hitbox soldierHit{
+        active.definition->meleeHitboxes->forFacing(active.lockedFacing).at(
+            soldier.feetPosition()),
+        active.key, gameplay::Faction::enemy, active.definition->damage,
+        direction.x * active.definition->damage.knockbackPixels,
+        direction.y * active.definition->damage.knockbackPixels, true};
+    const auto playerResolution = combat.resolve(soldierHit, player.combatTarget(), events);
+    player.applyKnockback(playerResolution.requestedKnockbackX,
+                          playerResolution.requestedKnockbackY, grid, 16);
+    expect(playerResolution.damaged && player.health().current == 4 &&
+               player.feetPosition().x < 200,
+           "Soldier melee damages and knocks back Player through the shared CombatSystem");
+
+    for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks;
+         ++tick) {
+        gameplay::tickInvulnerability(soldier.combatant());
+    }
+    gameplay::Hitbox playerHit{
+        soldier.hurtbox().bounds, {playerHandle, 1}, gameplay::Faction::player,
+        attacks.require(gameplay::playerSwordAttackId()).damage, 4, 0, true};
+    const auto soldierResolution = combat.resolve(playerHit, soldier.combatTarget(), events);
+    soldier.applyKnockback(soldierResolution.requestedKnockbackX,
+                           soldierResolution.requestedKnockbackY, grid, 16);
+    expect(soldierResolution.damaged && soldier.combatant().health.current == 2 &&
+               soldier.feetPosition().x == 224,
+           "Player melee damages the same generic enemy combat target and applies knockback");
+
+    for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks;
+         ++tick) {
+        gameplay::tickInvulnerability(player.combatant());
+    }
+    const auto& skullProfile = behaviors.require(creatures::skullBehaviorId());
+    static_cast<void>(behavior.update(skull, playerHandle, player.feetPosition(), true,
+                                      skullProfile, attacks, grid, 16));
+    const auto skullAttack = behavior.update(
+        skull, playerHandle, player.feetPosition(), true,
+        skullProfile, attacks, grid, 16);
+    expect(skullAttack.attackStarted && skull.activeAttack() &&
+               skull.activeAttack()->definition->kind == gameplay::AttackKind::projectile,
+           "Skull FSM selects ranged AttackDefinition without a Skull-specific system");
+    gameplay::ProjectileSystem projectiles(handles, projectileDefinitions);
+    const auto& skullProjectile = projectileDefinitions.require(
+        *skull.activeAttack()->definition->projectileDefinitionId);
+    const auto spawn = gameplay::addOffset(
+        skull.feetPosition(), skullProjectile.spawnOffsets.forFacing(skull.facing()));
+    [[maybe_unused]] const auto projectileHandle = projectiles.spawn(
+        skull.activeAttack()->key, skull.combatant().faction, skullProjectile.id,
+        spawn, skull.facing(), skull.activeAttack()->definition->damage);
+    std::array<gameplay::CombatTargetRef, 2> projectileTargets{
+        soldier.combatTarget(), player.combatTarget()};
+    std::vector<gameplay::CombatResolution> projectileResolutions;
+    for (int tick = 0; tick < 32 && !projectiles.projectiles().empty(); ++tick) {
+        projectiles.update(grid, 16, projectileTargets, combat, events,
+                           projectileResolutions);
+    }
+    expect(player.health().current == 3 && soldier.combatant().health.current == 2 &&
+               projectiles.projectiles().empty(),
+           "Skull projectile ignores Enemy faction targets, damages Player, and is removed");
+
+    expect(gameplay::clockwiseQuarterTurns(gameplay::FacingDirection::right,
+                                            gameplay::FacingDirection::right) == 0 &&
+               gameplay::clockwiseQuarterTurns(gameplay::FacingDirection::right,
+                                                gameplay::FacingDirection::down) == 1 &&
+               gameplay::clockwiseQuarterTurns(gameplay::FacingDirection::right,
+                                                gameplay::FacingDirection::left) == 2 &&
+               gameplay::clockwiseQuarterTurns(gameplay::FacingDirection::right,
+                                                gameplay::FacingDirection::up) == 3,
+           "canonical-right Skull arrow maps deterministically to all four quarter turns");
+
+    soldier.combatant().invulnerabilityTicks = 0;
+    soldier.combatant().health.current = 1;
+    playerHit.attack.localInstance = 2;
+    const auto lethal = combat.resolve(playerHit, soldier.combatTarget(), events);
+    static_cast<void>(behavior.update(soldier, playerHandle, player.feetPosition(), true,
+                                      soldierProfile, attacks, grid, 16));
+    expect(lethal.defeated && soldier.state() == creatures::BehaviorState::dead &&
+               !soldier.hurtbox().enabled,
+           "depleted Soldier enters Dead once and disables its Hurtbox");
+    const auto soldierDefeats = std::count_if(
+        events.events().begin(), events.events().end(),
+        [&](const simulation::SimulationEvent& event) {
+            const auto* defeated = std::get_if<simulation::EntityDefeated>(&event);
+            return defeated != nullptr && defeated->target == soldier.handle();
+        });
+    expect(soldierDefeats == 1,
+           "Soldier death emits the generic EntityDefeated event exactly once");
+    const auto staleHandle = soldier.handle();
+    expect(handles.destroy(staleHandle) && !handles.valid(staleHandle),
+           "death lifecycle releases the runtime handle after visual completion");
+
+    simulation::PlayerCommand defeatedCommand{};
+    defeatedCommand.playerId = player.id();
+    defeatedCommand.movement = {1, 0};
+    player.combatant().health.current = 0;
+    const auto defeatedFeet = player.feetPosition();
+    player.update(defeatedCommand, grid, 16);
+    expect(player.feetPosition() == defeatedFeet &&
+               player.motionState() == gameplay::PlayerMotionState::idle,
+           "depleted Player blocks movement and actions without introducing game-over UI");
+
+    auto soldierA = factory.create(creatures::soldierEnemyId(), {450, 500});
+    auto soldierB = factory.create(creatures::soldierEnemyId(), {550, 500});
+    auto ranged = factory.create(creatures::skullEnemyId(), {500, 580});
+    const auto stableA = soldierA.handle();
+    const auto stableB = soldierB.handle();
+    const auto stableRanged = ranged.handle();
+    int attacksStarted = 0;
+    for (int tick = 0; tick < 360; ++tick) {
+        for (auto* enemy : {&soldierA, &soldierB, &ranged}) {
+            const auto& runtimeProfile = behaviors.require(
+                enemy->definition().behaviorProfileId);
+            const auto result = behavior.update(
+                *enemy, playerHandle, {500, 500}, true, runtimeProfile,
+                attacks, grid, 16);
+            if (result.attackStarted) {
+                ++attacksStarted;
+                behavior.finishAttack(*enemy, runtimeProfile);
+            }
+        }
+    }
+    expect(attacksStarted > 3 && handles.valid(stableA) && handles.valid(stableB) &&
+               handles.valid(stableRanged),
+           "two Soldiers and one Skull update for hundreds of deterministic ticks safely");
+    expect(soldierA.cooldownFor(creatures::soldierSwordAttackId()) !=
+               soldierB.cooldownFor(creatures::soldierSwordAttackId()),
+           "multiple Soldiers own independent cooldown state despite sharing definitions");
 }
 
 void testPresentationRect() {
@@ -1785,6 +2024,7 @@ int main() {
         testProjectilesAndEffects();
         testPhase6CombatGeneralization();
         testCreatureDefinitionsAndBehavior();
+        testCreatureCombatIntegration();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

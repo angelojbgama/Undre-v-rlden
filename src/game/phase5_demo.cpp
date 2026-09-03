@@ -17,8 +17,10 @@
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
+#include "game/enemy_visual.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
+#include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/player_visual.h"
@@ -26,10 +28,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -114,19 +119,42 @@ void outline(render::Renderer2D& renderer, world::AabbI box,
     renderer.fillRect({x + box.width - 1, y, 1, box.height}, color);
 }
 
-render::QuarterTurn arrowRotation(gameplay::FacingDirection direction) noexcept {
-    switch (direction) {
-    case gameplay::FacingDirection::up: return render::QuarterTurn::r0;
-    case gameplay::FacingDirection::right: return render::QuarterTurn::r90;
-    case gameplay::FacingDirection::down: return render::QuarterTurn::r180;
-    case gameplay::FacingDirection::left: return render::QuarterTurn::r270;
+render::QuarterTurn projectileRotation(gameplay::FacingDirection canonical,
+                                       gameplay::FacingDirection direction) noexcept {
+    const auto turns = gameplay::clockwiseQuarterTurns(canonical, direction);
+    switch (turns) {
+    case 1: return render::QuarterTurn::r90;
+    case 2: return render::QuarterTurn::r180;
+    case 3: return render::QuarterTurn::r270;
+    default: return render::QuarterTurn::r0;
     }
-    return render::QuarterTurn::r0;
+}
+
+EnemyVisualSet makeEnemyVisualSet(
+    const simulation::DefinitionId& id,
+    const simulation::DefinitionId& attackVisualId,
+    const std::shared_ptr<const render::SpriteSheet>& idle,
+    const std::shared_ptr<const render::SpriteSheet>& walk,
+    const std::shared_ptr<const render::SpriteSheet>& attack,
+    const std::shared_ptr<const render::SpriteSheet>& death,
+    int attackFrameSize, int attackFrameCount, std::uint32_t attackFrameTicks,
+    core::PointI attackAnchor, std::vector<std::vector<std::string>> markers) {
+    EnemyVisualSet result;
+    result.id = id;
+    const std::string prefix{id.value()};
+    result.idle = makeClips(prefix + ".idle", idle, 32, 2, 30, {16, 31}, true);
+    result.walk = makeClips(prefix + ".walk", walk, 32, 4, 8, {16, 31}, true);
+    result.death = makeClips(prefix + ".death", death, 32, 2, 8, {16, 31}, false);
+    result.attacks.emplace(
+        attackVisualId,
+        makeClips(prefix + ".attack", attack, attackFrameSize, attackFrameCount,
+                  attackFrameTicks, attackAnchor, false, markers));
+    return result;
 }
 
 } // namespace
 
-struct Phase5Demo::State final {
+struct Phase6Demo::State final {
     State(std::shared_ptr<const render::Image> tileImage,
           std::shared_ptr<const render::Image> fontImage,
           std::shared_ptr<const render::Image> idleImage,
@@ -135,7 +163,16 @@ struct Phase5Demo::State final {
           std::shared_ptr<const render::Image> bowImage,
           std::shared_ptr<const render::Image> arrowImage,
           std::shared_ptr<const render::Image> puppetImage,
-          std::shared_ptr<const render::Image> impactImage)
+          std::shared_ptr<const render::Image> impactImage,
+          std::shared_ptr<const render::Image> soldierIdleImage,
+          std::shared_ptr<const render::Image> soldierWalkImage,
+          std::shared_ptr<const render::Image> soldierAttackImage,
+          std::shared_ptr<const render::Image> soldierDeathImage,
+          std::shared_ptr<const render::Image> skullIdleImage,
+          std::shared_ptr<const render::Image> skullWalkImage,
+          std::shared_ptr<const render::Image> skullAttackImage,
+          std::shared_ptr<const render::Image> skullDeathImage,
+          std::shared_ptr<const render::Image> skullArrowImage)
         : tileset(std::move(tileImage)),
           atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
           font(std::move(fontImage)),
@@ -146,6 +183,24 @@ struct Phase5Demo::State final {
           arrowSheet(std::make_shared<const render::SpriteSheet>(std::move(arrowImage))),
           puppetSheet(std::make_shared<const render::SpriteSheet>(std::move(puppetImage))),
           impactSheet(std::make_shared<const render::SpriteSheet>(std::move(impactImage))),
+          soldierIdleSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(soldierIdleImage))),
+          soldierWalkSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(soldierWalkImage))),
+          soldierAttackSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(soldierAttackImage))),
+          soldierDeathSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(soldierDeathImage))),
+          skullIdleSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(skullIdleImage))),
+          skullWalkSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(skullWalkImage))),
+          skullAttackSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(skullAttackImage))),
+          skullDeathSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(skullDeathImage))),
+          skullArrowSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(skullArrowImage))),
           map(mapWidthTiles, mapHeightTiles, core::GameMetrics::tileSize),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, playerSpawn),
@@ -154,15 +209,38 @@ struct Phase5Demo::State final {
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
           projectiles(handles, projectileCatalog) {
         if (atlas.columns() != 19 || atlas.rows() != 12) {
-            throw std::runtime_error("Phase 5 demo expects the audited 19x12 dungeon tileset");
+            throw std::runtime_error("Phase 6 demo expects the audited 19x12 dungeon tileset");
         }
+        attackCatalog.add(swordDefinition);
+        attackCatalog.add(bowDefinition);
+        attackCatalog.add(gameplay::creatures::makeSoldierSwordAttackDefinition());
+        attackCatalog.add(gameplay::creatures::makeSkullArrowAttackDefinition());
         projectileCatalog.add(arrowDefinition);
+        projectileCatalog.add(gameplay::creatures::makeSkullArrowProjectileDefinition());
+        projectileVisuals.emplace(arrowDefinition.visualId, arrowSheet);
+        projectileVisuals.emplace(
+            projectileCatalog.require(gameplay::creatures::skullArrowProjectileId()).visualId,
+            skullArrowSheet);
+        behaviorCatalog.add(gameplay::creatures::makeSoldierBehaviorProfile());
+        behaviorCatalog.add(gameplay::creatures::makeSkullBehaviorProfile());
+        enemyCatalog.add(gameplay::creatures::makeSoldierEnemyDefinition());
+        enemyCatalog.add(gameplay::creatures::makeSkullEnemyDefinition());
+        enemyVisualCatalog.add(makeEnemyVisualSet(
+            gameplay::creatures::soldierVisualId(),
+            attackCatalog.require(gameplay::creatures::soldierSwordAttackId()).visualActionId,
+            soldierIdleSheet, soldierWalkSheet, soldierAttackSheet, soldierDeathSheet,
+            48, 4, 6, {24, 31}, {{}, {"attack_on"}, {}, {"attack_off"}}));
+        enemyVisualCatalog.add(makeEnemyVisualSet(
+            gameplay::creatures::skullVisualId(),
+            attackCatalog.require(gameplay::creatures::skullArrowAttackId()).visualActionId,
+            skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
+            32, 2, 8, {16, 31}, {{}, {"spawn_projectile"}}));
         groundLayer = map.addLayer("ground");
         lowLayer = map.addLayer("decoration_low");
         foregroundLayer = map.addLayer("foreground");
         buildDungeon();
         if (world::querySolidTiles(map.collision(), player.collisionBody(), map.tileSize()).collides) {
-            throw std::runtime_error("Phase 5 player spawn overlaps map collision");
+            throw std::runtime_error("Phase 6 player spawn overlaps map collision");
         }
         puppet = std::make_unique<TrainingPuppet>(handles.create(), puppetSpawn);
         visual = std::make_unique<PlayerVisual>(
@@ -175,6 +253,26 @@ struct Phase5Demo::State final {
                       bowDefinition.totalTicks / 2, {16, 31}, false,
                       {{}, {"spawn_projectile"}}));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
+        const auto availableVisuals = enemyVisualCatalog.ids();
+        gameplay::creatures::EnemyFactory enemyFactory(
+            handles, enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog,
+            availableVisuals);
+        enemies.reserve(3);
+        enemyVisuals.reserve(3);
+        enemies.push_back(enemyFactory.create(
+            gameplay::creatures::soldierEnemyId(), {220, 144},
+            gameplay::FacingDirection::left));
+        enemies.push_back(enemyFactory.create(
+            gameplay::creatures::soldierEnemyId(), {112, 248},
+            gameplay::FacingDirection::up));
+        enemies.push_back(enemyFactory.create(
+            gameplay::creatures::skullEnemyId(), {264, 144},
+            gameplay::FacingDirection::left));
+        for (const auto& enemy : enemies) {
+            enemyVisuals.emplace_back(
+                enemy.handle(), enemyVisualCatalog.require(enemy.definition().visualSetId));
+            enemyVisuals.back().update(enemy, 0);
+        }
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();
     }
@@ -258,6 +356,124 @@ struct Phase5Demo::State final {
         }
     }
 
+    void applyResolution(const gameplay::CombatResolution& resolution) {
+        if (!resolution.damaged) { return; }
+        if (resolution.target == player.entityHandle()) {
+            player.applyKnockback(resolution.requestedKnockbackX,
+                                  resolution.requestedKnockbackY,
+                                  map.collision(), map.tileSize());
+            return;
+        }
+        if (resolution.target == puppet->combatant().handle) {
+            puppet->applyKnockback(resolution.requestedKnockbackX,
+                                   resolution.requestedKnockbackY,
+                                   map.collision(), map.tileSize());
+            return;
+        }
+        const auto found = std::find_if(enemies.begin(), enemies.end(), [&](const auto& enemy) {
+            return enemy.handle() == resolution.target;
+        });
+        if (found != enemies.end()) {
+            found->applyKnockback(resolution.requestedKnockbackX,
+                                  resolution.requestedKnockbackY,
+                                  map.collision(), map.tileSize());
+        }
+    }
+
+    void resolvePlayerSword() {
+        if (!activeSword.enabled) { return; }
+        activeSword.bounds = swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
+            player.feetPosition());
+        applyResolution(combat.resolve(activeSword, puppet->combatTarget(), events));
+        for (auto& enemy : enemies) {
+            applyResolution(combat.resolve(activeSword, enemy.combatTarget(), events));
+        }
+    }
+
+    void consumeEnemyMarkers(gameplay::creatures::EnemyInstance& enemy,
+                             EnemyVisualInstance& enemyVisual) {
+        if (!enemy.activeAttack()) { return; }
+        for (const render::AnimationMarkerEvent& event : enemyVisual.consumeMarkerEvents()) {
+            auto& active = *enemy.activeAttack();
+            if (event.marker == "attack_on") {
+                active.meleeHitboxActive = true;
+            } else if (event.marker == "attack_off") {
+                active.meleeHitboxActive = false;
+            } else if (event.marker == "spawn_projectile") {
+                if (!active.definition->projectileDefinitionId) {
+                    throw std::logic_error("projectile marker requires projectile attack data");
+                }
+                const auto& projectileDefinition = projectileCatalog.require(
+                    *active.definition->projectileDefinitionId);
+                const auto offset = projectileDefinition.spawnOffsets.forFacing(
+                    active.lockedFacing);
+                [[maybe_unused]] const auto handle = projectiles.spawn(
+                    active.key, enemy.combatant().faction, projectileDefinition.id,
+                    gameplay::addOffset(enemy.feetPosition(), offset),
+                    active.lockedFacing, active.definition->damage);
+            }
+        }
+    }
+
+    void updateEnemies() {
+        for (std::size_t index = 0; index < enemies.size();) {
+            auto& enemy = enemies[index];
+            auto& enemyVisual = enemyVisuals[index];
+            const auto& profile = behaviorCatalog.require(
+                enemy.definition().behaviorProfileId);
+            const std::optional<gameplay::AttackKey> previousAttack = enemy.activeAttack()
+                ? std::optional<gameplay::AttackKey>{enemy.activeAttack()->key}
+                : std::nullopt;
+            static_cast<void>(enemyBehavior.update(
+                enemy, player.entityHandle(), player.feetPosition(),
+                !player.health().depleted(), profile, attackCatalog,
+                map.collision(), map.tileSize()));
+            if (previousAttack && !enemy.activeAttack()) {
+                combat.finishAttack(*previousAttack);
+            }
+            enemyVisual.update(enemy);
+            consumeEnemyMarkers(enemy, enemyVisual);
+
+            if (enemy.activeAttack() && enemy.activeAttack()->meleeHitboxActive) {
+                const auto& active = *enemy.activeAttack();
+                if (!active.definition->meleeHitboxes) {
+                    throw std::logic_error("active melee marker requires melee hitbox data");
+                }
+                const auto direction = gameplay::directionVector(active.lockedFacing);
+                gameplay::Hitbox hitbox{
+                    active.definition->meleeHitboxes->forFacing(
+                        active.lockedFacing).at(enemy.feetPosition()),
+                    active.key, enemy.combatant().faction, active.definition->damage,
+                    direction.x * active.definition->damage.knockbackPixels,
+                    direction.y * active.definition->damage.knockbackPixels, true};
+                applyResolution(combat.resolve(hitbox, player.combatTarget(), events));
+            }
+
+            if (enemy.state() == gameplay::creatures::BehaviorState::attack &&
+                enemyVisual.animator().finished()) {
+                combat.finishAttack(enemy.activeAttack()->key);
+                enemyBehavior.finishAttack(enemy, profile);
+            }
+            if (enemy.state() == gameplay::creatures::BehaviorState::dead &&
+                enemyVisual.animator().finished()) {
+                [[maybe_unused]] const bool destroyed = handles.destroy(enemy.handle());
+                enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(index));
+                enemyVisuals.erase(enemyVisuals.begin() + static_cast<std::ptrdiff_t>(index));
+                continue;
+            }
+            ++index;
+        }
+    }
+
+    std::vector<gameplay::CombatTargetRef> combatTargets() {
+        std::vector<gameplay::CombatTargetRef> targets;
+        targets.reserve(enemies.size() + 2);
+        targets.push_back(player.combatTarget());
+        targets.push_back(puppet->combatTarget());
+        for (auto& enemy : enemies) { targets.push_back(enemy.combatTarget()); }
+        return targets;
+    }
+
     void consumeSimulationEvents() {
         for (const simulation::SimulationEvent& event : events.events()) {
             if (const auto* damaged = std::get_if<simulation::EntityDamaged>(&event)) {
@@ -265,7 +481,7 @@ struct Phase5Demo::State final {
                 text << "DAMAGE " << damaged->amount << " HP " << damaged->remainingHealth;
                 lastEvent = text.str();
             } else if (std::holds_alternative<simulation::EntityDefeated>(event)) {
-                lastEvent = "PUPPET DEFEATED";
+                lastEvent = "ENTITY DEFEATED";
             } else if (const auto* impact = std::get_if<simulation::ProjectileImpact>(&event)) {
                 if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);
@@ -284,26 +500,14 @@ struct Phase5Demo::State final {
         player.update(command, map.collision(), map.tileSize());
         visual->update(player.motionState(), player.facing(), player.actionState());
         consumeAnimationMarkers();
-        if (activeSword.enabled) {
-            activeSword.bounds = swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
-                player.feetPosition());
-            const gameplay::CombatResolution hit = combat.resolve(
-                activeSword, puppet->combatTarget(), events);
-            if (hit.damaged) {
-                puppet->applyKnockback(hit.requestedKnockbackX, hit.requestedKnockbackY,
-                                       map.collision(), map.tileSize());
-            }
-        }
-        std::array<gameplay::CombatTargetRef, 1> targets{puppet->combatTarget()};
+        resolvePlayerSword();
+        updateEnemies();
+        auto targets = combatTargets();
         std::vector<gameplay::CombatResolution> projectileResolutions;
         projectiles.update(map.collision(), map.tileSize(), targets, combat, events,
                            projectileResolutions);
         for (const gameplay::CombatResolution& resolution : projectileResolutions) {
-            if (resolution.target == puppet->combatant().handle) {
-                puppet->applyKnockback(resolution.requestedKnockbackX,
-                                       resolution.requestedKnockbackY,
-                                       map.collision(), map.tileSize());
-            }
+            applyResolution(resolution);
         }
         consumeSimulationEvents();
         effects->update();
@@ -335,7 +539,7 @@ struct Phase5Demo::State final {
                 const world::TileCell& cell = layer.cell(x, y);
                 if (!cell) { continue; }
                 if (cell->definition.tilesetId != dungeonTilesetId) {
-                    throw std::runtime_error("Phase 5 demo encountered an unknown tileset id");
+                    throw std::runtime_error("Phase 6 demo encountered an unknown tileset id");
                 }
                 const core::RectI source = atlas.sourceRect(cell->definition.sourceIndex);
                 const int dx = x * map.tileSize() - cameraPosition.x;
@@ -351,11 +555,22 @@ struct Phase5Demo::State final {
     }
 
     void renderActors(render::Renderer2D& renderer) const {
-        enum class ActorKind { player, puppet };
-        struct Actor { int sortY; simulation::EntityHandle handle; ActorKind kind; };
-        std::array<Actor, 2> actors{{
-            {player.feetPosition().y, player.entityHandle(), ActorKind::player},
-            {puppet->feetPosition().y, puppet->combatant().handle, ActorKind::puppet}}};
+        enum class ActorKind { player, puppet, enemy };
+        struct Actor {
+            int sortY;
+            simulation::EntityHandle handle;
+            ActorKind kind;
+            std::size_t enemyIndex{};
+        };
+        std::vector<Actor> actors;
+        actors.reserve(enemies.size() + 2);
+        actors.push_back({player.feetPosition().y, player.entityHandle(), ActorKind::player});
+        actors.push_back(
+            {puppet->feetPosition().y, puppet->combatant().handle, ActorKind::puppet});
+        for (std::size_t index = 0; index < enemies.size(); ++index) {
+            actors.push_back({enemies[index].feetPosition().y, enemies[index].handle(),
+                              ActorKind::enemy, index});
+        }
         std::sort(actors.begin(), actors.end(), [](const Actor& left, const Actor& right) {
             return actorRendersBefore({left.sortY, left.handle}, {right.sortY, right.handle});
         });
@@ -364,10 +579,16 @@ struct Phase5Demo::State final {
                 const auto logical = camera.worldToLogical(player.feetPosition());
                 render::drawAnimator(renderer, visual->animator(), {logical.x, logical.y},
                                      visual->flipX());
-            } else {
+            } else if (actor.kind == ActorKind::puppet) {
                 const auto logical = camera.worldToLogical(puppet->feetPosition());
                 const render::SpriteFrame frame{{0, 0, 32, 32}, {16, 32}, {}, false};
                 render::drawSprite(renderer, *puppetSheet, frame, {logical.x, logical.y});
+            } else {
+                const auto logical = camera.worldToLogical(
+                    enemies[actor.enemyIndex].feetPosition());
+                render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
+                                     {logical.x, logical.y},
+                                     enemyVisuals[actor.enemyIndex].flipX());
             }
         }
     }
@@ -375,11 +596,17 @@ struct Phase5Demo::State final {
     void renderProjectiles(render::Renderer2D& renderer) const {
         const auto cameraPosition = camera.position();
         for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
+            if (projectile.definition == nullptr) { continue; }
+            const auto found = projectileVisuals.find(projectile.definition->visualId);
+            if (found == projectileVisuals.end()) {
+                throw std::runtime_error("projectile visual definition was not registered");
+            }
             renderer.drawImageRegionQuarterTurn(
-                arrowSheet->image(), {0, 0, 16, 16},
+                found->second->image(), {0, 0, 16, 16},
                 projectile.position.x - cameraPosition.x - 8,
                 projectile.position.y - cameraPosition.y - 8,
-                arrowRotation(projectile.direction));
+                projectileRotation(projectile.definition->canonicalFacing,
+                                   projectile.direction));
         }
     }
 
@@ -408,12 +635,21 @@ struct Phase5Demo::State final {
             outline(renderer, player.collisionBody(), cameraPosition, {32, 255, 96, 255});
             outline(renderer, puppet->collisionBody().bounds, cameraPosition,
                     {32, 255, 96, 255});
+            for (const auto& enemy : enemies) {
+                outline(renderer, enemy.collisionBody(), cameraPosition, {32, 255, 96, 255});
+            }
         }
         if (combatDebug.hurtbox) {
             outline(renderer, player.hurtbox().bounds, cameraPosition, {32, 220, 255, 255});
             if (puppet->hurtbox().enabled) {
                 outline(renderer, puppet->hurtbox().bounds, cameraPosition,
                         {32, 220, 255, 255});
+            }
+            for (const auto& enemy : enemies) {
+                if (enemy.hurtbox().enabled) {
+                    outline(renderer, enemy.hurtbox().bounds, cameraPosition,
+                            {32, 220, 255, 255});
+                }
             }
         }
         if (combatDebug.hitbox) {
@@ -423,6 +659,16 @@ struct Phase5Demo::State final {
             for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
                 outline(renderer, projectile.hitbox(), cameraPosition, {255, 220, 32, 255});
             }
+            for (const auto& enemy : enemies) {
+                if (!enemy.activeAttack() || !enemy.activeAttack()->meleeHitboxActive ||
+                    !enemy.activeAttack()->definition->meleeHitboxes) {
+                    continue;
+                }
+                outline(renderer,
+                        enemy.activeAttack()->definition->meleeHitboxes->forFacing(
+                            enemy.activeAttack()->lockedFacing).at(enemy.feetPosition()),
+                        cameraPosition, {255, 48, 48, 255});
+            }
         }
         if (combatDebug.interaction) {
             outline(renderer, player.interactionArea().bounds, cameraPosition,
@@ -431,25 +677,33 @@ struct Phase5Demo::State final {
     }
 
     void renderHud(render::Renderer2D& renderer) const {
-        renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 38}, {8, 10, 16, 220});
+        renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 47}, {8, 10, 16, 220});
         const auto feet = player.feetPosition();
         std::ostringstream first;
-        first << "PHASE_5 T " << lastTick << " P " << feet.x << ' ' << feet.y;
+        first << "PHASE_6 T " << lastTick << " P " << feet.x << ' ' << feet.y;
         render::drawText(renderer, font, first.str(), 3, 3);
         std::ostringstream second;
         second << gameplay::facingName(player.facing()) << ' '
                << gameplay::actionStateName(player.actionState()) << " A " << lastAttack
-               << " PUPPET " << puppet->combatant().health.current << '/'
-               << puppet->combatant().health.maximum;
+               << " HP " << player.health().current << '/' << player.health().maximum
+               << " ENEMIES " << enemies.size();
         render::drawText(renderer, font, second.str(), 3, 12);
         std::ostringstream third;
         third << "ARROWS " << projectiles.projectiles().size() << " VFX "
-              << effects->effects().size() << " INV "
-              << puppet->combatant().invulnerabilityTicks << " S " << lastSequence;
+              << effects->effects().size() << " PUPPET "
+              << puppet->combatant().health.current << '/'
+              << puppet->combatant().health.maximum;
         render::drawText(renderer, font, third.str(), 3, 21);
+        std::ostringstream ai;
+        ai << "AI";
+        for (const auto& enemy : enemies) {
+            ai << ' ' << gameplay::creatures::behaviorStateName(enemy.state())
+               << enemy.combatant().health.current;
+        }
+        render::drawText(renderer, font, ai.str(), 3, 30);
         render::drawText(renderer, font,
                          lastEvent.empty() ? "Z SWORD X BOW C F1 F2 F3 F4" : lastEvent,
-                         3, 30);
+                         3, 39);
     }
 
     void render(render::Framebuffer& framebuffer) const {
@@ -476,6 +730,15 @@ struct Phase5Demo::State final {
     std::shared_ptr<const render::SpriteSheet> arrowSheet;
     std::shared_ptr<const render::SpriteSheet> puppetSheet;
     std::shared_ptr<const render::SpriteSheet> impactSheet;
+    std::shared_ptr<const render::SpriteSheet> soldierIdleSheet;
+    std::shared_ptr<const render::SpriteSheet> soldierWalkSheet;
+    std::shared_ptr<const render::SpriteSheet> soldierAttackSheet;
+    std::shared_ptr<const render::SpriteSheet> soldierDeathSheet;
+    std::shared_ptr<const render::SpriteSheet> skullIdleSheet;
+    std::shared_ptr<const render::SpriteSheet> skullWalkSheet;
+    std::shared_ptr<const render::SpriteSheet> skullAttackSheet;
+    std::shared_ptr<const render::SpriteSheet> skullDeathSheet;
+    std::shared_ptr<const render::SpriteSheet> skullArrowSheet;
     std::unique_ptr<PlayerVisual> visual;
     std::unique_ptr<EffectSystem> effects;
     world::RuntimeMap map;
@@ -486,7 +749,17 @@ struct Phase5Demo::State final {
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;
+    gameplay::AttackCatalog attackCatalog;
     gameplay::ProjectileCatalog projectileCatalog;
+    std::unordered_map<simulation::DefinitionId,
+                       std::shared_ptr<const render::SpriteSheet>,
+                       simulation::DefinitionIdHash> projectileVisuals;
+    gameplay::creatures::BehaviorCatalog behaviorCatalog;
+    gameplay::creatures::EnemyCatalog enemyCatalog;
+    EnemyVisualCatalog enemyVisualCatalog;
+    gameplay::creatures::EnemyBehaviorSystem enemyBehavior;
+    std::vector<gameplay::creatures::EnemyInstance> enemies;
+    std::vector<EnemyVisualInstance> enemyVisuals;
     std::unique_ptr<TrainingPuppet> puppet;
     gameplay::CombatSystem combat;
     gameplay::ProjectileSystem projectiles;
@@ -504,7 +777,7 @@ struct Phase5Demo::State final {
     std::string lastEvent;
 };
 
-Phase5Demo::Phase5Demo(platform::ImageDecoder& decoder,
+Phase6Demo::Phase6Demo(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot) {
     const auto tileset = assets_.loadImage("tileset.dungeon", assetRoot / "Tileset/tileset.png", decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
@@ -515,17 +788,47 @@ Phase5Demo::Phase5Demo(platform::ImageDecoder& decoder,
     const auto arrow = assets_.loadImage("player.arrow", assetRoot / "Characters/Player/attacking/arrow.png", decoder);
     const auto puppet = assets_.loadImage("training_puppet", assetRoot / "Training_puppet/training_puppet.png", decoder);
     const auto impact = assets_.loadImage("effect.arrow_impact", assetRoot / "Explosion/arrow_hits_dust.png", decoder);
-    state_ = std::make_unique<State>(tileset, font, idle, walk, sword, bow, arrow, puppet, impact);
+    const auto soldierIdle = assets_.loadImage(
+        "enemy.soldier.idle",
+        assetRoot / "Characters/Enemies/Evil_soldier/idle/evil_soldier_idle.png", decoder);
+    const auto soldierWalk = assets_.loadImage(
+        "enemy.soldier.walk",
+        assetRoot / "Characters/Enemies/Evil_soldier/walking/evil_soldier_walking.png", decoder);
+    const auto soldierAttack = assets_.loadImage(
+        "enemy.soldier.attack",
+        assetRoot / "Characters/Enemies/Evil_soldier/attacking/evil_soldier_attacking.png", decoder);
+    const auto soldierDeath = assets_.loadImage(
+        "enemy.soldier.death",
+        assetRoot / "Characters/Enemies/Evil_soldier/death/evil_soldier_death.png", decoder);
+    const auto skullIdle = assets_.loadImage(
+        "enemy.skull.idle",
+        assetRoot / "Characters/Enemies/Skull/idle/skull_idle.png", decoder);
+    const auto skullWalk = assets_.loadImage(
+        "enemy.skull.walk",
+        assetRoot / "Characters/Enemies/Skull/walking/skull_walking.png", decoder);
+    const auto skullAttack = assets_.loadImage(
+        "enemy.skull.attack",
+        assetRoot / "Characters/Enemies/Skull/attacking/skull_attacking.png", decoder);
+    const auto skullDeath = assets_.loadImage(
+        "enemy.skull.death",
+        assetRoot / "Characters/Enemies/Skull/death/skull_death.png", decoder);
+    const auto skullArrow = assets_.loadImage(
+        "enemy.skull.arrow",
+        assetRoot / "Characters/Enemies/Skull/attacking/arrow.png", decoder);
+    state_ = std::make_unique<State>(
+        tileset, font, idle, walk, sword, bow, arrow, puppet, impact,
+        soldierIdle, soldierWalk, soldierAttack, soldierDeath,
+        skullIdle, skullWalk, skullAttack, skullDeath, skullArrow);
 }
 
-Phase5Demo::~Phase5Demo() = default;
+Phase6Demo::~Phase6Demo() = default;
 
-void Phase5Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
+void Phase6Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
                            platform::DebugInputState debugInput) {
     state_->update(tick, input, debugInput);
 }
 
-void Phase5Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
+void Phase6Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
 
 std::filesystem::path findLicensedAssetRoot(const std::filesystem::path& executableDirectory) {
     std::array<std::filesystem::path, 2> starts{std::filesystem::current_path(), executableDirectory};

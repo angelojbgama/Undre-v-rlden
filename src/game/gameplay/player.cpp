@@ -68,6 +68,12 @@ void Player::update(const simulation::PlayerCommand& command,
     if (moveX < -1 || moveX > 1 || moveY < -1 || moveY > 1) {
         throw std::invalid_argument("player movement intent must be in the range -1 through 1");
     }
+    if (combatant_.health.depleted()) {
+        actionState_ = PlayerActionState::none;
+        motionState_ = PlayerMotionState::idle;
+        lastMovement_ = {};
+        return;
+    }
 
     if (actionState_ == PlayerActionState::none) {
         if (command.actions.primaryAttackPressed) {

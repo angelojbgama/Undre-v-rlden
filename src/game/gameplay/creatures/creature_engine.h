@@ -187,4 +187,22 @@ public:
 
 [[nodiscard]] const char* behaviorStateName(BehaviorState state) noexcept;
 
+[[nodiscard]] const simulation::DefinitionId& soldierBehaviorId();
+[[nodiscard]] const simulation::DefinitionId& skullBehaviorId();
+[[nodiscard]] const simulation::DefinitionId& soldierEnemyId();
+[[nodiscard]] const simulation::DefinitionId& skullEnemyId();
+[[nodiscard]] const simulation::DefinitionId& soldierVisualId();
+[[nodiscard]] const simulation::DefinitionId& skullVisualId();
+[[nodiscard]] const simulation::DefinitionId& soldierSwordAttackId();
+[[nodiscard]] const simulation::DefinitionId& skullArrowAttackId();
+[[nodiscard]] const simulation::DefinitionId& skullArrowProjectileId();
+
+[[nodiscard]] BehaviorProfile makeSoldierBehaviorProfile();
+[[nodiscard]] BehaviorProfile makeSkullBehaviorProfile();
+[[nodiscard]] EnemyDefinition makeSoldierEnemyDefinition();
+[[nodiscard]] EnemyDefinition makeSkullEnemyDefinition();
+[[nodiscard]] AttackDefinition makeSoldierSwordAttackDefinition();
+[[nodiscard]] AttackDefinition makeSkullArrowAttackDefinition();
+[[nodiscard]] ProjectileDefinition makeSkullArrowProjectileDefinition();
+
 } // namespace underworld::game::gameplay::creatures

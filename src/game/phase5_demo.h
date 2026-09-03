@@ -13,10 +13,10 @@ namespace underworld::render { class Framebuffer; }
 
 namespace underworld::game {
 
-class Phase5Demo final {
+class Phase6Demo final {
 public:
-    Phase5Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
-    ~Phase5Demo();
+    Phase6Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
+    ~Phase6Demo();
 
     void fixedTick(simulation::Tick tick, const platform::InputState& input,
                    platform::DebugInputState debugInput);
