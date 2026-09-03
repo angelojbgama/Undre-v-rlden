@@ -1,163 +1,1038 @@
-# Roadmap incremental
+# Roadmap incremental — Dungeon Underworld
 
-## Regras de execução
+Este roadmap define **ordem de desenvolvimento, dependências, critérios de aceite e gates de escopo**.
 
-Cada item deve terminar em algo executável, observável ou testável. Não avançar com falhas conhecidas na base. Assets licenciados nunca viram fixtures públicas; testes de pixels usam imagens sintéticas próprias. Decisões adiadas não ganham pastas/interfaces vazias.
+O working tree local, os testes e o comportamento executável prevalecem sobre marcadores de status deste documento. Um recurso pode estar concluído localmente antes de existir um checkpoint/commit remoto.
 
-## Fase 0 — auditoria e decisões (atual)
+A arquitetura detalhada pertence ao `ENGINE_ARCHITECTURE.md`; regras para agentes pertencem ao `AGENTS.md`.
 
-- [x] Inventariar recursivamente PNGs, dimensões, alpha e duplicatas.
-- [x] Inspecionar visualmente layouts, direções, frames e ambiguidades.
-- [x] Registrar licença e risco de redistribuição.
-- [x] Propor arquitetura, entidades, editor, `.dmap` e fases.
-- [ ] Revisar/aprovar com o responsável antes de qualquer código.
+---
 
-Aceite: os quatro documentos existem, todos os 84 assets únicos estão catalogados, nenhuma imagem/código/build foi modificado ou criado.
+## 1. Regras de execução
 
-## Fase 1 — plataforma, janela e primeiro pixel
+Cada incremento deve terminar em algo:
 
-1. Criar `build.bat` mínimo para x64/C++20 e programa console de smoke test. Aceite: build limpo e erro claro sem ambiente MSVC.
-2. Criar contratos mínimos de `PlatformApp`, eventos e relógio, sem `windows.h` público. Aceite: headers de engine compilam isoladamente.
-3. Criar janela Win32 DPI-aware e message pump. Aceite: abre, redimensiona e fecha corretamente.
-4. Implementar relógio QPC. Aceite: teste mede intervalos monotônicos e converte frequência sem overflow observável.
-5. Criar `Framebuffer(272,224)` RGBA8 e `clear`. Aceite: stride/tamanho e bounds testados.
-6. Apresentar framebuffer por DIB. Aceite: padrão vermelho/verde/azul prova orientação e canais.
-7. Implementar integer scale + letterbox + client minimum. Aceite: 1×–4× nítidos, centralizados, sem bilinear em resize.
-8. Montar loop com accumulator 60 Hz, clamp e limite de catch-up. Aceite: contador de ticks permanece próximo de 60/s enquanto render varia.
+- compilável;
+- executável ou observável quando aplicável;
+- testável;
+- pequeno o suficiente para identificar regressões;
+- reutilizável sem criar abstração especulativa.
 
-Marco executável: janela mostra padrão gerado por CPU em 272×224, escalado corretamente.
+Regras permanentes:
 
-## Fase 2 — primitivas, PNG e sprites
+- não avançar com regressões conhecidas;
+- assets licenciados não viram fixtures públicas;
+- testes de pixels usam fixtures sintéticas próprias;
+- decisões adiadas não criam pastas/interfaces vazias;
+- preferir estender sistemas existentes em vez de criar versões paralelas;
+- introduzir uma abstração antes da fase prevista somente quando houver uso concreto imediato e redução clara de retrabalho.
 
-1. Implementar/testar `setPixel`, `fillRect` e clipping. Aceite: golden sintético cobre bordas negativas/positivas.
-2. Implementar `drawImageRegion` opaco. Aceite: source/destination parcial correto.
-3. Implementar alpha blend RGBA straight. Aceite: casos alpha 0/128/255 e canais têm valores esperados.
-4. Definir `IImageDecoder` e `ImageData`. Aceite: nenhum tipo WIC no header público.
-5. Implementar decoder WIC RGBA. Aceite: carrega uma cópia local licenciada em runtime e rejeita arquivo inválido com erro útil.
-6. Criar ownership/cache mínimo de imagens por `AssetId`. Aceite: uma imagem não é decodificada duas vezes e lifetime é seguro.
-7. Implementar flip X durante blit. Aceite: imagem sintética assimétrica espelha exatamente.
-8. Definir `SpriteSheet`, `AnimationClip/Frame`, anchor e draw offset em dados.
-9. Criar visualizador temporário de clip. Aceite: walk/attack trocam mantendo os pés sobre o mesmo pixel; valores da auditoria são confirmados/corrigidos.
-10. Renderizar bitmap font 7×9 com tabela explícita. Aceite: A–Z, a–z, 0–9 e símbolos conhecidos; glyph ausente tem fallback.
+---
 
-Marco: sprites e texto pixel-art carregados por WIC e desenhados pelo renderer próprio.
+## 2. Estado macro
 
-## Fase 3 — tilemap, câmera e colisão
+```text
+FASE 0 — Auditoria + arquitetura                         DONE
+FASE 1 — Plataforma + janela + framebuffer               DONE
+FASE 2 — Renderer + PNG + sprites + animação             DONE
+FASE 3 — Tilemap + câmera + colisão                      DONE
+FASE 4 — Player + InputState + PlayerCommand             DONE
+         + movimento + animação + camera follow
+FASE 5 — Combat Foundation + vertical slice de combate   DONE
+FASE 6 — Creature Engine reutilizável                    NEXT / IN PROGRESS
+FASE 7 — Objetos + pickup + HUD + inventário
+FASE 8 — .dmap + transições + save
+FASE 9 — Map Maker
+FASE 10 — NPC + diálogo
+FASE 11 — Quests
+FASE 12 — RPG + XP + equipment + loot
+FASE 13 — Headless + replay + auditoria multiplayer
+FASE 14 — Networking
+```
 
-1. Centralizar `GameMetrics` e tipos de coordenadas. Aceite: conversões unitárias inclusive coordenadas negativas.
-2. Criar mapa runtime em memória e uma layer de tile refs. Aceite: mapa maior que a tela é instanciado.
-3. Renderizar apenas tiles visíveis. Aceite: câmera atravessa mapa sem desenhar fora do range.
-4. Implementar câmera world→logical com clamp opcional. Aceite: bordas e mapas menores que viewport têm comportamento definido.
-5. Adicionar múltiplas layers/passes. Aceite: ground, low e foreground ocluem na ordem esperada.
-6. Criar collision grid separado. Aceite: overlay debug mostra célula visual diferente de célula sólida.
-7. Implementar AABB versus tiles e resolução por eixo. Aceite: corpo pequeno desliza em paredes/cantos sem atravessar.
-8. Adicionar broad-phase por células para corpos/queries. Aceite: custo depende da vizinhança, não do mapa inteiro.
+Baseline validada da Fase 5:
 
-Marco: sala grande navegável por câmera de debug, com colisões visualizadas.
+```text
+commit: 4a2f440bf82e653e51a925a505443101103d735d
+MSVC 2022 x64 / C++20 / W4
+warnings: 0
+tests: PASS — 243 checks
+git diff --check: PASS
+```
 
-## Fase 4 — comandos, entidade Player e animação
+---
 
-1. Implementar eventos físicos e `InputState` (held/pressed/released). Aceite: edges não se perdem entre frames e ticks.
-2. Mapear input para `PlayerCommand` tickado. Aceite: teste injeta comandos sem janela.
-3. Implementar handles com generation e stores dos componentes necessários. Aceite: handle destruído nunca resolve para entidade reutilizada.
-4. Criar player por definição + componentes Transform/Body/Visual/Health/Controlled. Aceite: nenhuma classe monolítica.
-5. Implementar MovementSystem consumindo intenção. Aceite: velocidade diagonal é definida e independente do FPS.
-6. Implementar Animator em ticks, loop e flip por facing. Aceite: down/up/left/right usam as linhas e flip corretos.
-7. Separar posição lógica, anchor, draw offset e body. Aceite: walk/idle/attack não movem os pés nem a collision box.
-8. Adicionar Y-sort por baseline com desempate estável. Aceite: player passa à frente/atrás de um objeto alto sem flicker.
+# Fase 0 — auditoria e decisões
 
-Marco: player anda/colide/anima em quatro direções via command pipeline.
+## Objetivo
 
-## Fase 5 — combate mínimo
+Conhecer assets, restrições de licença e direção arquitetural antes de construir sistemas.
 
-1. Definir hurtbox, hitbox, interaction e debug draw distintos. Aceite: cores/boxes podem ser ativadas independentemente.
-2. Fazer frame markers serem emitidos uma vez. Aceite: sequência controlada gera `attack_on/off` nos ticks esperados.
-3. Criar SwordAttackSystem e attack instance ID. Aceite: um swing acerta cada alvo no máximo uma vez.
-4. Aplicar dano, invulnerabilidade curta e knockback simples. Aceite: testes cobrem factions e repetição.
-5. Criar projétil/flecha via marker, sem lógica no renderer. Aceite: spawn, movimento, impacto e expiração.
-6. Criar VFX transitório/pool. Aceite: poeira/explosão terminam e se removem sem estado persistente.
+## Concluído
 
-Marco: espada e flecha têm boxes/eventos verificáveis no boneco de treino.
+- inventário recursivo dos assets;
+- dimensões, alpha e duplicatas;
+- inspeção de spritesheets;
+- registro de licença e restrição de redistribuição;
+- arquitetura inicial;
+- proposta de `.dmap`;
+- roadmap incremental.
 
-## Fase 6 — um inimigo e arquitetura reutilizável
+## Marco
 
-1. Definir `EnemyDefinition`/factory e validar referências. Aceite: slime nasce apenas de dados + componentes.
-2. Implementar estados reutilizáveis idle/wander/chase/attack/dead. Aceite: transições são observáveis em debug.
-3. Adicionar percepção/distância e movimento respeitando collision. Aceite: inimigo persegue sem atravessar parede simples.
-4. Integrar dano player↔enemy, morte e VFX. Aceite: ambos recebem dano segundo faction/cooldowns.
-5. Adicionar segundo perfil (ranged ou soldier) sem novo framework paralelo. Aceite: reutiliza systems e troca perfil/ataques.
+Base documental suficiente para iniciar engine sem depender de inferências de asset durante gameplay.
 
-Marco: combate completo contra ao menos um inimigo, segundo perfil prova extensibilidade.
+---
 
-## Fase 7 — objetos, pickup, HUD e inventário pequeno
+# Fase 1 — plataforma, janela e primeiro pixel
 
-1. Criar definição/instância genérica de objeto com capacidades (pickup/container/destructible/etc.).
-2. Implementar pickup de coração/dinheiro. Aceite: evento + remoção + alteração de estado uma vez.
-3. Criar inventário mínimo por stable item IDs. Aceite: add/remove/capacity testados.
-4. Criar `GameViewModel` somente leitura para HUD. Aceite: HUD não referencia componente Player diretamente.
-5. Desenhar corações, dinheiro e item equipado. Aceite: cheio/meio/vazio para valores-limite.
-6. Implementar baú/interação e destrutível com animação. Aceite: caixas de interação/colisão mudam no momento explícito.
+## Objetivo
 
-Marco: pickup, baú, objeto quebrável e HUD funcionam desacoplados.
+Criar a borda Win32 e o loop temporal sem acoplar gameplay à plataforma.
 
-## Fase 8 — `.dmap`, transições e save
+## Capacidades
 
-1. Congelar `.dmap` v1 após revisão do documento; criar byte reader/writer bounds-checked.
-2. Implementar header/chunks/string table e round-trip de mapa vazio.
-3. Implementar tile layers/collision RLE e validação adversarial.
-4. Implementar entities/spawns/links com IDs estáveis.
-5. Converter DTO validado em mapa runtime. Aceite: erros nunca deixam mundo parcial.
-6. Implementar porta→spawn e carregamento/transição. Aceite: ida/volta entre duas salas preserva facing/posição definida.
-7. Projetar formato de save separado e salvar player + deltas persistentes.
-8. Escrita atômica/backup e recuperação de erro. Aceite: interrupção simulada não destrói último save válido.
+1. `build.bat` x64 / C++20.
+2. Contratos mínimos de plataforma sem `windows.h` em headers públicos quando evitável.
+3. Janela Win32 DPI-aware e message pump.
+4. Relógio de alta resolução.
+5. `Framebuffer(272,224)` RGBA8.
+6. Apresentação por DIB.
+7. Integer scaling + nearest-neighbor + letterbox.
+8. Fixed timestep 60 Hz com clamp/catch-up budget.
 
-Marco: vertical slice completo com duas salas, porta e baú persistente.
+## Marco
 
-## Fase 9 — Map Maker
+Janela apresenta pixels produzidos pela CPU no framebuffer lógico, escalados corretamente e com simulação temporal independente do render.
 
-1. Criar `map_editor.exe` usando as bibliotecas existentes. Aceite: abre janela/viewport sem depender do game executable.
-2. Criar `EditorDocument`, new/open/save/dirty e validação.
-3. Implementar UI mínima própria: panels, buttons, list, numeric/text fields e focus.
-4. Implementar pan/zoom inteiro e conversões window/viewport/world/tile.
-5. Tile palette + paint/erase; depois rectangle/fill e multi-selection.
-6. Layers: criar, ordenar, ocultar e bloquear.
-7. Pintar/visualizar collision.
-8. Colocar/selecionar/mover entidades e editar properties com schema da definição.
-9. Colocar spawns, triggers, regions e doors; validar links.
-10. Implementar command transactions, undo/redo, copy/paste com novos IDs.
-11. Playtest in-memory e retorno ao mesmo documento.
-12. Autosave/backup e relatório de erros.
+---
 
-Aceite do marco: criar mapa do zero, salvar, reabrir byte-equivalente semanticamente, editar com undo/redo e testar sem reiniciar editor.
+# Fase 2 — renderer, PNG, sprites e animação
 
-## Fases 10–12 — conteúdo sistêmico, uma capacidade por vez
+## Objetivo
 
-### Fase 10: NPC e diálogo
+Construir pipeline visual próprio reutilizável.
 
-Definições externas de NPC; interação/facing; renderer de caixa de diálogo com paginação; choices/conditions/actions pequenas; NPC colocado pelo editor. Aceite: dois NPCs reutilizam o mesmo sistema e um diálogo condicionado por flag funciona após reload.
+## Capacidades
 
-### Fase 11: quests
+1. `setPixel`, `fillRect`, clipping.
+2. `drawImage` / `drawImageRegion`.
+3. Alpha blend RGBA straight.
+4. `IImageDecoder` / `ImageData` neutros.
+5. WIC somente no adapter Win32.
+6. Ownership/cache mínimo por `AssetId`.
+7. Flip horizontal no blit.
+8. `SpriteSheet`, `AnimationClip`, frames, anchor/draw offset.
+9. Animator em ticks.
+10. Bitmap font.
 
-Event stream estável; formato versionado de quest; objectives declarativos (`talk`, `kill`, `pickup`, `enter`, `open`, `deliver`); quest state/save; ferramentas de validação no editor. Aceite: quest multiobjetivo progride por eventos, não por polling acoplado, e sobrevive ao save/load.
+## Marco
 
-### Fase 12: RPG
+Sprites, animações e texto pixel-art são carregados por adapter de plataforma e desenhados pelo renderer próprio sem lógica de gameplay.
 
-Stats derivados; XP/level curve; equipment slots/modifiers; loot tables; UI/inventário expandido. Aceite: cálculo é testado e conteúdo novo entra por definições, sem alterar engine base.
+---
 
-## Fases 13–14 — preparação medida e networking
+# Fase 3 — Map Engine runtime, câmera e colisão
 
-### Fase 13: auditoria multiplayer
+## Objetivo
 
-Medir e documentar autoridade, state ownership e conteúdo replicável; remover fontes reais de nondeterminismo relevantes; separar servidor sem janela/render; gravar/reproduzir command streams; numerar snapshots e network entity IDs. Aceite: simulação headless executa cenário gravado e chega ao estado esperado.
+Criar um mundo maior que a viewport e uma base única de mapa/física.
 
-### Fase 14: rede
+## Capacidades
 
-Só então: adapter Winsock, framing/handshake/versionamento, conexão, command upload, servidor autoritativo, snapshots/deltas, prediction/reconciliation se necessário, interpolação remota, timeouts/rate limits e testes com latência/perda simuladas. Aceite inicial: dois clientes em LAN veem movimento autoritativo; combate vem depois em incrementos próprios.
+1. `GameMetrics` e coordenadas explícitas.
+2. `RuntimeMap` em memória.
+3. `TileLayer` e tile refs.
+4. Tile culling.
+5. `Camera2D` world→logical e clamp.
+6. Múltiplos passes/layers suficientes para ground/low/foreground.
+7. `CollisionGrid` separado da arte.
+8. AABB versus tiles e resolução por eixo.
+9. Queries/broad-phase apenas na medida necessária pelo runtime.
 
-## Portões de escopo
+## Marco
 
-- Não iniciar editor antes de mapa/serialização/runtime serem utilizáveis.
-- Não iniciar quests antes de eventos e IDs persistentes estarem comprovados.
-- Não iniciar RPG antes do vertical slice estar divertido/estável.
-- Não iniciar rede por abstrações hipotéticas: primeiro simulação headless e replay.
-- Decoder PNG próprio é um projeto separado depois de WIC + testes; trocar via `IImageDecoder` deve não afetar gameplay/render.
+Mapa grande pode ser renderizado, percorrido por câmera e consultado por colisão sem duplicar mapa ou física por entidade.
+
+---
+
+# Fase 4 — Player controlável
+
+## Status
+
+**Concluída e publicada.**
+
+A versão antiga do roadmap previa `EntityHandle`, stores de componentes e `MovementSystem` já nesta fase. Essa antecipação foi removida: com apenas um ator de gameplay real, o Player permanece uma estrutura/classe pequena e explícita.
+
+## Objetivo observável
+
+> abrir `game.exe`, controlar o Player pela dungeon, colidir com o mapa, alternar idle/walk por direção e ter a câmera seguindo o personagem.
+
+## Capacidades da fase
+
+### Input neutro
+
+- `InputState` independente de Win32;
+- WASD/arrow keys mapeados somente na borda;
+- estado held para movimento;
+- perda de foco limpa teclas pressionadas;
+- `DebugInputState` continua restrito a ferramentas/debug.
+
+### Command pipeline
+
+```text
+InputState
+    ↓
+CommandBuilder
+    ↓
+PlayerCommand
+```
+
+`PlayerCommand` preserva:
+
+```text
+tick
+player identity
+sequence/order
+movement intent
+```
+
+Entradas contraditórias:
+
+```text
+Left + Right = 0
+Up + Down    = 0
+```
+
+### Player runtime
+
+Estado pequeno e explícito:
+
+```text
+world/subpixel position
+facing
+motion state
+movement configuration
+collision body information
+```
+
+Sem ownership de janela, teclado físico, renderer, WIC ou câmera.
+
+### Movimento
+
+- fixed tick;
+- subpixel/fixed-point pequeno;
+- diagonal normalizada aproximadamente;
+- sem `sqrt()` todo tick;
+- reutiliza AABB/tile collision existente;
+- collision body concentrado nos pés.
+
+### Facing/animação
+
+- Down / Up / Left / Right;
+- última direção significativa permanece ao parar;
+- política diagonal determinística;
+- somente Idle/Walk nesta fase;
+- side-left + flipX para Right;
+- clip não é resetado todo tick.
+
+### Camera follow
+
+- câmera recebe o Player como target;
+- follow direto;
+- clamp no mapa;
+- sem smoothing/dead-zone/shake nesta fase.
+
+## Não incluído
+
+```text
+EntityRegistry genérico
+component stores
+ECS
+combate
+hurtbox/hitbox
+IA
+inventário
+```
+
+## Validação do checkpoint
+
+- cardinal;
+- diagonal;
+- direções opostas;
+- wall/slide/corner/corridor;
+- camera follow;
+- camera clamp;
+- foreground occlusion existente;
+- integer scaling/resize;
+- perda de foco com tecla mantida;
+- build `/W4` sem warnings;
+- testes existentes + novos checks;
+- `git diff --check`.
+
+---
+
+# Fase 5 — Combat Foundation
+
+## Status
+
+**Concluída e publicada no commit `4a2f440bf82e653e51a925a505443101103d735d`.**
+
+Capacidades existentes:
+
+```text
+ActionEdgeBuffer
+PlayerCommand com ActionIntent
+EntityHandle(index, generation) / EntityHandlePool
+Health / Faction
+CollisionBody / Hurtbox / Hitbox / InteractionArea
+AttackInstanceId / CombatSystem
+EventBuffer
+EntityDamaged / EntityDefeated / ProjectileImpact
+ProjectileSystem / EffectSystem
+animation markers
+actor Y-sort
+```
+
+A Fase 5 é a primeira em que múltiplos participantes e relações source/target justificam uma pequena generalização compartilhada.
+
+A implementação deve continuar incremental. Não criar ECS completo.
+
+## Fase 5A — identidade runtime e primitivas de combate
+
+### Objetivo
+
+Criar a fundação reutilizável que espada, Training Puppet, projéteis e criaturas usarão.
+
+### Implementar somente o necessário
+
+#### Identidade runtime mínima
+
+Introduzir identidade genérica quando source/target exigir:
+
+```text
+EntityHandle(index, generation)
+```
+
+Ela serve para:
+
+- atacante/alvo;
+- referências runtime seguras;
+- invalidação após destruição/reuso;
+- deduplicação de hits;
+- preparação para criaturas.
+
+Não criar junto, por obrigação:
+
+```text
+Archetype
+SparseSet
+ComponentArray universal
+SystemManager genérico
+```
+
+#### Primitivas semânticas
+
+Separar:
+
+```text
+CollisionBody
+Hurtbox
+Hitbox
+InteractionArea
+Trigger
+```
+
+Adicionar conforme necessário:
+
+```text
+Health
+Faction
+AttackInstanceId
+Damage/knockback data
+```
+
+#### Eventos de domínio mínimos
+
+Quando um segundo consumidor real justificar, preparar/introduzir eventos como:
+
+```text
+EntityDamaged
+EntityDefeated
+```
+
+Não criar event bus genérico além da necessidade da fase.
+
+### Aceite
+
+- handle destruído/reutilizado não resolve silenciosamente para alvo antigo;
+- boxes têm semânticas separadas;
+- combate não depende de renderer;
+- uma execução de ataque pode identificar source e target de forma estável durante o tick/runtime.
+
+---
+
+## Fase 5B — espada + Training Puppet
+
+### Input de ação
+
+Estender command pipeline para ação de ataque sem levar tecla física para gameplay.
+
+Edges devem sobreviver até o tick consumidor.
+
+### AttackDefinition mínima
+
+Introduzir definição reutilizável somente com campos usados pelo slice, por exemplo:
+
+```text
+damage
+startup/recovery ou marker timing
+hitbox
+knockback
+animation reference
+```
+
+Não implementar seletor de IA nesta subfase.
+
+### Player attack state
+
+Fluxo:
+
+```text
+PlayerCommand
+    ↓
+attack state
+    ↓
+animation marker
+    ↓
+activate hitbox
+    ↓
+CombatSystem
+    ↓
+damage
+```
+
+### Regras
+
+- renderer nunca aplica dano;
+- marker é emitido uma vez;
+- cada swing recebe `AttackInstanceId`;
+- `(attackInstance, target)` impede hits repetidos do mesmo swing;
+- invulnerabilidade curta;
+- knockback simples;
+- Training Puppet fornece alvo observável e testável.
+
+### Marco
+
+Player acerta o Training Puppet com espada, dano e timing são verificáveis e nenhum estado de combate depende do desenho do sprite.
+
+---
+
+## Fase 5C — projétil e VFX
+
+### Objetivo
+
+Provar que o mesmo combate suporta ataque não-melee.
+
+### Capacidades
+
+- marker de spawn;
+- estado runtime leve de projétil;
+- owner/faction/attack identity;
+- movimento em fixed tick;
+- collision/impacto;
+- expiração/lifetime;
+- flecha;
+- VFX de impacto transitório.
+
+Projectile não cria novo collision system.
+
+VFX não precisa ser entidade persistente.
+
+### Marco da Fase 5
+
+Espada e flecha usam a mesma fundação de identidade/dano/eventos, com Training Puppet como alvo verificável.
+
+---
+
+# Fase 6 — Creature Engine reutilizável
+
+## Status
+
+**Próxima / em andamento.**
+
+## Objetivo
+
+Fazer com que adicionar um novo monstro deixe de exigir nova arquitetura.
+
+O resultado desejado é aproximadamente:
+
+```text
+assets/clips
++ EnemyDefinition
++ BehaviorProfile
++ AttackDefinitions
++ stats/reward metadata
++ spawn
+```
+
+## Fase 6A — Definition + runtime + factory
+
+Criar:
+
+```text
+EnemyDefinition
+Creature/Enemy runtime state
+DefinitionId
+factory/spawner boundary
+```
+
+Definição contém dados imutáveis compartilhados; runtime contém apenas estado mutável.
+
+Não copiar definição inteira por criatura.
+
+### Dados candidatos
+
+Somente conforme uso real:
+
+```text
+visual/animation set
+body/hurtbox metadata
+faction
+health/stats
+movement parameters
+attacks
+BehaviorProfileId
+```
+
+Loot/XP podem existir apenas como referências/metadados se houver necessidade concreta; seus sistemas pertencem a fases posteriores.
+
+---
+
+## Fase 6B — BehaviorProfile + FSM
+
+Implementar estados reutilizáveis exigidos pelo primeiro inimigo.
+
+Candidatos:
+
+```text
+Idle
+Wander
+Chase
+Attack
+Dead
+```
+
+Adicionar somente quando o conteúdo exigir:
+
+```text
+Sleep
+Wake
+Retreat
+Stunned
+```
+
+Transições dependem de condições claras:
+
+- distância;
+- target válido;
+- attack range;
+- cooldown;
+- timer;
+- dano recebido;
+- health threshold;
+- perception/query quando necessária.
+
+Debug deve permitir observar estado atual/transições.
+
+---
+
+## Fase 6C — escolha de ataques
+
+A IA escolhe entre `AttackDefinition`s válidas por condição/range/cooldown.
+
+Não espalhar:
+
+```cpp
+if (enemy == SKULL) ...
+if (enemy == SOLDIER) ...
+```
+
+Comportamento especializado pequeno é permitido quando a criatura possuir mecânica realmente única.
+
+---
+
+## Fase 6D — dano, morte e eventos
+
+Creature usa o mesmo `CombatSystem` da Fase 5.
+
+Fluxo:
+
+```text
+Hitbox/Projectile
+    ↓
+CombatSystem
+    ↓
+Health
+    ↓
+Dead
+    ↓
+death animation/marker
+    ↓
+EntityDefeated
+    ↓
+despawn/world delta/reward observers futuros
+```
+
+Creature não modifica diretamente HUD, quest, save ou XP.
+
+---
+
+## Fase 6E — prova de extensibilidade
+
+Depois do primeiro inimigo funcionar, adicionar um segundo perfil suficientemente diferente, por exemplo:
+
+```text
+slime/basic melee
++
+skull/ranged
+```
+
+ou:
+
+```text
+slime
++
+soldier melee
+```
+
+O segundo caso deve reutilizar fundação existente e revelar apenas as generalizações realmente necessárias.
+
+## Marco
+
+Ao menos dois comportamentos/inimigos provam que a engine aceita conteúdo novo sem novo framework paralelo.
+
+---
+
+# Fase 7 — objetos, pickups, HUD e inventário pequeno
+
+## Objetivo
+
+Expandir composição para entidades não-hostis e estado do jogador.
+
+### Objetos por capacidades
+
+Evoluir para definição + capacidades:
+
+```text
+Pickup
+Container
+Destructible
+Interactable
+Door
+Trigger
+```
+
+Não criar árvore profunda de subclasses.
+
+### Capacidades da fase
+
+1. pickup de coração/dinheiro;
+2. eventos de pickup;
+3. inventário mínimo por stable item IDs;
+4. `GameViewModel`/snapshot somente leitura para HUD;
+5. HUD de vida/dinheiro/item equipado;
+6. baú/interação;
+7. destrutível com estado/animação.
+
+### Generalização de entidades
+
+Esta fase, junto com criaturas, é o ponto em que Player + enemies + objects podem justificar stores/componentes compartilhados adicionais.
+
+Extrair somente dados/operações comprovadamente repetidos.
+
+## Marco
+
+Pickup, baú, destrutível e HUD funcionam sem acessar internals uns dos outros e sem criar subsistemas exclusivos por sprite.
+
+---
+
+# Fase 8 — `.dmap`, transições e save
+
+## Gate
+
+Só congelar `.dmap` v1 depois que runtime de entidades/spawns/objetos tiver necessidades suficientemente concretas.
+
+O `MAP_FORMAT.md` permanece proposta conceitual até esta fase.
+
+## Capacidades
+
+1. revisar e congelar contratos v1 realmente necessários;
+2. byte reader/writer bounds-checked;
+3. header/chunks/string table;
+4. tile layers/collision com encoding simples;
+5. entities/spawns/links com IDs estáveis;
+6. DTO validado → `RuntimeMap`;
+7. portas/transições entre mapas;
+8. formato de save separado;
+9. player state + world deltas;
+10. escrita atômica/backup.
+
+## IDs
+
+Distinguir:
+
+```text
+EntityHandle          # runtime, nunca persistido
+PersistentInstanceId  # mapa/save
+DefinitionId          # tipo de conteúdo
+```
+
+## Aceite
+
+- arquivo inválido não cria mundo parcial;
+- links inválidos geram diagnóstico;
+- ida/volta entre duas salas funciona;
+- estado persistente relevante sobrevive reload;
+- save não copia mapa inteiro.
+
+## Marco
+
+Vertical slice com duas salas, transição e pelo menos um delta persistente.
+
+---
+
+# Fase 9 — Map Maker
+
+## Gate
+
+Não iniciar antes de runtime map + `.dmap` + transições estarem utilizáveis.
+
+## Executável
+
+```text
+map_editor.exe
+```
+
+separado de `game.exe`.
+
+## Compartilhar
+
+- renderer;
+- assets;
+- map/runtime contracts;
+- definitions;
+- serialization.
+
+## Modelo próprio
+
+```text
+EditorDocument
+selection
+dirty state
+EditorCommand apply/revert
+undo/redo
+property model
+playtest session
+```
+
+## Capacidades
+
+1. new/open/save;
+2. validação;
+3. pan/zoom;
+4. tile palette;
+5. paint/erase;
+6. rectangle/fill;
+7. layers;
+8. collision painting;
+9. colocar/mover entidades;
+10. property editor;
+11. spawns/triggers/regions/doors;
+12. link validation;
+13. undo/redo;
+14. copy/paste com novos IDs;
+15. playtest in-memory;
+16. autosave/backup.
+
+## Marco
+
+Criar um mapa do zero, salvar, reabrir semanticamente equivalente, editar com undo/redo e playtestar sem contaminar o documento de autoria.
+
+---
+
+# Trilha transversal — Scene / Game-State
+
+Não criar uma fase artificial apenas para possuir “Scene Engine”.
+
+Introduzir a menor abstração quando dois ou mais estados reais exigirem lifecycle e routing compartilhados.
+
+Casos possíveis:
+
+```text
+gameplay + pause
+gameplay + transition
+gameplay + menu
+editor + playtest
+```
+
+Interface mínima possível:
+
+```text
+enter
+exit
+update/tick
+render
+input/command routing
+```
+
+Se essa necessidade surgir antes da Fase 9 e suas dependências forem concretas, a pequena abstração pode ser antecipada.
+
+Não criar Scene Graph universal nem usar Scene como `GameObject` global.
+
+---
+
+# Fase 10 — NPC e diálogo
+
+## Dependências
+
+- entidades/IDs estáveis;
+- interação;
+- save/world flags;
+- editor capaz de colocar NPCs ou mecanismo equivalente de autoria.
+
+## Capacidades
+
+- `NpcDefinition`;
+- posição/facing + overrides pequenos no mapa;
+- InteractionArea compartilhada;
+- caixa de diálogo;
+- paginação;
+- choices;
+- conditions;
+- actions pequenas;
+- diálogo orientado a dados.
+
+## Aceite
+
+Dois NPCs diferentes reutilizam o mesmo sistema e pelo menos uma condição/flag permanece correta após reload.
+
+---
+
+# Fase 11 — Quests
+
+## Gate
+
+Não iniciar sem event stream suficiente e IDs persistentes comprovados.
+
+## Capacidades
+
+Eventos consumidos, por exemplo:
+
+```text
+EntityDefeated
+ItemPickedUp
+ChestOpened
+RegionEntered
+DialogueCompleted
+```
+
+Objetivos declarativos:
+
+```text
+talk
+kill
+pickup
+enter
+open
+deliver
+```
+
+Quest state é salvo separadamente de definição.
+
+## Aceite
+
+Quest multiobjetivo progride por eventos, não por polling acoplado, e sobrevive save/load.
+
+---
+
+# Fase 12 — RPG, XP, equipment e loot
+
+## Gate
+
+Somente depois de existir vertical slice estável e jogável.
+
+## Capacidades
+
+- stats derivados;
+- XP;
+- level curve;
+- equipment slots;
+- modifiers;
+- loot tables;
+- inventário expandido;
+- UI associada.
+
+`EnemyDefinition` pode fornecer reward metadata; Creature não incrementa diretamente XP do Player.
+
+Loot tables resolvem drops; não espalhar RNG em cada classe de inimigo.
+
+## Aceite
+
+Novo item/monstro entra principalmente por definitions e dados, sem alterar engine base a cada conteúdo.
+
+---
+
+# Fase 13 — headless, replay e auditoria multiplayer
+
+## Gate
+
+Networking real não começa aqui.
+
+## Objetivo
+
+Provar que gameplay/simulation consegue existir sem janela/render e que command streams podem reproduzir cenários.
+
+## Capacidades
+
+- auditar autoridade/state ownership;
+- separar dependências restantes de apresentação;
+- execução headless;
+- gravar/reproduzir command streams;
+- numerar snapshots;
+- definir identidade replicável/network IDs;
+- medir nondeterminismo relevante.
+
+## Aceite
+
+Simulação headless executa cenário gravado e alcança estado esperado.
+
+---
+
+# Fase 14 — Networking
+
+Somente depois da Fase 13.
+
+## Capacidades iniciais
+
+- adapter Winsock;
+- framing;
+- handshake;
+- protocol versioning;
+- conexão;
+- command upload;
+- servidor autoritativo;
+- snapshots/deltas;
+- interpolation;
+- timeout/rate limits;
+- latency/loss testing.
+
+Prediction/reconciliation entram somente quando medições/experiência de jogo justificarem.
+
+## Primeiro marco
+
+Dois clientes em LAN veem movimento autoritativo; combate/networking é expandido em incrementos próprios depois.
+
+---
+
+# Portões de escopo
+
+```text
+não iniciar Map Maker
+antes de runtime map + serialização + formato de mapa utilizáveis
+
+não congelar .dmap
+antes de entities/spawns/objetos reais definirem suas necessidades
+
+não iniciar quests
+antes de event stream + IDs persistentes
+
+não iniciar RPG completo
+antes de vertical slice estável e jogável
+
+não iniciar networking
+antes de simulação headless + replay/command stream
+
+não criar ECS genérico
+antes de múltiplas entidades reais justificarem
+
+não criar scripting
+enquanto definitions + sistemas C++ cobrirem os casos reais
+```
+
+---
+
+# Critérios para antecipar uma fundação
+
+Uma etapa futura pode ser antecipada somente quando:
+
+1. suas dependências necessárias já existem;
+2. existe uso concreto imediato;
+3. desbloqueia pelo menos duas tarefas próximas ou evita duplicação já iminente;
+4. não viola gate de escopo;
+5. cabe em incremento pequeno e testável;
+6. não exige abstrações para conteúdo inexistente;
+7. reduz acoplamento/retrabalho mensurável.
+
+Exemplo já adotado:
+
+```text
+PlayerCommand foi criado cedo porque Player já precisava dele,
+e a mesma fronteira também ajuda testes/replay/multiplayer futuro.
+```
+
+Exemplo atual aceitável:
+
+```text
+EntityHandle mínimo na fundação de combate,
+porque sword target, projectile target e creatures precisarão da mesma identidade runtime.
+```
+
+Exemplo não aceitável:
+
+```text
+criar ECS completo, network snapshots ou scripting engine
+porque talvez sejam úteis no futuro.
+```
+
+---
+
+# Ordem recomendada a partir do estado atual
+
+```text
+validar/checkpoint Fase 4 local
+        ↓
+5A runtime identity + combat primitives
+        ↓
+5B sword + Training Puppet
+        ↓
+5C projectile + arrow + VFX
+        ↓
+6A EnemyDefinition/runtime/factory
+        ↓
+6B BehaviorProfile/FSM
+        ↓
+6C attack selection
+        ↓
+6D death/events
+        ↓
+6E segundo perfil/inimigo
+        ↓
+7 objetos/pickup/HUD/inventário
+        ↓
+8 .dmap/transições/save
+        ↓
+9 Map Maker
+```
+
+Essa ordem prepara bases reutilizáveis imediatamente antes de seus consumidores reais, evitando tanto duplicação quanto overengineering.
+
+---
+
+# Regra final do roadmap
+
+O roadmap é uma ordem de dependências, não uma obrigação de construir toda abstração desenhada antecipadamente.
+
+Se o código real mostrar que uma pequena fundação simplifica várias etapas seguintes, ela pode ser antecipada conforme os critérios acima.
+
+Se uma abstração ainda não possui consumidores reais, preservar apenas a fronteira arquitetural e continuar construindo o próximo comportamento jogável.

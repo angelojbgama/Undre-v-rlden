@@ -1,201 +1,1048 @@
-# Arquitetura proposta
+# Arquitetura do Dungeon Underworld
 
-## Decisões centrais
+Este documento descreve as **invariantes arquiteturais** e a direção de evolução do Dungeon Underworld / Undre-v-rlden.
 
-- C++20 inicialmente; Standard Library + Windows SDK, sem dependências de terceiros.
-- Simulação 2D em timestep fixo de 60 Hz, independente de input, render e apresentação.
-- Framebuffer lógico canônico de 272×224 RGBA8; Win32 só cria a janela, mede tempo, recebe eventos, decodifica imagens e apresenta pixels.
-- Renderer inteiramente em software. A janela usa integer scaling, nearest-neighbor e letterbox.
-- Composição simples orientada a dados: handles de runtime + componentes pequenos + sistemas explícitos. Sem hierarquia profunda, ECS externo ou `GameObject` universal.
-- Definições imutáveis (`PlayerDefinition`, `EnemyDefinition`, `ObjectDefinition`, clips) separadas de instâncias mutáveis.
-- Mapas e saves usam IDs estáveis; handles/índices de memória nunca são persistidos.
-- O editor compartilha renderer, assets, mapa e serialização, mas seu modelo de documento/undo não entra no runtime.
-- Não criar `net/` vazio. A fronteira `PlayerCommand → Simulation` e ticks numerados são preparados agora; rede só aparece quando houver um caso real.
+Ele não deve funcionar como fotografia exata do último commit. O estado real de uma tarefa é determinado primeiro pelo working tree local, pelos testes e pelo comportamento executável. A arquitetura abaixo define **como os sistemas devem se encaixar** à medida que novas capacidades forem introduzidas.
 
-## Fluxo principal
+As decisões detalhadas de ordem e escopo pertencem ao `ROADMAP.md`; regras operacionais para agentes pertencem ao `AGENTS.md`.
+
+---
+
+## 1. Princípios centrais
+
+### 1.0 Baseline implementada
+
+O commit validado da Fase 5 é
+`4a2f440bf82e653e51a925a505443101103d735d`, com MSVC 2022 x64,
+C++20, `/W4`, 0 warnings e 243 checks.
+
+Além das bases das Fases 0–4, o código já contém:
 
 ```text
-Win32 events -> InputState -> CommandBuilder -> PlayerCommand(tick, player)
-                                               |
-                                               v
-                                    fixed-step Simulation
-                                    World + event stream
-                                               |
-                        +----------------------+------------------+
-                        v                                         v
-                 RenderSnapshot                         Save/Quest observers
-                        |
-              camera + render queue
-                        |
-        software Renderer2D -> RGBA framebuffer
-                        |
-             Win32 presenter -> client area
+ActionEdgeBuffer
+PlayerCommand com ActionIntent
+EntityHandle(index, generation) + EntityHandlePool
+Health / Faction
+CollisionBody / Hurtbox / Hitbox / InteractionArea
+AttackInstanceId + CombatSystem
+EventBuffer
+EntityDamaged / EntityDefeated / ProjectileImpact
+ProjectileSystem / EffectSystem
+animation markers
+actor Y-sort
 ```
 
-Input não chama `Player::move`. Renderer não muda o mundo. Animação pode emitir marcadores de frame, mas sistemas de gameplay interpretam esses marcadores; o renderer apenas desenha o frame selecionado.
+A Fase 6, Creature Engine reutilizável, é o próximo incremento. `.dmap`, editor,
+save, loot/XP, NPCs, quests e networking permanecem deferidos.
 
-## Módulos e dependências
+### 1.1 C++ nativo e dependências controladas
 
-| Módulo | Responsabilidade | Pode depender de | Não pode depender de |
-|---|---|---|---|
-| `core` | tipos inteiros, vetores/retângulos, IDs, resultado/erro, log, utilidades | STL | Win32, gameplay, renderer |
-| `platform` | contratos de janela, eventos, relógio, arquivos, imagem e apresentação | `core` | gameplay/world |
-| `platform/win32` | `HWND`, message pump, QPC, WIC, DIB/GDI, DPI | `platform`, Windows SDK | gameplay |
-| `render` | framebuffer, blend, recorte, imagens, sprites, fonte, câmera, fila de desenho | `core` | Win32, regras de combate |
-| `assets` | IDs, catálogo, cache, definições e validação de metadados | `core`, interfaces de I/O, `render` data | HWND/WIC concretos, estado do mundo |
-| `simulation` | ticks, comandos, entity registry, componentes, eventos | `core` | janela, input físico, apresentação |
-| `world` | mapa runtime, tile layers, queries espaciais, colisão, transições | `core`, `simulation` | Win32, editor |
-| `gameplay` | player, inimigos, combate, itens, inventário e regras | `simulation`, `world`, asset IDs | APIs de plataforma/render direto |
-| `serialization` | readers/writers, `.dmap`, saves, migrações | `core`, DTOs de mapa | structs ABI/runtime crus |
-| `game` | composição das dependências e estados/telas do jogo | módulos anteriores | detalhes Win32 fora do bootstrap |
-| `editor` | documento, ferramentas, UI própria, undo/redo, preview | core/render/assets/world/serialization | internals Win32, estado global do jogo |
+- C++20;
+- Standard Library;
+- Windows SDK;
+- Win32/WIC/GDI apenas nas bordas de plataforma quando necessário;
+- nenhuma biblioteca de terceiros sem decisão explícita.
 
-Regra estrutural: dependências apontam para dentro (`core`) e para contratos, nunca do engine para `game` ou `editor`. Headers públicos de plataforma não incluem `windows.h`; os tipos nativos ficam no `.cpp` ou em implementação privada.
+O projeto deve continuar implementando suas estruturas principais em código próprio.
 
-## Loop e tempo
+### 1.2 Renderer próprio em software
 
-O relógio Win32 usa `QueryPerformanceCounter`/`QueryPerformanceFrequency`. O jogo acumula tempo real em segundos de alta precisão:
+Contrato visual canônico:
+
+```text
+logical framebuffer = 272 × 224
+internal pixel format = RGBA8
+presentation = Win32
+scaling = integer
+filtering = nearest-neighbor
+unused client area = letterbox
+```
+
+O renderer não conhece regras de gameplay.
+
+### 1.3 Fixed timestep
+
+Gameplay evolui em ticks fixos de 60 Hz.
+
+Renderização, velocidade da janela e frequência de eventos físicos não determinam a velocidade da simulação.
+
+### 1.4 Sistemas pequenos antes de frameworks grandes
+
+Preferir:
+
+- estado runtime explícito;
+- definições imutáveis quando houver conteúdo repetível;
+- IDs estáveis;
+- composição;
+- sistemas pequenos;
+- extrações feitas após casos reais demonstrarem a necessidade.
+
+Evitar:
+
+- `GameObject` universal;
+- classes Deus;
+- hierarquias profundas;
+- ECS sofisticado criado antecipadamente;
+- interfaces vazias para um futuro hipotético;
+- managers globais que conhecem tudo;
+- subsistemas paralelos que duplicam capacidades existentes.
+
+---
+
+## 2. Níveis de decisão arquitetural
+
+Para não transformar ideias futuras em obrigações prematuras, este documento diferencia três níveis.
+
+### Invariante
+
+Regra que não deve ser quebrada sem decisão arquitetural explícita.
+
+Exemplos:
+
+```text
+Win32 não entra em gameplay.
+Renderer não modifica gameplay.
+Gameplay usa fixed timestep.
+Collision de mapa não é duplicada por Player/Enemy.
+Map/save não persistem ponteiros ou handles runtime.
+```
+
+### Direção arquitetural aprovada
+
+Estrutura considerada correta para uma capacidade futura, mas cujo detalhe deve ser implementado apenas quando existir uso concreto.
+
+Exemplos:
+
+```text
+CreatureDefinition + runtime state + BehaviorProfile
+EntityHandle + PersistentInstanceId + DefinitionId
+Map Maker compartilhando runtime/serialization
+scene/game-state layer mínima quando houver múltiplos estados reais
+```
+
+### Planejado / deferido
+
+Capacidade desejada cuja forma ainda pode amadurecer.
+
+Exemplos:
+
+```text
+scripting
+pathfinding avançado
+hot reload
+rollback/prediction
+multithreading do renderer
+formato final de diálogo/quest
+```
+
+---
+
+## 3. Fluxo principal
+
+Fluxo conceitual atual e futuro:
+
+```text
+physical events
+    ↓
+platform InputState / edge events
+    ↓
+CommandBuilder
+    ↓
+PlayerCommand / action commands
+    ↓
+fixed simulation tick
+    ↓
+gameplay state + world state
+    ↓
+domain events / read-only render state
+    ↓
+visual composition + Camera2D
+    ↓
+Renderer2D
+    ↓
+Framebuffer RGBA8
+    ↓
+Win32 presentation
+```
+
+`Simulation` neste documento é uma **fronteira conceitual**, não a obrigação de existir uma classe monolítica chamada `Simulation`.
+
+O jogo pode continuar com objetos e sistemas explícitos enquanto isso for suficiente. A abstração só deve crescer quando o número de consumidores reais justificar.
+
+Input físico não chama diretamente uma função de movimento do Player. O renderer não aplica dano, não decide IA, não cria loot e não altera estado persistente.
+
+---
+
+## 4. Módulos e dependências
+
+A direção estrutural é:
+
+```text
+core
+  ↑
+platform contracts / render primitives / simulation primitives
+  ↑
+world
+  ↑
+game gameplay
+  ↑
+game composition
+```
+
+Win32 permanece na borda.
+
+### `engine/core`
+
+Responsável por:
+
+- tipos básicos;
+- geometria;
+- coordenadas;
+- métricas;
+- IDs genéricos quando necessários;
+- utilidades pequenas;
+- tipos de erro/result quando úteis.
+
+Não conhece:
+
+- Win32;
+- gameplay concreto;
+- renderer concreto.
+
+### `engine/platform`
+
+Responsável por contratos de:
+
+- janela;
+- message pump;
+- relógio;
+- input físico;
+- arquivos quando necessário;
+- decoder de imagem;
+- apresentação.
+
+Headers públicos evitam `windows.h` sempre que possível.
+
+### `engine/platform/win32`
+
+Implementa a borda Windows:
+
+- `HWND`;
+- eventos;
+- QPC;
+- WIC;
+- DIB/GDI;
+- DPI;
+- mapeamento de teclas físicas para estado neutro.
+
+Gameplay nunca recebe `VK_*`, `HWND` ou WIC.
+
+### `engine/render`
+
+Responsável por:
+
+- framebuffer;
+- imagens;
+- clipping;
+- alpha blending;
+- sprites;
+- bitmap font;
+- animação visual;
+- câmera;
+- composição/desenho.
+
+O renderer consome estado visual. Ele não possui autoridade de gameplay.
+
+### `engine/assets`
+
+Responsável por:
+
+- `AssetId`;
+- ownership/cache de imagens;
+- catálogo e metadados visuais conforme a necessidade crescer;
+- resolução de referências de assets.
+
+Assets são carregados uma vez por ownership/cache, não a cada frame.
+
+### `engine/world`
+
+Responsável por:
+
+- `RuntimeMap`;
+- tile layers;
+- collision grid;
+- consultas espaciais;
+- colisão contra o mapa;
+- futuramente regiões, links e transições.
+
+Player, criatura e Scene não criam outro tile collision system.
+
+### `engine/simulation`
+
+Contém somente primitivas genéricas realmente necessárias ao tick/simulação.
+
+Exemplos atuais ou próximos:
+
+```text
+Tick
+PlayerId
+CommandSequence
+MovementIntent
+PlayerCommand
+EntityHandle          # quando combate/múltiplas entidades exigirem
+DomainEvent primitives
+```
+
+Não deve se transformar antecipadamente em uma classe que possui Player, mapa, câmera, renderer, assets e janela.
+
+### `game/gameplay`
+
+Contém regras concretas do jogo:
+
+- Player;
+- combate;
+- criaturas;
+- objetos;
+- pickups;
+- inventário;
+- NPCs;
+- quests;
+- progressão.
+
+Gameplay pode depender de primitivas da engine e do world, mas não de detalhes Win32/WIC.
+
+### `game`
+
+Faz composição de dependências e coordenação do executável.
+
+`game.cpp` não deve virar depósito de todas as regras.
+
+### `engine/serialization` — quando a fase exigir
+
+Responsável por:
+
+- readers/writers bounds-checked;
+- DTOs de disco;
+- `.dmap`;
+- save;
+- migrações;
+- validação estrutural.
+
+Nunca serializa dump cru de structs runtime.
+
+### `editor` — somente na fase do Map Maker
+
+Compartilha:
+
+- renderer;
+- assets;
+- world/map;
+- definitions;
+- serialização.
+
+Mantém separado:
+
+- `EditorDocument`;
+- seleção;
+- ferramentas;
+- undo/redo;
+- dirty state;
+- UI do editor.
+
+O runtime nunca depende do editor.
+
+---
+
+## 5. Loop, tempo e comandos
+
+O relógio Win32 usa alta resolução. O loop acumula tempo real e executa ticks inteiros de 1/60 s.
+
+Conceitualmente:
 
 ```text
 pollEvents()
-frameDelta = clamp(clock.now - previous, 0, maxFrameDelta)
+frameDelta = clamp(now - previous)
 accumulator += frameDelta
-sample physical input and append edge events
 
-ticksThisFrame = 0
-while accumulator >= fixedDt and ticksThisFrame < maxCatchUpTicks:
-    commands = commandBuilder.commandsFor(nextTick)
-    simulation.tick(commands)             // fixedDt = 1/60
+while accumulator >= fixedDt and catchUpBudgetAvailable:
+    command = commandBuilder.build(nextTick, input)
+    tickGameplayAndWorld(command)
     accumulator -= fixedDt
     ++nextTick
 
-alpha = accumulator / fixedDt
-snapshot = simulation.renderSnapshot(alpha)
-render(snapshot, framebuffer)
-present(framebuffer)
+composeVisualState()
+render()
+present()
 ```
 
-`Sleep` não dirige a simulação. Pode ser acrescentado apenas como economia de CPU, combinado com medição final/spin curto, sem alterar o acumulador. Um limite de delta e de catch-up evita “spiral of death”; overflow deve ser logado. Pausa de gameplay interrompe ticks do mundo, não o message pump.
+`Sleep` pode ser usado apenas para economia de CPU; nunca dirige a simulação.
 
-Para futuro servidor autoritativo, todo comando carrega `tick`, `playerId`, sequência e payload (`MoveIntent`, `AttackPressed`, `InteractPressed`, etc.). O single player usa exatamente o mesmo caminho. Não se promete determinismo bit a bit entre máquinas: velocidades/posições podem usar inteiros em subpixels para estabilidade, mas multiplayer autoritativo poderá enviar snapshots e correções.
+Um limite de frame delta e catch-up evita spiral of death.
 
-## Coordenadas e configuração
+### Input
 
-Tipos distintos ou wrappers impedem conversões acidentais:
-
-- `WindowPx`: área cliente física e mouse do SO;
-- `LogicalPx`: framebuffer 272×224;
-- `WorldPx`/`WorldSubpixel`: posição no mundo;
-- `TileCoord`: índice inteiro de tile;
-- `ViewportPx`: área lógica usada pelo editor.
-
-`GameMetrics` centraliza `tileSize=16`, `logicalWidth=272`, `logicalHeight=224`, `tickRate=60` e conversões. Não espalhar constantes. A câmera guarda posição em mundo; o raster arredonda uma única vez ao converter world→logical para evitar shimmer. No editor:
+`InputState` representa intenção física neutra, por exemplo:
 
 ```text
-WindowPx -> remove letterbox / divide integer scale -> ViewportPx
-ViewportPx + camera origin -> WorldPx -> floorDiv(tileSize) -> TileCoord
+moveUp
+moveDown
+moveLeft
+moveRight
 ```
 
-## Renderer em software
+Ao perder foco, estado held deve ser limpo para impedir movimento preso.
 
-`Framebuffer` possui largura, altura, stride e bytes RGBA8 straight-alpha. Operações iniciais: `clear`, `setPixel`, `fillRect`, `drawImage`, `drawImageRegion`, `drawImageRegionFlipX`, `drawTile`, `drawSprite`; depois linhas e outlines. Toda operação recorta no destino e valida source rectangles.
+Ações com edge (`attack pressed`, `interact pressed`, etc.) devem ser preservadas até o tick que as consumir, sem depender de o render frame coincidir com o tick.
 
-Blend straight-alpha por canal, com aritmética inteira e arredondamento definido. Mesmo que os assets atuais tenham alpha binário, o contrato suporta 0–255. Imagem fonte, framebuffer e packing devem ter especificação única; testes com vermelho/azul detectam troca RGBA/BGRA.
+### PlayerCommand
 
-O apresentador Win32 converte o pequeno buffer RGBA canônico para o layout esperado por uma DIB BGRA/BGRX, se necessário, e chama `StretchDIBits` em um retângulo inteiro centralizado. Para client size `W×H`, `scale=max(1,min(W/272,H/224))`; a janela terá tamanho mínimo lógico. Margens são limpas (letterbox), e `COLORONCOLOR`/cópia de pixels evita interpolação. DPI awareness e client size, não tamanho externo da janela, guiam o cálculo. A documentação oficial do Windows confirma tanto a apresentação de DIBs por [`StretchDIBits`](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-stretchdibits) quanto o uso de [`QueryPerformanceCounter`](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps) para timestamps de alta resolução.
-
-Render order vira uma fila de comandos com chave `(pass, layer, sortY, tieBreaker)`:
-
-1. ground/background;
-2. decoration low;
-3. entidades e objetos com Y-sort pelo baseline/anchor dos pés;
-4. foreground/occluders;
-5. VFX conforme o pass configurado;
-6. HUD e UI em screen space.
-
-O `tieBreaker` estável evita flicker quando dois objetos têm o mesmo Y.
-
-## PNG e assets
-
-Primeira versão: WIC somente em `platform/win32`. A implementação cria decoder, lê o primeiro frame, converte explicitamente para `GUID_WICPixelFormat32bppRGBA` e devolve apenas:
+A fronteira mantém informação suficiente para testes, replay futuro e eventual autoridade remota:
 
 ```text
-ImageData { width, height, stride, pixelsRGBA }
+tick
+player identity
+sequence/order
+movement intent
+action intent quando introduzido
 ```
 
-Nenhum header de WIC cruza o contrato. A sequência de factory/decoder/frame é documentada pela [Windows Imaging Component](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-decoder-howto-createusingfilename). Mais tarde um decoder PNG próprio pode implementar o mesmo `IImageDecoder` sem tocar renderer/gameplay. Decodificar PNG diretamente em `StretchDIBits` não serve: misturaria carregamento, apresentação e suporte dependente do driver.
-
-`AssetManager` resolve um `AssetId` estável por catálogo, carrega sob demanda, mantém ownership e oferece handles que detectam geração inválida. Caminhos são dados do catálogo, nunca IDs persistentes. Metadados descrevem sheets, clips, anchors, draw offsets e frame events; inferência automática feita nesta auditoria não será lógica de runtime.
+Movimento contraditório é resolvido deterministicamente:
 
 ```text
-SpriteSheet: imageId
-AnimationClip: [AnimationFrame], loop mode, default duration
-AnimationFrame: sourceRect, durationTicks, anchor, drawOffset, flip flags, markers[]
-Animator: clipId, frameIndex, elapsedTicks, playback state
+Left + Right = 0
+Up + Down    = 0
 ```
 
-Cada clip pode ter dimensões diferentes. A posição lógica é o ponto dos pés; `anchor` é o ponto equivalente na célula, e `drawOffset` ajusta arte sem mover collision/hurtbox. Marcadores como `attack_on`, `attack_off`, `spawn_projectile` entram numa fila de eventos da animação; sistemas de combate os consomem uma vez por tick.
+Não se promete determinismo bit a bit entre máquinas. Inteiros/subpixels são preferidos para estabilidade do gameplay atual; networking futuro poderá trabalhar com snapshots e correções.
 
-## Mundo, entidades e composição
+---
 
-Três identidades não devem ser confundidas:
+## 6. Coordenadas e pixel-art
 
-- `EntityHandle(index,generation)`: rápido e válido apenas na sessão;
-- `PersistentInstanceId(mapId, localId)`: estável em mapa/save;
-- `DefinitionId`: string/ID estável para `enemy.slime`, `npc.blacksmith`, etc.
-
-O registry mantém stores simples por tipo. Uma entidade é um handle associado apenas aos componentes necessários:
+Fronteiras conceituais:
 
 ```text
-Transform, Velocity, Facing
-Visual/Animator
-CollisionBody, HurtboxSet, HitboxSet, InteractionArea
-Health, Faction, DamageSource
-PlayerControlled, AIController
-Inventory, Pickup, Projectile, Door, Trigger, Persistent
+WindowPx
+LogicalPx
+WorldPx / WorldSubpixel
+TileCoord
+ViewportPx
 ```
 
-Componentes são dados; sistemas iteram conjuntos explícitos (`MovementSystem`, `CollisionSystem`, `CombatSystem`, `AnimationSystem`, `AISystem`). Componentes raros podem usar mapas; componentes quentes usam vetores densos. Não é necessário um ECS genérico sofisticado na primeira versão.
+`GameMetrics` centraliza valores como:
 
-`EnemyDefinition` referencia visual, stats, caixas, ataques, loot e um `BehaviorProfileId`. `EnemyInstance` é só entidade composta + estado runtime. Comportamentos reutilizáveis (`idle`, `wander`, `chase`, `attack`, `retreat`, `sleep`) formam uma máquina de estados parametrizada; 50 inimigos combinam dados/perfis sem 50 subsistemas. Exceções reais podem ter um sistema especializado pequeno, sem contaminar a base.
+```text
+logicalWidth  = 272
+logicalHeight = 224
+tileSize      = 16
+tickRate      = 60
+```
 
-## Colisão e combate
+Conversões são explícitas. Não espalhar magic numbers.
 
-- AABB em coordenadas de mundo; movimento top-down por eixo, resolvendo tile sólido e depois corpos opcionais.
-- Broad phase inicial por células/chunks do mapa; não testar todo o mundo.
-- `CollisionBody`: bloqueia movimento, normalmente concentrado nos pés.
-- `Hurtbox`: região que aceita dano.
-- `Hitbox`: ataque temporário com owner, faction, damage, knockback e attack instance ID.
-- `InteractionArea`: consulta de uso/fala/baú, sem bloquear.
-- `Trigger`: overlap sem resposta física.
+A posição conceitual de personagens é o ponto dos pés.
 
-Hitboxes não são entidades visuais por obrigação. São ativadas por gameplay ao receber frame marker e deduplicam acertos por `(attackInstance,target)`. Projéteis são entidades leves. Explosões/poeira são `EffectInstance` transitórios em um pool/sistema VFX, não inimigos nem objetos persistentes.
+Anchor visual, draw offset, collision body, hurtbox e hitbox são conceitos diferentes.
 
-## Eventos, HUD, NPC, quests e save
+Para o Player idle/walk, a auditoria de assets fornece como referência inicial:
 
-A simulação publica eventos de domínio (`EntityDamaged`, `EntityDefeated`, `ItemPickedUp`, `ChestOpened`, `RegionEntered`, `DialogueCompleted`). HUD observa um `GameViewModel`/snapshot somente leitura; não acessa campos privados do Player. Quests e achievements futuros consomem eventos e avaliam condições declarativas, sem acoplamento aos sistemas emissores.
+```text
+frame  = 32 × 32
+anchor ≈ (16, 31)
+```
 
-NPC/map instance guarda referência a `NpcDefinition` e overrides mínimos (posição, direção, propriedades). Diálogo, rotina e quest são definições externas versionadas futuramente. O save armazena estado do jogador e deltas do mundo indexados por IDs persistentes: baú aberto, switch, destrutível, boss, flags. Mapas não são copiados inteiros para o save.
+Valores inferidos de asset continuam sujeitos a validação visual.
 
-## Editor integrado
+---
 
-Recomendação: `game.exe` e `map_editor.exe` separados, ambos ligados às mesmas bibliotecas. Isso mantém ciclo de build e falhas do editor isolados, sem duplicar engine. Um `--editor` pode ser adicionado depois como conveniência.
+## 7. Renderer e assets
 
-O editor possui:
+### Framebuffer
 
-- `EditorDocument`: mapa de autoria, seleção, dirty flag e propriedades;
-- ferramentas (`paint`, `erase`, rectangle, stamp, collision, entity, trigger, door, pan`);
-- `EditorCommand` com `apply/revert` e transações para strokes; undo/redo tem orçamento de memória;
-- UI própria desenhada por `Renderer2D`, com hit testing/input no editor;
-- palettes alimentadas pelo catálogo de assets/definitions;
-- `PlaytestSession` que converte uma cópia do documento em mapa runtime, sem salvar nem mutar o documento;
-- salvamento atômico em temporário no mesmo diretório seguido de replace, mantendo backup recuperável.
+`Framebuffer` usa RGBA8 canônico.
 
-O modelo runtime não depende de editor. A serialização opera em DTOs compartilhados e valida tudo antes de construir o mundo.
+Operações devem manter clipping e validação de source/destination.
 
-## Estrutura de diretórios evolutiva
+O apresentador Win32 converte para o formato necessário da DIB somente na borda.
 
-Criar diretórios somente quando sua fase começar:
+### Render order
+
+A composição deve evoluir para passes explícitos, sem misturar regra física:
+
+```text
+ground/background
+decoration low
+entities/objects
+foreground/occluders
+VFX
+HUD/UI
+```
+
+Quando Y-sort for realmente necessário, ordenar por baseline/pés com desempate estável.
+
+### Animation
+
+Estrutura conceitual:
+
+```text
+SpriteSheet
+AnimationClip
+AnimationFrame
+Animator
+```
+
+Frames podem carregar metadados/markers.
+
+Markers como:
+
+```text
+attack_on
+attack_off
+spawn_projectile
+```
+
+são sinais para gameplay. O renderer apenas desenha o frame selecionado.
+
+Não resetar clip todo tick nem reconstruir definição de animação a cada frame.
+
+---
+
+## 8. World e Map Engine
+
+A base de mapa é única e evolutiva:
+
+```text
+RuntimeMap
+TileLayer
+CollisionGrid
+Camera2D
+tile culling
+AABB collision
+```
+
+Novas capacidades estendem essa base.
+
+Não criar:
+
+```text
+Map2
+LevelManager paralelo
+collision grid exclusivo de Player
+collision grid exclusivo de Enemy
+```
+
+Evolução prevista:
+
+```text
+múltiplas layers
+spawns
+map entities
+triggers
+regions
+doors
+links
+transições
+persistent IDs
+```
+
+Arte e colisão permanecem separadas.
+
+`Camera2D` recebe um target/posição calculada; Player não possui Camera.
+
+---
+
+## 9. Gameplay runtime e evolução de entidades
+
+### 9.1 Estado atual de complexidade
+
+Enquanto Player é o único ator real de gameplay, uma classe pequena e explícita é preferível a um ECS antecipado.
+
+O Player pode concentrar somente estado próprio, por exemplo:
+
+```text
+identity
+world/subpixel position
+facing
+motion state
+movement configuration
+collision body information
+```
+
+Ele não possui janela, teclado físico, renderer, imagem, WIC ou câmera.
+
+### 9.2 Quando introduzir identidade runtime genérica
+
+Combate cria o primeiro caso concreto de múltiplos participantes e relações source/target.
+
+Nesse momento é aceitável introduzir a menor identidade runtime compartilhada necessária, preferencialmente:
+
+```text
+EntityHandle(index, generation)
+```
+
+Objetivos imediatos:
+
+- identificar atacante e alvo;
+- invalidar referências após destruição/reuso;
+- suportar deduplicação de hits;
+- preparar criaturas e objetos sem exigir registry de componentes completo.
+
+Introduzir `EntityHandle` **não implica** criar imediatamente:
+
+```text
+ComponentArray
+Archetype
+SparseSet
+SystemManager genérico
+ECS completo
+```
+
+### 9.3 Três identidades futuras
+
+Não confundir:
+
+```text
+EntityHandle(index, generation)       # runtime/sessão
+PersistentInstanceId(mapId, localId) # mapa/save
+DefinitionId                         # tipo/conteúdo
+```
+
+`PersistentInstanceId` e `DefinitionId` entram quando mapas, spawns, definitions e save precisarem deles.
+
+### 9.4 Componentização incremental
+
+Quando Player + criaturas + objetos repetirem dados e operações reais, podem surgir componentes simples como:
+
+```text
+Transform
+Facing
+Visual / Animator
+CollisionBody
+HurtboxSet
+Health
+Faction
+AIController
+Pickup
+Projectile
+Persistent
+```
+
+A extração deve seguir uso comprovado.
+
+Componentes são dados; sistemas operam sobre capacidades necessárias.
+
+Não transformar isso em um framework ECS por vaidade técnica.
+
+---
+
+## 10. Colisão e combate
+
+Manter semanticamente separados:
+
+```text
+CollisionBody    # bloqueia movimento
+Hurtbox          # recebe dano
+Hitbox           # causa dano
+InteractionArea  # uso/fala/baú
+Trigger          # overlap sem resposta física
+```
+
+Sprite bounds não substituem nenhuma dessas estruturas.
+
+### Fluxo de ataque
+
+```text
+PlayerCommand / ActionCommand
+    ↓
+attack state
+    ↓
+Animator / gameplay marker
+    ↓
+AttackSystem / gameplay
+    ↓
+activate hitbox ou spawn projectile
+    ↓
+CombatSystem
+    ↓
+damage resolution
+    ↓
+domain event
+```
+
+Cada execução de ataque recebe `AttackInstanceId` ou equivalente.
+
+Um alvo não pode receber múltiplos hits do mesmo swing por permanecer dentro da hitbox.
+
+### AttackDefinition
+
+Quando houver mais de um ataque real, dados reutilizáveis podem assumir forma semelhante a:
+
+```text
+AttackDefinition
+    type
+    range
+    damage
+    cooldown
+    startup/recovery
+    hitbox or projectile definition
+    animation clip / markers
+    knockback
+    optional selection conditions
+```
+
+A definição não aplica dano sozinha.
+
+### Projectile e VFX
+
+Projéteis possuem estado runtime leve e usam gameplay/world collision.
+
+VFX são transitórios e não são entidades persistentes por obrigação.
+
+---
+
+## 11. Engine de criaturas — direção arquitetural aprovada
+
+O objetivo é tornar a adição de monstros majoritariamente uma operação de conteúdo.
+
+Ideal futuro:
+
+```text
+register assets/clips
++ EnemyDefinition
++ BehaviorProfile
++ AttackDefinitions
++ rewards metadata
++ spawn/map placement
+```
+
+### Definition x runtime
+
+Definição imutável pode conter:
+
+```text
+EnemyDefinition
+    DefinitionId
+    visual / animation set
+    body/hurtbox metadata
+    faction
+    stats
+    movement parameters
+    attacks
+    BehaviorProfileId
+    loot table id quando existir
+    xp reward quando existir
+    tags/capabilities
+```
+
+Estado runtime contém somente mutações:
+
+```text
+EntityHandle
+position
+facing
+health
+behavior state
+target
+timers
+cooldowns
+active attack
+runtime flags
+```
+
+Não copiar catálogos inteiros para cada instância.
+
+### BehaviorProfile + FSM
+
+Comportamentos reutilizáveis formam uma máquina de estados explícita e observável.
+
+Estados candidatos:
+
+```text
+Idle
+Wander
+Sleep
+Wake
+Chase
+Attack
+Retreat
+Stunned   # somente quando necessário
+Dead
+```
+
+Nem toda criatura usa todos.
+
+Transições dependem de condições claras:
+
+```text
+distância
+target válido
+attack range
+cooldown
+timer
+health threshold
+dano recebido
+perception query
+```
+
+Evitar `if (enemy == ...)` espalhado pela engine.
+
+Comportamento especializado pequeno é aceitável quando uma criatura realmente possui uma mecânica única.
+
+### Dano, morte e recompensas
+
+Dano é resolvido pelo mesmo CombatSystem usado pelo Player.
+
+Fluxo de morte desejado:
+
+```text
+health <= 0
+    ↓
+Dead
+    ↓
+desabilitar ataque/hurtbox conforme regra
+    ↓
+death animation / marker
+    ↓
+EntityDefeated event
+    ↓
+loot/reward observers quando existirem
+    ↓
+despawn ou world delta persistente
+```
+
+Creature não atualiza diretamente HUD, quest, save ou XP do Player.
+
+Loot/XP pertencem às fases próprias; antes disso apenas preservar referências/dados mínimos se houver consumidor real.
+
+---
+
+## 12. Objetos e capacidades
+
+Objetos devem evoluir por definição + capacidades, não por uma subclasse profunda para cada sprite.
+
+Capacidades possíveis:
+
+```text
+Pickup
+Container
+Destructible
+Interactable
+Door
+Trigger
+```
+
+Um objeto pode combinar capacidades.
+
+Adicionar um novo objeto não deve exigir um novo sistema se as capacidades existentes já o descrevem.
+
+---
+
+## 13. Eventos, HUD, quests e observers
+
+À medida que sistemas diferentes precisarem reagir à mesma ocorrência, usar eventos de domínio explícitos.
+
+Exemplos futuros:
+
+```text
+EntityDamaged
+EntityDefeated
+ItemPickedUp
+ChestOpened
+RegionEntered
+DialogueCompleted
+```
+
+Eventos desacoplam produtores de consumidores.
+
+HUD observa estado somente leitura, preferencialmente via `GameViewModel` ou snapshot.
+
+Quests consomem eventos; não fazem polling invasivo de internals todo tick.
+
+Morte de criatura não executa diretamente UI, quest e save.
+
+---
+
+## 14. `.dmap`, IDs persistentes e save
+
+Formato de mapa e save são separados.
+
+`.dmap` deve ser:
+
+- versionado;
+- bounds-checked;
+- explicitamente codificado;
+- baseado em IDs estáveis;
+- validado antes de construir o mundo;
+- independente do ABI/layout de structs C++.
+
+Fluxo:
+
+```text
+bytes
+  ↓
+structural validation
+  ↓
+Disk DTO
+  ↓
+migration
+  ↓
+semantic validation
+  ↓
+RuntimeMap / EditorDocument
+```
+
+Save guarda estado do Player/progressão necessária e **deltas persistentes** do mundo, por exemplo:
+
+```text
+chest opened
+switch state
+destructible removed
+boss defeated
+quest/world flags
+```
+
+Não copiar o mapa inteiro para o save.
+
+Não persistir `EntityHandle`.
+
+---
+
+## 15. Scene / Game-State layer
+
+Uma camada de game states será útil quando houver pelo menos dois estados reais que precisem coordenar lifecycle/input/tick/render.
+
+Casos prováveis:
+
+```text
+menu
+gameplay
+pause
+transition
+game over
+editor playtest
+```
+
+Quando surgir a necessidade, introduzir a menor interface que resolva:
+
+```text
+enter
+exit
+update/tick
+render
+input/command routing
+```
+
+Não criar agora Scene Graph universal.
+
+Scene/GameState coordena sistemas; não substitui `RuntimeMap`, entidades, renderer ou câmera.
+
+---
+
+## 16. Map Maker
+
+Recomendação:
+
+```text
+game.exe
+map_editor.exe
+```
+
+Executáveis separados compartilhando engine/map/serialization.
+
+O editor possui modelo próprio:
+
+```text
+EditorDocument
+selection
+dirty state
+tools
+EditorCommand apply/revert
+undo/redo
+property editing
+playtest session
+```
+
+Playtest deve criar runtime a partir de uma cópia/DTO validado sem transformar o estado global do game em editor state.
+
+Copy/paste gera novos IDs persistentes e reescreve referências internas do grupo copiado.
+
+---
+
+## 17. Multiplayer futuro
+
+Preparação saudável já existente ou permitida:
+
+```text
+PlayerCommand
+tick
+player identity
+sequence
+stable IDs
+domain events
+separação de estado e render
+```
+
+Isso não autoriza implementar rede agora.
+
+Antes de Winsock real:
+
+- separar simulação de janela/render;
+- permitir execução headless;
+- gravar/reproduzir command streams;
+- numerar snapshots;
+- definir identidade replicável;
+- medir nondeterminismo relevante.
+
+Só depois:
+
+```text
+handshake
+protocol version
+server authoritative
+command upload
+snapshots/deltas
+prediction/reconciliation quando necessário
+interpolation
+timeouts/rate limits
+```
+
+---
+
+## 18. Ownership
+
+Direção preferida:
+
+```text
+AssetManager
+    owns Images
+
+Animation definitions
+    reference assets
+
+Player / Creature / Object runtime
+    own mutable gameplay state necessário
+
+Animator / visual state
+    own playback state
+
+RuntimeMap
+    owns map layers/collision/runtime map data
+
+Camera2D
+    owns camera state
+```
+
+Não criar ownership circular.
+
+Definições compartilhadas são referenciadas por ID/handle estável de catálogo, não copiadas para cada runtime instance.
+
+---
+
+## 19. Estrutura de diretórios evolutiva
+
+Preservar a estrutura existente e criar novas pastas apenas quando houver código real para colocá-las.
+
+Direção:
 
 ```text
 docs/
@@ -208,38 +1055,89 @@ src/
     assets/
     simulation/
     world/
-    serialization/
-  gameplay/
+    serialization/     # quando a fase iniciar
   game/
-  editor/             # apenas na fase do editor
+    gameplay/
+    ...                 # composição/visuals/states conforme necessidade
+  editor/               # somente na fase do Map Maker
 tests/
-  unit/
-  fixtures/           # fixtures próprias, nunca assets licenciados
 build.bat
 ```
 
-`build.bat` localiza/pressupõe um Developer Command Prompt, compila com `cl.exe`, `/std:c++20`, warnings altos e gera objetos em `build/obj` e binários em `build/bin`. Engine pode começar como conjunto de `.obj`; criar `engine.lib` quando game/editor realmente compartilharem o código. CMake permanece opcional, não requisito.
+Não mover arquivos apenas para satisfazer um desenho teórico se a mudança não trouxer ganho arquitetural concreto.
 
-## Riscos e controles
+Criar `engine.lib` somente quando game/editor realmente compartilharem uma biblioteca e isso simplificar o build.
 
-| Risco | Controle proposto |
-|---|---|
-| RGBA interno versus BGRA/DIB | formato documentado, conversão na borda e teste de canais |
-| Alpha/recorte com pixels fora da tela | testes unitários golden com imagens sintéticas próprias |
-| Pixel shimmer e escala fracionária | arredondar só em world→logical; integer scale + letterbox |
-| Frame layouts/anchors inferidos incorretamente | catálogo declarativo + visualizador antes de gameplay |
-| Gate/spikes têm fundo opaco | validar uso; não aplicar color key implícito |
-| Catch-up infinito após breakpoint/resize | clamp, limite de ticks e telemetria |
-| Input perde edges entre frames/ticks | fila de edges com consumo por tick + estado held separado |
-| IDs quebrados pelo editor | IDs imutáveis, duplicação gera novo ID, validação de unicidade |
-| Formato vira dump de structs | encoding explícito, chunks versionados, migração em DTO |
-| Entidade vira novo `GameObject` monolítico | componentes pequenos e systems orientados a capacidades |
-| ECS vira framework próprio excessivo | implementar apenas stores/queries exigidos pelo slice |
-| Editor contamina runtime | document model separado e dependência unidirecional |
-| “Preparar multiplayer” paralisa o jogo | apenas comandos/ticks/IDs/eventos agora; rede depois |
-| Assets licenciados vazam no Git/build | ignore futuro, distribuição separada e fixtures autorais |
-| WIC/COM vaza para o engine | adapter Win32 com retorno `ImageData` puro |
+CMake não é requisito sem decisão explícita.
 
-## Decisões adiadas deliberadamente
+---
 
-Áudio, decoder PNG próprio, scripting, formato de diálogo/quest, pathfinding avançado, hot reload, multithreading do renderer, rede e protocolo não pertencem ao primeiro vertical slice. Suas extensões são preservadas por contratos e IDs, não por pastas vazias ou abstrações sem consumidor.
+## 20. Qualidade e performance
+
+Cada incremento deve terminar compilável, testável e observável.
+
+Regras:
+
+- `/W4`;
+- objetivo de 0 warnings;
+- testes para regras novas relevantes;
+- fixtures sintéticas próprias;
+- `git diff --check`;
+- smoke tests para comportamento visual/interativo;
+- erros externos não dependem de `assert`.
+
+Não otimizar prematuramente, mas também não introduzir ineficiências óbvias:
+
+```text
+não carregar PNG todo frame
+não reconstruir clips todo frame
+não copiar spritesheet todo frame
+não alocar pequenos comandos no heap sem motivo
+não testar colisão contra o mundo inteiro
+não duplicar queries que o world já oferece
+```
+
+Broad-phase, pooling e estruturas densas entram quando medições ou volume real justificarem.
+
+---
+
+## 21. Anti-padrões arquiteturais
+
+Evitar explicitamente:
+
+```text
+Win32 -> Player diretamente
+Renderer -> modifica gameplay
+Renderer/animation -> aplica dano diretamente
+Enemy subclass por monstro sem necessidade
+Map duplicado por sistema
+Sprite AABB = collision = hurtbox = hitbox
+Quest polling de internals
+Save de ponteiros/handles runtime
+Dump binário cru de structs
+ECS genérico antecipado
+Scene graph universal
+Manager que conhece tudo
+Singleton global para facilitar dependências
+biblioteca externa substituindo engine existente sem decisão
+```
+
+---
+
+## 22. Regra de evolução
+
+Quando existir um único caso real, implemente-o de forma pequena e deixe uma fronteira limpa.
+
+Quando dois ou três casos reais demonstrarem repetição, extraia o sistema comum mínimo.
+
+O objetivo final não é possuir o maior número possível de “engines”. É chegar a uma base em que:
+
+```text
+novo monstro
+novo objeto
+novo mapa
+novo NPC
+nova quest
+```
+
+sejam principalmente operações de conteúdo e configuração, sem reescrever sistemas centrais.
