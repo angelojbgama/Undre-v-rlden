@@ -29,6 +29,7 @@
 #include "game/effect_system.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
+#include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
@@ -1497,6 +1498,198 @@ void testPhase6CombatGeneralization() {
            "PlayerId command identity remains distinct from runtime EntityHandle");
 }
 
+void testCreatureDefinitionsAndBehavior() {
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+
+    const simulation::DefinitionId behaviorId{"behavior.test.melee"};
+    const simulation::DefinitionId visualId{"visual.enemy.test"};
+    const simulation::DefinitionId enemyId{"enemy.test.melee"};
+    const simulation::DefinitionId fastEnemyId{"enemy.test.fast_melee"};
+    const simulation::DefinitionId attackId{"attack.test.melee"};
+
+    gameplay::DirectionalBoxes boxes{{{
+        {-8, -2, 16, 12}, {-8, -18, 16, 12},
+        {-18, -12, 14, 12}, {4, -12, 14, 12},
+    }}};
+    gameplay::AttackCatalog attacks;
+    attacks.add({attackId, gameplay::AttackKind::meleeHitbox, {1, 4}, 12, 20,
+                 0, 24, simulation::DefinitionId{"visual.attack.test"}, boxes,
+                 std::nullopt});
+    gameplay::ProjectileCatalog projectiles;
+
+    creatures::BehaviorCatalog behaviors;
+    const creatures::BehaviorProfile profile{
+        behaviorId, 80, 112, 3, 4};
+    behaviors.add(profile);
+    expect(behaviors.find(behaviorId) != nullptr &&
+               behaviors.require(behaviorId).disengageRangePixels == 112,
+           "BehaviorCatalog resolves immutable profiles by DefinitionId");
+    bool duplicateBehaviorRejected = false;
+    try { behaviors.add(profile); }
+    catch (const std::logic_error&) { duplicateBehaviorRejected = true; }
+    expect(duplicateBehaviorRejected, "BehaviorCatalog rejects duplicate ids");
+
+    creatures::EnemyCatalog enemies;
+    const creatures::EnemyDefinition definition{
+        enemyId, visualId, behaviorId, gameplay::Faction::enemy, 3, 256,
+        {-5, -8, 10, 8}, {-7, -22, 14, 22}, {attackId}};
+    enemies.add(definition);
+    enemies.add({fastEnemyId, visualId, behaviorId, gameplay::Faction::enemy, 7, 512,
+                 {-5, -8, 10, 8}, {-7, -22, 14, 22}, {attackId}});
+    expect(enemies.find(enemyId) != nullptr &&
+               enemies.require(enemyId).maximumHealth == 3,
+           "EnemyCatalog stores reusable definitions rather than runtime state");
+    bool duplicateEnemyRejected = false;
+    try { enemies.add(definition); }
+    catch (const std::logic_error&) { duplicateEnemyRejected = true; }
+    expect(duplicateEnemyRejected, "EnemyCatalog rejects duplicate ids");
+
+    simulation::EntityHandlePool pool;
+    const std::array availableVisuals{visualId};
+    creatures::EnemyFactory factory(
+        pool, enemies, behaviors, attacks, projectiles, availableVisuals);
+    auto first = factory.create(enemyId, {200, 200});
+    auto second = factory.create(enemyId, {240, 200}, gameplay::FacingDirection::left);
+    expect(first.handle() != second.handle() &&
+               &first.definition() == &second.definition(),
+           "two enemy instances share one definition but own distinct handles");
+    static_cast<void>(first.combatant().health.applyDamage(1));
+    expect(first.combatant().health.current == 2 &&
+               second.combatant().health.current == 3 &&
+               first.feetPosition() != second.feetPosition(),
+           "enemy health and position remain independent runtime state");
+    auto synthetic = factory.create(fastEnemyId, {280, 200});
+    expect(synthetic.combatant().health.maximum == 7 &&
+               synthetic.definition().movementSpeedSubpixelsPerTick == 512,
+           "a third synthetic enemy variant is created through data only");
+
+    bool unknownEnemyRejected = false;
+    try { [[maybe_unused]] auto invalid = factory.create(
+              simulation::DefinitionId{"enemy.missing"}, {100, 100}); }
+    catch (const std::out_of_range&) { unknownEnemyRejected = true; }
+    expect(unknownEnemyRejected, "EnemyFactory rejects an unknown enemy definition");
+
+    creatures::EnemyCatalog brokenEnemies;
+    brokenEnemies.add({simulation::DefinitionId{"enemy.bad.visual"},
+                       simulation::DefinitionId{"visual.missing"}, behaviorId,
+                       gameplay::Faction::enemy, 1, 256,
+                       {-5, -8, 10, 8}, {-7, -22, 14, 22}, {attackId}});
+    creatures::EnemyFactory brokenFactory(
+        pool, brokenEnemies, behaviors, attacks, projectiles, availableVisuals);
+    bool missingVisualRejected = false;
+    try { [[maybe_unused]] auto invalid = brokenFactory.create(
+              simulation::DefinitionId{"enemy.bad.visual"}, {100, 100}); }
+    catch (const std::invalid_argument&) { missingVisualRejected = true; }
+    expect(missingVisualRejected,
+           "EnemyFactory rejects a definition whose visual set is unavailable");
+
+    creatures::EnemyCatalog missingAttackEnemies;
+    missingAttackEnemies.add({simulation::DefinitionId{"enemy.bad.attack"}, visualId,
+                              behaviorId, gameplay::Faction::enemy, 1, 256,
+                              {-5, -8, 10, 8}, {-7, -22, 14, 22},
+                              {simulation::DefinitionId{"attack.missing"}}});
+    creatures::EnemyFactory missingAttackFactory(
+        pool, missingAttackEnemies, behaviors, attacks, projectiles, availableVisuals);
+    bool missingAttackRejected = false;
+    try { [[maybe_unused]] auto invalid = missingAttackFactory.create(
+              simulation::DefinitionId{"enemy.bad.attack"}, {100, 100}); }
+    catch (const std::out_of_range&) { missingAttackRejected = true; }
+    expect(missingAttackRejected,
+           "EnemyFactory rejects a definition whose attack is unavailable");
+
+    underworld::world::CollisionGrid openGrid(64, 64);
+    creatures::EnemyBehaviorSystem behavior;
+    const auto playerHandle = pool.create();
+    auto actor = factory.create(enemyId, {200, 200});
+    static_cast<void>(behavior.update(actor, playerHandle, {500, 500}, true, profile,
+                                      attacks, openGrid, 16));
+    static_cast<void>(behavior.update(actor, playerHandle, {500, 500}, true, profile,
+                                      attacks, openGrid, 16));
+    const auto idleToWander = behavior.update(
+        actor, playerHandle, {500, 500}, true, profile, attacks, openGrid, 16);
+    expect(idleToWander.stateChanged && actor.state() == creatures::BehaviorState::wander,
+           "Idle transitions to Wander when its deterministic timer expires");
+    const auto wanderStart = actor.feetPosition();
+    static_cast<void>(behavior.update(actor, playerHandle, {500, 500}, true, profile,
+                                      attacks, openGrid, 16));
+    expect(actor.feetPosition() != wanderStart,
+           "Wander performs deterministic fixed-tick movement");
+
+    simulation::EntityHandlePool deterministicPoolA;
+    simulation::EntityHandlePool deterministicPoolB;
+    creatures::EnemyFactory deterministicFactoryA(
+        deterministicPoolA, enemies, behaviors, attacks, projectiles, availableVisuals);
+    creatures::EnemyFactory deterministicFactoryB(
+        deterministicPoolB, enemies, behaviors, attacks, projectiles, availableVisuals);
+    auto sameInitial = deterministicFactoryA.create(enemyId, {320, 320});
+    auto sameInitialCopy = deterministicFactoryB.create(enemyId, {320, 320});
+    for (int tick = 0; tick < 4; ++tick) {
+        static_cast<void>(behavior.update(sameInitial, playerHandle, {900, 900}, true,
+                                          profile, attacks, openGrid, 16));
+        static_cast<void>(behavior.update(sameInitialCopy, playerHandle, {900, 900}, true,
+                                          profile, attacks, openGrid, 16));
+    }
+    expect(sameInitial.state() == sameInitialCopy.state() &&
+               sameInitial.feetPosition() == sameInitialCopy.feetPosition(),
+           "Wander is deterministic for equivalent initialized state");
+
+    auto hunter = factory.create(enemyId, {200, 200});
+    const auto detected = behavior.update(
+        hunter, playerHandle, {250, 200}, true, profile, attacks, openGrid, 16);
+    expect(detected.stateChanged && hunter.state() == creatures::BehaviorState::chase &&
+               hunter.target() == playerHandle,
+           "Idle detects a live Player and transitions to Chase");
+    const int beforeChase = hunter.feetPosition().x;
+    static_cast<void>(behavior.update(hunter, playerHandle, {250, 200}, true, profile,
+                                      attacks, openGrid, 16));
+    expect(hunter.feetPosition().x > beforeChase,
+           "Chase moves toward the target in a free map");
+    static_cast<void>(behavior.update(hunter, playerHandle, {300, 200}, true, profile,
+                                      attacks, openGrid, 16));
+    expect(hunter.state() == creatures::BehaviorState::chase,
+           "perception hysteresis keeps Chase outside detection but inside disengage range");
+    static_cast<void>(behavior.update(hunter, playerHandle, {400, 200}, true, profile,
+                                      attacks, openGrid, 16));
+    expect(hunter.state() == creatures::BehaviorState::idle && !hunter.target(),
+           "Chase disengages only beyond the larger disengage range");
+
+    auto attacker = factory.create(enemyId, {200, 200}, gameplay::FacingDirection::left);
+    static_cast<void>(behavior.update(attacker, playerHandle, {214, 200}, true, profile,
+                                      attacks, openGrid, 16));
+    const auto attackStarted = behavior.update(
+        attacker, playerHandle, {214, 200}, true, profile, attacks, openGrid, 16);
+    expect(attackStarted.attackStarted &&
+               attacker.state() == creatures::BehaviorState::attack &&
+               attacker.activeAttack()->definition->id == attackId,
+           "Chase selects the first available attack whose configured range matches");
+    const auto lockedFeet = attacker.feetPosition();
+    const auto lockedFacing = attacker.facing();
+    attacker.move(-1, -1, openGrid, 16);
+    expect(attacker.feetPosition() == lockedFeet && attacker.facing() == lockedFacing,
+           "Attack state locks enemy movement and facing");
+    behavior.finishAttack(attacker, profile);
+    expect(attacker.state() == creatures::BehaviorState::chase &&
+               attacker.cooldownFor(attackId)->remainingTicks == 20,
+           "finishing an attack returns to Chase and starts definition cooldown");
+    expect(behavior.selectAttack(attacker, {214, 200}, attacks) == nullptr,
+           "an attack cannot be selected while its runtime cooldown is active");
+
+    underworld::world::CollisionGrid wallGrid(64, 64);
+    wallGrid.setSolid(13, 12, true);
+    auto blocked = factory.create(enemyId, {204, 200});
+    static_cast<void>(behavior.update(blocked, playerHandle, {250, 200}, true, profile,
+                                      attacks, wallGrid, 16));
+    const int blockedStart = blocked.feetPosition().x;
+    for (int tick = 0; tick < 20; ++tick) {
+        static_cast<void>(behavior.update(blocked, playerHandle, {250, 200}, true, profile,
+                                          attacks, wallGrid, 16));
+    }
+    expect(blocked.feetPosition().x < 213 && blocked.feetPosition().x >= blockedStart,
+           "Chase reuses tile collision and cannot cross a solid wall");
+}
+
 void testPresentationRect() {
     using underworld::platform::calculatePresentationRect;
 
@@ -1591,6 +1784,7 @@ int main() {
         testCombatSystem();
         testProjectilesAndEffects();
         testPhase6CombatGeneralization();
+        testCreatureDefinitionsAndBehavior();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
