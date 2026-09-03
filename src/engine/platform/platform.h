@@ -3,6 +3,7 @@
 #include "engine/core/pixel_buffer_view.h"
 #include "engine/platform/debug_input.h"
 #include "engine/platform/image_decoder.h"
+#include "engine/platform/input_state.h"
 
 #include <filesystem>
 #include <string_view>
@@ -28,6 +29,7 @@ public:
     virtual void log(LogLevel level, std::string_view message) const = 0;
     [[nodiscard]] virtual ImageDecoder& imageDecoder() noexcept = 0;
     [[nodiscard]] virtual std::filesystem::path executableDirectory() const = 0;
+    [[nodiscard]] virtual InputState inputState() const noexcept = 0;
     [[nodiscard]] virtual DebugInputState consumeDebugInput() noexcept = 0;
 };
 

@@ -2,16 +2,8 @@
 
 namespace underworld::platform {
 
-// Temporary Phase 3 tool controls. This is deliberately not gameplay InputState.
+// Tool-only edge input. Gameplay never consumes this structure.
 struct DebugInputState final {
-    bool cameraLeft{};
-    bool cameraRight{};
-    bool cameraUp{};
-    bool cameraDown{};
-    bool bodyLeft{};
-    bool bodyRight{};
-    bool bodyUp{};
-    bool bodyDown{};
     bool toggleCollisionPressed{};
 };
 

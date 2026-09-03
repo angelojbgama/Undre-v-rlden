@@ -4,7 +4,7 @@
 #include "engine/core/game_metrics.h"
 #include "engine/platform/platform.h"
 #include "engine/render/framebuffer.h"
-#include "game/phase3_demo.h"
+#include "game/phase4_demo.h"
 
 #include <cstdint>
 #include <sstream>
@@ -24,7 +24,7 @@ constexpr core::FixedStepConfig fixedStepConfig{
 int run(platform::Platform& platform) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
-    Phase3Demo demo(platform.imageDecoder(),
+    Phase4Demo demo(platform.imageDecoder(),
                     findLicensedAssetRoot(platform.executableDirectory()));
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
@@ -54,7 +54,7 @@ int run(platform::Platform& platform) {
 
         const core::FixedStepResult step = accumulator.advance(frameDelta, [&] {
             ++tickCount;
-            demo.fixedTick(platform.consumeDebugInput());
+            demo.fixedTick(tickCount, platform.inputState(), platform.consumeDebugInput());
         });
 
         if (step.frameDeltaClamped || step.catchUpLimited) {

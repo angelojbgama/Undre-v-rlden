@@ -14,6 +14,7 @@
 #include "engine/platform/win32/win32_image_decoder.h"
 #include "game/game.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -29,7 +30,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 3 Tile World";
+constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 4 Player";
 
 class Win32Platform final : public Platform {
 public:
@@ -193,6 +194,8 @@ public:
         }
     }
 
+    [[nodiscard]] InputState inputState() const noexcept override { return inputState_; }
+
     [[nodiscard]] DebugInputState consumeDebugInput() noexcept override {
         DebugInputState result = debugInput_;
         debugInput_.toggleCollisionPressed = false;
@@ -341,12 +344,14 @@ private:
             applyMinimumWindowSize(*reinterpret_cast<MINMAXINFO*>(lParam));
             return 0;
         case WM_KEYDOWN:
-            updateDebugKey(wParam, true, (lParam & (1LL << 30)) != 0);
+            updateKey(wParam, true, (lParam & (1LL << 30)) != 0);
             return 0;
         case WM_KEYUP:
-            updateDebugKey(wParam, false, false);
+            updateKey(wParam, false, false);
             return 0;
         case WM_KILLFOCUS:
+            keyDown_.fill(false);
+            inputState_.clear();
             debugInput_ = {};
             return 0;
         case WM_DPICHANGED: {
@@ -375,16 +380,16 @@ private:
         }
     }
 
-    void updateDebugKey(WPARAM key, bool down, bool wasDown) noexcept {
+    void updateKey(WPARAM key, bool down, bool wasDown) noexcept {
+        if (key < keyDown_.size()) {
+            keyDown_[static_cast<std::size_t>(key)] = down;
+        }
+        inputState_.moveLeft = keyDown_['A'] || keyDown_[VK_LEFT];
+        inputState_.moveRight = keyDown_['D'] || keyDown_[VK_RIGHT];
+        inputState_.moveUp = keyDown_['W'] || keyDown_[VK_UP];
+        inputState_.moveDown = keyDown_['S'] || keyDown_[VK_DOWN];
+
         switch (key) {
-        case 'A': debugInput_.cameraLeft = down; break;
-        case 'D': debugInput_.cameraRight = down; break;
-        case 'W': debugInput_.cameraUp = down; break;
-        case 'S': debugInput_.cameraDown = down; break;
-        case VK_LEFT: debugInput_.bodyLeft = down; break;
-        case VK_RIGHT: debugInput_.bodyRight = down; break;
-        case VK_UP: debugInput_.bodyUp = down; break;
-        case VK_DOWN: debugInput_.bodyDown = down; break;
         case 'C':
             if (down && !wasDown) {
                 debugInput_.toggleCollisionPressed = true;
@@ -430,6 +435,8 @@ private:
     int clientHeight_{};
     Win32Clock clock_{};
     Win32ImageDecoder imageDecoder_{};
+    std::array<bool, 256> keyDown_{};
+    InputState inputState_{};
     DebugInputState debugInput_{};
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};

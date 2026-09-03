@@ -33,6 +33,7 @@ public:
 
     void setPosition(core::WorldPointI position) noexcept { position_ = position; }
     void move(int deltaX, int deltaY) noexcept;
+    void centerOn(core::WorldPointI target) noexcept;
     void clampToWorld(int worldWidthPixels, int worldHeightPixels) noexcept;
 
     [[nodiscard]] core::LogicalPointI worldToLogical(core::WorldPointI world) const noexcept;

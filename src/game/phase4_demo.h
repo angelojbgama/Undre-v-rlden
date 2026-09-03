@@ -2,6 +2,8 @@
 
 #include "engine/assets/asset_manager.h"
 #include "engine/platform/debug_input.h"
+#include "engine/platform/input_state.h"
+#include "engine/simulation/player_command.h"
 
 #include <filesystem>
 #include <memory>
@@ -11,13 +13,13 @@ namespace underworld::render { class Framebuffer; }
 
 namespace underworld::game {
 
-// Tile/camera/collision diagnostic only. It is not a gameplay scene or Player system.
-class Phase3Demo final {
+class Phase4Demo final {
 public:
-    Phase3Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
-    ~Phase3Demo();
+    Phase4Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
+    ~Phase4Demo();
 
-    void fixedTick(platform::DebugInputState input);
+    void fixedTick(simulation::Tick tick, const platform::InputState& input,
+                   platform::DebugInputState debugInput);
     void render(render::Framebuffer& framebuffer) const;
 
 private:

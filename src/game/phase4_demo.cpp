@@ -1,7 +1,8 @@
-#include "game/phase3_demo.h"
+#include "game/phase4_demo.h"
 
 #include "engine/core/game_metrics.h"
 #include "engine/platform/image_decoder.h"
+#include "engine/render/animation.h"
 #include "engine/render/bitmap_font.h"
 #include "engine/render/camera_2d.h"
 #include "engine/render/framebuffer.h"
@@ -10,6 +11,9 @@
 #include "engine/world/collision.h"
 #include "engine/world/runtime_map.h"
 #include "engine/world/tile.h"
+#include "game/command_builder.h"
+#include "game/gameplay/player.h"
+#include "game/player_visual.h"
 
 #include <array>
 #include <cstdint>
@@ -17,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace underworld::game {
 
@@ -26,12 +31,14 @@ constexpr int mapWidthTiles = 64;
 constexpr int mapHeightTiles = 48;
 constexpr int atlasColumns = 19;
 constexpr world::TilesetId dungeonTilesetId = 1;
+constexpr simulation::PlayerId localPlayerId{0};
+constexpr core::WorldPointI playerSpawn{104, 144};
 
 constexpr std::uint32_t atlasIndex(int x, int y) {
     return static_cast<std::uint32_t>(y * atlasColumns + x);
 }
 
-// Phase 3 demo selection only; this is not a semantic catalog for the full atlas.
+// Phase 3/4 demo selection only; this is not a semantic catalog for the full atlas.
 constexpr std::uint32_t floorPlain = atlasIndex(10, 4);
 constexpr std::uint32_t floorCracked = atlasIndex(11, 4);
 constexpr std::uint32_t wallHorizontal = atlasIndex(11, 2);
@@ -46,38 +53,69 @@ world::TileCell tile(std::uint32_t sourceIndex, bool flipX = false) {
                           flipX ? world::TileFlags::flipX : world::TileFlags::none};
 }
 
-int axis(bool positive, bool negative, int speed) {
-    return (positive ? speed : 0) - (negative ? speed : 0);
+std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
+    std::string id, std::shared_ptr<const render::SpriteSheet> sheet,
+    int row, int frameCount, std::uint32_t durationTicks) {
+    constexpr int frameSize = 32;
+    constexpr core::PointI feetAnchor{16, 31};
+    std::vector<render::AnimationFrame> frames;
+    frames.reserve(static_cast<std::size_t>(frameCount));
+    for (int column = 0; column < frameCount; ++column) {
+        frames.push_back({{{column * frameSize, row * frameSize, frameSize, frameSize},
+                           feetAnchor, {}, false},
+                          durationTicks,
+                          {}});
+    }
+    return std::make_shared<const render::AnimationClip>(
+        std::move(id), std::move(sheet), std::move(frames), true);
 }
 
 } // namespace
 
-struct Phase3Demo::State final {
+struct Phase4Demo::State final {
     State(std::shared_ptr<const render::Image> tileImage,
-          std::shared_ptr<const render::Image> fontImage)
-        : tileset(std::move(tileImage)), atlas(tileset->width(), tileset->height(),
-          core::GameMetrics::tileSize), font(std::move(fontImage)),
+          std::shared_ptr<const render::Image> fontImage,
+          std::shared_ptr<const render::Image> idleImage,
+          std::shared_ptr<const render::Image> walkImage)
+        : tileset(std::move(tileImage)),
+          atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
+          font(std::move(fontImage)),
+          idleSheet(std::make_shared<const render::SpriteSheet>(std::move(idleImage))),
+          walkSheet(std::make_shared<const render::SpriteSheet>(std::move(walkImage))),
           map(mapWidthTiles, mapHeightTiles, core::GameMetrics::tileSize),
-          camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight) {
+          camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
+          player(localPlayerId, playerSpawn) {
         if (atlas.columns() != 19 || atlas.rows() != 12) {
-            throw std::runtime_error("Phase 3 demo expects the audited 19x12 dungeon tileset");
+            throw std::runtime_error("Phase 4 demo expects the audited 19x12 dungeon tileset");
         }
         groundLayer = map.addLayer("ground");
         lowLayer = map.addLayer("decoration_low");
         foregroundLayer = map.addLayer("foreground");
         buildDungeon();
-        camera.setPosition({0, 0});
-        camera.clampToWorld(map.worldWidthPixels(), map.worldHeightPixels());
+        if (world::querySolidTiles(map.collision(), player.collisionBody(), map.tileSize()).collides) {
+            throw std::runtime_error("Phase 4 player spawn overlaps map collision");
+        }
+
+        PlayerVisual::DirectionalClips idleClips{
+            makeDirectionalClip("player.idle.down", idleSheet, 0, 2, 30),
+            makeDirectionalClip("player.idle.up", idleSheet, 1, 2, 30),
+            makeDirectionalClip("player.idle.side", idleSheet, 2, 2, 30)};
+        PlayerVisual::DirectionalClips walkClips{
+            makeDirectionalClip("player.walk.down", walkSheet, 0, 4, 8),
+            makeDirectionalClip("player.walk.up", walkSheet, 1, 4, 8),
+            makeDirectionalClip("player.walk.side", walkSheet, 2, 4, 8)};
+        visual = std::make_unique<PlayerVisual>(std::move(idleClips), std::move(walkClips));
+        visual->update(player.motionState(), player.facing(), 0);
+        followPlayer();
     }
 
     void buildDungeon() {
         auto& ground = map.layer(groundLayer);
         for (int y = 0; y < map.heightTiles(); ++y) {
             for (int x = 0; x < map.widthTiles(); ++x) {
-                std::uint32_t floor = floorPlain;
-                if ((x * 7 + y * 11) % 29 == 0) {
-                    floor = floorCracked;
-                }
+                const std::uint32_t floor = (x * 7 + y * 11) % 29 == 0
+                                                ? floorCracked
+                                                : floorPlain;
                 ground.set(x, y, tile(floor));
             }
         }
@@ -86,7 +124,6 @@ struct Phase3Demo::State final {
         horizontalWall(2, 61, 45);
         verticalWall(2, 3, 44, false);
         verticalWall(61, 3, 44, true);
-
         horizontalWall(2, 10, 15);
         horizontalWall(14, 28, 15);
         verticalWallWithGap(28, 2, 28, 9, 11, true);
@@ -94,7 +131,6 @@ struct Phase3Demo::State final {
         horizontalWall(47, 61, 28);
         verticalWallWithGap(44, 28, 45, 36, 38, false);
 
-        // A foreground arch over the first corridor demonstrates the post-body pass.
         auto& foreground = map.layer(foregroundLayer);
         for (int index = 0; index < 3; ++index) {
             foreground.set(11 + index, 14, tile(archTiles[static_cast<std::size_t>(index)]));
@@ -104,13 +140,11 @@ struct Phase3Demo::State final {
         for (int y = 5; y < map.heightTiles() - 3; y += 7) {
             for (int x = 5; x < map.widthTiles() - 3; x += 11) {
                 if (!map.collision().isSolid(x, y)) {
-                    const auto variant = floorMarkFirst + static_cast<std::uint32_t>((x + y) % 5);
-                    low.set(x, y, tile(variant));
+                    low.set(x, y, tile(floorMarkFirst +
+                                            static_cast<std::uint32_t>((x + y) % 5)));
                 }
             }
         }
-
-        // Deliberately independent cells: visual wall/non-solid and floor/solid.
         low.set(7, 7, tile(wallVertical));
         map.collision().setSolid(6, 7, true);
     }
@@ -144,20 +178,22 @@ struct Phase3Demo::State final {
         }
     }
 
-    void update(platform::DebugInputState input) {
-        constexpr int cameraPixelsPerTick = 1;
-        constexpr int bodyPixelsPerTick = 2;
-        camera.move(axis(input.cameraRight, input.cameraLeft, cameraPixelsPerTick),
-                    axis(input.cameraDown, input.cameraUp, cameraPixelsPerTick));
+    void followPlayer() {
+        camera.centerOn(player.feetPosition());
         camera.clampToWorld(map.worldWidthPixels(), map.worldHeightPixels());
+    }
 
-        const int bodyDeltaX = axis(input.bodyRight, input.bodyLeft, bodyPixelsPerTick);
-        const int bodyDeltaY = axis(input.bodyDown, input.bodyUp, bodyPixelsPerTick);
-        lastMovement = world::moveAgainstSolidTiles(
-            map.collision(), debugBody, bodyDeltaX, bodyDeltaY, map.tileSize());
-        if (input.toggleCollisionPressed) {
+    void update(simulation::Tick tick, const platform::InputState& input,
+                platform::DebugInputState debugInput) {
+        const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
+        player.update(command, map.collision(), map.tileSize());
+        visual->update(player.motionState(), player.facing());
+        followPlayer();
+        if (debugInput.toggleCollisionPressed) {
             collisionOverlay = !collisionOverlay;
         }
+        lastTick = tick;
+        lastSequence = command.sequence;
     }
 
     std::size_t renderLayer(render::Renderer2D& renderer, const world::TileLayer& layer,
@@ -173,7 +209,7 @@ struct Phase3Demo::State final {
                     continue;
                 }
                 if (cell->definition.tilesetId != dungeonTilesetId) {
-                    throw std::runtime_error("Phase 3 demo encountered an unknown tileset id");
+                    throw std::runtime_error("Phase 4 demo encountered an unknown tileset id");
                 }
                 const core::RectI source = atlas.sourceRect(cell->definition.sourceIndex);
                 const int destinationX = x * map.tileSize() - cameraPosition.x;
@@ -186,6 +222,12 @@ struct Phase3Demo::State final {
             }
         }
         return visible.tileCount();
+    }
+
+    void renderPlayer(render::Renderer2D& renderer) const {
+        const auto logical = camera.worldToLogical(player.feetPosition());
+        render::drawAnimator(renderer, visual->animator(), {logical.x, logical.y},
+                             visual->flipX());
     }
 
     void renderCollisionOverlay(render::Renderer2D& renderer,
@@ -208,31 +250,26 @@ struct Phase3Demo::State final {
                 renderer.fillRect({logicalX, logicalY, 1, map.tileSize()}, edge);
             }
         }
+        const auto body = player.collisionBody();
+        const auto bodyLogical = camera.worldToLogical({body.x, body.y});
+        renderer.fillRect({bodyLogical.x, bodyLogical.y, body.width, 1}, {32, 255, 255, 255});
+        renderer.fillRect({bodyLogical.x, bodyLogical.y, 1, body.height}, {32, 255, 255, 255});
     }
 
-    void renderBody(render::Renderer2D& renderer) const {
-        const auto logical = camera.worldToLogical({debugBody.x, debugBody.y});
-        renderer.fillRect({logical.x, logical.y, debugBody.width, debugBody.height},
-                          {40, 220, 255, 255});
-        renderer.fillRect({logical.x + 2, logical.y + 2,
-                           debugBody.width - 4, debugBody.height - 4},
-                          {235, 255, 255, 255});
-    }
-
-    void renderHud(render::Renderer2D& renderer, render::VisibleTileRange visible,
-                   std::size_t consulted) const {
+    void renderHud(render::Renderer2D& renderer) const {
         renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 29}, {8, 10, 16, 220});
+        const auto feet = player.feetPosition();
         std::ostringstream first;
-        first << "PHASE_3 CAM " << camera.position().x << ' ' << camera.position().y
-              << " BODY " << debugBody.x << ' ' << debugBody.y;
+        first << "PHASE_4 T " << lastTick << " P " << feet.x << ' ' << feet.y;
         render::drawText(renderer, font, first.str(), 3, 3);
         std::ostringstream second;
-        second << "VISIBLE " << visible.firstX << '.' << visible.lastX << ' '
-               << visible.firstY << '.' << visible.lastY << " CELLS " << consulted;
+        second << gameplay::facingName(player.facing()) << ' '
+               << gameplay::motionStateName(player.motionState()) << " CAM "
+               << camera.position().x << ' ' << camera.position().y << " S " << lastSequence;
         render::drawText(renderer, font, second.str(), 3, 12);
         render::drawText(renderer, font,
-                         collisionOverlay ? "WASD CAMERA ARROWS BODY C COLLISION ON"
-                                          : "WASD CAMERA ARROWS BODY C COLLISION OFF",
+                         collisionOverlay ? "WASD ARROWS MOVE C COLLISION ON"
+                                          : "WASD ARROWS MOVE C COLLISION OFF",
                          3, 21);
     }
 
@@ -240,44 +277,52 @@ struct Phase3Demo::State final {
         framebuffer.clear({28, 13, 22, 255});
         render::Renderer2D renderer(framebuffer);
         const auto visible = camera.visibleTiles(map.widthTiles(), map.heightTiles(), map.tileSize());
-        std::size_t consulted = 0;
-        consulted += renderLayer(renderer, map.layer(groundLayer), visible);
-        consulted += renderLayer(renderer, map.layer(lowLayer), visible);
-        renderBody(renderer); // Future entity pass intentionally sits here.
-        consulted += renderLayer(renderer, map.layer(foregroundLayer), visible);
+        renderLayer(renderer, map.layer(groundLayer), visible);
+        renderLayer(renderer, map.layer(lowLayer), visible);
+        renderPlayer(renderer);
+        renderLayer(renderer, map.layer(foregroundLayer), visible);
         renderCollisionOverlay(renderer, visible);
-        renderHud(renderer, visible, consulted);
+        renderHud(renderer);
     }
 
     std::shared_ptr<const render::Image> tileset;
     world::TileAtlasLayout atlas;
     render::BitmapFont font;
+    std::shared_ptr<const render::SpriteSheet> idleSheet;
+    std::shared_ptr<const render::SpriteSheet> walkSheet;
+    std::unique_ptr<PlayerVisual> visual;
     world::RuntimeMap map;
     render::Camera2D camera;
-    world::AabbI debugBody{6 * core::GameMetrics::tileSize + 3,
-                           8 * core::GameMetrics::tileSize + 3, 10, 10};
-    world::MovementResult lastMovement{};
+    gameplay::Player player;
+    CommandBuilder commandBuilder;
+    simulation::Tick lastTick{};
+    std::uint32_t lastSequence{};
     std::size_t groundLayer{};
     std::size_t lowLayer{};
     std::size_t foregroundLayer{};
-    bool collisionOverlay{true};
+    bool collisionOverlay{};
 };
 
-Phase3Demo::Phase3Demo(platform::ImageDecoder& decoder,
+Phase4Demo::Phase4Demo(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot) {
     const auto tileset = assets_.loadImage(
         "tileset.dungeon", assetRoot / "Tileset/tileset.png", decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
-    state_ = std::make_unique<State>(tileset, font);
+    const auto idle = assets_.loadImage(
+        "player.idle", assetRoot / "Characters/Player/idle/player_idle.png", decoder);
+    const auto walk = assets_.loadImage(
+        "player.walk", assetRoot / "Characters/Player/walking/player_walking.png", decoder);
+    state_ = std::make_unique<State>(tileset, font, idle, walk);
 }
 
-Phase3Demo::~Phase3Demo() = default;
+Phase4Demo::~Phase4Demo() = default;
 
-void Phase3Demo::fixedTick(platform::DebugInputState input) {
-    state_->update(input);
+void Phase4Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
+                           platform::DebugInputState debugInput) {
+    state_->update(tick, input, debugInput);
 }
 
-void Phase3Demo::render(render::Framebuffer& framebuffer) const {
+void Phase4Demo::render(render::Framebuffer& framebuffer) const {
     state_->render(framebuffer);
 }
 

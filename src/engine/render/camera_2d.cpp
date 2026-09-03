@@ -29,6 +29,11 @@ void Camera2D::move(int deltaX, int deltaY) noexcept {
     position_.y = saturatingAdd(position_.y, deltaY);
 }
 
+void Camera2D::centerOn(core::WorldPointI target) noexcept {
+    position_.x = saturatingAdd(target.x, -(viewportWidth_ / 2));
+    position_.y = saturatingAdd(target.y, -(viewportHeight_ / 2));
+}
+
 void Camera2D::clampToWorld(int worldWidthPixels, int worldHeightPixels) noexcept {
     const int maximumX = worldWidthPixels > viewportWidth_
                              ? worldWidthPixels - viewportWidth_

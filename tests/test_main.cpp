@@ -5,6 +5,7 @@
 #include "engine/core/image_data.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/platform/image_decoder.h"
+#include "engine/platform/input_state.h"
 #include "engine/platform/presentation.h"
 #include "engine/render/animation.h"
 #include "engine/render/bitmap_font.h"
@@ -13,11 +14,15 @@
 #include "engine/render/image.h"
 #include "engine/render/renderer_2d.h"
 #include "engine/render/sprite.h"
+#include "engine/simulation/player_command.h"
 #include "engine/world/collision.h"
 #include "engine/world/collision_grid.h"
 #include "engine/world/runtime_map.h"
 #include "engine/world/tile.h"
 #include "engine/world/tile_layer.h"
+#include "game/command_builder.h"
+#include "game/gameplay/player.h"
+#include "game/player_visual.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -737,6 +742,240 @@ void testCollisionMovement() {
            "movement respects solid outer world boundary");
 }
 
+void testInputAndPlayerCommands() {
+    using underworld::platform::InputState;
+    using underworld::game::CommandBuilder;
+    constexpr underworld::simulation::PlayerId playerId{7};
+    CommandBuilder builder;
+
+    const auto up = builder.build(10, playerId, InputState{true, false, false, false});
+    expect(up.tick == 10 && up.playerId == playerId && up.sequence == 0 &&
+               up.movement == underworld::simulation::MovementIntent{0, -1},
+           "CommandBuilder maps up intent and preserves tick, player id, and sequence");
+    const auto down = builder.build(11, playerId, InputState{false, true, false, false});
+    expect(down.movement == underworld::simulation::MovementIntent{0, 1},
+           "CommandBuilder maps down intent");
+    const auto left = builder.build(12, playerId, InputState{false, false, true, false});
+    const auto right = builder.build(13, playerId, InputState{false, false, false, true});
+    expect(left.movement == underworld::simulation::MovementIntent{-1, 0} &&
+               right.movement == underworld::simulation::MovementIntent{1, 0},
+           "CommandBuilder maps left and right without physical key codes");
+    const auto diagonal = builder.build(14, playerId, InputState{true, false, false, true});
+    expect(diagonal.movement == underworld::simulation::MovementIntent{1, -1},
+           "CommandBuilder preserves simultaneous up-right intent");
+    const auto upLeft = builder.build(15, playerId, InputState{true, false, true, false});
+    const auto downRight = builder.build(16, playerId, InputState{false, true, false, true});
+    const auto downLeft = builder.build(17, playerId, InputState{false, true, true, false});
+    expect(upLeft.movement == underworld::simulation::MovementIntent{-1, -1} &&
+               downRight.movement == underworld::simulation::MovementIntent{1, 1} &&
+               downLeft.movement == underworld::simulation::MovementIntent{-1, 1},
+           "CommandBuilder maps every diagonal movement combination");
+    const auto opposed = builder.build(18, playerId, InputState{true, true, true, true});
+    expect(opposed.movement == underworld::simulation::MovementIntent{0, 0},
+           "opposite directions cancel deterministically on both axes");
+    expect(diagonal.sequence == 4 && opposed.sequence == 8 && builder.nextSequence() == 9,
+           "command sequence advances once per built fixed-tick command");
+
+    InputState held{true, false, true, false};
+    held.clear();
+    expect(held == InputState{},
+           "neutral InputState clears every held key for focus-loss handling");
+}
+
+underworld::simulation::PlayerCommand movementCommand(
+    std::uint64_t tick, int x, int y,
+    underworld::simulation::PlayerId playerId = {0}) {
+    return {tick, playerId, static_cast<std::uint32_t>(tick), {x, y}};
+}
+
+void testPlayerMovementAndFacing() {
+    namespace gameplay = underworld::game::gameplay;
+    underworld::world::CollisionGrid openGrid(256, 256);
+    gameplay::Player right({0}, {1000, 1000});
+    const auto start = right.subpixelPosition();
+    right.update(movementCommand(1, 1, 0), openGrid, 16);
+    expect(right.subpixelPosition().x - start.x ==
+               gameplay::PlayerMovementConfig::cardinalSpeedSubpixelsPerTick &&
+               right.subpixelPosition().y == start.y,
+           "Player moves right by the fixed cardinal subpixel velocity");
+    expect(right.facing() == gameplay::FacingDirection::right &&
+               right.motionState() == gameplay::PlayerMotionState::walk,
+           "right movement selects right-facing walk state");
+    right.update(movementCommand(2, 0, 0), openGrid, 16);
+    expect(right.facing() == gameplay::FacingDirection::right &&
+               right.motionState() == gameplay::PlayerMotionState::idle,
+           "stopping selects idle while preserving the last facing direction");
+
+    gameplay::Player directions({0}, {1000, 1000});
+    directions.update(movementCommand(1, -1, 0), openGrid, 16);
+    expect(directions.facing() == gameplay::FacingDirection::left,
+           "left intent selects left facing");
+    directions.update(movementCommand(2, 0, -1), openGrid, 16);
+    expect(directions.facing() == gameplay::FacingDirection::up,
+           "up intent selects up facing");
+    directions.update(movementCommand(3, 0, 1), openGrid, 16);
+    expect(directions.facing() == gameplay::FacingDirection::down,
+           "down intent selects down facing");
+    directions.update(movementCommand(4, 1, -1), openGrid, 16);
+    expect(directions.facing() == gameplay::FacingDirection::up,
+           "vertical direction has deterministic priority for diagonal facing");
+
+    gameplay::Player freeLeft({0}, {1000, 1000});
+    gameplay::Player freeUp({0}, {1000, 1000});
+    gameplay::Player freeDown({0}, {1000, 1000});
+    freeLeft.update(movementCommand(1, -1, 0), openGrid, 16);
+    freeUp.update(movementCommand(1, 0, -1), openGrid, 16);
+    freeDown.update(movementCommand(1, 0, 1), openGrid, 16);
+    expect(freeLeft.subpixelPosition().x < start.x &&
+               freeLeft.subpixelPosition().y == start.y,
+           "Player moves freely to the left");
+    expect(freeUp.subpixelPosition().y < start.y &&
+               freeUp.subpixelPosition().x == start.x,
+           "Player moves freely upward");
+    expect(freeDown.subpixelPosition().y > start.y &&
+               freeDown.subpixelPosition().x == start.x,
+           "Player moves freely downward");
+
+    gameplay::Player oneSecond({0}, {1000, 1000});
+    for (std::uint64_t tick = 1; tick <= 60; ++tick) {
+        oneSecond.update(movementCommand(tick, 1, 0), openGrid, 16);
+    }
+    expect(oneSecond.feetPosition().x == 1090 && oneSecond.feetPosition().y == 1000,
+           "60 fixed ticks move the Player exactly 90 world pixels");
+
+    gameplay::Player cardinal({0}, {1000, 1000});
+    gameplay::Player diagonal({0}, {1000, 1000});
+    for (std::uint64_t tick = 1; tick <= 600; ++tick) {
+        cardinal.update(movementCommand(tick, 1, 0), openGrid, 16);
+        diagonal.update(movementCommand(tick, 1, 1), openGrid, 16);
+    }
+    const auto cardinalDelta = cardinal.subpixelPosition().x -
+                               static_cast<std::int64_t>(1000) * 256;
+    const auto diagonalPosition = diagonal.subpixelPosition();
+    const double diagonalX = static_cast<double>(diagonalPosition.x -
+                              static_cast<std::int64_t>(1000) * 256);
+    const double diagonalY = static_cast<double>(diagonalPosition.y -
+                              static_cast<std::int64_t>(1000) * 256);
+    const double diagonalDistance = std::sqrt(diagonalX * diagonalX + diagonalY * diagonalY);
+    expect(std::abs(diagonalDistance - static_cast<double>(cardinalDelta)) < 512.0,
+           "600-tick diagonal distance matches cardinal distance within two pixels");
+
+    const auto body = gameplay::Player({0}, {100, 80}).collisionBody();
+    expect(body == underworld::world::AabbI{95, 72, 10, 8},
+           "Player collision body is 10x8 and offset -5,-8 from the feet");
+
+    bool wrongPlayerRejected = false;
+    try {
+        right.update(movementCommand(3, 1, 0, {9}), openGrid, 16);
+    } catch (const std::invalid_argument&) {
+        wrongPlayerRejected = true;
+    }
+    expect(wrongPlayerRejected, "Player rejects commands addressed to another PlayerId");
+}
+
+void testPlayerCollision() {
+    namespace gameplay = underworld::game::gameplay;
+    underworld::world::CollisionGrid verticalWall(16, 16);
+    for (int y = 0; y < verticalWall.height(); ++y) {
+        verticalWall.setSolid(3, y, true);
+    }
+    gameplay::Player againstWall({0}, {43, 40});
+    againstWall.update(movementCommand(1, 1, 0), verticalWall, 16);
+    expect(againstWall.feetPosition() == underworld::core::WorldPointI{43, 40} &&
+               againstWall.lastMovement().blockedX,
+           "Player collision body stops exactly against a vertical wall");
+
+    gameplay::Player sliding({0}, {43, 40});
+    sliding.update(movementCommand(1, 1, 1), verticalWall, 16);
+    expect(sliding.feetPosition().x == 43 && sliding.feetPosition().y > 40 &&
+               sliding.lastMovement().blockedX && !sliding.lastMovement().blockedY,
+           "Player slides along a wall using separate-axis resolution");
+
+    underworld::world::CollisionGrid horizontalWall(16, 16);
+    for (int x = 0; x < horizontalWall.width(); ++x) {
+        horizontalWall.setSolid(x, 3, true);
+    }
+    gameplay::Player aboveWall({0}, {43, 48});
+    aboveWall.update(movementCommand(1, 0, 1), horizontalWall, 16);
+    expect(aboveWall.feetPosition() == underworld::core::WorldPointI{43, 48} &&
+               aboveWall.lastMovement().blockedY,
+           "Player collision body stops exactly against a horizontal wall");
+
+    underworld::world::CollisionGrid cornerGrid(16, 16);
+    for (int y = 0; y < cornerGrid.height(); ++y) {
+        cornerGrid.setSolid(3, y, true);
+    }
+    for (int x = 0; x < cornerGrid.width(); ++x) {
+        cornerGrid.setSolid(x, 3, true);
+    }
+    gameplay::Player corner({0}, {43, 48});
+    corner.update(movementCommand(1, 1, 1), cornerGrid, 16);
+    expect(corner.feetPosition() == underworld::core::WorldPointI{43, 48} &&
+               corner.lastMovement().blockedX && corner.lastMovement().blockedY,
+           "Player cannot pass diagonally through a solid corner");
+
+    underworld::world::CollisionGrid corridorGrid(16, 8);
+    for (int x = 0; x < corridorGrid.width(); ++x) {
+        corridorGrid.setSolid(x, 1, true);
+        corridorGrid.setSolid(x, 3, true);
+    }
+    gameplay::Player corridor({0}, {21, 43});
+    for (std::uint64_t tick = 1; tick <= 40; ++tick) {
+        corridor.update(movementCommand(tick, 1, 0), corridorGrid, 16);
+    }
+    expect(corridor.feetPosition().x > 70 && !corridor.lastMovement().blockedX,
+           "Player body traverses a one-tile corridor");
+
+    underworld::world::CollisionGrid boundary(8, 8);
+    gameplay::Player edge({0}, {5, 8});
+    edge.update(movementCommand(1, -1, -1), boundary, 16);
+    expect(edge.feetPosition() == underworld::core::WorldPointI{5, 8} &&
+               edge.lastMovement().blockedX && edge.lastMovement().blockedY,
+           "outside-map solid policy keeps the Player inside world bounds");
+}
+
+void testPlayerVisualAndCameraFollow() {
+    namespace gameplay = underworld::game::gameplay;
+    underworld::game::PlayerVisual::DirectionalClips idle{
+        makeTestClip("idle.down", true), makeTestClip("idle.up", true),
+        makeTestClip("idle.side", true)};
+    underworld::game::PlayerVisual::DirectionalClips walk{
+        makeTestClip("walk.down", true), makeTestClip("walk.up", true),
+        makeTestClip("walk.side", true)};
+    underworld::game::PlayerVisual visual(std::move(idle), std::move(walk));
+    visual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::down, 1);
+    visual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::down, 1);
+    expect(visual.animator().frameIndex() == 1,
+           "unchanged Player visual selection does not restart its clip every tick");
+    visual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right, 0);
+    expect(visual.animator().clip().id() == "idle.side" && visual.flipX(),
+           "right idle reuses and flips the side-left clip");
+    visual.update(gameplay::PlayerMotionState::walk, gameplay::FacingDirection::right, 0);
+    expect(visual.animator().clip().id() == "walk.side" &&
+               visual.animator().frameIndex() == 0 && visual.flipX(),
+           "idle-to-walk changes clip once and preserves right-facing flip");
+    visual.update(gameplay::PlayerMotionState::walk, gameplay::FacingDirection::left, 0);
+    expect(visual.animator().clip().id() == "walk.side" && !visual.flipX(),
+           "left and right share the same side clip without duplicating image data");
+    visual.update(gameplay::PlayerMotionState::walk, gameplay::FacingDirection::up, 0);
+    expect(visual.animator().clip().id() == "walk.up" && !visual.flipX(),
+           "up-facing walk selects the dedicated audited sheet row");
+
+    underworld::render::Camera2D camera(272, 224);
+    camera.centerOn({500, 400});
+    camera.clampToWorld(1024, 768);
+    expect(camera.position() == underworld::core::WorldPointI{364, 288},
+           "camera centers its logical viewport on the Player feet");
+    camera.centerOn({20, 20});
+    camera.clampToWorld(1024, 768);
+    expect(camera.position() == underworld::core::WorldPointI{0, 0},
+           "camera follow clamps at left and top world edges");
+    camera.centerOn({1000, 740});
+    camera.clampToWorld(1024, 768);
+    expect(camera.position() == underworld::core::WorldPointI{752, 544},
+           "camera follow clamps at right and bottom world edges");
+}
+
 void testPresentationRect() {
     using underworld::platform::calculatePresentationRect;
 
@@ -822,6 +1061,10 @@ int main() {
         testCameraAndCulling();
         testCollisionGridAndAabb();
         testCollisionMovement();
+        testInputAndPlayerCommands();
+        testPlayerMovementAndFacing();
+        testPlayerCollision();
+        testPlayerVisualAndCameraFollow();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
