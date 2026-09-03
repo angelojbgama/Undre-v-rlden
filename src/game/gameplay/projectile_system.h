@@ -3,6 +3,7 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/entity_handle.h"
 #include "game/gameplay/combat_types.h"
+#include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/facing_direction.h"
 
 #include <cstdint>
@@ -15,18 +16,14 @@ namespace underworld::world { class CollisionGrid; }
 namespace underworld::game::gameplay {
 
 struct Projectile final {
-    static constexpr int speedPixelsPerTick = 4;
-    static constexpr std::uint32_t lifetimeTicks = 120;
-    static constexpr int hitboxSize = 6;
-
     simulation::EntityHandle handle{};
-    simulation::EntityHandle owner{};
+    AttackKey attack{};
     Faction faction{Faction::neutral};
-    AttackInstanceId attackInstance{};
+    const ProjectileDefinition* definition{};
     core::WorldPointI position{}; // visual/hitbox center
     FacingDirection direction{FacingDirection::up};
     DamageSpec damage{};
-    std::uint32_t remainingTicks{lifetimeTicks};
+    std::uint32_t remainingTicks{};
 
     [[nodiscard]] world::AabbI hitbox() const noexcept;
 };
@@ -35,15 +32,17 @@ class CombatSystem;
 
 class ProjectileSystem final {
 public:
-    explicit ProjectileSystem(simulation::EntityHandlePool& handles) noexcept
-        : handles_(handles) {}
+    ProjectileSystem(simulation::EntityHandlePool& handles,
+                     const ProjectileCatalog& definitions) noexcept
+        : handles_(handles), definitions_(definitions) {}
 
     [[nodiscard]] simulation::EntityHandle spawn(
-        simulation::EntityHandle owner, Faction faction, AttackInstanceId attackInstance,
+        AttackKey attack, Faction faction, const simulation::DefinitionId& definitionId,
         core::WorldPointI position, FacingDirection direction, DamageSpec damage);
     void update(const world::CollisionGrid& collision, int tileSize,
-                std::span<CombatTarget*> targets, CombatSystem& combat,
-                simulation::EventBuffer& events);
+                std::span<CombatTargetRef> targets, CombatSystem& combat,
+                simulation::EventBuffer& events,
+                std::vector<CombatResolution>& resolutions);
 
     [[nodiscard]] const std::vector<Projectile>& projectiles() const noexcept {
         return projectiles_;
@@ -51,6 +50,7 @@ public:
 
 private:
     simulation::EntityHandlePool& handles_;
+    const ProjectileCatalog& definitions_;
     std::vector<Projectile> projectiles_;
 };
 

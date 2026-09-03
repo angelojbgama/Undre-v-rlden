@@ -850,7 +850,7 @@ underworld::simulation::PlayerCommand actionCommand(
 void testPlayerMovementAndFacing() {
     namespace gameplay = underworld::game::gameplay;
     underworld::world::CollisionGrid openGrid(256, 256);
-    gameplay::Player right({0}, {1000, 1000});
+    gameplay::Player right({0}, {0, 1}, {1000, 1000});
     const auto start = right.subpixelPosition();
     right.update(movementCommand(1, 1, 0), openGrid, 16);
     expect(right.subpixelPosition().x - start.x ==
@@ -865,7 +865,7 @@ void testPlayerMovementAndFacing() {
                right.motionState() == gameplay::PlayerMotionState::idle,
            "stopping selects idle while preserving the last facing direction");
 
-    gameplay::Player directions({0}, {1000, 1000});
+    gameplay::Player directions({0}, {0, 1}, {1000, 1000});
     directions.update(movementCommand(1, -1, 0), openGrid, 16);
     expect(directions.facing() == gameplay::FacingDirection::left,
            "left intent selects left facing");
@@ -879,9 +879,9 @@ void testPlayerMovementAndFacing() {
     expect(directions.facing() == gameplay::FacingDirection::up,
            "vertical direction has deterministic priority for diagonal facing");
 
-    gameplay::Player freeLeft({0}, {1000, 1000});
-    gameplay::Player freeUp({0}, {1000, 1000});
-    gameplay::Player freeDown({0}, {1000, 1000});
+    gameplay::Player freeLeft({0}, {0, 1}, {1000, 1000});
+    gameplay::Player freeUp({0}, {1, 1}, {1000, 1000});
+    gameplay::Player freeDown({0}, {2, 1}, {1000, 1000});
     freeLeft.update(movementCommand(1, -1, 0), openGrid, 16);
     freeUp.update(movementCommand(1, 0, -1), openGrid, 16);
     freeDown.update(movementCommand(1, 0, 1), openGrid, 16);
@@ -895,15 +895,15 @@ void testPlayerMovementAndFacing() {
                freeDown.subpixelPosition().x == start.x,
            "Player moves freely downward");
 
-    gameplay::Player oneSecond({0}, {1000, 1000});
+    gameplay::Player oneSecond({0}, {0, 1}, {1000, 1000});
     for (std::uint64_t tick = 1; tick <= 60; ++tick) {
         oneSecond.update(movementCommand(tick, 1, 0), openGrid, 16);
     }
     expect(oneSecond.feetPosition().x == 1090 && oneSecond.feetPosition().y == 1000,
            "60 fixed ticks move the Player exactly 90 world pixels");
 
-    gameplay::Player cardinal({0}, {1000, 1000});
-    gameplay::Player diagonal({0}, {1000, 1000});
+    gameplay::Player cardinal({0}, {0, 1}, {1000, 1000});
+    gameplay::Player diagonal({0}, {1, 1}, {1000, 1000});
     for (std::uint64_t tick = 1; tick <= 600; ++tick) {
         cardinal.update(movementCommand(tick, 1, 0), openGrid, 16);
         diagonal.update(movementCommand(tick, 1, 1), openGrid, 16);
@@ -919,7 +919,7 @@ void testPlayerMovementAndFacing() {
     expect(std::abs(diagonalDistance - static_cast<double>(cardinalDelta)) < 512.0,
            "600-tick diagonal distance matches cardinal distance within two pixels");
 
-    const auto body = gameplay::Player({0}, {100, 80}).collisionBody();
+    const auto body = gameplay::Player({0}, {0, 1}, {100, 80}).collisionBody();
     expect(body == underworld::world::AabbI{95, 72, 10, 8},
            "Player collision body is 10x8 and offset -5,-8 from the feet");
 
@@ -938,13 +938,13 @@ void testPlayerCollision() {
     for (int y = 0; y < verticalWall.height(); ++y) {
         verticalWall.setSolid(3, y, true);
     }
-    gameplay::Player againstWall({0}, {43, 40});
+    gameplay::Player againstWall({0}, {0, 1}, {43, 40});
     againstWall.update(movementCommand(1, 1, 0), verticalWall, 16);
     expect(againstWall.feetPosition() == underworld::core::WorldPointI{43, 40} &&
                againstWall.lastMovement().blockedX,
            "Player collision body stops exactly against a vertical wall");
 
-    gameplay::Player sliding({0}, {43, 40});
+    gameplay::Player sliding({0}, {0, 1}, {43, 40});
     sliding.update(movementCommand(1, 1, 1), verticalWall, 16);
     expect(sliding.feetPosition().x == 43 && sliding.feetPosition().y > 40 &&
                sliding.lastMovement().blockedX && !sliding.lastMovement().blockedY,
@@ -954,7 +954,7 @@ void testPlayerCollision() {
     for (int x = 0; x < horizontalWall.width(); ++x) {
         horizontalWall.setSolid(x, 3, true);
     }
-    gameplay::Player aboveWall({0}, {43, 48});
+    gameplay::Player aboveWall({0}, {0, 1}, {43, 48});
     aboveWall.update(movementCommand(1, 0, 1), horizontalWall, 16);
     expect(aboveWall.feetPosition() == underworld::core::WorldPointI{43, 48} &&
                aboveWall.lastMovement().blockedY,
@@ -967,7 +967,7 @@ void testPlayerCollision() {
     for (int x = 0; x < cornerGrid.width(); ++x) {
         cornerGrid.setSolid(x, 3, true);
     }
-    gameplay::Player corner({0}, {43, 48});
+    gameplay::Player corner({0}, {0, 1}, {43, 48});
     corner.update(movementCommand(1, 1, 1), cornerGrid, 16);
     expect(corner.feetPosition() == underworld::core::WorldPointI{43, 48} &&
                corner.lastMovement().blockedX && corner.lastMovement().blockedY,
@@ -978,7 +978,7 @@ void testPlayerCollision() {
         corridorGrid.setSolid(x, 1, true);
         corridorGrid.setSolid(x, 3, true);
     }
-    gameplay::Player corridor({0}, {21, 43});
+    gameplay::Player corridor({0}, {0, 1}, {21, 43});
     for (std::uint64_t tick = 1; tick <= 40; ++tick) {
         corridor.update(movementCommand(tick, 1, 0), corridorGrid, 16);
     }
@@ -986,7 +986,7 @@ void testPlayerCollision() {
            "Player body traverses a one-tile corridor");
 
     underworld::world::CollisionGrid boundary(8, 8);
-    gameplay::Player edge({0}, {5, 8});
+    gameplay::Player edge({0}, {0, 1}, {5, 8});
     edge.update(movementCommand(1, -1, -1), boundary, 16);
     expect(edge.feetPosition() == underworld::core::WorldPointI{5, 8} &&
                edge.lastMovement().blockedX && edge.lastMovement().blockedY,
@@ -1107,7 +1107,7 @@ void testActionCommandsAndPlayerAttackState() {
            "focus-loss clear removes all pending action edges and prevents ghost attacks");
 
     underworld::world::CollisionGrid grid(64, 64);
-    gameplay::Player player({0}, {100, 100});
+    gameplay::Player player({0}, {0, 1}, {100, 100});
     player.update(actionCommand(1, true, false, 1, 0), grid, 16);
     const auto lockedPosition = player.subpixelPosition();
     const auto firstAttack = player.attackInstance();
@@ -1171,13 +1171,37 @@ void testEntityHandlesAndActorOrder() {
            "Hitbox debug visibility toggles without changing Hurtbox visibility");
 }
 
-underworld::game::gameplay::CombatTarget makeCombatTarget(
+struct TestCombatActor final {
+    underworld::game::gameplay::CombatantState combatant;
+    underworld::core::WorldPointI feet{};
+    underworld::game::gameplay::CollisionBody collisionBody{};
+    underworld::game::gameplay::Hurtbox hurtbox{};
+
+    [[nodiscard]] underworld::game::gameplay::CombatTargetRef target() noexcept {
+        hurtbox.enabled = !combatant.health.depleted();
+        return {combatant, hurtbox};
+    }
+
+    void apply(const underworld::game::gameplay::CombatResolution& resolution,
+               const underworld::world::CollisionGrid& collision, int tileSize) {
+        underworld::world::AabbI body = collisionBody.bounds;
+        const auto movement = underworld::world::moveAgainstSolidTiles(
+            collision, body, resolution.requestedKnockbackX,
+            resolution.requestedKnockbackY, tileSize);
+        feet.x += movement.movedX;
+        feet.y += movement.movedY;
+        collisionBody.bounds = body;
+        hurtbox.bounds.x += movement.movedX;
+        hurtbox.bounds.y += movement.movedY;
+    }
+};
+
+TestCombatActor makeCombatTarget(
     underworld::simulation::EntityHandle handle, underworld::core::WorldPointI feet,
     underworld::game::gameplay::Faction faction, int health) {
-    return {handle, faction, feet,
+    return {{handle, faction, underworld::game::gameplay::Health{health}, 0, false}, feet,
             {{feet.x - 5, feet.y - 8, 10, 8}},
-            {{feet.x - 7, feet.y - 22, 14, 22}, true},
-            underworld::game::gameplay::Health{health}, 0, false};
+            {{feet.x - 7, feet.y - 22, 14, 22}, true}};
 }
 
 void testCombatSystem() {
@@ -1190,45 +1214,50 @@ void testCombatSystem() {
     auto target = makeCombatTarget(targetHandle, {100, 100}, gameplay::Faction::enemy, 5);
     gameplay::CombatSystem combat;
     simulation::EventBuffer events;
-    gameplay::Hitbox swing{{90, 78, 24, 24}, attacker, gameplay::Faction::player,
-                           1, {1, 8}, 8, 0, true};
-    expect(combat.resolve(swing, target, grid, 16, events) && target.health.current == 4,
+    gameplay::Hitbox swing{{90, 78, 24, 24}, {attacker, 1}, gameplay::Faction::player,
+                           {1, 8}, 8, 0, true};
+    const auto firstResolution = combat.resolve(swing, target.target(), events);
+    target.apply(firstResolution, grid, 16);
+    expect(firstResolution.damaged && target.combatant.health.current == 4,
            "valid hit applies damage through CombatSystem");
     expect(target.feet.x == 108 && events.events().size() == 1 &&
                std::holds_alternative<simulation::EntityDamaged>(events.events()[0]),
            "successful damage emits EntityDamaged and deterministic knockback");
-    expect(!combat.resolve(swing, target, grid, 16, events) && target.health.current == 4,
+    expect(!combat.resolve(swing, target.target(), events).damaged &&
+               target.combatant.health.current == 4,
            "same attack instance cannot damage the same target twice");
     gameplay::Hitbox secondSwing = swing;
-    secondSwing.attackInstance = 2;
-    expect(!combat.resolve(secondSwing, target, grid, 16, events),
+    secondSwing.attack.localInstance = 2;
+    expect(!combat.resolve(secondSwing, target.target(), events).damaged,
            "new attack is ignored during target invulnerability");
     for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks; ++tick) {
-        gameplay::tickInvulnerability(target);
+        gameplay::tickInvulnerability(target.combatant);
     }
     secondSwing.bounds = target.hurtbox.bounds;
-    expect(combat.resolve(secondSwing, target, grid, 16, events) && target.health.current == 3,
+    expect(combat.resolve(secondSwing, target.target(), events).damaged &&
+               target.combatant.health.current == 3,
            "new attack damages after invulnerability expires");
 
     auto sameFaction = makeCombatTarget(pool.create(), {100, 100}, gameplay::Faction::player, 3);
-    expect(!combat.resolve(swing, sameFaction, grid, 16, events) && sameFaction.health.current == 3,
+    expect(!combat.resolve(swing, sameFaction.target(), events).damaged &&
+               sameFaction.combatant.health.current == 3,
            "Player faction cannot damage Player faction");
     gameplay::Hitbox enemySwing = swing;
-    enemySwing.owner = targetHandle;
+    enemySwing.attack.owner = targetHandle;
     enemySwing.faction = gameplay::Faction::enemy;
     auto enemyTarget = makeCombatTarget(pool.create(), {100, 100}, gameplay::Faction::enemy, 3);
-    expect(!combat.resolve(enemySwing, enemyTarget, grid, 16, events),
+    expect(!combat.resolve(enemySwing, enemyTarget.target(), events).damaged,
            "Enemy faction cannot damage Enemy faction");
     auto ownerTarget = makeCombatTarget(attacker, {100, 100}, gameplay::Faction::enemy, 3);
-    expect(!combat.resolve(swing, ownerTarget, grid, 16, events),
+    expect(!combat.resolve(swing, ownerTarget.target(), events).damaged,
            "attack owner can never damage itself");
 
     auto defeated = makeCombatTarget(pool.create(), {160, 100}, gameplay::Faction::enemy, 1);
-    gameplay::Hitbox lethal{{150, 78, 24, 24}, attacker, gameplay::Faction::player,
-                            10, {1, 0}, 0, 0, true};
+    gameplay::Hitbox lethal{{150, 78, 24, 24}, {attacker, 10}, gameplay::Faction::player,
+                            {1, 0}, 0, 0, true};
     simulation::EventBuffer lethalEvents;
-    expect(combat.resolve(lethal, defeated, grid, 16, lethalEvents) &&
-               defeated.health.current == 0 && !defeated.hurtbox.enabled,
+    expect(combat.resolve(lethal, defeated.target(), lethalEvents).defeated &&
+               defeated.combatant.health.current == 0 && !defeated.target().hurtbox.enabled,
            "lethal damage clamps Health to zero and disables Hurtbox");
     const auto defeatedCount = std::count_if(
         lethalEvents.events().begin(), lethalEvents.events().end(),
@@ -1236,25 +1265,27 @@ void testCombatSystem() {
             return std::holds_alternative<simulation::EntityDefeated>(event);
         });
     expect(defeatedCount == 1, "EntityDefeated emits exactly once");
-    expect(!combat.resolve(lethal, defeated, grid, 16, lethalEvents) &&
+    expect(!combat.resolve(lethal, defeated.target(), lethalEvents).damaged &&
                lethalEvents.events().size() == 2,
            "defeated target cannot emit damage or defeat again");
 
     underworld::world::CollisionGrid wallGrid(16, 16);
     wallGrid.setSolid(7, 6, true);
     auto nearWall = makeCombatTarget(pool.create(), {107, 104}, gameplay::Faction::enemy, 3);
-    gameplay::Hitbox wallKnock{{95, 80, 20, 24}, attacker, gameplay::Faction::player,
-                               20, {1, 16}, 16, 0, true};
-    [[maybe_unused]] const bool wallHit = combat.resolve(
-        wallKnock, nearWall, wallGrid, 16, events);
+    gameplay::Hitbox wallKnock{{95, 80, 20, 24}, {attacker, 20}, gameplay::Faction::player,
+                               {1, 16}, 16, 0, true};
+    const auto wallHit = combat.resolve(wallKnock, nearWall.target(), events);
+    nearWall.apply(wallHit, wallGrid, 16);
     expect(nearWall.collisionBody.bounds.x + nearWall.collisionBody.bounds.width <= 112,
            "knockback reuses tile collision and cannot cross a wall");
 
     auto knockedUp = makeCombatTarget(pool.create(), {200, 200}, gameplay::Faction::enemy, 3);
-    gameplay::Hitbox upward{{190, 175, 20, 25}, attacker, gameplay::Faction::player,
-                            21, {1, 7}, 0, -7, true};
+    gameplay::Hitbox upward{{190, 175, 20, 25}, {attacker, 21}, gameplay::Faction::player,
+                            {1, 7}, 0, -7, true};
     const int beforeUp = knockedUp.feet.y;
-    expect(combat.resolve(upward, knockedUp, grid, 16, events) &&
+    const auto upwardResult = combat.resolve(upward, knockedUp.target(), events);
+    knockedUp.apply(upwardResult, grid, 16);
+    expect(upwardResult.damaged &&
                knockedUp.feet.y == beforeUp - 7,
            "upward sword knockback displaces target in facing direction");
 
@@ -1267,18 +1298,20 @@ void testCombatSystem() {
     expect(independent.bounds != target.hurtbox.bounds,
            "Hitbox data is independent from Hurtbox data");
 
-    expect(gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::down) ==
+    const auto sword = gameplay::makePlayerSwordAttackDefinition();
+    const auto bow = gameplay::makePlayerBowAttackDefinition();
+    expect(sword.meleeHitboxes->forFacing(gameplay::FacingDirection::down).at({100, 100}) ==
                underworld::world::AabbI{90, 99, 20, 18} &&
-               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::up) ==
+               sword.meleeHitboxes->forFacing(gameplay::FacingDirection::up).at({100, 100}) ==
                underworld::world::AabbI{90, 73, 20, 19} &&
-               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::left) ==
+               sword.meleeHitboxes->forFacing(gameplay::FacingDirection::left).at({100, 100}) ==
                underworld::world::AabbI{73, 82, 21, 18} &&
-               gameplay::swordHitboxBounds({100, 100}, gameplay::FacingDirection::right) ==
+               sword.meleeHitboxes->forFacing(gameplay::FacingDirection::right).at({100, 100}) ==
                underworld::world::AabbI{106, 82, 21, 18},
            "sword Hitboxes are explicit per facing and anchored to feet");
-    expect(gameplay::swordAttack.totalTicks == 24 && gameplay::bowAttack.totalTicks == 16 &&
-               gameplay::swordAttack.kind == gameplay::AttackKind::meleeHitbox &&
-               gameplay::bowAttack.kind == gameplay::AttackKind::projectile,
+    expect(sword.totalTicks == 24 && bow.totalTicks == 16 &&
+               sword.kind == gameplay::AttackKind::meleeHitbox &&
+               bow.kind == gameplay::AttackKind::projectile,
            "Sword and Bow share small immutable AttackDefinition data");
 }
 
@@ -1288,18 +1321,23 @@ void testProjectilesAndEffects() {
     simulation::EntityHandlePool pool;
     const auto owner = pool.create();
     gameplay::CombatSystem combat;
-    gameplay::ProjectileSystem projectiles(pool);
+    const gameplay::ProjectileDefinition arrowDefinition =
+        gameplay::makePlayerArrowProjectileDefinition();
+    gameplay::ProjectileCatalog projectileCatalog;
+    projectileCatalog.add(arrowDefinition);
+    gameplay::ProjectileSystem projectiles(pool, projectileCatalog);
     underworld::world::CollisionGrid grid(64, 64);
     simulation::EventBuffer events;
     auto target = makeCombatTarget(pool.create(), {120, 100}, gameplay::Faction::enemy, 3);
     [[maybe_unused]] const auto targetProjectile = projectiles.spawn(
-        owner, gameplay::Faction::player, 100, {100, 90},
+        {owner, 100}, gameplay::Faction::player, arrowDefinition.id, {100, 90},
         gameplay::FacingDirection::right, {1, 6});
-    std::array<gameplay::CombatTarget*, 1> targets{&target};
+    std::array<gameplay::CombatTargetRef, 1> targets{target.target()};
+    std::vector<gameplay::CombatResolution> resolutions;
     for (int tick = 0; tick < 8 && !projectiles.projectiles().empty(); ++tick) {
-        projectiles.update(grid, 16, targets, combat, events);
+        projectiles.update(grid, 16, targets, combat, events, resolutions);
     }
-    expect(projectiles.projectiles().empty() && target.health.current == 2,
+    expect(projectiles.projectiles().empty() && target.combatant.health.current == 2,
            "projectile hits a valid Hurtbox once and is destroyed");
     expect(std::any_of(events.events().begin(), events.events().end(),
                        [](const simulation::SimulationEvent& event) {
@@ -1308,33 +1346,33 @@ void testProjectilesAndEffects() {
                        }),
            "projectile target impact is emitted for VFX observers");
 
-    gameplay::ProjectileSystem wallProjectiles(pool);
+    gameplay::ProjectileSystem wallProjectiles(pool, projectileCatalog);
     underworld::world::CollisionGrid wall(64, 64);
     wall.setSolid(7, 6, true);
     [[maybe_unused]] const auto wallProjectile = wallProjectiles.spawn(
-        owner, gameplay::Faction::player, 101, {108, 100},
+        {owner, 101}, gameplay::Faction::player, arrowDefinition.id, {108, 100},
         gameplay::FacingDirection::right, {1, 6});
-    std::array<gameplay::CombatTarget*, 0> noTargets{};
-    wallProjectiles.update(wall, 16, noTargets, combat, events);
+    std::array<gameplay::CombatTargetRef, 0> noTargets{};
+    wallProjectiles.update(wall, 16, noTargets, combat, events, resolutions);
     expect(wallProjectiles.projectiles().empty(),
            "pixel-substepped fast projectile cannot tunnel through a solid tile");
 
-    gameplay::ProjectileSystem ownerFiltered(pool);
+    gameplay::ProjectileSystem ownerFiltered(pool, projectileCatalog);
     auto ownerAsTarget = makeCombatTarget(owner, {104, 100}, gameplay::Faction::enemy, 3);
     [[maybe_unused]] const auto filteredProjectile = ownerFiltered.spawn(
-        owner, gameplay::Faction::player, 102, {100, 90},
+        {owner, 102}, gameplay::Faction::player, arrowDefinition.id, {100, 90},
         gameplay::FacingDirection::down, {1, 6});
-    std::array<gameplay::CombatTarget*, 1> ownerTarget{&ownerAsTarget};
-    ownerFiltered.update(grid, 16, ownerTarget, combat, events);
-    expect(ownerAsTarget.health.current == 3,
+    std::array<gameplay::CombatTargetRef, 1> ownerTarget{ownerAsTarget.target()};
+    ownerFiltered.update(grid, 16, ownerTarget, combat, events, resolutions);
+    expect(ownerAsTarget.combatant.health.current == 3,
            "projectile owner filtering prevents self-hit regardless of faction");
 
-    gameplay::ProjectileSystem expiring(pool);
+    gameplay::ProjectileSystem expiring(pool, projectileCatalog);
     [[maybe_unused]] const auto expiringProjectile = expiring.spawn(
-        owner, gameplay::Faction::player, 103, {500, 500},
+        {owner, 103}, gameplay::Faction::player, arrowDefinition.id, {500, 500},
         gameplay::FacingDirection::right, {1, 0});
-    for (std::uint32_t tick = 0; tick < gameplay::Projectile::lifetimeTicks; ++tick) {
-        expiring.update(grid, 16, noTargets, combat, events);
+    for (std::uint32_t tick = 0; tick < arrowDefinition.lifetimeTicks; ++tick) {
+        expiring.update(grid, 16, noTargets, combat, events, resolutions);
     }
     expect(expiring.projectiles().empty(), "projectile expires and releases its handle at TTL");
 
@@ -1355,15 +1393,16 @@ void testProjectilesAndEffects() {
                underworld::core::WorldPointI{1, 0},
            "projectile direction vectors cover all four facings");
 
-    gameplay::ProjectileSystem directions(pool);
+    gameplay::ProjectileSystem directions(pool, projectileCatalog);
     const std::array<gameplay::FacingDirection, 4> facings{
         gameplay::FacingDirection::up, gameplay::FacingDirection::down,
         gameplay::FacingDirection::left, gameplay::FacingDirection::right};
     for (std::size_t index = 0; index < facings.size(); ++index) {
         [[maybe_unused]] const auto projectile = directions.spawn(
-            owner, gameplay::Faction::player, 200 + index, {400, 400}, facings[index], {1, 0});
+            {owner, 200 + index}, gameplay::Faction::player, arrowDefinition.id,
+            {400, 400}, facings[index], {1, 0});
     }
-    directions.update(grid, 16, noTargets, combat, events);
+    directions.update(grid, 16, noTargets, combat, events, resolutions);
     const auto& moved = directions.projectiles();
     expect(moved[0].position == underworld::core::WorldPointI{400, 396} &&
                moved[1].position == underworld::core::WorldPointI{400, 404} &&
@@ -1371,15 +1410,91 @@ void testProjectilesAndEffects() {
                moved[3].position == underworld::core::WorldPointI{404, 400},
            "ProjectileSystem moves Up/Down/Left/Right by configured speed per tick");
 
-    gameplay::ProjectileSystem invulnerableImpact(pool);
+    gameplay::ProjectileSystem invulnerableImpact(pool, projectileCatalog);
     auto invulnerable = makeCombatTarget(pool.create(), {120, 100}, gameplay::Faction::enemy, 3);
-    invulnerable.invulnerabilityTicks = 5;
+    invulnerable.combatant.invulnerabilityTicks = 5;
     [[maybe_unused]] const auto invulnerableArrow = invulnerableImpact.spawn(
-        owner, gameplay::Faction::player, 300, {108, 90}, gameplay::FacingDirection::right, {1, 6});
-    std::array<gameplay::CombatTarget*, 1> invulnerableTarget{&invulnerable};
-    invulnerableImpact.update(grid, 16, invulnerableTarget, combat, events);
-    expect(invulnerableImpact.projectiles().empty() && invulnerable.health.current == 3,
+        {owner, 300}, gameplay::Faction::player, arrowDefinition.id, {108, 90},
+        gameplay::FacingDirection::right, {1, 6});
+    std::array<gameplay::CombatTargetRef, 1> invulnerableTarget{invulnerable.target()};
+    invulnerableImpact.update(grid, 16, invulnerableTarget, combat, events, resolutions);
+    expect(invulnerableImpact.projectiles().empty() &&
+               invulnerable.combatant.health.current == 3,
            "arrow impacts a valid invulnerable Hurtbox without applying damage or piercing");
+}
+
+void testPhase6CombatGeneralization() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+
+    const simulation::DefinitionId soldierAttack{"attack.soldier.sword"};
+    expect(soldierAttack == simulation::DefinitionId{"attack.soldier.sword"} &&
+               soldierAttack != simulation::DefinitionId{"attack.skull.arrow"},
+           "DefinitionId equality depends on stable text rather than object address");
+
+    gameplay::AttackCatalog attacks;
+    auto sword = gameplay::makePlayerSwordAttackDefinition();
+    attacks.add(sword);
+    expect(attacks.find(gameplay::playerSwordAttackId()) != nullptr &&
+               attacks.require(gameplay::playerSwordAttackId()).id == sword.id,
+           "AttackCatalog resolves a stable DefinitionId");
+    expect(attacks.find(simulation::DefinitionId{"attack.missing"}) == nullptr,
+           "AttackCatalog reports a missing DefinitionId without pointer identity");
+    bool duplicateAttackRejected = false;
+    try {
+        attacks.add(gameplay::makePlayerSwordAttackDefinition());
+    } catch (const std::logic_error&) {
+        duplicateAttackRejected = true;
+    }
+    expect(duplicateAttackRejected, "AttackCatalog rejects duplicate stable ids");
+
+    gameplay::ProjectileCatalog projectiles;
+    auto arrow = gameplay::makePlayerArrowProjectileDefinition();
+    projectiles.add(arrow);
+    expect(projectiles.require(gameplay::playerArrowProjectileId()).canonicalFacing ==
+               gameplay::FacingDirection::up,
+           "ProjectileDefinition records canonical visual orientation");
+
+    simulation::EntityHandlePool pool;
+    const auto ownerA = pool.create();
+    const auto ownerB = pool.create();
+    auto target = makeCombatTarget(pool.create(), {100, 100}, gameplay::Faction::player, 5);
+    gameplay::CombatSystem combat;
+    simulation::EventBuffer events;
+    gameplay::Hitbox attackA{{90, 78, 24, 24}, {ownerA, 1}, gameplay::Faction::enemy,
+                             {1, 0}, 0, 0, true};
+    gameplay::Hitbox attackB = attackA;
+    attackB.attack.owner = ownerB;
+    expect(combat.resolve(attackA, target.target(), events).damaged,
+           "owner A local attack 1 damages the target");
+    for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks;
+         ++tick) {
+        gameplay::tickInvulnerability(target.combatant);
+    }
+    expect(combat.resolve(attackB, target.target(), events).damaged &&
+               target.combatant.health.current == 3,
+           "owner B local attack 1 is independent from owner A local attack 1");
+    for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks;
+         ++tick) {
+        gameplay::tickInvulnerability(target.combatant);
+    }
+    combat.finishAttack(attackA.attack);
+    expect(!combat.resolve(attackB, target.target(), events).damaged,
+           "finishing owner A attack does not erase owner B hit deduplication");
+
+    const auto playerHandle = pool.create();
+    gameplay::Player player({9}, playerHandle, {200, 200});
+    gameplay::Hitbox enemyHit{{190, 178, 24, 24}, {ownerA, 2}, gameplay::Faction::enemy,
+                              {1, 6}, 6, 0, true};
+    const auto playerHit = combat.resolve(enemyHit, player.combatTarget(), events);
+    underworld::world::CollisionGrid openGrid(64, 64);
+    player.applyKnockback(playerHit.requestedKnockbackX, playerHit.requestedKnockbackY,
+                          openGrid, 16);
+    expect(playerHit.damaged && player.health().current == 4 &&
+               player.feetPosition().x == 206,
+           "Player receives generic CombatSystem damage and applies requested knockback");
+    expect(player.entityHandle() == playerHandle && player.id() == simulation::PlayerId{9},
+           "PlayerId command identity remains distinct from runtime EntityHandle");
 }
 
 void testPresentationRect() {
@@ -1475,6 +1590,7 @@ int main() {
         testEntityHandlesAndActorOrder();
         testCombatSystem();
         testProjectilesAndEffects();
+        testPhase6CombatGeneralization();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

@@ -10,6 +10,15 @@ namespace underworld::game::gameplay {
 
 using AttackInstanceId = std::uint64_t;
 
+struct AttackKey final {
+    simulation::EntityHandle owner{};
+    AttackInstanceId localInstance{};
+    [[nodiscard]] constexpr bool operator==(const AttackKey&) const noexcept = default;
+    [[nodiscard]] constexpr explicit operator bool() const noexcept {
+        return static_cast<bool>(owner) && localInstance != 0;
+    }
+};
+
 enum class Faction {
     player,
     enemy,
@@ -41,27 +50,37 @@ struct DamageSpec final {
 
 struct Hitbox final {
     world::AabbI bounds{};
-    simulation::EntityHandle owner{};
+    AttackKey attack{};
     Faction faction{Faction::neutral};
-    AttackInstanceId attackInstance{};
     DamageSpec damage{};
     int knockbackX{};
     int knockbackY{};
     bool enabled{};
 };
 
-struct CombatTarget final {
+struct CombatantState final {
     simulation::EntityHandle handle{};
     Faction faction{Faction::neutral};
-    core::WorldPointI feet{};
-    CollisionBody collisionBody{};
-    Hurtbox hurtbox{};
     Health health{1};
     std::uint32_t invulnerabilityTicks{};
     bool defeatEmitted{};
 };
 
+// Ephemeral receiver view. Actor position and geometry remain owned by the actor.
+struct CombatTargetRef final {
+    CombatantState& combatant;
+    Hurtbox hurtbox{};
+};
+
+struct CombatResolution final {
+    simulation::EntityHandle target{};
+    bool damaged{};
+    bool defeated{};
+    int requestedKnockbackX{};
+    int requestedKnockbackY{};
+};
+
 [[nodiscard]] bool factionsCanDamage(Faction attacker, Faction target) noexcept;
-void tickInvulnerability(CombatTarget& target) noexcept;
+void tickInvulnerability(CombatantState& target) noexcept;
 
 } // namespace underworld::game::gameplay

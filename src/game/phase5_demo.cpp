@@ -148,10 +148,15 @@ struct Phase5Demo::State final {
           impactSheet(std::make_shared<const render::SpriteSheet>(std::move(impactImage))),
           map(mapWidthTiles, mapHeightTiles, core::GameMetrics::tileSize),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
-          player(localPlayerId, playerSpawn), projectiles(handles) {
+          playerHandle(handles.create()), player(localPlayerId, playerHandle, playerSpawn),
+          swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
+          bowDefinition(gameplay::makePlayerBowAttackDefinition()),
+          arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
+          projectiles(handles, projectileCatalog) {
         if (atlas.columns() != 19 || atlas.rows() != 12) {
             throw std::runtime_error("Phase 5 demo expects the audited 19x12 dungeon tileset");
         }
+        projectileCatalog.add(arrowDefinition);
         groundLayer = map.addLayer("ground");
         lowLayer = map.addLayer("decoration_low");
         foregroundLayer = map.addLayer("foreground");
@@ -159,16 +164,15 @@ struct Phase5Demo::State final {
         if (world::querySolidTiles(map.collision(), player.collisionBody(), map.tileSize()).collides) {
             throw std::runtime_error("Phase 5 player spawn overlaps map collision");
         }
-        playerHandle = handles.create();
         puppet = std::make_unique<TrainingPuppet>(handles.create(), puppetSpawn);
         visual = std::make_unique<PlayerVisual>(
             makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
             makeClips("player.walk", walkSheet, 32, 4, 8, {16, 31}, true),
             makeClips("player.sword", swordSheet, 48, 4,
-                      gameplay::swordAttack.totalTicks / 4, {24, 31}, false,
+                      swordDefinition.totalTicks / 4, {24, 31}, false,
                       {{}, {"attack_on"}, {}, {"attack_off"}}),
             makeClips("player.bow", bowSheet, 32, 2,
-                      gameplay::bowAttack.totalTicks / 2, {16, 31}, false,
+                      bowDefinition.totalTicks / 2, {16, 31}, false,
                       {{}, {"spawn_projectile"}}));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
@@ -235,18 +239,21 @@ struct Phase5Demo::State final {
         for (const render::AnimationMarkerEvent& event : visual->consumeMarkerEvents()) {
             if (event.marker == "attack_on") {
                 const auto direction = gameplay::directionVector(player.facing());
-                activeSword = {gameplay::swordHitboxBounds(player.feetPosition(), player.facing()),
-                               playerHandle, gameplay::Faction::player,
-                               player.attackInstance(), gameplay::swordAttack.damage,
-                               direction.x * gameplay::swordAttack.damage.knockbackPixels,
-                               direction.y * gameplay::swordAttack.damage.knockbackPixels, true};
+                activeSword = {
+                    swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
+                        player.feetPosition()),
+                    {player.entityHandle(), player.attackInstance()}, gameplay::Faction::player,
+                    swordDefinition.damage,
+                    direction.x * swordDefinition.damage.knockbackPixels,
+                    direction.y * swordDefinition.damage.knockbackPixels, true};
             } else if (event.marker == "attack_off") {
                 activeSword.enabled = false;
             } else if (event.marker == "spawn_projectile") {
+                const auto offset = arrowDefinition.spawnOffsets.forFacing(player.facing());
                 [[maybe_unused]] const auto handle = projectiles.spawn(
-                    playerHandle, gameplay::Faction::player, player.attackInstance(),
-                    gameplay::arrowSpawnPosition(player.feetPosition(), player.facing()),
-                    player.facing(), gameplay::bowAttack.damage);
+                    {player.entityHandle(), player.attackInstance()}, gameplay::Faction::player,
+                    arrowDefinition.id, gameplay::addOffset(player.feetPosition(), offset),
+                    player.facing(), bowDefinition.damage);
             }
         }
     }
@@ -270,25 +277,40 @@ struct Phase5Demo::State final {
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
         events.clear();
-        gameplay::tickInvulnerability(puppet->combatTarget());
+        gameplay::tickInvulnerability(puppet->combatant());
+        gameplay::tickInvulnerability(player.combatant());
         const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
         player.update(command, map.collision(), map.tileSize());
         visual->update(player.motionState(), player.facing(), player.actionState());
         consumeAnimationMarkers();
         if (activeSword.enabled) {
-            activeSword.bounds = gameplay::swordHitboxBounds(player.feetPosition(), player.facing());
-            [[maybe_unused]] const bool hit = combat.resolve(
-                activeSword, puppet->combatTarget(), map.collision(), map.tileSize(), events);
+            activeSword.bounds = swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
+                player.feetPosition());
+            const gameplay::CombatResolution hit = combat.resolve(
+                activeSword, puppet->combatTarget(), events);
+            if (hit.damaged) {
+                puppet->applyKnockback(hit.requestedKnockbackX, hit.requestedKnockbackY,
+                                       map.collision(), map.tileSize());
+            }
         }
-        std::array<gameplay::CombatTarget*, 1> targets{&puppet->combatTarget()};
-        projectiles.update(map.collision(), map.tileSize(), targets, combat, events);
+        std::array<gameplay::CombatTargetRef, 1> targets{puppet->combatTarget()};
+        std::vector<gameplay::CombatResolution> projectileResolutions;
+        projectiles.update(map.collision(), map.tileSize(), targets, combat, events,
+                           projectileResolutions);
+        for (const gameplay::CombatResolution& resolution : projectileResolutions) {
+            if (resolution.target == puppet->combatant().handle) {
+                puppet->applyKnockback(resolution.requestedKnockbackX,
+                                       resolution.requestedKnockbackY,
+                                       map.collision(), map.tileSize());
+            }
+        }
         consumeSimulationEvents();
         effects->update();
         if (player.actionState() != gameplay::PlayerActionState::none &&
             visual->animator().finished()) {
             if (player.actionState() == gameplay::PlayerActionState::swordAttack) {
-                combat.finishAttack(player.attackInstance());
+                combat.finishAttack({player.entityHandle(), player.attackInstance()});
             }
             activeSword.enabled = false;
             player.finishAttack();
@@ -332,8 +354,8 @@ struct Phase5Demo::State final {
         enum class ActorKind { player, puppet };
         struct Actor { int sortY; simulation::EntityHandle handle; ActorKind kind; };
         std::array<Actor, 2> actors{{
-            {player.feetPosition().y, playerHandle, ActorKind::player},
-            {puppet->feetPosition().y, puppet->combatTarget().handle, ActorKind::puppet}}};
+            {player.feetPosition().y, player.entityHandle(), ActorKind::player},
+            {puppet->feetPosition().y, puppet->combatant().handle, ActorKind::puppet}}};
         std::sort(actors.begin(), actors.end(), [](const Actor& left, const Actor& right) {
             return actorRendersBefore({left.sortY, left.handle}, {right.sortY, right.handle});
         });
@@ -384,13 +406,13 @@ struct Phase5Demo::State final {
         }
         if (combatDebug.collisionBody) {
             outline(renderer, player.collisionBody(), cameraPosition, {32, 255, 96, 255});
-            outline(renderer, puppet->combatTarget().collisionBody.bounds, cameraPosition,
+            outline(renderer, puppet->collisionBody().bounds, cameraPosition,
                     {32, 255, 96, 255});
         }
         if (combatDebug.hurtbox) {
             outline(renderer, player.hurtbox().bounds, cameraPosition, {32, 220, 255, 255});
-            if (puppet->combatTarget().hurtbox.enabled) {
-                outline(renderer, puppet->combatTarget().hurtbox.bounds, cameraPosition,
+            if (puppet->hurtbox().enabled) {
+                outline(renderer, puppet->hurtbox().bounds, cameraPosition,
                         {32, 220, 255, 255});
             }
         }
@@ -417,13 +439,13 @@ struct Phase5Demo::State final {
         std::ostringstream second;
         second << gameplay::facingName(player.facing()) << ' '
                << gameplay::actionStateName(player.actionState()) << " A " << lastAttack
-               << " PUPPET " << puppet->combatTarget().health.current << '/'
-               << puppet->combatTarget().health.maximum;
+               << " PUPPET " << puppet->combatant().health.current << '/'
+               << puppet->combatant().health.maximum;
         render::drawText(renderer, font, second.str(), 3, 12);
         std::ostringstream third;
         third << "ARROWS " << projectiles.projectiles().size() << " VFX "
               << effects->effects().size() << " INV "
-              << puppet->combatTarget().invulnerabilityTicks << " S " << lastSequence;
+              << puppet->combatant().invulnerabilityTicks << " S " << lastSequence;
         render::drawText(renderer, font, third.str(), 3, 21);
         render::drawText(renderer, font,
                          lastEvent.empty() ? "Z SWORD X BOW C F1 F2 F3 F4" : lastEvent,
@@ -458,9 +480,13 @@ struct Phase5Demo::State final {
     std::unique_ptr<EffectSystem> effects;
     world::RuntimeMap map;
     render::Camera2D camera;
-    gameplay::Player player;
     simulation::EntityHandlePool handles;
     simulation::EntityHandle playerHandle{};
+    gameplay::Player player;
+    gameplay::AttackDefinition swordDefinition;
+    gameplay::AttackDefinition bowDefinition;
+    gameplay::ProjectileDefinition arrowDefinition;
+    gameplay::ProjectileCatalog projectileCatalog;
     std::unique_ptr<TrainingPuppet> puppet;
     gameplay::CombatSystem combat;
     gameplay::ProjectileSystem projectiles;

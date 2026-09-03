@@ -24,7 +24,7 @@ bool factionsCanDamage(Faction attacker, Faction target) noexcept {
     return attacker != target && attacker != Faction::neutral && target != Faction::neutral;
 }
 
-void tickInvulnerability(CombatTarget& target) noexcept {
+void tickInvulnerability(CombatantState& target) noexcept {
     if (target.invulnerabilityTicks > 0) {
         --target.invulnerabilityTicks;
     }

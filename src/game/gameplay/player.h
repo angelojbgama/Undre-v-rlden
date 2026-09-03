@@ -49,13 +49,17 @@ public:
     static constexpr int hurtboxOffsetX = -7;
     static constexpr int hurtboxOffsetY = -22;
 
-    Player(simulation::PlayerId id, core::WorldPointI feetPosition,
+    Player(simulation::PlayerId id, simulation::EntityHandle entity,
+           core::WorldPointI feetPosition,
            PlayerMovementConfig config = {});
 
     void update(const simulation::PlayerCommand& command,
                 const world::CollisionGrid& collision, int tileSize);
 
     [[nodiscard]] simulation::PlayerId id() const noexcept { return id_; }
+    [[nodiscard]] simulation::EntityHandle entityHandle() const noexcept {
+        return combatant_.handle;
+    }
     [[nodiscard]] SubpixelPosition subpixelPosition() const noexcept { return position_; }
     [[nodiscard]] core::WorldPointI feetPosition() const;
     [[nodiscard]] world::AabbI collisionBody() const;
@@ -67,14 +71,20 @@ public:
     }
     [[nodiscard]] PlayerActionState actionState() const noexcept { return actionState_; }
     [[nodiscard]] AttackInstanceId attackInstance() const noexcept { return attackInstance_; }
-    [[nodiscard]] Health& health() noexcept { return health_; }
-    [[nodiscard]] const Health& health() const noexcept { return health_; }
+    [[nodiscard]] Health& health() noexcept { return combatant_.health; }
+    [[nodiscard]] const Health& health() const noexcept { return combatant_.health; }
+    [[nodiscard]] CombatantState& combatant() noexcept { return combatant_; }
+    [[nodiscard]] const CombatantState& combatant() const noexcept { return combatant_; }
+    [[nodiscard]] CombatTargetRef combatTarget() noexcept;
     [[nodiscard]] Hurtbox hurtbox() const noexcept;
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
+    void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
+                        int tileSize);
     void finishAttack() noexcept { actionState_ = PlayerActionState::none; }
 
 private:
     simulation::PlayerId id_{};
+    CombatantState combatant_{};
     SubpixelPosition position_{};
     PlayerMovementConfig config_{};
     FacingDirection facing_{FacingDirection::down};
@@ -83,7 +93,6 @@ private:
     PlayerActionState actionState_{PlayerActionState::none};
     AttackInstanceId attackInstance_{};
     AttackInstanceId nextAttackInstance_{1};
-    Health health_{maximumHealth};
 };
 
 [[nodiscard]] const char* facingName(FacingDirection facing) noexcept;

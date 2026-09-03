@@ -1,8 +1,6 @@
 #include "game/gameplay/combat_system.h"
 
 #include "engine/simulation/events.h"
-#include "engine/world/collision_grid.h"
-
 #include <algorithm>
 #include <stdexcept>
 
@@ -14,52 +12,50 @@ bool overlaps(world::AabbI left, world::AabbI right) noexcept {
            left.y < right.y + right.height && right.y < left.y + left.height;
 }
 
-bool CombatSystem::resolve(const Hitbox& attack, CombatTarget& target,
-                           const world::CollisionGrid& collision, int tileSize,
-                           simulation::EventBuffer& events) {
+CombatResolution CombatSystem::resolve(const Hitbox& attack, CombatTargetRef target,
+                                       simulation::EventBuffer& events) {
     if (attack.damage.amount <= 0 || attack.damage.knockbackPixels < 0) {
         throw std::invalid_argument("combat damage must be positive and knockback non-negative");
     }
-    if (!attack.enabled || !target.hurtbox.enabled || target.health.depleted() ||
-        attack.owner == target.handle || !factionsCanDamage(attack.faction, target.faction) ||
-        !overlaps(attack.bounds, target.hurtbox.bounds) || target.invulnerabilityTicks > 0) {
-        return false;
+    CombatantState& combatant = target.combatant;
+    CombatResolution result{combatant.handle};
+    if (!attack.enabled || !target.hurtbox.enabled || combatant.health.depleted() ||
+        attack.attack.owner == combatant.handle ||
+        !factionsCanDamage(attack.faction, combatant.faction) ||
+        !overlaps(attack.bounds, target.hurtbox.bounds) ||
+        combatant.invulnerabilityTicks > 0) {
+        return result;
     }
     const auto duplicate = std::find_if(hits_.begin(), hits_.end(), [&](const HitRecord& hit) {
-        return hit.attack == attack.attackInstance && hit.target == target.handle;
+        return hit.attack == attack.attack && hit.target == combatant.handle;
     });
     if (duplicate != hits_.end()) {
-        return false;
+        return result;
     }
-    hits_.push_back({attack.attackInstance, target.handle});
-    if (!target.health.applyDamage(attack.damage.amount)) {
-        return false;
+    hits_.push_back({attack.attack, combatant.handle});
+    if (!combatant.health.applyDamage(attack.damage.amount)) {
+        return result;
     }
-    target.invulnerabilityTicks = invulnerabilityDurationTicks;
+    combatant.invulnerabilityTicks = invulnerabilityDurationTicks;
+    result.damaged = true;
+    result.requestedKnockbackX = attack.knockbackX;
+    result.requestedKnockbackY = attack.knockbackY;
 
-    world::AabbI body = target.collisionBody.bounds;
-    const auto movement = world::moveAgainstSolidTiles(
-        collision, body, attack.knockbackX, attack.knockbackY, tileSize);
-    target.feet.x += movement.movedX;
-    target.feet.y += movement.movedY;
-    target.collisionBody.bounds = body;
-    target.hurtbox.bounds.x += movement.movedX;
-    target.hurtbox.bounds.y += movement.movedY;
-
-    events.emit(simulation::EntityDamaged{attack.owner, target.handle, attack.damage.amount,
-                                         target.health.current, attack.attackInstance});
-    if (target.health.depleted()) {
-        target.hurtbox.enabled = false;
-        if (!target.defeatEmitted) {
+    events.emit(simulation::EntityDamaged{
+        attack.attack.owner, combatant.handle, attack.damage.amount,
+        combatant.health.current, attack.attack.localInstance});
+    if (combatant.health.depleted()) {
+        result.defeated = true;
+        if (!combatant.defeatEmitted) {
             events.emit(simulation::EntityDefeated{
-                attack.owner, target.handle, attack.attackInstance});
-            target.defeatEmitted = true;
+                attack.attack.owner, combatant.handle, attack.attack.localInstance});
+            combatant.defeatEmitted = true;
         }
     }
-    return true;
+    return result;
 }
 
-void CombatSystem::finishAttack(AttackInstanceId attack) noexcept {
+void CombatSystem::finishAttack(AttackKey attack) noexcept {
     std::erase_if(hits_, [attack](const HitRecord& hit) { return hit.attack == attack; });
 }
 

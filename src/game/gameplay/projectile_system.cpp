@@ -11,26 +11,34 @@
 namespace underworld::game::gameplay {
 
 world::AabbI Projectile::hitbox() const noexcept {
-    return {position.x - hitboxSize / 2, position.y - hitboxSize / 2,
-            hitboxSize, hitboxSize};
+    if (definition == nullptr) {
+        return {};
+    }
+    return {position.x - definition->hitboxWidth / 2,
+            position.y - definition->hitboxHeight / 2,
+            definition->hitboxWidth, definition->hitboxHeight};
 }
 
 simulation::EntityHandle ProjectileSystem::spawn(
-    simulation::EntityHandle owner, Faction faction, AttackInstanceId attackInstance,
+    AttackKey attack, Faction faction, const simulation::DefinitionId& definitionId,
     core::WorldPointI position, FacingDirection direction, DamageSpec damage) {
+    const ProjectileDefinition& definition = definitions_.require(definitionId);
     const simulation::EntityHandle handle = handles_.create();
-    projectiles_.push_back({handle, owner, faction, attackInstance, position,
-                            direction, damage, Projectile::lifetimeTicks});
+    projectiles_.push_back({handle, attack, faction, &definition, position,
+                            direction, damage, definition.lifetimeTicks});
     return handle;
 }
 
 void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSize,
-                              std::span<CombatTarget*> targets, CombatSystem& combat,
-                              simulation::EventBuffer& events) {
+                              std::span<CombatTargetRef> targets, CombatSystem& combat,
+                              simulation::EventBuffer& events,
+                              std::vector<CombatResolution>& resolutions) {
     for (Projectile& projectile : projectiles_) {
         bool destroyed = false;
         const core::WorldPointI direction = directionVector(projectile.direction);
-        for (int step = 0; step < Projectile::speedPixelsPerTick && !destroyed; ++step) {
+        const int speed = projectile.definition != nullptr
+                              ? projectile.definition->speedPixelsPerTick : 0;
+        for (int step = 0; step < speed && !destroyed; ++step) {
             projectile.position.x += direction.x;
             projectile.position.y += direction.y;
             if (world::querySolidTiles(collision, projectile.hitbox(), tileSize).collides) {
@@ -40,21 +48,20 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                 destroyed = true;
                 break;
             }
-            for (CombatTarget* target : targets) {
-                if (target == nullptr) {
-                    continue;
-                }
-                const Hitbox hitbox{projectile.hitbox(), projectile.owner, projectile.faction,
-                                    projectile.attackInstance, projectile.damage,
+            for (CombatTargetRef target : targets) {
+                const Hitbox hitbox{projectile.hitbox(), projectile.attack, projectile.faction,
+                                    projectile.damage,
                                     direction.x * projectile.damage.knockbackPixels,
                                     direction.y * projectile.damage.knockbackPixels, true};
-                const bool validImpact = target->hurtbox.enabled &&
-                    target->handle != projectile.owner &&
-                    factionsCanDamage(projectile.faction, target->faction) &&
-                    overlaps(hitbox.bounds, target->hurtbox.bounds);
+                const bool validImpact = target.hurtbox.enabled &&
+                    target.combatant.handle != projectile.attack.owner &&
+                    factionsCanDamage(projectile.faction, target.combatant.faction) &&
+                    overlaps(hitbox.bounds, target.hurtbox.bounds);
                 if (validImpact) {
-                    [[maybe_unused]] const bool damaged = combat.resolve(
-                        hitbox, *target, collision, tileSize, events);
+                    const CombatResolution resolution = combat.resolve(hitbox, target, events);
+                    if (resolution.damaged) {
+                        resolutions.push_back(resolution);
+                    }
                     events.emit(simulation::ProjectileImpact{
                         projectile.handle, projectile.position,
                         simulation::ProjectileImpactKind::target});
@@ -81,7 +88,7 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
         if (projectile.remainingTicks != 0) {
             return false;
         }
-        combat.finishAttack(projectile.attackInstance);
+        combat.finishAttack(projectile.attack);
         [[maybe_unused]] const bool destroyed = handles_.destroy(projectile.handle);
         return true;
     });

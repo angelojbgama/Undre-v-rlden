@@ -13,14 +13,13 @@ class CombatSystem final {
 public:
     static constexpr std::uint32_t invulnerabilityDurationTicks = 12;
 
-    [[nodiscard]] bool resolve(const Hitbox& attack, CombatTarget& target,
-                               const world::CollisionGrid& collision, int tileSize,
-                               simulation::EventBuffer& events);
-    void finishAttack(AttackInstanceId attack) noexcept;
+    [[nodiscard]] CombatResolution resolve(const Hitbox& attack, CombatTargetRef target,
+                                           simulation::EventBuffer& events);
+    void finishAttack(AttackKey attack) noexcept;
 
 private:
     struct HitRecord final {
-        AttackInstanceId attack{};
+        AttackKey attack{};
         simulation::EntityHandle target{};
     };
     std::vector<HitRecord> hits_;

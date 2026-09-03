@@ -33,12 +33,16 @@ std::int64_t checkedAdd(std::int64_t value, std::int64_t delta) {
 
 } // namespace
 
-Player::Player(simulation::PlayerId id, core::WorldPointI feetPosition,
+Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
+               core::WorldPointI feetPosition,
                PlayerMovementConfig config)
-    : id_(id),
+    : id_(id), combatant_{entity, Faction::player, Health{maximumHealth}, 0, false},
       position_{checkedSubpixelCoordinate(feetPosition.x),
                 checkedSubpixelCoordinate(feetPosition.y)},
       config_(config) {
+    if (!entity) {
+        throw std::invalid_argument("player requires a valid runtime entity handle");
+    }
     if (config_.bodyWidth <= 0 || config_.bodyHeight <= 0) {
         throw std::invalid_argument("player collision body dimensions must be positive");
     }
@@ -124,7 +128,22 @@ void Player::update(const simulation::PlayerCommand& command,
 Hurtbox Player::hurtbox() const noexcept {
     const auto feet = feetPosition();
     return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
-             hurtboxWidth, hurtboxHeight}, !health_.depleted()};
+             hurtboxWidth, hurtboxHeight}, !combatant_.health.depleted()};
+}
+
+CombatTargetRef Player::combatTarget() noexcept {
+    return {combatant_, hurtbox()};
+}
+
+void Player::applyKnockback(int deltaX, int deltaY,
+                            const world::CollisionGrid& collision, int tileSize) {
+    world::AabbI body = collisionBody();
+    const world::MovementResult movement = world::moveAgainstSolidTiles(
+        collision, body, deltaX, deltaY, tileSize);
+    const core::WorldPointI resolvedFeet{
+        body.x - config_.bodyOffsetX, body.y - config_.bodyOffsetY};
+    position_.x = checkedSubpixelCoordinate(resolvedFeet.x);
+    position_.y = checkedSubpixelCoordinate(resolvedFeet.y);
 }
 
 InteractionArea Player::interactionArea() const noexcept {
