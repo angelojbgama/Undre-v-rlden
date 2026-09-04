@@ -3033,6 +3033,66 @@ void testEditorSmokeMapIntegrationFixture() {
            "RuntimeWorldBuilder creates the smoke fixture placements and allocates handles only at runtime");
 }
 
+void testEditorPlaygroundAuthoringAsset() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    std::filesystem::path root = std::filesystem::current_path();
+    std::filesystem::path playground;
+    for (;;) {
+        const auto candidate = root / "maps" / "authoring" / "editor_playground.dmap";
+        if (std::filesystem::exists(candidate)) {
+            playground = candidate;
+            break;
+        }
+        const auto parent = root.parent_path();
+        if (parent == root) { break; }
+        root = parent;
+    }
+    game::GameContentRegistry content;
+    const auto validation = game::mapValidationCatalogs(content);
+    const auto loaded = playground.empty() ? maps::DmapLoadResult{}
+                                           : maps::readDmap(playground, &validation);
+    expect(loaded && loaded.data.id == simulation::MapId{"map.editor.playground"} &&
+               loaded.data.width == 48 && loaded.data.height == 32 && loaded.data.tileSize == 16 &&
+               !loaded.data.layers.empty() && !loaded.data.playerSpawns.empty(),
+           "editable playground asset is a readable DMAP v1 map with stable broad invariants");
+    expect(loaded && maps::validateMapData(loaded.data, &validation),
+           "editable playground asset validates against shared game content definitions");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
+                                         content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
+        {{simulation::DefinitionId{"tileset.dungeon"}, 1}});
+    const auto runtime = loaded ? builder.build(loaded.data, loaded.data.playerSpawns.front().id)
+                                : maps::RuntimeWorldBuildResult{};
+    expect(runtime && runtime.world->map().collision().width() == 48 &&
+               runtime.world->map().collision().height() == 32,
+           "editable playground DMAP builds through RuntimeWorldBuilder with runtime-only handles");
+
+    std::string error;
+    auto document = playground.empty() ? std::optional<editor::EditorDocument>{}
+                                       : editor::EditorDocument::open(playground, content, error);
+    const auto copy = std::filesystem::temp_directory_path() / "underworld_editor_playground_copy.dmap";
+    std::error_code removeError;
+    std::filesystem::remove(copy, removeError);
+    const bool savedCopy = document && !document->dirty() && !document->hasExperimentalData() &&
+                           document->saveAs(copy, content, error);
+    const auto reopened = savedCopy ? editor::EditorDocument::open(copy, content, error)
+                                    : std::optional<editor::EditorDocument>{};
+    expect(savedCopy && reopened && !reopened->dirty() &&
+               maps::semanticallyEqual(document->data(), reopened->data()),
+           "Map Editor opens the playground clean and saves a persistable roundtrip copy");
+    std::filesystem::remove(copy, removeError);
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -3111,6 +3171,7 @@ int main() {
         testPhase8PersistentMapsAndSave();
         testPhase9EditorFoundation();
         testEditorSmokeMapIntegrationFixture();
+        testEditorPlaygroundAuthoringAsset();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
