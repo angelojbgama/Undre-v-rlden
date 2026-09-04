@@ -2148,6 +2148,15 @@ void testPickupsQuickSlotsAndInventoryOverlay() {
     const auto command = commands.build(1, {0}, input);
     expect(command.actions.quickSlotPressed == 0,
            "lowest quick slot index wins when multiple edges share a tick");
+    edges.pushInteract();
+    edges.pushToggleInventory();
+    edges.pushQuickSlot(3);
+    edges.clear();
+    input = {};
+    edges.applyNext(input);
+    expect(!input.interactPressed && !input.toggleInventoryPressed &&
+               !input.quickSlot4Pressed,
+           "focus-loss clear removes interaction inventory and quick-slot ghost actions");
 
     InventoryOverlayState overlay;
     overlay.toggle();
