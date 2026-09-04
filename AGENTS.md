@@ -233,7 +233,10 @@ FASE 6 — Creature Engine reutilizável
 CONCLUÍDA
 
 FASE 7 — objetos + pickups + HUD + inventário
-PRÓXIMA
+IMPLEMENTADA LOCALMENTE — VALIDAÇÃO MSVC/SMOKE PENDENTE
+
+FASE 8 — `.dmap` + transições + save
+NÃO INICIADA
 ```
 
 Baseline registrada:
@@ -245,6 +248,23 @@ Warnings: 0
 Tests: PASS — 296 checks
 git diff --check: PASS
 Phase 6 code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
+```
+
+Implementação local da Fase 7 registrada em `7873e32` + teste `0721b12`, com 340 checks passando
+em compilação portátil C++20 com warnings tratados como erro. O host que produziu
+esse checkpoint não executava binários Win32; portanto build MSVC `/W4`, smoke visual
+e publicação remota ainda precisam ser confirmados antes de declarar a fase concluída.
+
+A implementação inclui:
+
+```text
+ItemDefinition / ItemCatalog / ItemStack / ItemContainer
+PlayerInventory(30) / Wallet / QuickSlotBindings(4)
+WorldPickup + PickupCollected
+InventoryOverlayState + GameViewModel + HUD
+WorldObjectDefinition / WorldObjectCatalog / WorldObjectFactory
+Container + Interactable + Destructible
+Chest + Crate + Faction::environment
 ```
 
 A baseline inclui:
@@ -1528,7 +1548,7 @@ Ordem de desenvolvimento de referência:
 4  Player + InputState + PlayerCommand       DONE
 5  Combate mínimo                            DONE
 6  Criaturas / inimigo reutilizável          DONE
-7  Objetos + pickup + HUD + inventário       NEXT
+7  Objetos + pickup + HUD + inventário       IMPLEMENTED / VALIDATION PENDING
 8  .dmap + transições + save
 9  Map Maker
 10 NPC + diálogo

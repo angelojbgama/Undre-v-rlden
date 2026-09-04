@@ -40,7 +40,7 @@ FASE 4 — Player + InputState + PlayerCommand             DONE
          + movimento + animação + camera follow
 FASE 5 — Combat Foundation + vertical slice de combate   DONE
 FASE 6 — Creature Engine reutilizável                    DONE
-FASE 7 — Objetos + pickup + HUD + inventário            NEXT
+FASE 7 — Objetos + pickup + HUD + inventário            IMPLEMENTED / WINDOWS VALIDATION PENDING
 FASE 8 — .dmap + transições + save
 FASE 9 — Map Maker
 FASE 10 — NPC + diálogo
@@ -574,6 +574,16 @@ usando a mesma fundação sem sistemas de combate/projéteis específicos por cr
 
 # Fase 7 — objetos, pickups, HUD e inventário pequeno
 
+## Status
+
+**Implementada localmente nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`; validação
+MSVC/Win32 e smoke manual pendentes.**
+
+O ambiente do checkpoint compilou todos os módulos portáveis e a composição do demo
+em C++20 com warnings como erro, e executou 340 checks. Ele não conseguia executar
+`cmd.exe`, `build.bat`, `tests.exe` ou `game.exe`, portanto a fase ainda não deve ser
+marcada como `DONE` e a Fase 8 não foi iniciada.
+
 ## Objetivo
 
 Expandir composição para entidades não-hostis e estado do jogador.
@@ -612,6 +622,23 @@ Extrair somente dados/operações comprovadamente repetidos.
 ## Marco
 
 Pickup, baú, destrutível e HUD funcionam sem acessar internals uns dos outros e sem criar subsistemas exclusivos por sprite.
+
+## Decisões consolidadas implementadas
+
+```text
+PlayerInventory = 30 slots
+layout visual = 10 colunas x 3 linhas
+QuickSlots = 4 bindings por ItemDefinitionId
+stackLimit pertence a ItemDefinition
+item.life_potion = stackLimit 66, RestoreHealth 2
+equipment usa stackLimit 1
+Gold pertence a Wallet e não ocupa slot
+ItemContainer aceita capacidade arbitrária
+BankStorage futuro = 50 slots, somente após persistência/save
+```
+
+Banco funcional, `.dmap`, save, loot/XP, equipment stats e drops de inimigos não
+foram implementados.
 
 ---
 

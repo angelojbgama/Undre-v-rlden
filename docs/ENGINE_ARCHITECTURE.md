@@ -40,8 +40,10 @@ EnemyVisualSet + EnemyVisualInstance
 Evil Soldier melee + Skull ranged
 ```
 
-A Fase 7, objetos/pickups/HUD/inventário, é o próximo incremento. `.dmap`, editor,
-save, loot/XP, NPCs, quests e networking permanecem deferidos.
+A Fase 7 foi implementada localmente nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`,
+com 340 checks portáveis, mas ainda aguarda build MSVC `/W4` e smoke Win32 para ser
+declarada concluída. `.dmap`, editor, save, loot/XP, NPCs, quests e networking
+permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
 
@@ -833,6 +835,29 @@ Trigger
 Um objeto pode combinar capacidades.
 
 Adicionar um novo objeto não deve exigir um novo sistema se as capacidades existentes já o descrevem.
+
+### Fundação implementada na Fase 7
+
+```text
+ItemCatalog owns ItemDefinition
+ItemContainer owns optional ItemStack slots
+PlayerInventory wraps ItemContainer(30)
+Wallet owns uint64 gold separately
+QuickSlotBindings owns 4 ItemDefinitionId bindings
+WorldPickup owns runtime payload + EntityHandle
+WorldObjectDefinition composes Interactable/Container/Destructible
+WorldObjectInstance owns runtime container/combat state
+GameViewModel copies read-only UI data
+```
+
+`ItemContainer` recebe capacidade na construção; o mesmo tipo atende inventário e
+Chest e poderá atender um BankStorage de 50 slots depois que save/persistência existir.
+Stack limits são resolvidos pelo `ItemCatalog`: life potion usa 66 e equipment usa 1.
+Gold nunca é convertido em `ItemStack`.
+
+`Faction::environment` permite dano Player -> Environment e bloqueia inicialmente
+Enemy -> Environment e Environment -> qualquer alvo. Crate usa o mesmo CombatSystem,
+EntityDefeated e lifecycle de handles das criaturas.
 
 ---
 
