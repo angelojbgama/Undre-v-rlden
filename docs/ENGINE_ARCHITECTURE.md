@@ -1018,6 +1018,19 @@ palette dinâmica e eyedropper; mapas podem misturar packs numa mesma `TileLayer
 Definição desconhecida, source index inválido e tile size incompatível são erros semânticos
 de `MapData`; imagem local ausente é um diagnóstico visual, nunca fallback para Dungeon.
 
+### Semântica de autoria (Block 1)
+
+`AuthoringSemanticRegistry` é conteúdo imutável compartilhado pelo Map Maker. Ele associa
+as referências persistidas do Dungeon atlas a IDs estáveis, família visual, papel,
+topologia, perfis de borda e níveis de confiança; `StampDefinition` agrupa estruturas
+visuais que devem entrar pelo mesmo comando de undo/redo. A semântica não muda DMAP v1.
+
+`MapSemanticValidator` é uma segunda passagem, posterior à validação estrutural de
+`MapData`. Seus diagnósticos são somente informativos/avisos e nunca constroem collision,
+transitions ou gameplay a partir de pixels. Os contratos de detalhe estão em
+`TILE_CATALOG.md`, `STAMP_CATALOG.md`, `MAP_COMPOSITION_SPEC.md` e
+`ENTITY_PLACEMENT_SPEC.md`.
+
 ---
 
 ## 17. Multiplayer futuro

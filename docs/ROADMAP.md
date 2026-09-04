@@ -715,6 +715,13 @@ rejeita tileset desconhecido, source index fora do atlas e tile size incompatív
 DSAV permanecem v1.0. O smoke interativo geral ainda é gate separado para declarar Block 1
 como concluído.
 
+O checkpoint semântico adiciona `AuthoringSemanticRegistry` para as 72 células visíveis
+do atlas Dungeon, oito stamps visuais, paleta/inspector semânticos e validação advisory
+separada da validação estrutural. `PlaceStampCommand` preserva undo/redo atômico e rejeita
+layer bloqueada ou placement fora dos limites antes de escrever. A aceitação final ainda
+requer rebuild MSVC `/W4`, testes e smokes Windows; não avançar formatos nem os itens
+deferred antes desse gate.
+
 ## Gate
 
 Não iniciar antes de runtime map + `.dmap` + transições estarem utilizáveis.

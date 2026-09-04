@@ -52,7 +52,7 @@ AuthoringSemanticRegistry::AuthoringSemanticRegistry() {
                            bool atomic, std::initializer_list<std::pair<int,int>> cells) {
         StampDefinition value{simulation::DefinitionId{id}, name, width, height, {}, {0,0}, false, atomic,
                               SemanticConfidence::confirmed};
-        for (const auto [x,y] : cells) {
+        for (const auto& [x,y] : cells) {
             const auto* tile = findTile(simulation::DefinitionId{"tileset.dungeon"}, static_cast<std::uint32_t>(y * 19 + x));
             if (tile) { value.cells.push_back({x - cells.begin()->first, y - cells.begin()->second, tile->id}); }
         }
@@ -100,19 +100,20 @@ SemanticValidationReport MapSemanticValidator::validate(const maps::MapData& map
     const auto onSolid=[&](core::WorldPointI point){if(point.x<0||point.y<0)return false;const auto x=static_cast<std::uint32_t>(point.x/map.tileSize),y=static_cast<std::uint32_t>(point.y/map.tileSize);return x<map.width&&y<map.height&&map.collision[static_cast<std::size_t>(y)*map.width+x]!=0;};
     for(const auto& spawn:map.playerSpawns)if(onSolid(spawn.position))report.issues.push_back({SemanticIssueSeverity::warning,"spawn_solid","player spawn is inside authored collision",spawn.position,{},{}});
     for(const auto& object:map.objects)if(object.definitionId.value()=="object.chest"){bool approach=false;const int d=map.tileSize;for(const auto& offset:std::vector<core::WorldPointI>{{d,0},{-d,0},{0,d},{0,-d}})if(!onSolid({object.position.x+offset.x,object.position.y+offset.y})){approach=true;break;}if(!approach)report.issues.push_back({SemanticIssueSeverity::warning,"chest_no_approach","chest has no adjacent non-solid approach cell",object.position,{}, {}});}
-    // Atomic stamps are only diagnosed when two or more exclusive-looking members identify a
-    // candidate origin. This deliberately avoids treating a single reusable wall tile as proof.
+    // An atomic-stamp warning needs nearly complete visual evidence. Tiles are still reusable
+    // individually, so a partial pair or a stamp clipped by the map boundary is not enough
+    // evidence to claim that an author accidentally broke a stamp.
     for (const auto& stamp : semantics.stamps()) if (stamp.atomic) {
         for (std::size_t layerIndex=0; layerIndex<map.layers.size(); ++layerIndex) {
             for (std::uint32_t y=0; y<map.height; ++y) for (std::uint32_t x=0; x<map.width; ++x) {
-                unsigned matches{}; unsigned expected{};
+                if (x + stamp.width > map.width || y + stamp.height > map.height) continue;
+                unsigned matches{};
                 for (const auto& member : stamp.cells) {
                     const int px=static_cast<int>(x)+member.x, py=static_cast<int>(y)+member.y;
-                    if(px<0||py<0||px>=static_cast<int>(map.width)||py>=static_cast<int>(map.height)) continue;
-                    ++expected; const auto cell=map.layers[layerIndex].cells[static_cast<std::size_t>(py)*map.width+static_cast<std::uint32_t>(px)];
+                    const auto cell=map.layers[layerIndex].cells[static_cast<std::size_t>(py)*map.width+static_cast<std::uint32_t>(px)];
                     if(cell&&*cell<map.tileReferences.size()){const auto* actual=semantics.findTile(map.tileReferences[*cell].tilesetId,map.tileReferences[*cell].sourceIndex);if(actual&&actual->id==member.tileId)++matches;}
                 }
-                if(matches>=2 && matches<expected) report.issues.push_back({SemanticIssueSeverity::warning,"broken_atomic_stamp","atomic stamp appears incomplete",core::WorldPointI{static_cast<int>(x*map.tileSize),static_cast<int>(y*map.tileSize)},layerIndex,stamp.id});
+                if(matches + 1U >= stamp.cells.size() && matches < stamp.cells.size()) report.issues.push_back({SemanticIssueSeverity::warning,"broken_atomic_stamp","atomic stamp appears incomplete",core::WorldPointI{static_cast<int>(x*map.tileSize),static_cast<int>(y*map.tileSize)},layerIndex,stamp.id});
             }
         }
     }

@@ -74,7 +74,7 @@ Convenções:
 | `Tileset/shop_block.png` | 32×32 | 32×32 | single | shop counter/sign | front | Objeto de 2×2 tiles em bounding box, embora parte seja transparente. |
 | `Tileset/statue.png` | 16×32 | 16×32 | single | tall decoration | front | Base/oclusão devem ser metadados. |
 | `Tileset/tile_spickes.png` | 48×16 | 16×16 | 3×1 / 3 | trap animation | nondirectional | Totalmente opaco; três estados de espinhos; nome original preservado. |
-| `Tileset/tileset.png` | 304×192 | 16×16 | 19×12 / 228 cells | tile atlas | n/a | 73 células não transparentes e 155 vazias. Paredes, pisos, bordas, cantos, portas e detalhes; estruturas multi-cell devem permanecer como seleções de tiles, não “frames”. |
+| `Tileset/tileset.png` | 304×192 | 16×16 | 19×12 / 228 cells | tile atlas | n/a | 72 células não transparentes e 156 vazias. Paredes, pisos, bordas, cantos, portas e detalhes; estruturas multi-cell devem permanecer como seleções de tiles, não “frames”. |
 | `Tileset/vase.png` | 16×32 | 16×32 | single | tall object | front | Footprint provável 1 tile inferior. |
 
 O atlas principal está alinhado exatamente a 16×16. Células preenchidas por linha `(x:y, origem 0)`:
@@ -159,7 +159,7 @@ A grade 7×9 é exata. O desenho ocupa normalmente 5×7 pixels, com exceções d
 3. Definir se as duas setas serão rotacionadas, combinadas por direção ou tratadas como projéteis distintos.
 4. Confirmar o significado do último glyph, de `Walls_trap_arrows`, `gold_block` e dos dois frames de TNT/puppet.
 5. Validar se o fundo opaco de gate/spikes é intencional. Não aplicar color key automaticamente: a cor pode também existir na arte.
-6. Catalogar semanticamente os 73 tiles não vazios no futuro editor; a auditoria visual identifica geometria, mas não prova colisão, autotile ou layer.
+6. O PNG real e a lista de coordenadas somam 72 tiles não vazios (a contagem anterior de 73 era erro). O catálogo semântico inicial existe no Map Maker; a auditoria visual ainda não prova colisão, autotile ou layer.
 7. Não usar detecção automática de transparência como definição de hitbox, hurtbox, collision ou interação.
 
 ## Licença e higiene do repositório

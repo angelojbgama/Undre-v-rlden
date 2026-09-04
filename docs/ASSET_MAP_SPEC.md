@@ -355,7 +355,7 @@ y10: nenhum
 y11: x3-x5
 ```
 
-Observação: o `ASSET_AUDIT.md` atualmente diz “73”, mas a lista de coordenadas registrada nele também soma 72. Para autoria deve prevalecer o PNG efetivamente inspecionado.
+Observação: a reconciliação da auditoria confirmou 72: a lista de coordenadas e o PNG efetivamente inspecionado concordam.
 
 ## 8.2 Regra fundamental do atlas
 
@@ -1184,21 +1184,13 @@ persistent placed item
 
 Definir o que **não pertence ao mapa** e impedir que uma LLM use UI/VFX como world tiles.
 
-## Parte 5 — Tile semantic catalogue final
+## Parte 5 — Catálogo semântico de tiles
 
-Refinar `tileset.png` célula por célula com:
-
-- nome semântico;
-- família;
-- papel estrutural;
-- vizinhos válidos;
-- stamp membership;
-- collision default sugerida, quando validada pelo design e não pela imagem;
-- draw layer;
-- exemplos de composição;
-- regras de autotiling/editor.
-
-Esta parte deverá transformar coordenadas brutas em um catálogo suficientemente seguro para geração automática.
+O catálogo inicial célula por célula está em `TILE_CATALOG.md`, e os agrupamentos
+visuais estão em `STAMP_CATALOG.md`. Ele fornece nome estável, família, papel/topologia
+visual, confiança e membership de stamp para as 72 células visíveis. Regras de vizinhança
+permanecem conservadoras; collision default, autotiling e geração automática só entram
+quando houver evidência de design além do PNG.
 
 ---
 

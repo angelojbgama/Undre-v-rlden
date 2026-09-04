@@ -3208,6 +3208,7 @@ void testMultiTilesetAuthoringAndRuntime() {
 
 void testSemanticAuthoringFoundation() {
     using namespace underworld;
+    namespace maps = game::maps;
     game::GameContentRegistry content;
     const auto& semantics = content.authoringSemantics();
     expect(semantics.tiles().size() == 72, "all 72 visible Dungeon atlas cells have semantic definitions");
@@ -3250,6 +3251,21 @@ void testSemanticAuthoringFoundation() {
     expect(std::any_of(broken.issues.begin(), broken.issues.end(), [](const auto& issue) {
         return issue.code == "broken_atomic_stamp";
     }), "semantic validator reports a confidently incomplete atomic stamp as a warning");
+    editor::EditorDocument sparseDocument = editor::EditorDocument::newMap(
+        simulation::MapId{"map.semantic.sparse"}, 8, 8);
+    const auto* frameNorth = semantics.findTile(
+        simulation::DefinitionId{"tileset.dungeon"}, 3U + 2U * 19U);
+    expect(sparseDocument.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{0, 0}},
+               game::authoring::tileReferenceFor(*frameNorthWest)), error) && frameNorth &&
+               sparseDocument.execute(std::make_unique<editor::PaintTilesCommand>(0,
+                   std::vector<editor::TileCoordinate>{{1, 0}},
+                   game::authoring::tileReferenceFor(*frameNorth)), error),
+           "sparse semantic tiles can be authored for conservative validator coverage");
+    const auto sparseReport = validator.validate(sparseDocument.data(), semantics);
+    expect(!std::any_of(sparseReport.issues.begin(), sparseReport.issues.end(), [](const auto& issue) {
+                       return issue.code == "broken_atomic_stamp";
+                   }), "sparse reusable stamp members do not produce a broken-stamp warning");
     semanticMap.tileReferences.push_back({simulation::DefinitionId{"tileset.dungeon"}, 0, world::TileFlags::none});
     semanticMap.layers[0].cells[0] = static_cast<std::uint32_t>(semanticMap.tileReferences.size()-1);
     const auto unclassified = validator.validate(semanticMap, semantics);
