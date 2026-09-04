@@ -236,7 +236,10 @@ FASE 7 — objetos + pickups + HUD + inventário
 CONCLUÍDA
 
 FASE 8 — `.dmap` + transições + save
-PRÓXIMA — NÃO INICIADA
+CONCLUÍDA
+
+FASE 9 — Map Maker
+PRÓXIMA
 ```
 
 Baseline registrada:
@@ -247,17 +250,25 @@ Host: Visual Studio 2026 Community / Windows 11 10.0.22631.6199
 Windows SDK: 10.0.26100.0
 Language: C++20
 Warnings: 0
-Tests: PASS — 347 checks
+Tests: PASS — 403 checks
 git diff --check: PASS
 Phase 6 code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
 Phase 7 code commit: 7873e32222b1e8d72e996771a88a6890b0eb9220
 Phase 7 validation/fix commit: 7cc9da495d314de52ab097f890594dd7deb2d0a4
+Phase 8 foundation commits: 4d7d808a769b5739dc6a1e36d0e0134552b77155 + a3076f41b605b1835356d4bb0bcce4c430d9612c
+Phase 8 final code commit: d93e72429d77811c29e26c6350d5c892123b562b
+DMAP: v1.0
+DSAV: v1.0
 Windows smoke: PASS
 ```
 
 A Fase 7 foi validada no target Win32/x64 com `build.bat`, `/W4`, 0 warnings,
 347 checks e smoke visual/interativo. A validação também confirmou resize com integer
 scaling/letterbox, perda real de foco e encerramento por `WM_CLOSE` com exit code 0.
+
+A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.0, duas salas carregadas por
+MapId, transitions A→B→A, deltas de sessão, F5/F9, backup atômico e restart/load entre
+processos. A Fase 9 é a próxima; não iniciar Map Maker sem tarefa explícita.
 
 A implementação inclui:
 
@@ -297,9 +308,10 @@ EnemyVisualSet / EnemyVisualInstance
 Evil Soldier melee + Skull ranged
 ```
 
-Ainda não existem `.dmap`, editor, save, ECS completo, pathfinding, loot/XP ou IA
-avançada. Nenhuma dependência externa foi adicionada e os assets licenciados continuam
-fora do Git.
+Ainda não existem editor, ECS completo, pathfinding, loot/XP ou IA avançada. DMAP v1,
+DSAV v1, duas salas, transitions e persistência de Chest/Crate/Pickup estão
+implementados. Nenhuma dependência externa foi adicionada e os assets licenciados
+continuam fora do Git.
 
 ## Estado local prevalece
 

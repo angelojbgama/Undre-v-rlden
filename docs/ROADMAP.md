@@ -41,8 +41,8 @@ FASE 4 — Player + InputState + PlayerCommand             DONE
 FASE 5 — Combat Foundation + vertical slice de combate   DONE
 FASE 6 — Creature Engine reutilizável                    DONE
 FASE 7 — Objetos + pickup + HUD + inventário            DONE
-FASE 8 — .dmap + transições + save                     NEXT
-FASE 9 — Map Maker
+FASE 8 — .dmap + transições + save                     DONE
+FASE 9 — Map Maker                                     NEXT
 FASE 10 — NPC + diálogo
 FASE 11 — Quests
 FASE 12 — RPG + XP + equipment + loot
@@ -647,6 +647,18 @@ foram implementados.
 ---
 
 # Fase 8 — `.dmap`, transições e save
+
+## Status
+
+**Concluída.** DMAP 1.0 alimenta o `game.exe`; duas salas são resolvidas por
+`MapId`, construídas por `RuntimeWorldBuilder` e trocadas por `MapSession` em boundary
+de tick. `SessionWorldState` registra deltas de Chest, Crate e Pickup para A→B→A e é
+a mesma estrutura serializada por DSAV 1.0. F5/F9 são edges lógicos; save usa
+temporário + backup e load prepara o novo world antes do swap.
+
+Baseline de fechamento: MSVC 19.44 x64, C++20, `/W4`, 0 warnings, 403 checks,
+`git diff --check` PASS e smoke Win32 incluindo DMAP, A→B→A, save, restart/load,
+resize/focus e `WM_CLOSE`.
 
 ## Gate
 

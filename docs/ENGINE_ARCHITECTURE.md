@@ -50,7 +50,12 @@ A Fase 7 está concluída. O código-base está em
 `7cc9da495d314de52ab097f890594dd7deb2d0a4`. A baseline validada usa Windows 11
 x64, MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK
 10.0.26100.0, C++20, `/W4`, 0 warnings e 347 checks, com `git diff --check` e
-smoke visual/interativo passando. A Fase 8 é a próxima; `.dmap`, editor, save,
+smoke visual/interativo passando.
+
+A Fase 8 também está concluída: DMAP/DSAV v1, `MapData`, persistent IDs,
+`RuntimeWorldBuilder`, `MapCatalog`, `MapSession`, transições e deltas de sessão/save
+alimentam o slice jogável com duas salas. A baseline de fechamento usa MSVC 19.44
+x64, C++20, `/W4`, 0 warnings e 403 checks. A Fase 9 (Map Maker) é a próxima;
 loot/XP, NPCs, quests e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
@@ -1133,7 +1138,53 @@ Broad-phase, pooling e estruturas densas entram quando medições ou volume real
 
 ---
 
-## 21. Anti-padrões arquiteturais
+## 21. Persistência implementada na Fase 8
+
+As fronteiras permanentes são:
+
+```text
+authoring MapData -> DMAP -> parse/validation -> RuntimeWorldBuilder -> MapSession
+gameplay mutation -> SessionWorldState -> DSAV
+```
+
+`MapId` é string estável e não é path. `PersistentInstanceId` é `u64` local ao mapa,
+com zero reservado. `PersistentEntityKey` combina os dois. `EntityHandle` continua
+identidade de uma execução e nunca é persistido.
+
+`MapData` contém tiles, collision, spawns, placements e links. `RuntimeWorldBuilder`
+reutiliza `EnemyFactory`, `WorldObjectFactory` e `WorldPickup`, criando novos handles.
+`MapCatalog` resolve MapId para DMAP. `MapSession` mantém o world ativo e só destrói o
+anterior depois que o destino foi lido, validado, construído e recebeu seus deltas.
+O Player fica fora do world local e preserva Health, Inventory, Wallet e QuickSlots.
+
+Transitions são requests pendentes consumidas na boundary do fixed tick. O swap
+invalida handles locais, recria visuals, limpa projectiles/VFX/hit records, reposiciona
+o Player no `SpawnId` e recentraliza/clampa a câmera. Um latch e spawns fora das AABBs
+evitam retorno imediato.
+
+`SessionWorldState` captura somente diferenças contra o `MapData`: Chest aberto e
+conteúdo restante, Crate destruída, pickup coletado ou quantidade parcial. A mesma
+estrutura mantém A→B→A e é gravada pelo DSAV. Load valida e prepara o target antes de
+substituir world/player; inventário restaura os 30 slots exatos.
+
+| Dados | DMAP | DSAV |
+|---|:---:|:---:|
+| Tile layout / collision | sim | não |
+| Player spawn | sim | não |
+| Enemy placement | sim | não (morte não persiste na v1) |
+| Object placement | sim | delta apenas |
+| Pickup placement | sim | delta apenas |
+| Player Health / posição / facing | não | sim |
+| Inventory / Wallet / QuickSlots | não | sim |
+| Current MapId | não | sim |
+| EntityHandle / animator | não | não |
+| Projectile / VFX / AttackInstance | não | não |
+
+Os mapas demo são `MapData` temporários de autoria, serializados deterministicamente
+para `build/bin/data` e recarregados pelo caminho real. O futuro editor produzirá o
+mesmo DTO e chamará o mesmo writer, sem dependência de UI no serializer.
+
+## 22. Anti-padrões arquiteturais
 
 Evitar explicitamente:
 
@@ -1156,7 +1207,7 @@ biblioteca externa substituindo engine existente sem decisão
 
 ---
 
-## 22. Regra de evolução
+## 23. Regra de evolução
 
 Quando existir um único caso real, implemente-o de forma pequena e deixe uma fronteira limpa.
 
