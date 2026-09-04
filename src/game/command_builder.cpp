@@ -12,7 +12,14 @@ simulation::PlayerCommand CommandBuilder::build(
     // Primary has explicit priority when both edges reach the same fixed tick.
     const bool primary = input.primaryAttackPressed;
     const bool secondary = input.secondaryAttackPressed && !primary;
-    return {tick, playerId, nextSequence_++, {moveX, moveY}, {primary, secondary}};
+    int quickSlot = -1;
+    if (input.quickSlot1Pressed) { quickSlot = 0; }
+    else if (input.quickSlot2Pressed) { quickSlot = 1; }
+    else if (input.quickSlot3Pressed) { quickSlot = 2; }
+    else if (input.quickSlot4Pressed) { quickSlot = 3; }
+    return {tick, playerId, nextSequence_++, {moveX, moveY},
+            {primary, secondary, input.interactPressed,
+             input.toggleInventoryPressed, quickSlot}};
 }
 
 } // namespace underworld::game

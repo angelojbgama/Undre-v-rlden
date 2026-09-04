@@ -98,11 +98,19 @@ echo [18/33] Compiling projectiles...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\projectile_system.obj" "src\game\gameplay\projectile_system.cpp"
 if errorlevel 1 goto :build_failed
 
-echo [19/34] Compiling items...
+echo [19/36] Compiling items...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\items.obj" "src\game\gameplay\items.cpp"
 if errorlevel 1 goto :build_failed
 
-echo [20/34] Compiling creature engine...
+echo [20/36] Compiling player items...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\player_items.obj" "src\game\gameplay\player_items.cpp"
+if errorlevel 1 goto :build_failed
+
+echo [21/36] Compiling world pickups...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\world_pickups.obj" "src\game\gameplay\world_pickups.cpp"
+if errorlevel 1 goto :build_failed
+
+echo [22/36] Compiling creature engine...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\creature_engine.obj" "src\game\gameplay\creatures\creature_engine.cpp"
 if errorlevel 1 goto :build_failed
 
@@ -161,6 +169,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
+    "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
     "build\obj\creature_engine.obj" ^
     "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
@@ -186,6 +195,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
+    "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
     "build\obj\creature_engine.obj" ^
     "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^

@@ -20,6 +20,9 @@ struct MovementIntent final {
 struct ActionIntent final {
     bool primaryAttackPressed{};
     bool secondaryAttackPressed{};
+    bool interactPressed{};
+    bool toggleInventoryPressed{};
+    int quickSlotPressed{-1};
     [[nodiscard]] constexpr bool operator==(const ActionIntent&) const noexcept = default;
 };
 

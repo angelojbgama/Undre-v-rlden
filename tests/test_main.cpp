@@ -32,6 +32,8 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/player_items.h"
+#include "game/gameplay/world_pickups.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
@@ -2057,6 +2059,110 @@ void testItemsInventoryAndWallet() {
            "health restore clamps at maximum and reports no-op at full health");
 }
 
+void testPickupsQuickSlotsAndInventoryOverlay() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    ItemCatalog catalog;
+    catalog.add(makeLifePotionDefinition());
+    PlayerItems items(catalog);
+    Health health(5);
+    simulation::EntityHandlePool handles;
+    const auto player = handles.create();
+    simulation::EventBuffer events;
+
+    const PickupDefinition heartDefinition{
+        simulation::DefinitionId{"pickup.heart"}, simulation::DefinitionId{"visual.heart"},
+        {-4, -4, 8, 8}, HealthPickup{2}};
+    WorldPickup fullHeart(handles.create(), heartDefinition, {10, 10});
+    auto collection = collectPickup(fullHeart, player, {6, 6, 8, 8}, health,
+                                    items.inventory().items(), items.wallet(), handles, events);
+    expect(!collection.collected && handles.valid(fullHeart.handle()),
+           "heart at full health remains alive in the world");
+    static_cast<void>(health.applyDamage(3));
+    collection = collectPickup(fullHeart, player, {6, 6, 8, 8}, health,
+                               items.inventory().items(), items.wallet(), handles, events);
+    expect(collection.amount == 2 && health.current == 4 &&
+               !handles.valid(fullHeart.handle()),
+           "heart heals damaged player and invalidates its handle");
+
+    const PickupDefinition moneyDefinition{
+        simulation::DefinitionId{"pickup.money"}, simulation::DefinitionId{"visual.money"},
+        {-4, -4, 8, 8}, CurrencyPickup{1}};
+    WorldPickup money(handles.create(), moneyDefinition, {20, 10});
+    const auto inventoryBefore = items.inventory().items().count(lifePotionItemId());
+    collection = collectPickup(money, player, {16, 6, 8, 8}, health,
+                               items.inventory().items(), items.wallet(), handles, events);
+    expect(collection.amount == 1 && items.wallet().gold() == 1 &&
+               items.inventory().items().count(lifePotionItemId()) == inventoryBefore,
+           "money pickup credits Wallet and leaves inventory unchanged");
+
+    const PickupDefinition potionDefinition{
+        simulation::DefinitionId{"pickup.life_potion"},
+        simulation::DefinitionId{"visual.life_potion"}, {-4, -4, 8, 8},
+        ItemPickup{lifePotionItemId(), 10}};
+    ItemContainer nearlyFull(1, catalog);
+    static_cast<void>(nearlyFull.add(lifePotionItemId(), 62));
+    WorldPickup potion(handles.create(), potionDefinition, {30, 10});
+    collection = collectPickup(potion, player, {26, 6, 8, 8}, health, nearlyFull,
+                               items.wallet(), handles, events);
+    expect(collection.amount == 4 && std::get<ItemPickup>(potion.payload()).quantity == 6 &&
+               handles.valid(potion.handle()),
+           "partial world item pickup keeps its uncollected quantity and handle");
+    const auto* pickupEvent = std::get_if<simulation::PickupCollected>(&events.events().back());
+    expect(pickupEvent != nullptr && pickupEvent->amount == 4 && pickupEvent->itemId &&
+               *pickupEvent->itemId == lifePotionItemId(),
+           "PickupCollected reports the quantity actually collected");
+
+    static_cast<void>(items.inventory().items().add(lifePotionItemId(), 3));
+    items.quickSlots().bind(0, lifePotionItemId());
+    items.quickSlots().bind(2, lifePotionItemId());
+    expect(QuickSlotBindings::slotCount == 4 && items.quickSlots().binding(0) &&
+               items.quickSlots().binding(2),
+           "quick slots provide exactly four definition-id bindings");
+    static_cast<void>(health.restore(99));
+    const auto countAtFull = items.inventory().items().count(lifePotionItemId());
+    expect(!items.useQuickSlot(0, catalog, health).applied &&
+               items.inventory().items().count(lifePotionItemId()) == countAtFull,
+           "quick slot does not consume an item when use has no effect");
+    static_cast<void>(health.applyDamage(3));
+    expect(items.useQuickSlot(0, catalog, health).healthRestored == 2 &&
+               items.inventory().items().count(lifePotionItemId()) == countAtFull - 1,
+           "quick slot finds, applies, and consumes its bound item");
+    static_cast<void>(items.inventory().items().remove(lifePotionItemId(), 99));
+    expect(!items.useQuickSlot(0, catalog, health).applied && items.quickSlots().binding(0),
+           "out-of-stock quick slot remains bound and is a safe no-op");
+
+    platform::ActionEdgeBuffer edges;
+    platform::InputState input;
+    edges.pushQuickSlot(0);
+    edges.applyNext(input);
+    expect(input.quickSlot1Pressed, "quick slot edge is delivered once");
+    edges.applyNext(input);
+    expect(!input.quickSlot1Pressed, "held/repeated ticks do not recreate quick slot edges");
+    edges.pushQuickSlot(0);
+    edges.pushQuickSlot(2);
+    edges.applyNext(input);
+    game::CommandBuilder commands;
+    const auto command = commands.build(1, {0}, input);
+    expect(command.actions.quickSlotPressed == 0,
+           "lowest quick slot index wins when multiple edges share a tick");
+
+    InventoryOverlayState overlay;
+    overlay.toggle();
+    overlay.moveSelection(-1, -1);
+    expect(overlay.open() && overlay.selection() == 0,
+           "inventory selection clamps at top-left");
+    for (int index = 0; index < 20; ++index) { overlay.moveSelection(1, 0); }
+    expect(overlay.selection() == 9, "inventory selection clamps at right edge");
+    overlay.moveSelection(0, 1);
+    expect(overlay.selection() == 19, "inventory selection moves down by ten");
+    overlay.moveSelection(0, 1);
+    overlay.moveSelection(0, 1);
+    expect(overlay.selection() == 29, "inventory selection clamps at bottom edge");
+    overlay.moveSelection(-1, 0);
+    expect(overlay.selection() == 28, "inventory selection moves left within its row");
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -2129,6 +2235,7 @@ int main() {
         testCreatureDefinitionsAndBehavior();
         testCreatureCombatIntegration();
         testItemsInventoryAndWallet();
+        testPickupsQuickSlotsAndInventoryOverlay();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

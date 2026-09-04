@@ -2,8 +2,10 @@
 
 #include "engine/core/coordinates.h"
 #include "engine/simulation/entity_handle.h"
+#include "engine/simulation/definition_id.h"
 
 #include <cstdint>
+#include <optional>
 #include <variant>
 #include <vector>
 #include <utility>
@@ -32,7 +34,18 @@ struct ProjectileImpact final {
     ProjectileImpactKind kind{ProjectileImpactKind::tile};
 };
 
-using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact>;
+enum class PickupPayloadKind { health, currency, item };
+
+struct PickupCollected final {
+    EntityHandle collector{};
+    EntityHandle pickup{};
+    PickupPayloadKind kind{PickupPayloadKind::health};
+    std::optional<DefinitionId> itemId{};
+    std::uint64_t amount{};
+};
+
+using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
+                                     PickupCollected>;
 
 class EventBuffer final {
 public:

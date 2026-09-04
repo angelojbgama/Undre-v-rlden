@@ -402,6 +402,17 @@ private:
         case 'X':
             if (down && !wasDown) { actionEdges_.pushSecondary(); }
             break;
+        case 'E':
+            if (down && !wasDown) { actionEdges_.pushInteract(); }
+            break;
+        case 'I':
+            if (down && !wasDown) { actionEdges_.pushToggleInventory(); }
+            break;
+        case '1': case '2': case '3': case '4':
+            if (down && !wasDown) {
+                actionEdges_.pushQuickSlot(static_cast<std::size_t>(key - '1'));
+            }
+            break;
         case 'C':
             if (down && !wasDown) {
                 debugInput_.toggleCollisionPressed = true;
