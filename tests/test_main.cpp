@@ -2662,6 +2662,49 @@ void testPhase8PersistentMapsAndSave() {
     std::filesystem::remove(demoPathA, ec); std::filesystem::remove(demoPathB, ec);
 }
 
+void testNearestImageRegions() {
+    using underworld::core::ColorRGBA8;
+    constexpr ColorRGBA8 black{0, 0, 0, 255};
+    constexpr ColorRGBA8 red{255, 0, 0, 255};
+    constexpr ColorRGBA8 green{0, 255, 0, 255};
+    constexpr ColorRGBA8 blue{0, 0, 255, 255};
+    constexpr ColorRGBA8 white{255, 255, 255, 255};
+    const underworld::render::Image image(makeImageData(2, 2, {red, green, blue, white}));
+
+    underworld::render::Framebuffer framebuffer(4, 4);
+    underworld::render::Renderer2D renderer(framebuffer);
+    framebuffer.clear(black);
+    renderer.drawImageRegionNearest(image, {0, 0, 2, 2}, {0, 0, 4, 4});
+    expect(framebufferPixel(framebuffer, 0, 0) == red && framebufferPixel(framebuffer, 1, 1) == red &&
+               framebufferPixel(framebuffer, 2, 0) == green && framebufferPixel(framebuffer, 0, 2) == blue &&
+               framebufferPixel(framebuffer, 3, 3) == white,
+           "drawImageRegionNearest uses nearest-neighbor scaling");
+
+    framebuffer.clear(black);
+    renderer.drawImageRegionNearest(image, {1, 0, 1, 2}, {0, 0, 2, 4});
+    expect(framebufferPixel(framebuffer, 0, 0) == green && framebufferPixel(framebuffer, 1, 1) == green &&
+               framebufferPixel(framebuffer, 0, 3) == white,
+           "drawImageRegionNearest honors the selected source sub-region");
+
+    framebuffer.clear(black);
+    renderer.drawImageRegionNearest(image, {0, 0, 2, 2}, {-2, -2, 4, 4});
+    expect(framebufferPixel(framebuffer, 0, 0) == white && framebufferPixel(framebuffer, 1, 1) == white &&
+               framebufferPixel(framebuffer, 2, 2) == black,
+           "drawImageRegionNearest clips destination without escaping the framebuffer");
+
+    framebuffer.clear(black);
+    renderer.drawImageRegionNearest(image, {0, 0, 2, 2}, {0, 0, 4, 4}, true);
+    expect(framebufferPixel(framebuffer, 0, 0) == green && framebufferPixel(framebuffer, 3, 0) == red &&
+               framebufferPixel(framebuffer, 0, 3) == white && framebufferPixel(framebuffer, 3, 3) == blue,
+           "drawImageRegionNearest flips horizontally while preserving nearest sampling");
+
+    const underworld::render::Image transparent(makeImageData(1, 1, {{255, 0, 0, 0}}));
+    framebuffer.clear(blue);
+    renderer.drawImageRegionNearest(transparent, {0, 0, 1, 1}, {0, 0, 2, 2});
+    expect(framebufferPixel(framebuffer, 0, 0) == blue && framebufferPixel(framebuffer, 1, 1) == blue,
+           "drawImageRegionNearest preserves alpha blending semantics");
+}
+
 void testPhase9EditorFoundation() {
     namespace editor = underworld::editor;
     namespace game = underworld::game;
@@ -2709,6 +2752,43 @@ void testPhase9EditorFoundation() {
                document.data().collision[6] == 1,
            "collision paint supports undo and redo");
 
+    auto collisionDocument = editor::EditorDocument::newMap(
+        simulation::MapId{"map.editor.collision"}, 4, 3, 16, false);
+    const std::vector<editor::TileCoordinate> singleCell{{1, 1}};
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(singleCell, true), error) &&
+               collisionDocument.data().collision[5] == 1 && collisionDocument.undo() &&
+               collisionDocument.data().collision[5] == 0 && collisionDocument.redo(error),
+           "collision solid paint is one undoable command with redo");
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(singleCell, false), error) &&
+               collisionDocument.data().collision[5] == 0 && collisionDocument.undo() &&
+               collisionDocument.data().collision[5] == 1,
+           "collision erase restores its prior solid cell on undo");
+    const auto collisionRectangle = editor::rectangleCells(0, 0, 1, 1, collisionDocument.data());
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(collisionRectangle, true), error) &&
+               collisionDocument.data().collision[0] == 1 && collisionDocument.undo() &&
+               collisionDocument.data().collision[0] == 0,
+           "collision solid rectangle is undoable");
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(collisionRectangle, false), error) &&
+               collisionDocument.data().collision[5] == 0 && collisionDocument.undo() &&
+               collisionDocument.data().collision[5] == 1,
+           "collision erase rectangle is undoable");
+    const auto solidFill = editor::collisionFloodCells(collisionDocument.data(), 2, 2);
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(solidFill, true), error) &&
+               collisionDocument.data().collision[10] == 1 && collisionDocument.undo() &&
+               collisionDocument.data().collision[10] == 0,
+           "collision solid flood fill is iterative and undoable");
+    const auto eraseFill = editor::collisionFloodCells(collisionDocument.data(), 1, 1);
+    expect(collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(eraseFill, false), error) &&
+               collisionDocument.data().collision[5] == 0 && collisionDocument.undo() &&
+               collisionDocument.data().collision[5] == 1,
+           "collision erase flood fill is iterative and undoable");
+    const auto collisionHistory = collisionDocument.history().size();
+    expect(!collisionDocument.execute(std::make_unique<editor::SetCollisionCommand>(
+               std::vector<editor::TileCoordinate>{{99,99}}, true), error) &&
+               collisionDocument.history().size() == collisionHistory &&
+               collisionDocument.data().collision[0] == 0,
+           "outside-map collision cells are safe no-ops without history");
+
     const auto rectangle = editor::rectangleCells(-2, -1, 1, 1, document.data());
     expect(rectangle.size() == 4, "rectangle authoring clips to map bounds without resizing");
     auto compound = std::make_unique<editor::CompoundEditorCommand>("collision rectangle");
@@ -2728,6 +2808,14 @@ void testPhase9EditorFoundation() {
                std::vector<editor::TileCoordinate>{{0,0}}, tile), error) &&
                document.history().size() == 2,
            "locked layer rejects tile edits without creating history");
+    expect(!document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{0,0}}, std::nullopt), error) &&
+               !document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               editor::rectangleCells(0, 0, 1, 1, document.data()), tile), error) &&
+               !document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               editor::tileFloodCells(document.data(), 0, 0, 0), tile), error) &&
+               document.history().size() == 2,
+           "locked layer rejects erase rectangle and flood fill without document history");
     document.layerStates()[0].locked = false;
     expect(editor::worldPointToTile(document.data(), {-1,0}) == std::nullopt &&
                editor::worldPointToTile(document.data(), {0,-1}) == std::nullopt &&
@@ -2798,6 +2886,17 @@ void testPhase9EditorFoundation() {
                !placementDocument.propertyOverrides().contains(1) && placementDocument.undo() &&
                placementDocument.propertyOverrides().contains(1),
            "delete and undo preserve an enemy's typed authoring overrides with its placement");
+    const auto duplicateEnemyId = placementDocument.allocatePersistentId();
+    const auto duplicateEnemy = editor::duplicatePlacement(placementDocument,
+        editor::SelectionKind::enemy, simulation::PersistentInstanceId{1}, duplicateEnemyId, 16);
+    expect(duplicateEnemy && placementDocument.execute(std::make_unique<editor::PlaceEntityCommand>(
+               *duplicateEnemy, placementDocument.propertyOverrides().at(1)), error) &&
+               placementDocument.propertyOverrides().contains(duplicateEnemyId.value) &&
+               placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(duplicateEnemyId,
+               schemas[0], editor::PropertyValue{std::int64_t{161}}, content), error) &&
+               std::get<std::int64_t>(placementDocument.propertyOverrides().at(1).at(schemas[0].id)) == 160 &&
+               std::get<std::int64_t>(placementDocument.propertyOverrides().at(duplicateEnemyId.value).at(schemas[0].id)) == 161,
+           "duplicate placement copies overrides to its new id without aliasing the original");
     expect(!placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
                simulation::PersistentInstanceId{1}, schemas[0], editor::PropertyValue{std::int64_t{-500}},
                content), error),
@@ -2899,6 +2998,7 @@ int main() {
         testFramebuffer();
         testRendererPrimitives();
         testImagesAndBlits();
+        testNearestImageRegions();
         testAlphaBlending();
         testAnimationAndSpriteAnchor();
         testBitmapFontMapping();

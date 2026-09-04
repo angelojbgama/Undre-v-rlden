@@ -48,6 +48,16 @@ bool PaintTilesCommand::apply(EditorDocument& document, std::string& error) {
     if (layer_ < document.layerStates().size() && document.layerStates()[layer_].locked) {
         error = "active tile layer is locked"; return false;
     }
+    if (previous_.empty()) {
+        std::unordered_set<std::size_t> seen;
+        for (const auto cell : cells_) {
+            const auto index = cellIndex(data, cell);
+            if (index && seen.insert(*index).second) {
+                previous_.push_back({*index, data.layers[layer_].cells[*index]});
+            }
+        }
+        if (previous_.empty()) { error = "tile edit is outside map bounds"; return false; }
+    }
     if (!referenceIndex_ && desired_) {
         const auto found = std::find(data.tileReferences.begin(), data.tileReferences.end(), *desired_);
         if (found == data.tileReferences.end()) {
@@ -63,15 +73,6 @@ bool PaintTilesCommand::apply(EditorDocument& document, std::string& error) {
     } else if (desired_ && ownsReference_ && referenceIndex_ &&
                *referenceIndex_ == data.tileReferences.size()) {
         data.tileReferences.push_back(*desired_);
-    }
-    if (previous_.empty()) {
-        std::unordered_set<std::size_t> seen;
-        for (const auto cell : cells_) {
-            const auto index = cellIndex(data, cell);
-            if (index && seen.insert(*index).second) {
-                previous_.push_back({*index, data.layers[layer_].cells[*index]});
-            }
-        }
     }
     for (const auto& previous : previous_) {
         data.layers[layer_].cells[previous.index] = desired_ ? referenceIndex_ : std::nullopt;
@@ -94,7 +95,7 @@ void PaintTilesCommand::revert(EditorDocument& document) noexcept {
 SetCollisionCommand::SetCollisionCommand(std::vector<TileCoordinate> cells, bool solid)
     : cells_(std::move(cells)), solid_(solid) {}
 
-bool SetCollisionCommand::apply(EditorDocument& document, std::string&) {
+bool SetCollisionCommand::apply(EditorDocument& document, std::string& error) {
     auto& data = document.commandData();
     if (previous_.empty()) {
         std::unordered_set<std::size_t> seen;
@@ -104,6 +105,7 @@ bool SetCollisionCommand::apply(EditorDocument& document, std::string&) {
                 previous_.push_back({*index, data.collision[*index]});
             }
         }
+        if (previous_.empty()) { error = "collision edit is outside map bounds"; return false; }
     }
     for (const auto& previous : previous_) { data.collision[previous.index] = solid_ ? 1U : 0U; }
     return true;
