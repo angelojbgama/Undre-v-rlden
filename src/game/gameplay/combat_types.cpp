@@ -28,7 +28,12 @@ int Health::restore(int amount) {
 }
 
 bool factionsCanDamage(Faction attacker, Faction target) noexcept {
-    return attacker != target && attacker != Faction::neutral && target != Faction::neutral;
+    if (attacker == Faction::neutral || target == Faction::neutral ||
+        attacker == target || attacker == Faction::environment) {
+        return false;
+    }
+    if (target == Faction::environment) { return attacker == Faction::player; }
+    return true;
 }
 
 void tickInvulnerability(CombatantState& target) noexcept {

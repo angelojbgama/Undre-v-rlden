@@ -24,6 +24,7 @@
 #include "engine/world/tile.h"
 #include "engine/world/tile_layer.h"
 #include "game/command_builder.h"
+#include "game/game_view_model.h"
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
@@ -34,6 +35,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
+#include "game/gameplay/world_objects.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
@@ -2161,6 +2163,129 @@ void testPickupsQuickSlotsAndInventoryOverlay() {
     expect(overlay.selection() == 29, "inventory selection clamps at bottom edge");
     overlay.moveSelection(-1, 0);
     expect(overlay.selection() == 28, "inventory selection moves left within its row");
+
+    InventoryOverlayState routedOverlay;
+    PlayerItems routedItems(catalog);
+    world::CollisionGrid emptyGrid(8, 8);
+    Player routedPlayer({3}, handles.create(), {32, 32});
+    simulation::PlayerCommand openCommand{};
+    openCommand.playerId = routedPlayer.id();
+    openCommand.movement = {1, 0};
+    openCommand.actions.primaryAttackPressed = true;
+    openCommand.actions.toggleInventoryPressed = true;
+    const auto beforeFeet = routedPlayer.feetPosition();
+    const bool blocked = routeInventoryCommand(routedOverlay, openCommand, routedItems,
+                                                catalog, routedPlayer.health());
+    if (!blocked) { routedPlayer.update(openCommand, emptyGrid, 16); }
+    expect(blocked && routedPlayer.feetPosition() == beforeFeet &&
+               routedPlayer.actionState() == PlayerActionState::none,
+           "open inventory routes movement and attack away from Player gameplay");
+}
+
+void testViewModelAndWorldObjects() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    ItemCatalog items;
+    items.add(makeLifePotionDefinition());
+    PlayerItems playerItems(items);
+    static_cast<void>(playerItems.inventory().items().add(lifePotionItemId(), 5));
+    static_cast<void>(playerItems.wallet().addGold(7));
+    playerItems.quickSlots().bind(0, lifePotionItemId());
+    simulation::EntityHandlePool handles;
+    Player player({0}, handles.create(), {10, 10});
+    static_cast<void>(player.health().applyDamage(2));
+    InventoryOverlayState overlay;
+    overlay.toggle();
+    overlay.moveSelection(1, 1);
+    auto view = game::buildGameViewModel(player, playerItems, items, overlay);
+    expect(view.playerHealth == 3 && view.playerMaximumHealth == 5 && view.gold == 7 &&
+               view.quickSlots[0].quantity == 5 && view.inventory[0].quantity == 5 &&
+               view.inventoryOpen && view.inventorySelection == 11,
+           "GameViewModel snapshots health wallet quick slots and 10x3 inventory state");
+    view.gold = 999;
+    view.inventory[0].quantity = 999;
+    expect(playerItems.wallet().gold() == 7 &&
+               playerItems.inventory().items().count(lifePotionItemId()) == 5,
+           "mutating UI snapshot cannot mutate gameplay ownership");
+
+    WorldObjectCatalog objects;
+    const simulation::DefinitionId chestId{"object.chest"};
+    const simulation::DefinitionId crateId{"object.crate"};
+    const simulation::DefinitionId strongCrateId{"object.test_strong_crate"};
+    objects.add({chestId, simulation::DefinitionId{"visual.object.chest"},
+                 ObjectInteractionDefinition{{-12, -12, 24, 24}},
+                 ObjectContainerDefinition{5}, std::nullopt});
+    objects.add({crateId, simulation::DefinitionId{"visual.object.crate"}, std::nullopt,
+                 std::nullopt, ObjectDestructibleDefinition{2, {-8, -24, 16, 24}}});
+    objects.add({strongCrateId, simulation::DefinitionId{"visual.object.strong_crate"},
+                 std::nullopt, std::nullopt,
+                 ObjectDestructibleDefinition{7, {-8, -24, 16, 24}}});
+    expect(objects.require(strongCrateId).destructible->maximumHealth == 7,
+           "second destructible object is configured only through definition data");
+    bool objectDuplicateRejected = false;
+    try {
+        objects.add({crateId, simulation::DefinitionId{"visual.duplicate"}, std::nullopt,
+                     std::nullopt, ObjectDestructibleDefinition{1, {0, 0, 1, 1}}});
+    } catch (const std::logic_error&) { objectDuplicateRejected = true; }
+    expect(objectDuplicateRejected, "world object catalog rejects duplicate ids");
+
+    WorldObjectFactory factory(handles, objects, items);
+    const std::array<ItemStack, 1> contents{{{lifePotionItemId(), 10}}};
+    std::vector<WorldObjectInstance> chests;
+    chests.push_back(factory.create(chestId, {30, 10}, contents));
+    ItemContainer destination(1, items);
+    static_cast<void>(destination.add(lifePotionItemId(), 62));
+    auto interaction = interactNearest({30, 10}, {25, 5, 10, 10}, destination, chests);
+    expect(interaction.object == chests[0].handle() && interaction.itemsTransferred == 4 &&
+               chests[0].state() == WorldObjectState::opened &&
+               chests[0].contents()->count(lifePotionItemId()) == 6,
+           "chest opens and preserves contents during partial transfer to full inventory");
+    ItemContainer emptyDestination(2, items);
+    interaction = interactNearest({0, 0}, {-5, -5, 10, 10}, emptyDestination, chests);
+    expect(!interaction.object && chests[0].contents()->count(lifePotionItemId()) == 6,
+           "chest interaction out of range has no effect");
+
+    std::vector<WorldObjectInstance> tied;
+    tied.push_back(factory.create(chestId, {9, 10}));
+    tied.push_back(factory.create(chestId, {11, 10}));
+    const auto expectedTie = tied[0].handle().index < tied[1].handle().index
+                                 ? tied[0].handle() : tied[1].handle();
+    interaction = interactNearest({10, 10}, {0, 0, 20, 20}, emptyDestination, tied);
+    expect(interaction.object == expectedTie,
+           "nearest interaction uses EntityHandle as deterministic distance tie-break");
+
+    auto crate = factory.create(crateId, {50, 50});
+    expect(crate.combatant() && crate.combatant()->faction == Faction::environment &&
+               factionsCanDamage(Faction::player, Faction::environment) &&
+               !factionsCanDamage(Faction::enemy, Faction::environment) &&
+               !factionsCanDamage(Faction::player, Faction::player) &&
+               !factionsCanDamage(Faction::enemy, Faction::enemy),
+           "environment damage policy allows only Player attacks and preserves friendly fire rules");
+    CombatSystem combat;
+    simulation::EventBuffer events;
+    Hitbox hit{{42, 26, 16, 24}, {player.entityHandle(), 1}, Faction::player,
+               {1, 0}, 0, 0, true};
+    auto resolution = combat.resolve(hit, crate.combatTarget(), events);
+    expect(resolution.damaged && crate.combatant()->health.current == 1,
+           "crate receives Player damage through CombatSystem");
+    combat.finishAttack(hit.attack);
+    for (std::uint32_t tick = 0; tick < CombatSystem::invulnerabilityDurationTicks; ++tick) {
+        tickInvulnerability(*crate.combatant());
+    }
+    hit.attack.localInstance = 2;
+    resolution = combat.resolve(hit, crate.combatTarget(), events);
+    const auto defeatCount = std::count_if(events.events().begin(), events.events().end(),
+        [&](const simulation::SimulationEvent& event) {
+            const auto* defeated = std::get_if<simulation::EntityDefeated>(&event);
+            return defeated && defeated->target == crate.handle();
+        });
+    expect(resolution.defeated && defeatCount == 1 && crate.syncDestructionState() &&
+               !crate.hurtbox().enabled && crate.state() == WorldObjectState::destroying,
+           "crate defeat emits once, disables hurtbox, and enters destruction lifecycle");
+    const auto crateHandle = crate.handle();
+    expect(crate.completeDestruction(handles) && !handles.valid(crateHandle) &&
+               crate.state() == WorldObjectState::destroyed,
+           "completed object destruction invalidates runtime handle");
 }
 
 void testFixedStepAccumulator() {
@@ -2236,6 +2361,7 @@ int main() {
         testCreatureCombatIntegration();
         testItemsInventoryAndWallet();
         testPickupsQuickSlotsAndInventoryOverlay();
+        testViewModelAndWorldObjects();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

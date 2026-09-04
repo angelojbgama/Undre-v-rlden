@@ -14,6 +14,7 @@
 #include "engine/world/runtime_map.h"
 #include "engine/world/tile.h"
 #include "game/command_builder.h"
+#include "game/game_view_model.h"
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
@@ -22,9 +23,14 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/player.h"
+#include "game/gameplay/items.h"
+#include "game/gameplay/player_items.h"
+#include "game/gameplay/world_objects.h"
+#include "game/gameplay/world_pickups.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/player_visual.h"
 #include "game/training_puppet.h"
+#include "game/world_object_visual.h"
 
 #include <algorithm>
 #include <array>
@@ -109,6 +115,20 @@ std::shared_ptr<const render::AnimationClip> makeImpactClip(
         "effect.arrow_impact", sheet, std::move(frames), false);
 }
 
+std::shared_ptr<const render::AnimationClip> makeObjectClip(
+    std::string id, std::shared_ptr<const render::SpriteSheet> sheet,
+    int frameWidth, int frameHeight, int frameCount, std::uint32_t ticks,
+    core::PointI anchor, bool loop) {
+    std::vector<render::AnimationFrame> frames;
+    frames.reserve(static_cast<std::size_t>(frameCount));
+    for (int column = 0; column < frameCount; ++column) {
+        frames.push_back({{{column * frameWidth, 0, frameWidth, frameHeight}, anchor, {}, false},
+                          ticks, {}});
+    }
+    return std::make_shared<const render::AnimationClip>(
+        std::move(id), std::move(sheet), std::move(frames), loop);
+}
+
 void outline(render::Renderer2D& renderer, world::AabbI box,
              core::WorldPointI camera, core::ColorRGBA8 color) {
     const int x = box.x - camera.x;
@@ -154,7 +174,7 @@ EnemyVisualSet makeEnemyVisualSet(
 
 } // namespace
 
-struct Phase6Demo::State final {
+struct Phase7Demo::State final {
     State(std::shared_ptr<const render::Image> tileImage,
           std::shared_ptr<const render::Image> fontImage,
           std::shared_ptr<const render::Image> idleImage,
@@ -172,7 +192,15 @@ struct Phase6Demo::State final {
           std::shared_ptr<const render::Image> skullWalkImage,
           std::shared_ptr<const render::Image> skullAttackImage,
           std::shared_ptr<const render::Image> skullDeathImage,
-          std::shared_ptr<const render::Image> skullArrowImage)
+          std::shared_ptr<const render::Image> skullArrowImage,
+          std::shared_ptr<const render::Image> heartImage,
+          std::shared_ptr<const render::Image> moneyImage,
+          std::shared_ptr<const render::Image> potionImage,
+          std::shared_ptr<const render::Image> chestImage,
+          std::shared_ptr<const render::Image> crateImage,
+          std::shared_ptr<const render::Image> breakingCrateImage,
+          std::shared_ptr<const render::Image> hudHeartImage,
+          std::shared_ptr<const render::Image> hudMoneyImage)
         : tileset(std::move(tileImage)),
           atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
           font(std::move(fontImage)),
@@ -201,15 +229,23 @@ struct Phase6Demo::State final {
               std::move(skullDeathImage))),
           skullArrowSheet(std::make_shared<const render::SpriteSheet>(
               std::move(skullArrowImage))),
+          heartPickupImage(std::move(heartImage)),
+          moneyPickupImage(std::move(moneyImage)),
+          potionImage(std::move(potionImage)),
+          chestSheet(std::make_shared<const render::SpriteSheet>(std::move(chestImage))),
+          crateSheet(std::make_shared<const render::SpriteSheet>(std::move(crateImage))),
+          breakingCrateSheet(std::make_shared<const render::SpriteSheet>(
+              std::move(breakingCrateImage))),
+          hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           map(mapWidthTiles, mapHeightTiles, core::GameMetrics::tileSize),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, playerSpawn),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
-          projectiles(handles, projectileCatalog) {
+          projectiles(handles, projectileCatalog), playerItems(itemCatalog) {
         if (atlas.columns() != 19 || atlas.rows() != 12) {
-            throw std::runtime_error("Phase 6 demo expects the audited 19x12 dungeon tileset");
+            throw std::runtime_error("Phase 7 demo expects the audited 19x12 dungeon tileset");
         }
         attackCatalog.add(swordDefinition);
         attackCatalog.add(bowDefinition);
@@ -235,6 +271,55 @@ struct Phase6Demo::State final {
             attackCatalog.require(gameplay::creatures::skullArrowAttackId()).visualActionId,
             skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
             32, 2, 8, {16, 31}, {{}, {"spawn_projectile"}}));
+        itemCatalog.add(gameplay::makeLifePotionDefinition());
+        itemVisuals.emplace(simulation::DefinitionId{"visual.item.life_potion"}, potionImage);
+
+        pickupDefinitions.reserve(3);
+        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.heart"},
+            simulation::DefinitionId{"visual.pickup.heart"}, {-5, -5, 10, 10},
+            gameplay::HealthPickup{2}});
+        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.money"},
+            simulation::DefinitionId{"visual.pickup.money"}, {-5, -5, 10, 10},
+            gameplay::CurrencyPickup{1}});
+        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.life_potion"},
+            simulation::DefinitionId{"visual.item.life_potion"}, {-5, -5, 10, 10},
+            gameplay::ItemPickup{gameplay::lifePotionItemId(), 4}});
+        pickupVisuals.emplace(pickupDefinitions[0].visualId, heartPickupImage);
+        pickupVisuals.emplace(pickupDefinitions[1].visualId, moneyPickupImage);
+        pickupVisuals.emplace(pickupDefinitions[2].visualId, potionImage);
+        pickups.emplace_back(handles.create(), pickupDefinitions[0], core::WorldPointI{104, 176});
+        pickups.emplace_back(handles.create(), pickupDefinitions[1], core::WorldPointI{120, 144});
+        pickups.emplace_back(handles.create(), pickupDefinitions[2], core::WorldPointI{88, 144});
+
+        const simulation::DefinitionId chestVisualId{"visual.object.chest"};
+        const simulation::DefinitionId crateVisualId{"visual.object.crate"};
+        objectCatalog.add({simulation::DefinitionId{"object.chest"}, chestVisualId,
+            gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}},
+            gameplay::ObjectContainerDefinition{5}, std::nullopt});
+        objectCatalog.add({simulation::DefinitionId{"object.crate"}, crateVisualId,
+            std::nullopt, std::nullopt,
+            gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}}});
+        objectVisualCatalog.add({chestVisualId,
+            makeObjectClip("chest.closed", chestSheet, 16, 32, 1, 1, {8, 31}, true),
+            makeObjectClip("chest.open", chestSheet, 16, 32, 5, 4, {8, 31}, false),
+            nullptr});
+        objectVisualCatalog.add({crateVisualId,
+            makeObjectClip("crate.idle", crateSheet, 16, 32, 1, 1, {8, 31}, true),
+            nullptr,
+            makeObjectClip("crate.break", breakingCrateSheet, 32, 32, 7, 4,
+                           {16, 31}, false)});
+        gameplay::WorldObjectFactory objectFactory(handles, objectCatalog, itemCatalog);
+        const std::array<gameplay::ItemStack, 1> chestContents{{
+            {gameplay::lifePotionItemId(), 2}}};
+        objects.push_back(objectFactory.create(
+            simulation::DefinitionId{"object.chest"}, {152, 144}, chestContents));
+        objects.push_back(objectFactory.create(
+            simulation::DefinitionId{"object.crate"}, {184, 144}));
+        for (const auto& object : objects) {
+            objectVisuals.emplace_back(object.handle(), objectVisualCatalog.require(
+                object.definition().visualSetId));
+            objectVisuals.back().update(object, 0);
+        }
         groundLayer = map.addLayer("ground");
         lowLayer = map.addLayer("decoration_low");
         foregroundLayer = map.addLayer("foreground");
@@ -388,6 +473,11 @@ struct Phase6Demo::State final {
         for (auto& enemy : enemies) {
             applyResolution(combat.resolve(activeSword, enemy.combatTarget(), events));
         }
+        for (auto& object : objects) {
+            if (object.combatant()) {
+                applyResolution(combat.resolve(activeSword, object.combatTarget(), events));
+            }
+        }
     }
 
     void consumeEnemyMarkers(gameplay::creatures::EnemyInstance& enemy,
@@ -467,11 +557,45 @@ struct Phase6Demo::State final {
 
     std::vector<gameplay::CombatTargetRef> combatTargets() {
         std::vector<gameplay::CombatTargetRef> targets;
-        targets.reserve(enemies.size() + 2);
+        targets.reserve(enemies.size() + objects.size() + 2);
         targets.push_back(player.combatTarget());
         targets.push_back(puppet->combatTarget());
         for (auto& enemy : enemies) { targets.push_back(enemy.combatTarget()); }
+        for (auto& object : objects) {
+            if (object.combatant()) { targets.push_back(object.combatTarget()); }
+        }
         return targets;
+    }
+
+    void collectNearbyPickups() {
+        const world::AabbI area = player.collisionBody();
+        for (std::size_t index = 0; index < pickups.size();) {
+            const auto result = gameplay::collectPickup(
+                pickups[index], player.entityHandle(), area, player.health(),
+                playerItems.inventory().items(), playerItems.wallet(), handles, events);
+            if (result.fullyConsumed) {
+                pickups.erase(pickups.begin() + static_cast<std::ptrdiff_t>(index));
+            } else {
+                ++index;
+            }
+        }
+    }
+
+    void updateObjects() {
+        for (std::size_t index = 0; index < objects.size();) {
+            auto& object = objects[index];
+            static_cast<void>(object.syncDestructionState());
+            objectVisuals[index].update(object);
+            if (object.state() == gameplay::WorldObjectState::destroying &&
+                objectVisuals[index].finished()) {
+                static_cast<void>(object.completeDestruction(handles));
+                objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
+                objectVisuals.erase(objectVisuals.begin() + static_cast<std::ptrdiff_t>(index));
+                continue;
+            }
+            if (object.combatant()) { gameplay::tickInvulnerability(*object.combatant()); }
+            ++index;
+        }
     }
 
     void consumeSimulationEvents() {
@@ -486,6 +610,8 @@ struct Phase6Demo::State final {
                 if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);
                 }
+            } else if (const auto* pickup = std::get_if<simulation::PickupCollected>(&event)) {
+                lastEvent = "PICKUP " + std::to_string(pickup->amount);
             }
         }
     }
@@ -497,7 +623,23 @@ struct Phase6Demo::State final {
         gameplay::tickInvulnerability(player.combatant());
         const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
+        if (gameplay::routeInventoryCommand(
+                inventoryOverlay, command, playerItems, itemCatalog, player.health())) {
+            lastTick = tick;
+            lastSequence = command.sequence;
+            return;
+        }
+        if (command.actions.quickSlotPressed >= 0) {
+            static_cast<void>(playerItems.useQuickSlot(
+                static_cast<std::size_t>(command.actions.quickSlotPressed), itemCatalog,
+                player.health()));
+        }
         player.update(command, map.collision(), map.tileSize());
+        if (command.actions.interactPressed) {
+            static_cast<void>(gameplay::interactNearest(
+                player.feetPosition(), player.interactionArea().bounds,
+                playerItems.inventory().items(), objects));
+        }
         visual->update(player.motionState(), player.facing(), player.actionState());
         consumeAnimationMarkers();
         resolvePlayerSword();
@@ -509,6 +651,8 @@ struct Phase6Demo::State final {
         for (const gameplay::CombatResolution& resolution : projectileResolutions) {
             applyResolution(resolution);
         }
+        collectNearbyPickups();
+        updateObjects();
         consumeSimulationEvents();
         effects->update();
         if (player.actionState() != gameplay::PlayerActionState::none &&
@@ -555,12 +699,13 @@ struct Phase6Demo::State final {
     }
 
     void renderActors(render::Renderer2D& renderer) const {
-        enum class ActorKind { player, puppet, enemy };
+        enum class ActorKind { player, puppet, enemy, object, pickup };
         struct Actor {
             int sortY;
             simulation::EntityHandle handle;
             ActorKind kind;
             std::size_t enemyIndex{};
+            std::size_t contentIndex{};
         };
         std::vector<Actor> actors;
         actors.reserve(enemies.size() + 2);
@@ -570,6 +715,14 @@ struct Phase6Demo::State final {
         for (std::size_t index = 0; index < enemies.size(); ++index) {
             actors.push_back({enemies[index].feetPosition().y, enemies[index].handle(),
                               ActorKind::enemy, index});
+        }
+        for (std::size_t index = 0; index < objects.size(); ++index) {
+            actors.push_back({objects[index].position().y, objects[index].handle(),
+                              ActorKind::object, 0, index});
+        }
+        for (std::size_t index = 0; index < pickups.size(); ++index) {
+            actors.push_back({pickups[index].position().y, pickups[index].handle(),
+                              ActorKind::pickup, 0, index});
         }
         std::sort(actors.begin(), actors.end(), [](const Actor& left, const Actor& right) {
             return actorRendersBefore({left.sortY, left.handle}, {right.sortY, right.handle});
@@ -583,12 +736,25 @@ struct Phase6Demo::State final {
                 const auto logical = camera.worldToLogical(puppet->feetPosition());
                 const render::SpriteFrame frame{{0, 0, 32, 32}, {16, 32}, {}, false};
                 render::drawSprite(renderer, *puppetSheet, frame, {logical.x, logical.y});
-            } else {
+            } else if (actor.kind == ActorKind::enemy) {
                 const auto logical = camera.worldToLogical(
                     enemies[actor.enemyIndex].feetPosition());
                 render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
                                      {logical.x, logical.y},
                                      enemyVisuals[actor.enemyIndex].flipX());
+            } else if (actor.kind == ActorKind::object) {
+                const auto logical = camera.worldToLogical(
+                    objects[actor.contentIndex].position());
+                render::drawAnimator(renderer, objectVisuals[actor.contentIndex].animator(),
+                                     {logical.x, logical.y});
+            } else {
+                const auto& pickup = pickups[actor.contentIndex];
+                const auto found = pickupVisuals.find(pickup.definition().visualId);
+                if (found == pickupVisuals.end()) {
+                    throw std::runtime_error("pickup visual definition was not registered");
+                }
+                const auto logical = camera.worldToLogical(pickup.position());
+                renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
             }
         }
     }
@@ -651,6 +817,12 @@ struct Phase6Demo::State final {
                             {32, 220, 255, 255});
                 }
             }
+            for (const auto& object : objects) {
+                if (object.hurtbox().enabled) {
+                    outline(renderer, object.hurtbox().bounds, cameraPosition,
+                            {32, 220, 255, 255});
+                }
+            }
         }
         if (combatDebug.hitbox) {
             if (activeSword.enabled) {
@@ -673,37 +845,68 @@ struct Phase6Demo::State final {
         if (combatDebug.interaction) {
             outline(renderer, player.interactionArea().bounds, cameraPosition,
                     {255, 64, 255, 255});
+            for (const auto& object : objects) {
+                if (const auto area = object.interactionArea()) {
+                    outline(renderer, *area, cameraPosition, {255, 64, 255, 255});
+                }
+            }
+            for (const auto& pickup : pickups) {
+                outline(renderer, pickup.collectionArea(), cameraPosition,
+                        {255, 200, 64, 255});
+            }
         }
     }
 
     void renderHud(render::Renderer2D& renderer) const {
-        renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 47}, {8, 10, 16, 220});
-        const auto feet = player.feetPosition();
-        std::ostringstream first;
-        first << "PHASE_6 T " << lastTick << " P " << feet.x << ' ' << feet.y;
-        render::drawText(renderer, font, first.str(), 3, 3);
-        std::ostringstream second;
-        second << gameplay::facingName(player.facing()) << ' '
-               << gameplay::actionStateName(player.actionState()) << " A " << lastAttack
-               << " HP " << player.health().current << '/' << player.health().maximum
-               << " ENEMIES " << enemies.size();
-        render::drawText(renderer, font, second.str(), 3, 12);
-        std::ostringstream third;
-        third << "ARROWS " << projectiles.projectiles().size() << " VFX "
-              << effects->effects().size() << " PUPPET "
-              << puppet->combatant().health.current << '/'
-              << puppet->combatant().health.maximum;
-        render::drawText(renderer, font, third.str(), 3, 21);
-        std::ostringstream ai;
-        ai << "AI";
-        for (const auto& enemy : enemies) {
-            ai << ' ' << gameplay::creatures::behaviorStateName(enemy.state())
-               << enemy.combatant().health.current;
+        const GameViewModel view = buildGameViewModel(player, playerItems, itemCatalog,
+                                                       inventoryOverlay);
+        renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 14}, {8, 10, 16, 220});
+        for (int index = 0; index < view.playerMaximumHealth; ++index) {
+            if (index < view.playerHealth) {
+                renderer.drawImage(*hudHeartImage, 3 + index * 12, 2);
+            } else {
+                renderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
+            }
         }
-        render::drawText(renderer, font, ai.str(), 3, 30);
-        render::drawText(renderer, font,
-                         lastEvent.empty() ? "Z SWORD X BOW C F1 F2 F3 F4" : lastEvent,
-                         3, 39);
+        renderer.drawImage(*hudMoneyImage, 68, 2);
+        render::drawText(renderer, font, std::to_string(view.gold), 79, 2);
+
+        renderer.fillRect({0, 194, core::GameMetrics::logicalWidth, 30}, {8, 10, 16, 220});
+        for (std::size_t index = 0; index < view.quickSlots.size(); ++index) {
+            const int x = 4 + static_cast<int>(index) * 40;
+            renderer.fillRect({x, 197, 34, 23}, {54, 30, 38, 255});
+            render::drawText(renderer, font, std::to_string(index + 1), x + 2, 199);
+            if (view.quickSlots[index].visualId) {
+                const auto found = itemVisuals.find(*view.quickSlots[index].visualId);
+                if (found != itemVisuals.end()) { renderer.drawImage(*found->second, x + 10, 199); }
+                render::drawText(renderer, font,
+                    std::to_string(view.quickSlots[index].quantity), x + 22, 209);
+            }
+        }
+        render::drawText(renderer, font, "I ITEMS  E OPEN", 169, 203);
+
+        if (!view.inventoryOpen) { return; }
+        renderer.fillRect({6, 52, 260, 78}, {8, 10, 16, 245});
+        render::drawText(renderer, font, "INVENTORY", 10, 55);
+        for (std::size_t index = 0; index < view.inventory.size(); ++index) {
+            const int column = static_cast<int>(index % 10);
+            const int row = static_cast<int>(index / 10);
+            const int x = 10 + column * 25;
+            const int y = 66 + row * 20;
+            const core::ColorRGBA8 slotColor = index == view.inventorySelection
+                ? core::ColorRGBA8{220, 180, 72, 255}
+                : core::ColorRGBA8{54, 30, 38, 255};
+            renderer.fillRect({x, y, 22, 18}, slotColor);
+            if (view.inventory[index].visualId) {
+                const auto found = itemVisuals.find(*view.inventory[index].visualId);
+                if (found != itemVisuals.end()) { renderer.drawImage(*found->second, x + 3, y + 1); }
+                if (view.inventory[index].quantity > 1) {
+                    render::drawText(renderer, font,
+                        std::to_string(view.inventory[index].quantity), x + 10, y + 9);
+                }
+            }
+        }
+        render::drawText(renderer, font, "Z USE  1-4 BIND  I CLOSE", 10, 121);
     }
 
     void render(render::Framebuffer& framebuffer) const {
@@ -739,6 +942,14 @@ struct Phase6Demo::State final {
     std::shared_ptr<const render::SpriteSheet> skullAttackSheet;
     std::shared_ptr<const render::SpriteSheet> skullDeathSheet;
     std::shared_ptr<const render::SpriteSheet> skullArrowSheet;
+    std::shared_ptr<const render::Image> heartPickupImage;
+    std::shared_ptr<const render::Image> moneyPickupImage;
+    std::shared_ptr<const render::Image> potionImage;
+    std::shared_ptr<const render::SpriteSheet> chestSheet;
+    std::shared_ptr<const render::SpriteSheet> crateSheet;
+    std::shared_ptr<const render::SpriteSheet> breakingCrateSheet;
+    std::shared_ptr<const render::Image> hudHeartImage;
+    std::shared_ptr<const render::Image> hudMoneyImage;
     std::unique_ptr<PlayerVisual> visual;
     std::unique_ptr<EffectSystem> effects;
     world::RuntimeMap map;
@@ -763,6 +974,19 @@ struct Phase6Demo::State final {
     std::unique_ptr<TrainingPuppet> puppet;
     gameplay::CombatSystem combat;
     gameplay::ProjectileSystem projectiles;
+    gameplay::ItemCatalog itemCatalog;
+    gameplay::PlayerItems playerItems;
+    gameplay::InventoryOverlayState inventoryOverlay;
+    std::vector<gameplay::PickupDefinition> pickupDefinitions;
+    std::vector<gameplay::WorldPickup> pickups;
+    std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
+                       simulation::DefinitionIdHash> pickupVisuals;
+    std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
+                       simulation::DefinitionIdHash> itemVisuals;
+    gameplay::WorldObjectCatalog objectCatalog;
+    WorldObjectVisualCatalog objectVisualCatalog;
+    std::vector<gameplay::WorldObjectInstance> objects;
+    std::vector<WorldObjectVisualInstance> objectVisuals;
     simulation::EventBuffer events;
     gameplay::Hitbox activeSword{};
     CommandBuilder commandBuilder;
@@ -777,7 +1001,7 @@ struct Phase6Demo::State final {
     std::string lastEvent;
 };
 
-Phase6Demo::Phase6Demo(platform::ImageDecoder& decoder,
+Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot) {
     const auto tileset = assets_.loadImage("tileset.dungeon", assetRoot / "Tileset/tileset.png", decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
@@ -815,20 +1039,37 @@ Phase6Demo::Phase6Demo(platform::ImageDecoder& decoder,
     const auto skullArrow = assets_.loadImage(
         "enemy.skull.arrow",
         assetRoot / "Characters/Enemies/Skull/attacking/arrow.png", decoder);
+    const auto heart = assets_.loadImage(
+        "pickup.heart", assetRoot / "Objects/heart.png", decoder);
+    const auto money = assets_.loadImage(
+        "pickup.money", assetRoot / "Objects/money.png", decoder);
+    const auto potion = assets_.loadImage(
+        "item.life_potion", assetRoot / "Objects/life_potion.png", decoder);
+    const auto chest = assets_.loadImage(
+        "object.chest", assetRoot / "Tileset/chest.png", decoder);
+    const auto crate = assets_.loadImage(
+        "object.crate", assetRoot / "Tileset/crate.png", decoder);
+    const auto breakingCrate = assets_.loadImage(
+        "object.crate.breaking", assetRoot / "Tileset/breaking_crate.png", decoder);
+    const auto hudHeart = assets_.loadImage(
+        "hud.heart", assetRoot / "Icons/heart_complete.png", decoder);
+    const auto hudMoney = assets_.loadImage(
+        "hud.money", assetRoot / "Icons/money.png", decoder);
     state_ = std::make_unique<State>(
         tileset, font, idle, walk, sword, bow, arrow, puppet, impact,
         soldierIdle, soldierWalk, soldierAttack, soldierDeath,
-        skullIdle, skullWalk, skullAttack, skullDeath, skullArrow);
+        skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
+        heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney);
 }
 
-Phase6Demo::~Phase6Demo() = default;
+Phase7Demo::~Phase7Demo() = default;
 
-void Phase6Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
+void Phase7Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
                            platform::DebugInputState debugInput) {
     state_->update(tick, input, debugInput);
 }
 
-void Phase6Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
+void Phase7Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
 
 std::filesystem::path findLicensedAssetRoot(const std::filesystem::path& executableDirectory) {
     std::array<std::filesystem::path, 2> starts{std::filesystem::current_path(), executableDirectory};

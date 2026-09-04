@@ -53,4 +53,24 @@ void InventoryOverlayState::moveSelection(int x, int y) noexcept {
                  static_cast<std::size_t>(nextColumn);
 }
 
+bool routeInventoryCommand(InventoryOverlayState& overlay,
+                           const simulation::PlayerCommand& command,
+                           PlayerItems& items, const ItemCatalog& catalog, Health& health) {
+    if (command.actions.toggleInventoryPressed) { overlay.toggle(); }
+    if (!overlay.open()) { return false; }
+    overlay.moveSelection(command.movement.x, command.movement.y);
+    const auto& selected = items.inventory().items().slot(overlay.selection());
+    if (command.actions.primaryAttackPressed && selected) {
+        static_cast<void>(useItem(selected->itemId, items.inventory().items(), catalog, health));
+    }
+    if (command.actions.quickSlotPressed >= 0 && selected) {
+        const auto& definition = catalog.require(selected->itemId);
+        if (definition.use) {
+            items.quickSlots().bind(static_cast<std::size_t>(command.actions.quickSlotPressed),
+                                    selected->itemId);
+        }
+    }
+    return true;
+}
+
 } // namespace underworld::game::gameplay

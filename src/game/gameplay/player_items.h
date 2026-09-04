@@ -2,6 +2,7 @@
 
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/items.h"
+#include "engine/simulation/player_command.h"
 
 #include <array>
 #include <cstddef>
@@ -60,5 +61,11 @@ private:
     bool open_{};
     std::size_t selection_{};
 };
+
+// Returns true when the overlay consumes the tick and gameplay must remain paused.
+[[nodiscard]] bool routeInventoryCommand(InventoryOverlayState& overlay,
+                                         const simulation::PlayerCommand& command,
+                                         PlayerItems& items, const ItemCatalog& catalog,
+                                         Health& health);
 
 } // namespace underworld::game::gameplay

@@ -22,6 +22,7 @@ struct AttackKey final {
 enum class Faction {
     player,
     enemy,
+    environment,
     neutral,
 };
 
