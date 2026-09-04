@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -64,6 +65,7 @@ public:
     [[nodiscard]] std::uint32_t transferTo(ItemContainer& destination,
                                            const simulation::DefinitionId& itemId,
                                            std::uint32_t quantity);
+    void restoreSlots(std::span<const std::optional<ItemStack>> slots);
 
 private:
     const ItemCatalog* catalog_{};
@@ -86,6 +88,7 @@ public:
     [[nodiscard]] std::uint64_t gold() const noexcept { return gold_; }
     // Saturates at uint64 max and returns the amount that could not be credited.
     [[nodiscard]] std::uint64_t addGold(std::uint64_t amount) noexcept;
+    void restoreGold(std::uint64_t amount) noexcept { gold_ = amount; }
 
 private:
     std::uint64_t gold_{};

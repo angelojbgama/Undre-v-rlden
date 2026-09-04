@@ -2454,6 +2454,19 @@ void testPhase8PersistentMapsAndSave() {
                loaded.data.world.pickups.size()==2,
            "DSAV v1 roundtrips Health ordered 30-slot inventory Wallet QuickSlots and world deltas");
     expect(saveBytes==save::serializeSave(loaded.data), "DSAV output is deterministic for equivalent state");
+    gameplay::PlayerItems restoredItems(items);simulation::EntityHandlePool playerHandles;
+    gameplay::Player restoredPlayer({7},playerHandles.create(),{1,1});
+    std::string restoreError;
+    expect(save::applyPlayer(loaded.data.player,restoredPlayer,restoredItems,items,restoreError)&&
+               restoredPlayer.feetPosition()==underworld::core::WorldPointI{20,22}&&
+               restoredPlayer.facing()==gameplay::FacingDirection::up&&restoredPlayer.health().current==3&&
+               restoredItems.inventory().items().slot(0)->quantity==7&&
+               restoredItems.inventory().items().slot(29)->quantity==1&&
+               restoredItems.wallet().gold()==99&&restoredItems.quickSlots().binding(0),
+           "DSAV player state restores exact slots Health position facing Wallet and QuickSlots");
+    const auto recaptured=save::capturePlayer(restoredPlayer,restoredItems,map.id);
+    expect(recaptured.inventory[29]->quantity==1&&recaptured.currentMapId==map.id,
+           "runtime Player state can be captured back into the explicit save DTO");
     auto badSave=saved;badSave.player.inventory[0]->quantity=67;
     expect(!save::deserializeSave(save::serializeSave(badSave),saveCatalogs),
            "save load rejects inventory quantities above ItemDefinition stack limit");

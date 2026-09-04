@@ -133,6 +133,21 @@ std::uint32_t ItemContainer::transferTo(ItemContainer& destination,
     return added.accepted;
 }
 
+void ItemContainer::restoreSlots(std::span<const std::optional<ItemStack>> slots) {
+    if (slots.size() != slots_.size()) {
+        throw std::invalid_argument("restored item slots do not match container capacity");
+    }
+    std::vector<std::optional<ItemStack>> validated(slots.begin(), slots.end());
+    for (const auto& slot : validated) {
+        if (!slot) { continue; }
+        const auto& definition = catalog_->require(slot->itemId);
+        if (slot->quantity == 0 || slot->quantity > definition.stackLimit) {
+            throw std::invalid_argument("restored item stack quantity is invalid");
+        }
+    }
+    slots_ = std::move(validated);
+}
+
 std::uint64_t Wallet::addGold(std::uint64_t amount) noexcept {
     const std::uint64_t space = std::numeric_limits<std::uint64_t>::max() - gold_;
     const std::uint64_t accepted = std::min(amount, space);

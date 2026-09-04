@@ -5,6 +5,7 @@
 #include "game/gameplay/facing_direction.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
+#include "game/gameplay/player.h"
 #include "game/maps/map_data.h"
 #include "game/maps/runtime_world.h"
 
@@ -79,5 +80,11 @@ inline constexpr std::uint16_t saveMinorVersion = 0;
 [[nodiscard]] bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
                                    simulation::EntityHandlePool& handles,
                                    const gameplay::ItemCatalog& items, std::string& error);
+[[nodiscard]] SavedPlayer capturePlayer(const gameplay::Player& player,
+                                        const gameplay::PlayerItems& items,
+                                        const simulation::MapId& currentMapId);
+[[nodiscard]] bool applyPlayer(const SavedPlayer& saved, gameplay::Player& player,
+                               gameplay::PlayerItems& items, const gameplay::ItemCatalog& catalog,
+                               std::string& error);
 
 } // namespace underworld::game::save
