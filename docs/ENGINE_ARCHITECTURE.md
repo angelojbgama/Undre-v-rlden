@@ -40,10 +40,18 @@ EnemyVisualSet + EnemyVisualInstance
 Evil Soldier melee + Skull ranged
 ```
 
-A Fase 7 foi implementada localmente nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`,
+<!-- Registro anterior ao fechamento: a Fase 7 foi implementada nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`,
 com 340 checks portáveis, mas ainda aguarda build MSVC `/W4` e smoke Win32 para ser
 declarada concluída. `.dmap`, editor, save, loot/XP, NPCs, quests e networking
-permanecem deferidos.
+permanecem deferidos. -->
+
+A Fase 7 está concluída. O código-base está em
+`7873e32222b1e8d72e996771a88a6890b0eb9220` e o fechamento Windows/fix em
+`7cc9da495d314de52ab097f890594dd7deb2d0a4`. A baseline validada usa Windows 11
+x64, MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK
+10.0.26100.0, C++20, `/W4`, 0 warnings e 347 checks, com `git diff --check` e
+smoke visual/interativo passando. A Fase 8 é a próxima; `.dmap`, editor, save,
+loot/XP, NPCs, quests e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
 

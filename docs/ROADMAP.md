@@ -40,8 +40,8 @@ FASE 4 — Player + InputState + PlayerCommand             DONE
          + movimento + animação + camera follow
 FASE 5 — Combat Foundation + vertical slice de combate   DONE
 FASE 6 — Creature Engine reutilizável                    DONE
-FASE 7 — Objetos + pickup + HUD + inventário            IMPLEMENTED / WINDOWS VALIDATION PENDING
-FASE 8 — .dmap + transições + save
+FASE 7 — Objetos + pickup + HUD + inventário            DONE
+FASE 8 — .dmap + transições + save                     NEXT
 FASE 9 — Map Maker
 FASE 10 — NPC + diálogo
 FASE 11 — Quests
@@ -576,13 +576,17 @@ usando a mesma fundação sem sistemas de combate/projéteis específicos por cr
 
 ## Status
 
-**Implementada localmente nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`; validação
-MSVC/Win32 e smoke manual pendentes.**
+**DONE.** Implementada nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`;
+fechada no Windows pelo commit `7cc9da4`.
 
 O ambiente do checkpoint compilou todos os módulos portáveis e a composição do demo
-em C++20 com warnings como erro, e executou 340 checks. Ele não conseguia executar
-`cmd.exe`, `build.bat`, `tests.exe` ou `game.exe`, portanto a fase ainda não deve ser
-marcada como `DONE` e a Fase 8 não foi iniciada.
+portátil original, que executou 340 checks. O fechamento Windows validou Windows 11 x64,
+MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK 10.0.26100.0,
+C++20, `/W4`, 0 warnings, 347 checks, `git diff --check` e smoke visual/interativo
+passando. O smoke cobriu
+regressões das Fases 0–6, pickups, inventário, quick slots, HUD, chest, crate,
+Y-sort, resize/letterbox, perda de foco e `WM_CLOSE`. A Fase 8 permanece não
+iniciada e é a próxima etapa.
 
 ## Objetivo
 

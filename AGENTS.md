@@ -233,27 +233,31 @@ FASE 6 — Creature Engine reutilizável
 CONCLUÍDA
 
 FASE 7 — objetos + pickups + HUD + inventário
-IMPLEMENTADA LOCALMENTE — VALIDAÇÃO MSVC/SMOKE PENDENTE
+CONCLUÍDA
 
 FASE 8 — `.dmap` + transições + save
-NÃO INICIADA
+PRÓXIMA — NÃO INICIADA
 ```
 
 Baseline registrada:
 
 ```text
-Compiler: MSVC 2022 x64
+Compiler: MSVC 19.44.35219 x64 (toolset da linha Visual Studio 2022)
+Host: Visual Studio 2026 Community / Windows 11 10.0.22631.6199
+Windows SDK: 10.0.26100.0
 Language: C++20
 Warnings: 0
-Tests: PASS — 296 checks
+Tests: PASS — 347 checks
 git diff --check: PASS
 Phase 6 code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
+Phase 7 code commit: 7873e32222b1e8d72e996771a88a6890b0eb9220
+Phase 7 validation/fix commit: 7cc9da495d314de52ab097f890594dd7deb2d0a4
+Windows smoke: PASS
 ```
 
-Implementação local da Fase 7 registrada em `7873e32` + teste `0721b12`, com 340 checks passando
-em compilação portátil C++20 com warnings tratados como erro. O host que produziu
-esse checkpoint não executava binários Win32; portanto build MSVC `/W4`, smoke visual
-e publicação remota ainda precisam ser confirmados antes de declarar a fase concluída.
+A Fase 7 foi validada no target Win32/x64 com `build.bat`, `/W4`, 0 warnings,
+347 checks e smoke visual/interativo. A validação também confirmou resize com integer
+scaling/letterbox, perda real de foco e encerramento por `WM_CLOSE` com exit code 0.
 
 A implementação inclui:
 
@@ -1548,8 +1552,8 @@ Ordem de desenvolvimento de referência:
 4  Player + InputState + PlayerCommand       DONE
 5  Combate mínimo                            DONE
 6  Criaturas / inimigo reutilizável          DONE
-7  Objetos + pickup + HUD + inventário       IMPLEMENTED / VALIDATION PENDING
-8  .dmap + transições + save
+7  Objetos + pickup + HUD + inventário       DONE
+8  .dmap + transições + save                NEXT
 9  Map Maker
 10 NPC + diálogo
 11 Quests
