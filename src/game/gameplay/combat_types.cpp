@@ -20,6 +20,13 @@ bool Health::applyDamage(int amount) {
     return current != previous;
 }
 
+int Health::restore(int amount) {
+    if (amount < 0) { throw std::invalid_argument("restore amount cannot be negative"); }
+    const int previous = current;
+    current = std::min(maximum, current + amount);
+    return current - previous;
+}
+
 bool factionsCanDamage(Faction attacker, Faction target) noexcept {
     return attacker != target && attacker != Faction::neutral && target != Faction::neutral;
 }

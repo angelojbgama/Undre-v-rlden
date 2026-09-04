@@ -31,6 +31,7 @@
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
+#include "game/gameplay/items.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
@@ -1954,6 +1955,108 @@ void testPresentationRect() {
            "zero logical dimension is safe");
 }
 
+void testItemsInventoryAndWallet() {
+    using namespace underworld;
+    using namespace game::gameplay;
+
+    ItemCatalog catalog;
+    catalog.add(makeLifePotionDefinition());
+    const simulation::DefinitionId equipmentId{"item.test_sword"};
+    catalog.add({equipmentId, simulation::DefinitionId{"visual.test_sword"},
+                 ItemCategory::equipment, 1, std::nullopt});
+    expect(catalog.require(lifePotionItemId()).stackLimit == 66 &&
+               catalog.find(equipmentId) != nullptr,
+           "item catalog finds immutable definitions by stable id");
+
+    bool duplicateRejected = false;
+    try { catalog.add(makeLifePotionDefinition()); }
+    catch (const std::logic_error&) { duplicateRejected = true; }
+    expect(duplicateRejected, "item catalog rejects duplicate ids");
+    bool unknownRejected = false;
+    try { static_cast<void>(catalog.require(simulation::DefinitionId{"item.unknown"})); }
+    catch (const std::out_of_range&) { unknownRejected = true; }
+    expect(unknownRejected, "item catalog rejects unknown ids");
+    bool invalidStackRejected = false;
+    try {
+        catalog.add({simulation::DefinitionId{"item.invalid"},
+                     simulation::DefinitionId{"visual.invalid"},
+                     ItemCategory::misc, 0, std::nullopt});
+    } catch (const std::invalid_argument&) { invalidStackRejected = true; }
+    expect(invalidStackRejected, "item definition requires positive stack limit");
+    bool invalidUseRejected = false;
+    try {
+        catalog.add({simulation::DefinitionId{"item.invalid_use"},
+                     simulation::DefinitionId{"visual.invalid_use"},
+                     ItemCategory::consumable, 2,
+                     ItemUseDefinition{ItemUseKind::restoreHealth, 0}});
+    } catch (const std::invalid_argument&) { invalidUseRejected = true; }
+    expect(invalidUseRejected, "item definition rejects invalid use data");
+
+    ItemContainer stacks(3, catalog);
+    expect(stacks.add(lifePotionItemId(), 60).accepted == 60, "item add creates first stack");
+    const auto split = stacks.add(lifePotionItemId(), 10);
+    expect(split.accepted == 10 && split.remainder == 0 &&
+               stacks.slot(0)->quantity == 66 && stacks.slot(1)->quantity == 4,
+           "stack limit 66 merges first then fills the lowest empty slot");
+
+    ItemContainer equipment(2, catalog);
+    const auto equipmentAdd = equipment.add(equipmentId, 2);
+    expect(equipmentAdd.accepted == 2 && equipment.slot(0)->quantity == 1 &&
+               equipment.slot(1)->quantity == 1,
+           "equipment stack limit one occupies separate slots");
+
+    PlayerInventory inventory(catalog);
+    expect(inventory.items().capacity() == 30, "PlayerInventory has exactly 30 slots");
+    ItemContainer futureBank(50, catalog);
+    expect(futureBank.capacity() == 50, "generic ItemContainer supports future capacity 50");
+    expect(inventory.items().add(equipmentId, 30).accepted == 30,
+           "all player inventory slots can be occupied");
+    const auto full = inventory.items().add(lifePotionItemId(), 10);
+    expect(full.accepted == 0 && full.remainder == 10,
+           "full inventory preserves the complete add remainder");
+
+    ItemContainer partial(1, catalog);
+    static_cast<void>(partial.add(lifePotionItemId(), 63));
+    const auto partialAdd = partial.add(lifePotionItemId(), 10);
+    expect(partialAdd.accepted == 3 && partialAdd.remainder == 7,
+           "partial add reports accepted and remainder without item loss");
+    expect(partial.remove(lifePotionItemId(), 2) == 2 &&
+               partial.slot(0)->quantity == 64,
+           "remove subtracts a smaller requested quantity");
+    expect(partial.remove(lifePotionItemId(), 64) == 64 && !partial.slot(0),
+           "remove clears a slot instead of preserving a zero quantity stack");
+    expect(partial.remove(lifePotionItemId(), 7) == 0,
+           "remove beyond available quantity reports only what existed");
+
+    ItemContainer source(2, catalog);
+    ItemContainer destination(1, catalog);
+    static_cast<void>(source.add(lifePotionItemId(), 20));
+    static_cast<void>(destination.add(lifePotionItemId(), 62));
+    const std::uint64_t before = source.count(lifePotionItemId()) +
+                                 destination.count(lifePotionItemId());
+    const auto transferred = source.transferTo(destination, lifePotionItemId(), 10);
+    const std::uint64_t after = source.count(lifePotionItemId()) +
+                                destination.count(lifePotionItemId());
+    expect(transferred == 4 && source.count(lifePotionItemId()) == 16 &&
+               destination.count(lifePotionItemId()) == 66 && before == after,
+           "partial transfer conserves items and leaves remainder in the source");
+
+    Wallet wallet;
+    expect(wallet.gold() == 0 && wallet.addGold(1) == 0 && wallet.gold() == 1,
+           "wallet credits gold outside inventory");
+    expect(wallet.addGold(std::numeric_limits<std::uint64_t>::max()) == 1 &&
+               wallet.gold() == std::numeric_limits<std::uint64_t>::max(),
+           "wallet saturation reports overflow without wrapping");
+
+    Health health(5);
+    static_cast<void>(health.applyDamage(3));
+    expect(health.restore(2) == 2 && health.current == 4,
+           "health restore applies a positive amount");
+    expect(health.restore(9) == 1 && health.current == health.maximum &&
+               health.restore(2) == 0,
+           "health restore clamps at maximum and reports no-op at full health");
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -2025,6 +2128,7 @@ int main() {
         testPhase6CombatGeneralization();
         testCreatureDefinitionsAndBehavior();
         testCreatureCombatIntegration();
+        testItemsInventoryAndWallet();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

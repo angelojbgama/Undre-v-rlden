@@ -144,7 +144,7 @@ CombatTargetRef Player::combatTarget() noexcept {
 void Player::applyKnockback(int deltaX, int deltaY,
                             const world::CollisionGrid& collision, int tileSize) {
     world::AabbI body = collisionBody();
-    const world::MovementResult movement = world::moveAgainstSolidTiles(
+    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidTiles(
         collision, body, deltaX, deltaY, tileSize);
     const core::WorldPointI resolvedFeet{
         body.x - config_.bodyOffsetX, body.y - config_.bodyOffsetY};
