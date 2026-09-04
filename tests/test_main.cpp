@@ -57,6 +57,7 @@
 #endif
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -2876,6 +2877,25 @@ void testPhase9EditorFoundation() {
     const auto schemas = editor::propertySchemasFor(content, gameplay::creatures::soldierEnemyId());
     expect(schemas.size() == 2 && schemas[0].id.value() == "enemy.detection_range",
            "enemy authoring descriptor resolves typed schemas without sprite-specific inspector branches");
+    editor::PropertyOverrideSet placedOverrides;
+    placedOverrides.emplace(schemas[0].id, std::int64_t{160});
+    const simulation::PersistentInstanceId placedEnemyId{99};
+    expect(placementDocument.execute(std::make_unique<editor::PlaceEntityCommand>(
+               maps::EnemyPlacement{placedEnemyId, gameplay::creatures::soldierEnemyId(), {96, 64},
+                                    gameplay::FacingDirection::down}, placedOverrides), error) &&
+               placementDocument.propertyOverrides().contains(placedEnemyId.value) &&
+               placementDocument.undo() && !placementDocument.propertyOverrides().contains(placedEnemyId.value) &&
+               placementDocument.redo(error) && placementDocument.propertyOverrides().contains(placedEnemyId.value),
+           "placing a persistent enemy registers overrides and undo redo preserves their lifecycle");
+    expect(placementDocument.execute(std::make_unique<editor::PlaceEntityCommand>(
+               maps::PlayerSpawn{simulation::SpawnId{"entry.editor"}, {96, 96},
+                                 gameplay::FacingDirection::down}, placedOverrides), error) &&
+               placementDocument.execute(std::make_unique<editor::PlaceEntityCommand>(
+               maps::MapLink{"link.editor", {96, 112, 16, 16}, placementDocument.data().id,
+                             simulation::SpawnId{"entry.editor"}}, placedOverrides), error) &&
+               !placementDocument.propertyOverrides().contains(0) &&
+               placementDocument.propertyOverrides().size() == 1,
+           "PlayerSpawn and MapLink commands never treat textual IDs as persistent override keys");
     expect(placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
                simulation::PersistentInstanceId{1}, schemas[0], editor::PropertyValue{std::int64_t{160}},
                content), error) &&
@@ -2947,6 +2967,70 @@ void testPhase9EditorFoundation() {
            "DMAP v1 open save reopen preserves semantic MapData equality");
     std::error_code removeError;
     std::filesystem::remove(temporary, removeError);
+}
+
+void testEditorSmokeMapIntegrationFixture() {
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    const auto source = maps::makeEditorSmokeMap();
+    game::GameContentRegistry content;
+    const auto validation = game::mapValidationCatalogs(content);
+    expect(source.id == maps::editorSmokeMapId() && source.width == 32 && source.height == 24 &&
+               source.tileSize == 16 && source.layers.size() >= 1 &&
+               std::any_of(source.collision.begin(), source.collision.end(),
+                           [](std::uint8_t value) { return value != 0; }),
+           "editor smoke fixture is a deterministic 32 by 24 tiled map with collision");
+    expect(static_cast<bool>(maps::validateMapData(source, &validation)),
+           "editor smoke fixture resolves only shared GameContentRegistry definitions");
+
+    const auto bytes = maps::serializeDmap(source);
+    const auto decoded = maps::deserializeDmap(bytes, &validation);
+    expect(decoded && maps::semanticallyEqual(source, decoded.data),
+           "map.editor.smoke roundtrips through the official DMAP v1 reader and writer");
+    expect(decoded.data.playerSpawns.size() == 1 && decoded.data.enemies.size() == 2 &&
+               decoded.data.objects.size() == 2 && decoded.data.pickups.size() == 2 &&
+               decoded.data.links.size() == 1 && decoded.data.enemies[0].id.value == 101 &&
+               decoded.data.enemies[1].id.value == 102 && decoded.data.objects[0].id.value == 201 &&
+               decoded.data.objects[1].id.value == 202 && decoded.data.pickups[0].id.value == 301 &&
+               decoded.data.pickups[1].id.value == 302 &&
+               decoded.data.enemies[0].definitionId == creatures::soldierEnemyId() &&
+               decoded.data.enemies[1].definitionId == creatures::skullEnemyId() &&
+               decoded.data.objects[0].definitionId == simulation::DefinitionId{"object.chest"} &&
+               decoded.data.objects[1].definitionId == simulation::DefinitionId{"object.crate"} &&
+               decoded.data.pickups[0].definitionId == simulation::DefinitionId{"pickup.money"} &&
+               decoded.data.pickups[1].definitionId == simulation::DefinitionId{"pickup.life_potion"} &&
+               decoded.data.links[0].targetMapId == maps::editorSmokeMapId() &&
+               decoded.data.links[0].targetSpawnId == simulation::SpawnId{"entry.start"} &&
+               std::any_of(decoded.data.playerSpawns.begin(), decoded.data.playerSpawns.end(),
+                           [&](const maps::PlayerSpawn& spawn) {
+                               return spawn.id == decoded.data.links[0].targetSpawnId;
+                           }),
+           "DMAP persists deterministic non-zero placement identities without runtime handles");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
+                                         content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
+        {{simulation::DefinitionId{"tileset.dungeon"}, 1}});
+    const auto runtime = builder.build(decoded.data, simulation::SpawnId{"entry.start"});
+    expect(runtime && runtime.world->spawn().id == simulation::SpawnId{"entry.start"} &&
+               runtime.world->enemies().size() == 2 && runtime.world->objects().size() == 2 &&
+               runtime.world->pickups().size() == 2 && runtime.world->enemies()[0].persistentId.value == 101 &&
+               runtime.world->enemies()[1].persistentId.value == 102 &&
+               runtime.world->objects()[0].persistentId.value == 201 &&
+               runtime.world->objects()[1].persistentId.value == 202 &&
+               runtime.world->pickups()[0].persistentId.value == 301 &&
+               runtime.world->pickups()[1].persistentId.value == 302 &&
+               runtime.world->map().collision().isSolid(1, 1) &&
+               runtime.world->enemies()[0].instance.handle() && runtime.world->objects()[0].instance.handle() &&
+               runtime.world->pickups()[0].instance.handle(),
+           "RuntimeWorldBuilder creates the smoke fixture placements and allocates handles only at runtime");
 }
 
 void testFixedStepAccumulator() {
@@ -3026,6 +3110,7 @@ int main() {
         testViewModelAndWorldObjects();
         testPhase8PersistentMapsAndSave();
         testPhase9EditorFoundation();
+        testEditorSmokeMapIntegrationFixture();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

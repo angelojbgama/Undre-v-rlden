@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <type_traits>
 #include <unordered_set>
 
 namespace underworld::editor {
@@ -147,7 +148,11 @@ bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
     }, placement_);
     if (!placed) return false;
     std::visit([&](const auto& placement) {
-        if constexpr (requires { placement.id.value; }) {
+        using Type = std::decay_t<decltype(placement)>;
+        if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
+                      std::is_same_v<Type, maps::ObjectPlacement> ||
+                      std::is_same_v<Type, maps::PickupPlacement> ||
+                      std::is_same_v<Type, RegionPlacement>) {
             if (overrides_) document.commandPropertyOverrides()[placement.id.value] = *overrides_;
         }
     }, placement_);
@@ -172,7 +177,12 @@ void PlaceEntityCommand::revert(EditorDocument& document) noexcept {
         } else {
             auto& values=document.commandRegions(); values.erase(findPersistent(values,placement.id));
         }
-        if constexpr (requires { placement.id.value; }) document.commandPropertyOverrides().erase(placement.id.value);
+        if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
+                      std::is_same_v<Type, maps::ObjectPlacement> ||
+                      std::is_same_v<Type, maps::PickupPlacement> ||
+                      std::is_same_v<Type, RegionPlacement>) {
+            document.commandPropertyOverrides().erase(placement.id.value);
+        }
     }, placement_);
 }
 
