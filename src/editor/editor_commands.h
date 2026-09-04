@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <variant>
 
 namespace underworld::editor {
@@ -47,18 +48,22 @@ using AuthoredPlacement = std::variant<maps::EnemyPlacement, maps::ObjectPlaceme
 
 class PlaceEntityCommand final : public EditorCommand {
 public:
-    explicit PlaceEntityCommand(AuthoredPlacement placement) : placement_(std::move(placement)) {}
+    explicit PlaceEntityCommand(AuthoredPlacement placement,
+                                std::optional<PropertyOverrideSet> overrides = std::nullopt)
+        : placement_(std::move(placement)), overrides_(std::move(overrides)) {}
     bool apply(EditorDocument& document, std::string& error) override;
     void revert(EditorDocument& document) noexcept override;
     [[nodiscard]] const char* label() const noexcept override { return "Place Entity"; }
 private:
     AuthoredPlacement placement_;
+    std::optional<PropertyOverrideSet> overrides_;
 };
 
 class MoveEntityCommand final : public EditorCommand {
 public:
     MoveEntityCommand(SelectionKind kind, simulation::PersistentInstanceId id,
-                      core::WorldPointI before, core::WorldPointI after);
+                      core::WorldPointI before, core::WorldPointI after,
+                      std::string authoredId = {});
     bool apply(EditorDocument& document, std::string& error) override;
     void revert(EditorDocument& document) noexcept override;
     [[nodiscard]] const char* label() const noexcept override { return "Move Entity"; }
@@ -66,6 +71,7 @@ private:
     bool set(EditorDocument& document, core::WorldPointI value) noexcept;
     SelectionKind kind_{};
     simulation::PersistentInstanceId id_{};
+    std::string authoredId_;
     core::WorldPointI before_{};
     core::WorldPointI after_{};
 };
@@ -82,6 +88,7 @@ private:
     simulation::PersistentInstanceId id_{};
     std::string authoredId_;
     std::optional<AuthoredPlacement> removed_;
+    std::optional<PropertyOverrideSet> removedOverrides_;
     std::size_t index_{};
 };
 
@@ -136,5 +143,9 @@ private:
 [[nodiscard]] std::optional<AuthoredPlacement> duplicatePlacement(
     const EditorDocument& document, SelectionKind kind, simulation::PersistentInstanceId id,
     simulation::PersistentInstanceId newId, int offset);
+[[nodiscard]] std::optional<AuthoredPlacement> duplicateAuthoredPlacement(
+    const EditorDocument& document, SelectionKind kind, std::string_view authoredId, int offset);
+[[nodiscard]] std::optional<TileCoordinate> worldPointToTile(
+    const maps::MapData& data, core::WorldPointI point) noexcept;
 
 } // namespace underworld::editor

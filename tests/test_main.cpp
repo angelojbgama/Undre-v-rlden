@@ -2723,6 +2723,18 @@ void testPhase9EditorFoundation() {
            "collision flood fill is iterative and finds a complete connected area");
     expect(editor::tileFloodCells(document.data(), 0, 0, 0).size() == 12,
            "tile flood fill is iterative and preserves empty-cell semantics");
+    document.layerStates()[0].locked = true;
+    expect(!document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{0,0}}, tile), error) &&
+               document.history().size() == 2,
+           "locked layer rejects tile edits without creating history");
+    document.layerStates()[0].locked = false;
+    expect(editor::worldPointToTile(document.data(), {-1,0}) == std::nullopt &&
+               editor::worldPointToTile(document.data(), {0,-1}) == std::nullopt &&
+               editor::worldPointToTile(document.data(), {15,15})->x == 0 &&
+               editor::worldPointToTile(document.data(), {16,0})->x == 1 &&
+               !editor::worldPointToTile(document.data(), {64,0}),
+           "world-to-tile rejects negative and beyond-map coordinates without clamping");
 
     auto placementDocument = editor::EditorDocument(makePhase8TestMap());
     const auto firstNew = placementDocument.allocatePersistentId();
@@ -2736,6 +2748,25 @@ void testPhase9EditorFoundation() {
     expect(placementDocument.undo() && placementDocument.data().pickups.back().id.value == 5 &&
                std::get<gameplay::ItemPickup>(placementDocument.data().pickups.back().payload).quantity == 4,
            "delete undo restores the same id definition payload and position");
+
+    const auto spawnBefore = placementDocument.data().playerSpawns[0].position;
+    const auto linkBefore = underworld::core::WorldPointI{placementDocument.data().links[0].trigger.x,
+                                                          placementDocument.data().links[0].trigger.y};
+    expect(placementDocument.execute(std::make_unique<editor::MoveEntityCommand>(
+               editor::SelectionKind::playerSpawn, simulation::PersistentInstanceId{}, spawnBefore,
+               underworld::core::WorldPointI{48,48}, std::string(placementDocument.data().playerSpawns[0].id.value())), error) &&
+               placementDocument.undo() && placementDocument.data().playerSpawns[0].position == spawnBefore &&
+               placementDocument.execute(std::make_unique<editor::MoveEntityCommand>(
+               editor::SelectionKind::mapLink, simulation::PersistentInstanceId{}, linkBefore,
+               underworld::core::WorldPointI{48,48}, placementDocument.data().links[0].id), error),
+           "PlayerSpawn and MapLink moves are authored commands with stable string identities");
+    const auto spawnCopy = editor::duplicateAuthoredPlacement(placementDocument,
+        editor::SelectionKind::playerSpawn, placementDocument.data().playerSpawns[0].id.value(), 16);
+    const auto linkCopy = editor::duplicateAuthoredPlacement(placementDocument,
+        editor::SelectionKind::mapLink, placementDocument.data().links[0].id, 16);
+    expect(spawnCopy && linkCopy && std::get<maps::PlayerSpawn>(*spawnCopy).id != placementDocument.data().playerSpawns[0].id &&
+               std::get<maps::MapLink>(*linkCopy).id != placementDocument.data().links[0].id,
+           "Spawn and MapLink duplication generates deterministic unique authored IDs");
 
     const auto before = placementDocument.data().enemies[0].position;
     const underworld::core::WorldPointI after{80, 64};
@@ -2762,6 +2793,11 @@ void testPhase9EditorFoundation() {
                content), error) &&
                std::get<std::int64_t>(placementDocument.propertyOverrides().at(1).at(schemas[0].id)) == 160,
            "valid typed property override commits through EditorCommand");
+    expect(placementDocument.execute(std::make_unique<editor::DeleteEntityCommand>(
+               editor::SelectionKind::enemy, simulation::PersistentInstanceId{1}), error) &&
+               !placementDocument.propertyOverrides().contains(1) && placementDocument.undo() &&
+               placementDocument.propertyOverrides().contains(1),
+           "delete and undo preserve an enemy's typed authoring overrides with its placement");
     expect(!placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
                simulation::PersistentInstanceId{1}, schemas[0], editor::PropertyValue{std::int64_t{-500}},
                content), error),

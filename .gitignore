@@ -24,3 +24,5 @@
 *.sav.bak
 .DS_Store
 Thumbs.db
+.codex_build.bat
+.codex_tests.bat

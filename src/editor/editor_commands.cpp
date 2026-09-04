@@ -45,6 +45,9 @@ PaintTilesCommand::PaintTilesCommand(std::size_t layer, std::vector<TileCoordina
 bool PaintTilesCommand::apply(EditorDocument& document, std::string& error) {
     auto& data = document.commandData();
     if (layer_ >= data.layers.size()) { error = "tile layer does not exist"; return false; }
+    if (layer_ < document.layerStates().size() && document.layerStates()[layer_].locked) {
+        error = "active tile layer is locked"; return false;
+    }
     if (!referenceIndex_ && desired_) {
         const auto found = std::find(data.tileReferences.begin(), data.tileReferences.end(), *desired_);
         if (found == data.tileReferences.end()) {
@@ -112,7 +115,7 @@ void SetCollisionCommand::revert(EditorDocument& document) noexcept {
 }
 
 bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
-    return std::visit([&](auto& placement) -> bool {
+    const bool placed = std::visit([&](auto& placement) -> bool {
         using Type = std::decay_t<decltype(placement)>;
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
                       std::is_same_v<Type, maps::ObjectPlacement> ||
@@ -140,6 +143,13 @@ bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
         } else document.commandRegions().push_back(placement);
         return true;
     }, placement_);
+    if (!placed) return false;
+    std::visit([&](const auto& placement) {
+        if constexpr (requires { placement.id.value; }) {
+            if (overrides_) document.commandPropertyOverrides()[placement.id.value] = *overrides_;
+        }
+    }, placement_);
+    return true;
 }
 
 void PlaceEntityCommand::revert(EditorDocument& document) noexcept {
@@ -160,18 +170,22 @@ void PlaceEntityCommand::revert(EditorDocument& document) noexcept {
         } else {
             auto& values=document.commandRegions(); values.erase(findPersistent(values,placement.id));
         }
+        if constexpr (requires { placement.id.value; }) document.commandPropertyOverrides().erase(placement.id.value);
     }, placement_);
 }
 
 MoveEntityCommand::MoveEntityCommand(SelectionKind kind, simulation::PersistentInstanceId id,
-                                     core::WorldPointI before, core::WorldPointI after)
-    : kind_(kind), id_(id), before_(before), after_(after) {}
+                                     core::WorldPointI before, core::WorldPointI after,
+                                     std::string authoredId)
+    : kind_(kind), id_(id), authoredId_(std::move(authoredId)), before_(before), after_(after) {}
 
 bool MoveEntityCommand::set(EditorDocument& document, core::WorldPointI value) noexcept {
     if (kind_ == SelectionKind::enemy) { auto it=findPersistent(document.commandData().enemies,id_); if(it!=document.commandData().enemies.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::object) { auto it=findPersistent(document.commandData().objects,id_); if(it!=document.commandData().objects.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::pickup) { auto it=findPersistent(document.commandData().pickups,id_); if(it!=document.commandData().pickups.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::region) { auto it=findPersistent(document.commandRegions(),id_); if(it!=document.commandRegions().end()){it->bounds.x=value.x;it->bounds.y=value.y;return true;} }
+    if (kind_ == SelectionKind::playerSpawn) { auto it=std::find_if(document.commandData().playerSpawns.begin(),document.commandData().playerSpawns.end(),[&](const auto& v){return v.id.value()==authoredId_;}); if(it!=document.commandData().playerSpawns.end()){it->position=value;return true;} }
+    if (kind_ == SelectionKind::mapLink) { auto it=std::find_if(document.commandData().links.begin(),document.commandData().links.end(),[&](const auto& v){return v.id==authoredId_;}); if(it!=document.commandData().links.end()){it->trigger.x=value.x;it->trigger.y=value.y;return true;} }
     return false;
 }
 bool MoveEntityCommand::apply(EditorDocument& document, std::string& error) { if(set(document,after_))return true;error="entity to move does not exist";return false; }
@@ -194,6 +208,7 @@ bool DeleteEntityCommand::apply(EditorDocument& document, std::string& error) {
     else if(kind_==SelectionKind::playerSpawn){auto& v=document.commandData().playerSpawns;auto it=std::find_if(v.begin(),v.end(),[&](const auto& x){return x.id.value()==authoredId_;});if(it!=v.end()){index_=it-v.begin();removed_=std::move(*it);v.erase(it);removed=true;}}
     else if(kind_==SelectionKind::mapLink){auto& v=document.commandData().links;auto it=std::find_if(v.begin(),v.end(),[&](const auto& x){return x.id==authoredId_;});if(it!=v.end()){index_=it-v.begin();removed_=std::move(*it);v.erase(it);removed=true;}}
     if(!removed){error="entity to delete does not exist";return false;}
+    if (id_) { auto it=document.commandPropertyOverrides().find(id_.value); if(it!=document.commandPropertyOverrides().end()){removedOverrides_=it->second;document.commandPropertyOverrides().erase(it);} }
     document.selection().clear(); return true;
 }
 
@@ -207,6 +222,7 @@ void DeleteEntityCommand::revert(EditorDocument& document) noexcept {
         else if constexpr(std::is_same_v<Type,maps::MapLink>)insertAt(document.commandData().links,index_,std::move(value));
         else insertAt(document.commandRegions(),index_,std::move(value));
     },*removed_);
+    if (id_ && removedOverrides_) document.commandPropertyOverrides()[id_.value]=*removedOverrides_;
 }
 
 SetPropertyCommand::SetPropertyCommand(simulation::PersistentInstanceId source,
@@ -270,6 +286,40 @@ std::optional<AuthoredPlacement> duplicatePlacement(const EditorDocument& docume
     if(kind==SelectionKind::pickup){auto it=findPersistent(document.data().pickups,id);if(it!=document.data().pickups.end()){auto v=*it;v.id=newId;v.position.x+=offset;v.position.y+=offset;return v;}}
     if(kind==SelectionKind::region){auto it=findPersistent(document.regions(),id);if(it!=document.regions().end()){auto v=*it;v.id=newId;v.regionId+="_copy";v.bounds.x+=offset;v.bounds.y+=offset;return v;}}
     return std::nullopt;
+}
+
+std::optional<AuthoredPlacement> duplicateAuthoredPlacement(const EditorDocument& document,
+    SelectionKind kind, std::string_view authoredId, int offset) {
+    if (kind == SelectionKind::playerSpawn) {
+        for (const auto& value : document.data().playerSpawns) {
+            if (value.id.value() != authoredId) continue;
+            auto copy = value;
+            std::string candidate = std::string(authoredId) + "_copy";
+            for (unsigned suffix = 2; std::any_of(document.data().playerSpawns.begin(), document.data().playerSpawns.end(), [&](const auto& spawn) { return spawn.id.value() == candidate; }); ++suffix) candidate = std::string(authoredId) + "_copy_" + std::to_string(suffix);
+            copy.id = simulation::SpawnId{candidate}; copy.position.x += offset; copy.position.y += offset;
+            return copy;
+        }
+    }
+    if (kind == SelectionKind::mapLink) {
+        for (const auto& value : document.data().links) {
+            if (value.id != authoredId) continue;
+            auto copy = value;
+            std::string candidate = std::string(authoredId) + "_copy";
+            for (unsigned suffix = 2; std::any_of(document.data().links.begin(), document.data().links.end(), [&](const auto& link) { return link.id == candidate; }); ++suffix) candidate = std::string(authoredId) + "_copy_" + std::to_string(suffix);
+            copy.id = std::move(candidate); copy.trigger.x += offset; copy.trigger.y += offset;
+            return copy;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TileCoordinate> worldPointToTile(const maps::MapData& data,
+                                                core::WorldPointI point) noexcept {
+    if (data.tileSize == 0 || point.x < 0 || point.y < 0) return std::nullopt;
+    const auto x = static_cast<std::uint32_t>(point.x / data.tileSize);
+    const auto y = static_cast<std::uint32_t>(point.y / data.tileSize);
+    if (x >= data.width || y >= data.height) return std::nullopt;
+    return TileCoordinate{x, y};
 }
 
 } // namespace underworld::editor

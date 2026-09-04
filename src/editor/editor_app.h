@@ -76,6 +76,7 @@ private:
     simulation::DefinitionId selectedDefinition_{game::gameplay::creatures::soldierEnemyId()};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
     std::uint32_t selectedTile_{};
+    int tilePaletteScroll_{};
     bool tileFlipX_{};
     bool showCollision_{true};
     bool newMapDialog_{};
