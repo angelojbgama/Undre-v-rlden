@@ -6,6 +6,7 @@
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
+#include "game/authoring/authoring_semantics.h"
 
 #include <string>
 #include <vector>
@@ -51,6 +52,9 @@ public:
     }
     [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
+    [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
+        return authoringSemantics_;
+    }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -71,6 +75,7 @@ private:
     gameplay::ItemCatalog items_;
     gameplay::WorldObjectCatalog objects_;
     TilesetCatalog tilesets_;
+    authoring::AuthoringSemanticRegistry authoringSemantics_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };

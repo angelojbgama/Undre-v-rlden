@@ -117,6 +117,46 @@ void SetCollisionCommand::revert(EditorDocument& document) noexcept {
     for (const auto& previous : previous_) { data.collision[previous.index] = previous.value; }
 }
 
+PlaceStampCommand::PlaceStampCommand(std::size_t layer, const game::authoring::StampDefinition& stamp,
+                                     TileCoordinate origin,
+                                     const game::authoring::AuthoringSemanticRegistry& semantics) {
+    for (const auto& cell : stamp.cells) {
+        const int x = static_cast<int>(origin.x) + cell.x;
+        const int y = static_cast<int>(origin.y) + cell.y;
+        if (x < 0 || y < 0) { return; }
+        const auto* tile = semantics.findTile(cell.tileId);
+        if (!tile) { return; }
+        const TileCoordinate destination{static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)};
+        destinations_.push_back(destination);
+        command_.add(std::make_unique<PaintTilesCommand>(layer,
+            std::vector<TileCoordinate>{destination},
+            game::authoring::tileReferenceFor(*tile)));
+    }
+    layer_ = layer;
+    valid_ = !stamp.cells.empty() && destinations_.size() == stamp.cells.size();
+}
+
+bool PlaceStampCommand::apply(EditorDocument& document, std::string& error) {
+    if (!valid_) { error = "stamp references an unknown semantic tile"; return false; }
+    const auto& data = document.data();
+    // Reject the whole operation before the compound command can write a partial stamp.
+    // PaintTilesCommand also enforces the locked-layer rule without creating history.
+    // Its children have one-cell bounds checks, so validate all destinations here.
+    // The command is intentionally a single history item.
+    if (layer_ >= data.layers.size()) { error = "tile layer does not exist"; return false; }
+    if (layer_ < document.layerStates().size() && document.layerStates()[layer_].locked) {
+        error = "active tile layer is locked"; return false;
+    }
+    for (const auto destination : destinations_) {
+        if (destination.x >= data.width || destination.y >= data.height) {
+            error = "stamp placement is outside map bounds"; return false;
+        }
+    }
+    return command_.apply(document, error);
+}
+
+void PlaceStampCommand::revert(EditorDocument& document) noexcept { command_.revert(document); }
+
 bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
     const bool placed = std::visit([&](auto& placement) -> bool {
         using Type = std::decay_t<decltype(placement)>;

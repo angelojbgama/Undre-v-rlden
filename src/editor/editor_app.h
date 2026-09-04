@@ -83,6 +83,9 @@ private:
     std::uint32_t selectedTile_{};
     int tilePaletteScroll_{};
     bool tileFlipX_{};
+    std::size_t semanticFamilyIndex_{};
+    std::size_t selectedStamp_{};
+    bool rawPalette_{};
     bool showCollision_{true};
     bool newMapDialog_{};
     int newMapField_{};

@@ -3206,6 +3206,58 @@ void testMultiTilesetAuthoringAndRuntime() {
            "editor tile commands preserve multi-tileset brush identity through undo and redo");
 }
 
+void testSemanticAuthoringFoundation() {
+    using namespace underworld;
+    game::GameContentRegistry content;
+    const auto& semantics = content.authoringSemantics();
+    expect(semantics.tiles().size() == 72, "all 72 visible Dungeon atlas cells have semantic definitions");
+    expect(semantics.stamps().size() == 8, "confirmed Dungeon visual stamps are cataloged");
+    expect(!content.tilesets().find(simulation::DefinitionId{"tileset.block"}) &&
+               !content.tilesets().find(simulation::DefinitionId{"tileset.block_2"}),
+           "tall block object sprites are not exposed as map tile atlases");
+    const auto* frameNorthWest = semantics.findTile(simulation::DefinitionId{"tileset.dungeon"}, 2U + 2U * 19U);
+    expect(frameNorthWest && frameNorthWest->id == simulation::DefinitionId{"tile.dungeon.frame.nw"} &&
+               semantics.findTile(frameNorthWest->id) == frameNorthWest,
+           "semantic tile catalog supports forward and reverse tile reference lookup");
+    expect(semantics.edgesCompatible(game::authoring::EdgeProfile::masonry, game::authoring::EdgeProfile::masonry) &&
+               !semantics.edgesCompatible(game::authoring::EdgeProfile::masonry, game::authoring::EdgeProfile::floor) &&
+               semantics.edgesCompatible(game::authoring::EdgeProfile::unknown, game::authoring::EdgeProfile::floor),
+           "edge compatibility distinguishes known mismatch from unknown evidence");
+
+    editor::EditorDocument document = editor::EditorDocument::newMap(simulation::MapId{"map.semantic"}, 8, 8);
+    std::string error;
+    const auto* stamp = semantics.findStamp(simulation::DefinitionId{"stamp.dungeon.masonry_frame_3x3"});
+    expect(stamp && document.execute(std::make_unique<editor::PlaceStampCommand>(0, *stamp,
+               editor::TileCoordinate{2,2}, semantics), error) && document.history().size() == 1 &&
+               document.data().layers[0].cells[2U + 2U * document.data().width].has_value(),
+           "PlaceStampCommand writes its cells as one editor undo operation");
+    expect(document.undo() && !document.data().layers[0].cells[2U + 2U * document.data().width] &&
+               document.redo(error) && document.data().layers[0].cells[2U + 2U * document.data().width],
+           "PlaceStampCommand undo and redo restore authored cells");
+    const auto history = document.history().size();
+    expect(!document.execute(std::make_unique<editor::PlaceStampCommand>(0, *stamp,
+               editor::TileCoordinate{7,7}, semantics), error) && document.history().size() == history,
+           "out-of-bounds stamps are rejected atomically without history");
+    document.layerStates()[0].locked = true;
+    expect(!document.execute(std::make_unique<editor::PlaceStampCommand>(0, *stamp,
+               editor::TileCoordinate{1,1}, semantics), error) && document.history().size() == history,
+           "locked layers reject stamps without history");
+
+    game::authoring::MapSemanticValidator validator;
+    maps::MapData semanticMap = document.data();
+    semanticMap.layers[0].cells[2U + 3U * semanticMap.width].reset();
+    const auto broken = validator.validate(semanticMap, semantics);
+    expect(std::any_of(broken.issues.begin(), broken.issues.end(), [](const auto& issue) {
+        return issue.code == "broken_atomic_stamp";
+    }), "semantic validator reports a confidently incomplete atomic stamp as a warning");
+    semanticMap.tileReferences.push_back({simulation::DefinitionId{"tileset.dungeon"}, 0, world::TileFlags::none});
+    semanticMap.layers[0].cells[0] = static_cast<std::uint32_t>(semanticMap.tileReferences.size()-1);
+    const auto unclassified = validator.validate(semanticMap, semantics);
+    expect(std::any_of(unclassified.issues.begin(), unclassified.issues.end(), [](const auto& issue) {
+        return issue.code == "unclassified_tile" && issue.severity == game::authoring::SemanticIssueSeverity::info;
+    }), "unclassified but structurally valid tile is an informational semantic issue");
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -3286,6 +3338,7 @@ int main() {
         testEditorSmokeMapIntegrationFixture();
         testEditorPlaygroundAuthoringAsset();
         testMultiTilesetAuthoringAndRuntime();
+        testSemanticAuthoringFoundation();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

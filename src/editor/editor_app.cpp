@@ -133,6 +133,21 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     }y+=20;
     if(ui.button({8,y,174,18},"Region (experimental)",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
 
+    const auto& semantics = content_.authoringSemantics();
+    static const std::array<std::string, 6> semanticFamilies{"ALL", "masonry", "ledge", "architectural_detail", "detail", "RAW"};
+    ui.label("SEMANTIC",8,y+8); y+=20;
+    if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
+    if(ui.button({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
+    if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
+    rawPalette_=semanticFamilies[semanticFamilyIndex_]=="RAW"; y+=22;
+    if(!semantics.stamps().empty()) {
+        ui.label("STAMPS",8,y+8); y+=20;
+        const auto& stamp=semantics.stamps()[std::min(selectedStamp_,semantics.stamps().size()-1)];
+        if(ui.button({8,y,28,18},"<")) selectedStamp_=(selectedStamp_+semantics.stamps().size()-1)%semantics.stamps().size();
+        if(ui.button({38,y,116,18},stamp.displayName,document_.activeTool()==EditorTool::stampPlace)) document_.activeTool()=EditorTool::stampPlace;
+        if(ui.button({156,y,26,18},">")) selectedStamp_=(selectedStamp_+1)%semantics.stamps().size();
+        y+=22;
+    }
     const auto* selectedDefinition=content_.tilesets().find(selectedTileset_);
     if(selectedDefinition){
         ui.label("TILESET",8,y+8); y+=20;
@@ -141,13 +156,15 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         if(ui.button({156,y,26,18},">"))selectTileset(1);
         y+=22;
     }
-    if(const auto* tileset=selectedTilesetVisual()){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label("TILES",8,paletteTop-12);
+    if(const auto* tileset=selectedTilesetVisual()){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label(rawPalette_?"RAW TILES":"SEMANTIC TILES",8,paletteTop-12);
         const int paletteHeight=std::max(18,viewportHeight-paletteTop);
         const int paletteColumns=std::max(1,std::min(10,static_cast<int>(selectedDefinition->columns)));
-        const int contentHeight=((static_cast<int>(selectedDefinition->tileCount())+paletteColumns-1)/paletteColumns)*17;
+        std::vector<std::uint32_t> paletteTiles;
+        for(std::uint32_t index=0;index<selectedDefinition->tileCount();++index){ const auto* semantic=semantics.findTile(selectedTileset_,index); if(rawPalette_ || (semantic && (semanticFamilies[semanticFamilyIndex_]=="ALL" || semantic->family==semanticFamilies[semanticFamilyIndex_]))) paletteTiles.push_back(index); }
+        const int contentHeight=((static_cast<int>(paletteTiles.size())+paletteColumns-1)/paletteColumns)*17;
         const int maxScroll=std::max(0,contentHeight-paletteHeight);
         if(ui.pointerInside({0,paletteTop,leftPanelWidth,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
-        for(std::uint32_t index=0;index<selectedDefinition->tileCount();++index){const int column=static_cast<int>(index%static_cast<std::uint32_t>(paletteColumns)),row=static_cast<int>(index/static_cast<std::uint32_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
+        for(std::size_t paletteIndex=0;paletteIndex<paletteTiles.size();++paletteIndex){const auto index=paletteTiles[paletteIndex];const int column=static_cast<int>(paletteIndex%static_cast<std::size_t>(paletteColumns)),row=static_cast<int>(paletteIndex/static_cast<std::size_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
             render::Renderer2D renderer(*framebuffer_);const core::RectI source=tileset->atlas.sourceRect(index);renderer.drawImageRegion(*tileset->image,source,cell.x,cell.y);
             if(index==selectedTile_)outline(renderer,cell,selectedColor);if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
     } else if (selectedDefinition) { ui.label("Tileset image unavailable",8,y+4); }
@@ -202,6 +219,7 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
         else if((tool==EditorTool::tileFill && input.alt)||tool==EditorTool::tileEyedropper){if(tile){const auto index=static_cast<std::size_t>(tile->y)*document_.data().width+tile->x;const auto cell=document_.data().layers[document_.activeLayer()].cells[index];if(cell){const auto& ref=document_.data().tileReferences[*cell];selectedTileset_=ref.tilesetId;selectedTile_=ref.sourceIndex;tileFlipX_=world::hasFlag(ref.flags,world::TileFlags::flipX);tilePaletteScroll_=0;}if(tool==EditorTool::tileEyedropper)document_.activeTool()=EditorTool::tilePencil;}}
         else if(tool==EditorTool::tileFill && tile)execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),tileFloodCells(document_.data(),document_.activeLayer(),tile->x,tile->y),selectedTileReference()));
         else if((tool==EditorTool::collisionFill||tool==EditorTool::collisionFillErase) && tile)execute(std::make_unique<SetCollisionCommand>(collisionFloodCells(document_.data(),tile->x,tile->y),tool==EditorTool::collisionFill));
+        else if(tool==EditorTool::stampPlace && tile && selectedStamp_<content_.authoringSemantics().stamps().size()) execute(std::make_unique<PlaceStampCommand>(document_.activeLayer(),content_.authoringSemantics().stamps()[selectedStamp_],*tile,content_.authoringSemantics()));
         else if(tool==EditorTool::entityPlace)placeSelected(snapped);
         else if(tool==EditorTool::regionCreate){drag_.kind=DragState::Kind::regionCreate;drag_.worldStart=snapped;drag_.worldCurrent=snapped;}
         else if(tool==EditorTool::select){auto hit=hitTest(worldPoint);if(hit){document_.selection()=*hit;if(hit->kind==SelectionKind::region){const auto it=std::find_if(document_.regions().begin(),document_.regions().end(),[&](const auto& r){return r.id==hit->instanceId;});if(it!=document_.regions().end()&&std::abs(worldPoint.x-(it->bounds.x+it->bounds.width))<8&&std::abs(worldPoint.y-(it->bounds.y+it->bounds.height))<8){drag_.kind=DragState::Kind::regionResize;drag_.regionStart=it->bounds;drag_.worldCurrent=worldPoint;return;}}if(hit->kind!=SelectionKind::none){drag_.kind=DragState::Kind::move;drag_.worldStart=worldPoint;drag_.worldCurrent=snapped;if(hit->kind==SelectionKind::region){auto it=std::find_if(document_.regions().begin(),document_.regions().end(),[&](const auto& r){return r.id==hit->instanceId;});drag_.entityStart={it->bounds.x,it->bounds.y};}else if(hit->kind==SelectionKind::playerSpawn){auto it=std::find_if(document_.data().playerSpawns.begin(),document_.data().playerSpawns.end(),[&](const auto& v){return v.id.value()==hit->authoredId;});drag_.entityStart=it->position;}else if(hit->kind==SelectionKind::mapLink){auto it=std::find_if(document_.data().links.begin(),document_.data().links.end(),[&](const auto& v){return v.id==hit->authoredId;});drag_.entityStart={it->trigger.x,it->trigger.y};}else{auto point=[&](){if(hit->kind==SelectionKind::enemy)return std::find_if(document_.data().enemies.begin(),document_.data().enemies.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;if(hit->kind==SelectionKind::object)return std::find_if(document_.data().objects.begin(),document_.data().objects.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;return std::find_if(document_.data().pickups.begin(),document_.data().pickups.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;}();drag_.entityStart=point;}}}else document_.selection().clear();}
@@ -268,11 +286,13 @@ void EditorApp::placeSelected(core::WorldPointI point){const auto id=document_.a
 }
 
 void EditorApp::drawInspector(EditorUiContext& ui,core::RectI panel){int y=10;ui.label("PROPERTIES",panel.x+8,y);y+=18;ui.label(std::string(document_.data().id.value()),panel.x+8,y);y+=18;
+    if(const auto* semantic=content_.authoringSemantics().findTile(selectedTileset_,selectedTile_)) { ui.label("TILE: "+std::string(semantic->id.value()),panel.x+8,y); y+=14; ui.label(std::string(toString(semantic->role))+" / "+toString(semantic->topology),panel.x+8,y); y+=14; ui.label("FlipX "+std::string(semantic->flipXAllowed?"allowed":"not approved"),panel.x+8,y); y+=18; }
+    else { ui.label("TILE: Unclassified (RAW)",panel.x+8,y); y+=18; }
     const auto& selection=document_.selection();if(selection.kind==SelectionKind::none){ui.label("No selection",panel.x+8,y);}else{ui.label("Selection",panel.x+8,y);y+=16;if(selection.instanceId)ui.label("ID "+std::to_string(selection.instanceId.value),panel.x+8,y);else ui.label(selection.authoredId,panel.x+8,y);y+=20;
         simulation::DefinitionId definition;for(const auto& enemy:document_.data().enemies)if(enemy.id==selection.instanceId)definition=enemy.definitionId;
-        const auto schemas=propertySchemasFor(content_,definition);for(const auto& schema:schemas){ui.label(schema.displayName,panel.x+8,y);y+=14;std::int64_t value=std::get<std::int64_t>(schema.defaultValue);const auto outer=document_.propertyOverrides().find(selection.instanceId.value);bool overridden=false;if(outer!=document_.propertyOverrides().end()){const auto found=outer->second.find(schema.id);if(found!=outer->second.end()){value=std::get<std::int64_t>(found->second);overridden=true;}}
+    const auto schemas=propertySchemasFor(content_,definition);for(const auto& schema:schemas){ui.label(schema.displayName,panel.x+8,y);y+=14;std::int64_t value=std::get<std::int64_t>(schema.defaultValue);const auto outer=document_.propertyOverrides().find(selection.instanceId.value);bool overridden=false;if(outer!=document_.propertyOverrides().end()){const auto found=outer->second.find(schema.id);if(found!=outer->second.end()){value=std::get<std::int64_t>(found->second);overridden=true;}}
             ui.label(std::to_string(value)+(overridden?" *":""),panel.x+8,y+4);if(ui.button({panel.x+90,y,32,18},"-"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,PropertyValue{value-1},content_));if(ui.button({panel.x+126,y,32,18},"+"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,PropertyValue{value+1},content_));if(ui.button({panel.x+162,y,72,18},"RESET"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,std::nullopt,content_));y+=24;}}
-    y=panel.height-150;ui.label("VALIDATION",panel.x+8,y);y+=16;const auto report=document_.validate(content_);ui.label(std::to_string(report.errorCount())+" errors",panel.x+8,y);y+=14;ui.label(std::to_string(report.warningCount())+" warnings",panel.x+8,y);y+=16;for(const auto& issue:report.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}
+    y=panel.height-150;ui.label("VALIDATION",panel.x+8,y);y+=16;const auto report=document_.validate(content_); game::authoring::MapSemanticValidator semanticValidator; const auto semanticReport=semanticValidator.validate(document_.data(),content_.authoringSemantics());ui.label("Structural: "+std::to_string(report.errorCount())+" errors",panel.x+8,y);y+=14;ui.label("Semantic: "+std::to_string(semanticReport.warningCount())+" warnings",panel.x+8,y);y+=16;for(const auto& issue:report.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}for(const auto& issue:semanticReport.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}
 }
 
 void EditorApp::drawNewMapDialog(EditorUiContext& ui,const EditorInputState& input){const int width=360,height=220,x=(framebuffer_->width()-width)/2,y=(framebuffer_->height()-height)/2;ui.panel({x,y,width,height});ui.label("NEW MAP",x+12,y+12);std::array<std::string*,4> fields{&newMapId_,&newMapWidth_,&newMapHeight_,&newMapTileSize_};const std::array<const char*,4> names{"MapId","Width","Height","Tile Size"};

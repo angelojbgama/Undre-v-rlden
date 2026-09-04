@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/editor_document.h"
+#include "game/authoring/authoring_semantics.h"
 
 #include <memory>
 #include <optional>
@@ -132,6 +133,20 @@ public:
 private:
     std::string label_;
     std::vector<std::unique_ptr<EditorCommand>> commands_;
+};
+
+class PlaceStampCommand final : public EditorCommand {
+public:
+    PlaceStampCommand(std::size_t layer, const game::authoring::StampDefinition& stamp,
+                      TileCoordinate origin, const game::authoring::AuthoringSemanticRegistry& semantics);
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Place Stamp"; }
+private:
+    CompoundEditorCommand command_{"Place Stamp"};
+    std::vector<TileCoordinate> destinations_;
+    std::size_t layer_{};
+    bool valid_{};
 };
 
 [[nodiscard]] std::vector<TileCoordinate> rectangleCells(int x0, int y0, int x1, int y1,
