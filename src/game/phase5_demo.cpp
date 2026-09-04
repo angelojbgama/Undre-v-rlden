@@ -15,6 +15,7 @@
 #include "engine/world/tile.h"
 #include "game/command_builder.h"
 #include "game/game_view_model.h"
+#include "game/game_content.h"
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
@@ -235,18 +236,11 @@ struct Phase7Demo::State final {
         savePath = this->executableDirectory / "savegame.sav";
         attackCatalog.add(swordDefinition);
         attackCatalog.add(bowDefinition);
-        attackCatalog.add(gameplay::creatures::makeSoldierSwordAttackDefinition());
-        attackCatalog.add(gameplay::creatures::makeSkullArrowAttackDefinition());
         projectileCatalog.add(arrowDefinition);
-        projectileCatalog.add(gameplay::creatures::makeSkullArrowProjectileDefinition());
         projectileVisuals.emplace(arrowDefinition.visualId, arrowSheet);
         projectileVisuals.emplace(
             projectileCatalog.require(gameplay::creatures::skullArrowProjectileId()).visualId,
             skullArrowSheet);
-        behaviorCatalog.add(gameplay::creatures::makeSoldierBehaviorProfile());
-        behaviorCatalog.add(gameplay::creatures::makeSkullBehaviorProfile());
-        enemyCatalog.add(gameplay::creatures::makeSoldierEnemyDefinition());
-        enemyCatalog.add(gameplay::creatures::makeSkullEnemyDefinition());
         enemyVisualCatalog.add(makeEnemyVisualSet(
             gameplay::creatures::soldierVisualId(),
             attackCatalog.require(gameplay::creatures::soldierSwordAttackId()).visualActionId,
@@ -257,7 +251,6 @@ struct Phase7Demo::State final {
             attackCatalog.require(gameplay::creatures::skullArrowAttackId()).visualActionId,
             skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
             32, 2, 8, {16, 31}, {{}, {"spawn_projectile"}}));
-        itemCatalog.add(gameplay::makeLifePotionDefinition());
         itemVisuals.emplace(
             simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
 
@@ -267,12 +260,6 @@ struct Phase7Demo::State final {
 
         const simulation::DefinitionId chestVisualId{"visual.object.chest"};
         const simulation::DefinitionId crateVisualId{"visual.object.crate"};
-        objectCatalog.add({simulation::DefinitionId{"object.chest"}, chestVisualId,
-            gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}},
-            gameplay::ObjectContainerDefinition{5}, std::nullopt});
-        objectCatalog.add({simulation::DefinitionId{"object.crate"}, crateVisualId,
-            std::nullopt, std::nullopt,
-            gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}}});
         objectVisualCatalog.add({chestVisualId,
             makeObjectClip("chest.closed", chestSheet, 16, 32, 1, 1, {8, 31}, true),
             makeObjectClip("chest.open", chestSheet, 16, 32, 5, 4, {8, 31}, false),
@@ -1037,30 +1024,31 @@ struct Phase7Demo::State final {
     simulation::EntityHandlePool handles;
     simulation::EntityHandle playerHandle{};
     gameplay::Player player;
+    GameContentRegistry content;
+    gameplay::AttackCatalog& attackCatalog{content.attacks()};
+    gameplay::ProjectileCatalog& projectileCatalog{content.projectiles()};
+    gameplay::creatures::BehaviorCatalog& behaviorCatalog{content.behaviors()};
+    gameplay::creatures::EnemyCatalog& enemyCatalog{content.enemies()};
+    gameplay::ItemCatalog& itemCatalog{content.items()};
+    gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;
-    gameplay::AttackCatalog attackCatalog;
-    gameplay::ProjectileCatalog projectileCatalog;
     std::unordered_map<simulation::DefinitionId,
                        std::shared_ptr<const render::SpriteSheet>,
                        simulation::DefinitionIdHash> projectileVisuals;
-    gameplay::creatures::BehaviorCatalog behaviorCatalog;
-    gameplay::creatures::EnemyCatalog enemyCatalog;
     EnemyVisualCatalog enemyVisualCatalog;
     gameplay::creatures::EnemyBehaviorSystem enemyBehavior;
     std::vector<EnemyVisualInstance> enemyVisuals;
     std::unique_ptr<TrainingPuppet> puppet;
     gameplay::CombatSystem combat;
     gameplay::ProjectileSystem projectiles;
-    gameplay::ItemCatalog itemCatalog;
     gameplay::PlayerItems playerItems;
     gameplay::InventoryOverlayState inventoryOverlay;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
                        simulation::DefinitionIdHash> pickupVisuals;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
                        simulation::DefinitionIdHash> itemVisuals;
-    gameplay::WorldObjectCatalog objectCatalog;
     WorldObjectVisualCatalog objectVisualCatalog;
     std::vector<WorldObjectVisualInstance> objectVisuals;
     std::unique_ptr<gameplay::creatures::EnemyFactory> enemyFactory;

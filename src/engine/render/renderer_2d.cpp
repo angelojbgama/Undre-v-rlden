@@ -127,6 +127,43 @@ void Renderer2D::drawImageRegionQuarterTurn(const Image& image, core::RectI sour
     }
 }
 
+void Renderer2D::drawImageRegionNearest(const Image& image, core::RectI source,
+                                        core::RectI destination, bool flipX) {
+    const std::int64_t sourceRight = static_cast<std::int64_t>(source.x) + source.width;
+    const std::int64_t sourceBottom = static_cast<std::int64_t>(source.y) + source.height;
+    if (source.empty() || destination.empty() || source.x < 0 || source.y < 0 ||
+        sourceRight > image.width() || sourceBottom > image.height()) {
+        throw std::out_of_range("scaled image rectangle is invalid");
+    }
+    const int left = std::max(destination.x, 0);
+    const int top = std::max(destination.y, 0);
+    const int right = static_cast<int>(std::min<std::int64_t>(
+        static_cast<std::int64_t>(destination.x) + destination.width, target_.width()));
+    const int bottom = static_cast<int>(std::min<std::int64_t>(
+        static_cast<std::int64_t>(destination.y) + destination.height, target_.height()));
+    if (left >= right || top >= bottom) { return; }
+    const auto& bytes = image.bytes();
+    auto targetPixels = target_.pixels();
+    for (int y = top; y < bottom; ++y) {
+        const int localY = y - destination.y;
+        const int sourceY = source.y + static_cast<int>(
+            static_cast<std::int64_t>(localY) * source.height / destination.height);
+        for (int x = left; x < right; ++x) {
+            const int localX = x - destination.x;
+            int sourceLocalX = static_cast<int>(
+                static_cast<std::int64_t>(localX) * source.width / destination.width);
+            if (flipX) { sourceLocalX = source.width - 1 - sourceLocalX; }
+            const std::size_t sourceOffset = static_cast<std::size_t>(sourceY) * image.stride() +
+                static_cast<std::size_t>(source.x + sourceLocalX) * 4U;
+            const core::ColorRGBA8 sourceColor{bytes[sourceOffset], bytes[sourceOffset + 1U],
+                bytes[sourceOffset + 2U], bytes[sourceOffset + 3U]};
+            auto& output = targetPixels[static_cast<std::size_t>(y) *
+                static_cast<std::size_t>(target_.width()) + static_cast<std::size_t>(x)];
+            blend(sourceColor, output);
+        }
+    }
+}
+
 void Renderer2D::drawImageRegionImpl(const Image& image, core::RectI source, int destinationX,
                                      int destinationY, bool flipX) {
     const std::int64_t sourceRight = static_cast<std::int64_t>(source.x) + source.width;

@@ -22,6 +22,7 @@ if defined VSCMD_ARG_TGT_ARCH (
 
 if not exist "build\obj" mkdir "build\obj"
 if not exist "build\bin" mkdir "build\bin"
+
 del /q "build\obj\*.obj" >nul 2>nul
 
 set "COMMON_FLAGS=/nologo /std:c++20 /W4 /permissive- /EHsc /Zc:__cplusplus /utf-8 /I src /c"
@@ -108,6 +109,30 @@ if errorlevel 1 goto :build_failed
 
 echo Compiling deterministic demo maps...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\demo_maps.obj" "src\game\maps\demo_maps.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling shared game content...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\game_content.obj" "src\game\game_content.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map editor document...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_document.obj" "src\editor\editor_document.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map editor commands...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_commands.obj" "src\editor\editor_commands.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map editor UI...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_ui.obj" "src\editor\editor_ui.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map editor application...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_app.obj" "src\editor\editor_app.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map editor Win32 shell...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_editor.obj" "src\editor\win32_editor.cpp"
 if errorlevel 1 goto :build_failed
 
 echo [15/39] Compiling combat data...
@@ -198,6 +223,23 @@ echo [36/39] Compiling Win32 platform...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_platform.obj" "src\engine\platform\win32\win32_platform.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Linking map_editor.exe...
+link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
+    "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" ^
+    "build\obj\bitmap_font.obj" "build\obj\asset_manager.obj" ^
+    "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" ^
+    "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" ^
+    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_content.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
+    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
+    "build\obj\items.obj" "build\obj\world_pickups.obj" ^
+    "build\obj\world_objects.obj" "build\obj\creature_engine.obj" ^
+    "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" ^
+    "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
+    "build\obj\editor_app.obj" "build\obj\win32_editor.obj" ^
+    user32.lib gdi32.lib ole32.lib windowscodecs.lib comdlg32.lib
+if errorlevel 1 goto :build_failed
+
 echo [37/39] Linking game.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" ^
@@ -210,18 +252,19 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
+    "build\obj\game_content.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
-    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
-    "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
-    "build\obj\world_objects.obj" "build\obj\game_view_model.obj" ^
-    "build\obj\world_object_visual.obj" ^
-    "build\obj\creature_engine.obj" ^
-    "build\obj\enemy_visual.obj" ^
+    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
+    "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
-    "build\obj\player.obj" "build\obj\player_visual.obj" "build\obj\win32_clock.obj" ^
-    "build\obj\win32_image_decoder.obj" "build\obj\phase5_demo.obj" ^
-    "build\obj\game.obj" "build\obj\win32_platform.obj" ^
+    "build\obj\player.obj" "build\obj\player_visual.obj" ^
+    "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
+    "build\obj\phase5_demo.obj" "build\obj\game.obj" ^
+    "build\obj\win32_platform.obj" ^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib
 if errorlevel 1 goto :build_failed
 
@@ -241,29 +284,35 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
+    "build\obj\game_content.obj" ^
+    "build\obj\editor_document.obj" "build\obj\editor_commands.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
-    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
-    "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
-    "build\obj\world_objects.obj" "build\obj\game_view_model.obj" ^
-    "build\obj\world_object_visual.obj" ^
-    "build\obj\creature_engine.obj" ^
-    "build\obj\enemy_visual.obj" ^
+    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
+    "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
-    "build\obj\player.obj" "build\obj\player_visual.obj" "build\obj\win32_clock.obj" ^
-    "build\obj\win32_image_decoder.obj" "build\obj\tests.obj" ^
+    "build\obj\player.obj" "build\obj\player_visual.obj" ^
+    "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
+    "build\obj\tests.obj" ^
     ole32.lib windowscodecs.lib
 if errorlevel 1 goto :build_failed
 
 echo.
 echo Build succeeded:
 echo   build\bin\game.exe
+echo   build\bin\map_editor.exe
 echo   build\bin\tests.exe
+
 popd
 exit /b 0
 
 :build_failed
+
 echo.
 echo ERROR: build failed. See the compiler or linker diagnostics above.
+
 popd
 exit /b 1

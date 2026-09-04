@@ -25,7 +25,10 @@
 #include "engine/world/runtime_map.h"
 #include "engine/world/tile.h"
 #include "engine/world/tile_layer.h"
+#include "editor/editor_commands.h"
+#include "editor/editor_document.h"
 #include "game/command_builder.h"
+#include "game/game_content.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
@@ -2659,6 +2662,158 @@ void testPhase8PersistentMapsAndSave() {
     std::filesystem::remove(demoPathA, ec); std::filesystem::remove(demoPathB, ec);
 }
 
+void testPhase9EditorFoundation() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    game::GameContentRegistry content;
+    expect(content.enemies().find(gameplay::creatures::soldierEnemyId()) &&
+               content.enemies().find(gameplay::creatures::skullEnemyId()) &&
+               content.objects().find(simulation::DefinitionId{"object.chest"}) &&
+               content.objects().find(simulation::DefinitionId{"object.crate"}) &&
+               content.items().find(gameplay::lifePotionItemId()) &&
+               content.pickup(simulation::DefinitionId{"pickup.money"}),
+           "shared GameContentRegistry resolves runtime and editor definitions from one registration");
+    expect(content.authoringDescriptors(game::AuthoringCategory::enemy).size() == 2 &&
+               content.authoringDescriptors(game::AuthoringCategory::object).size() == 2 &&
+               content.authoringDescriptors(game::AuthoringCategory::pickup).size() == 3,
+           "authoring palette is derived from shared content descriptors");
+
+    auto document = editor::EditorDocument::newMap(simulation::MapId{"map.editor.test"}, 4, 3);
+    expect(document.dirty() && document.data().layers.size() == 1 &&
+               document.data().layers[0].name == "Ground" && document.data().collision.size() == 12,
+           "New Map creates Ground and collision authoring data without arbitrary content");
+    document.markSaved();
+    std::string error;
+    const maps::MapTileReference tile{simulation::DefinitionId{"tileset.dungeon"}, 17,
+                                      underworld::world::TileFlags::flipX};
+    expect(document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{0,0},{1,0},{1,0},{99,99}}, tile), error) &&
+               document.data().layers[0].cells[0] && document.data().layers[0].cells[1] &&
+               document.dirty() && document.history().size() == 1,
+           "one tile brush stroke paints unique in-bounds cells as one command");
+    expect(document.undo() && !document.data().layers[0].cells[0] &&
+               document.data().tileReferences.empty(),
+           "tile stroke undo restores cells and removes its unused tile reference");
+    expect(document.redo(error) && document.data().layers[0].cells[1],
+           "tile stroke redo restores the same authored tile");
+    expect(document.undo(), "editor history can return before a stroke");
+    expect(document.execute(std::make_unique<editor::SetCollisionCommand>(
+               std::vector<editor::TileCoordinate>{{2,1}}, true), error) &&
+               !document.history().canRedo(),
+           "new edit after undo discards redo branch");
+    expect(document.undo() && document.data().collision[6] == 0 && document.redo(error) &&
+               document.data().collision[6] == 1,
+           "collision paint supports undo and redo");
+
+    const auto rectangle = editor::rectangleCells(-2, -1, 1, 1, document.data());
+    expect(rectangle.size() == 4, "rectangle authoring clips to map bounds without resizing");
+    auto compound = std::make_unique<editor::CompoundEditorCommand>("collision rectangle");
+    compound->add(std::make_unique<editor::SetCollisionCommand>(rectangle, true));
+    compound->add(std::make_unique<editor::SetCollisionCommand>(
+        std::vector<editor::TileCoordinate>{{0,0}}, false));
+    expect(document.execute(std::move(compound), error) && document.data().collision[0] == 0 &&
+               document.data().collision[1] == 1 && document.undo() &&
+               document.data().collision[1] == 0,
+           "compound command applies atomically and reverts children in reverse order");
+    expect(editor::collisionFloodCells(document.data(), 0, 0).size() == 11,
+           "collision flood fill is iterative and finds a complete connected area");
+    expect(editor::tileFloodCells(document.data(), 0, 0, 0).size() == 12,
+           "tile flood fill is iterative and preserves empty-cell semantics");
+
+    auto placementDocument = editor::EditorDocument(makePhase8TestMap());
+    const auto firstNew = placementDocument.allocatePersistentId();
+    expect(firstNew.value > 5, "persistent id allocation starts above every placement namespace id");
+    expect(placementDocument.execute(std::make_unique<editor::DeleteEntityCommand>(
+               editor::SelectionKind::pickup, simulation::PersistentInstanceId{5}), error),
+           "delete placement command removes an existing entity");
+    const auto afterDelete = placementDocument.allocatePersistentId();
+    expect(afterDelete.value > firstNew.value && afterDelete.value != 5,
+           "persistent id allocator is monotonic and never reuses deleted ids in-session");
+    expect(placementDocument.undo() && placementDocument.data().pickups.back().id.value == 5 &&
+               std::get<gameplay::ItemPickup>(placementDocument.data().pickups.back().payload).quantity == 4,
+           "delete undo restores the same id definition payload and position");
+
+    const auto before = placementDocument.data().enemies[0].position;
+    const underworld::core::WorldPointI after{80, 64};
+    expect(placementDocument.execute(std::make_unique<editor::MoveEntityCommand>(
+               editor::SelectionKind::enemy, simulation::PersistentInstanceId{1}, before, after), error) &&
+               placementDocument.data().enemies[0].position == after && placementDocument.undo() &&
+               placementDocument.data().enemies[0].position == before && placementDocument.redo(error) &&
+               placementDocument.data().enemies[0].position == after,
+           "entity move commits once and roundtrips position through undo redo");
+    const auto duplicateId = placementDocument.allocatePersistentId();
+    const auto duplicate = editor::duplicatePlacement(placementDocument,
+        editor::SelectionKind::object, simulation::PersistentInstanceId{2}, duplicateId, 16);
+    expect(duplicate && std::get<maps::ObjectPlacement>(*duplicate).id == duplicateId &&
+               std::get<maps::ObjectPlacement>(*duplicate).definitionId ==
+                   placementDocument.data().objects[0].definitionId &&
+               placementDocument.execute(std::make_unique<editor::PlaceEntityCommand>(*duplicate), error),
+           "duplicate placement preserves authored data with a fresh persistent id and offset");
+
+    const auto schemas = editor::propertySchemasFor(content, gameplay::creatures::soldierEnemyId());
+    expect(schemas.size() == 2 && schemas[0].id.value() == "enemy.detection_range",
+           "enemy authoring descriptor resolves typed schemas without sprite-specific inspector branches");
+    expect(placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
+               simulation::PersistentInstanceId{1}, schemas[0], editor::PropertyValue{std::int64_t{160}},
+               content), error) &&
+               std::get<std::int64_t>(placementDocument.propertyOverrides().at(1).at(schemas[0].id)) == 160,
+           "valid typed property override commits through EditorCommand");
+    expect(!placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
+               simulation::PersistentInstanceId{1}, schemas[0], editor::PropertyValue{std::int64_t{-500}},
+               content), error),
+           "property command rejects integers below schema minimum before document mutation");
+    editor::PropertySchema facing{editor::PropertyId{"test.facing"}, "Facing",
+        editor::PropertyType::enumeration, {}, {}, {"Down","Up","Left","Right"}, {},
+        editor::EnumPropertyValue{"Down"}};
+    expect(!editor::validatePropertyValue(facing, editor::EnumPropertyValue{"Diagonal"},
+               content, placementDocument, error),
+           "enum property validation rejects values outside its explicit domain");
+    editor::PropertySchema itemRef{editor::PropertyId{"test.item"}, "Item",
+        editor::PropertyType::definitionReference, {}, {}, {}, game::AuthoringCategory::pickup,
+        editor::DefinitionReference{simulation::DefinitionId{"pickup.money"},
+                                    game::AuthoringCategory::pickup}};
+    expect(!editor::validatePropertyValue(itemRef,
+               editor::DefinitionReference{gameplay::creatures::soldierEnemyId(),
+                                           game::AuthoringCategory::enemy},
+               content, placementDocument, error),
+           "DefinitionRef validation rejects a reference from the wrong category");
+    expect(placementDocument.execute(std::make_unique<editor::SetPropertyCommand>(
+               simulation::PersistentInstanceId{1}, schemas[0], std::nullopt, content), error) &&
+               !placementDocument.propertyOverrides().contains(1) && placementDocument.undo() &&
+               placementDocument.propertyOverrides().contains(1),
+           "Reset to Default removes an override and undo restores its previous typed value");
+
+    auto regionDocument = editor::EditorDocument::newMap(simulation::MapId{"map.region"}, 8, 8);
+    const auto regionId = regionDocument.allocatePersistentId();
+    expect(regionDocument.execute(std::make_unique<editor::PlaceEntityCommand>(
+               editor::RegionPlacement{regionId, "arena", {16,16,32,32}}), error) &&
+               regionDocument.execute(std::make_unique<editor::ResizeRegionCommand>(
+                   regionId, underworld::world::AabbI{16,16,32,32},
+                   underworld::world::AabbI{8,8,48,40}), error) &&
+               regionDocument.regions()[0].bounds.width == 48 && regionDocument.undo() &&
+               regionDocument.regions()[0].bounds.width == 32,
+           "experimental region create resize and undo use persistent authoring identity");
+    expect(!regionDocument.saveAs(std::filesystem::temp_directory_path() / "region-not-written.dmap",
+               content, error),
+           "DMAP 1.0 save explicitly blocks experimental regions instead of silently dropping them");
+
+    auto roundtripMap = makePhase8TestMap("map.editor.roundtrip", "map.other");
+    const auto temporary = std::filesystem::temp_directory_path() / "underworld_editor_roundtrip.dmap";
+    editor::EditorDocument roundtrip(roundtripMap);
+    expect(roundtrip.saveAs(temporary, content, error) && !roundtrip.dirty(),
+           "EditorDocument Save As validates and writes through the existing DMAP writer");
+    const auto reopened = editor::EditorDocument::open(temporary, content, error);
+    expect(reopened && maps::semanticallyEqual(roundtripMap, reopened->data()) &&
+               !reopened->dirty() && reopened->filePath() == temporary,
+           "DMAP v1 open save reopen preserves semantic MapData equality");
+    std::error_code removeError;
+    std::filesystem::remove(temporary, removeError);
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -2734,6 +2889,7 @@ int main() {
         testPickupsQuickSlotsAndInventoryOverlay();
         testViewModelAndWorldObjects();
         testPhase8PersistentMapsAndSave();
+        testPhase9EditorFoundation();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
