@@ -82,6 +82,30 @@ echo [14/39] Compiling entity handles...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\entity_handle.obj" "src\engine\simulation\entity_handle.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling binary serialization...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\byte_io.obj" "src\engine\serialization\byte_io.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling persistent map data...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\map_data.obj" "src\game\maps\map_data.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling DMAP serialization...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\dmap.obj" "src\game\maps\dmap.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling runtime world builder...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\runtime_world.obj" "src\game\maps\runtime_world.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling save data...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\save_data.obj" "src\game\save\save_data.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling map catalog and transitions...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\map_catalog.obj" "src\game\maps\map_catalog.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [15/39] Compiling combat data...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\combat_types.obj" "src\game\gameplay\combat_types.cpp"
 if errorlevel 1 goto :build_failed
@@ -179,6 +203,9 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
+    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
+    "build\obj\runtime_world.obj" ^
+    "build\obj\save_data.obj" "build\obj\map_catalog.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
     "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
@@ -207,6 +234,9 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
+    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
+    "build\obj\runtime_world.obj" ^
+    "build\obj\save_data.obj" "build\obj\map_catalog.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
     "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^

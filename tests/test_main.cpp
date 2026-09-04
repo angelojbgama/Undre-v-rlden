@@ -18,6 +18,8 @@
 #include "engine/simulation/player_command.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/simulation/events.h"
+#include "engine/simulation/persistent_id.h"
+#include "engine/serialization/byte_io.h"
 #include "engine/world/collision.h"
 #include "engine/world/collision_grid.h"
 #include "engine/world/runtime_map.h"
@@ -40,6 +42,10 @@
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
 #include "game/training_puppet.h"
+#include "game/maps/dmap.h"
+#include "game/maps/map_catalog.h"
+#include "game/maps/runtime_world.h"
+#include "game/save/save_data.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -2297,6 +2303,211 @@ void testViewModelAndWorldObjects() {
            "completed object destruction invalidates runtime handle");
 }
 
+underworld::game::maps::MapData makePhase8TestMap(
+    std::string mapName = "map.test.room_a", std::string target = "map.test.room_b") {
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    maps::MapData map;
+    map.id = simulation::MapId{std::move(mapName)};
+    map.width = 4; map.height = 3; map.tileSize = 16;
+    map.tileReferences.push_back({simulation::DefinitionId{"tileset.dungeon"}, 10,
+                                  underworld::world::TileFlags::none});
+    maps::MapTileLayer layer{"ground", true, std::vector<std::optional<std::uint32_t>>(12)};
+    layer.cells[0] = 0; layer.cells[5] = 0; map.layers.push_back(std::move(layer));
+    map.collision.assign(12, 0); map.collision[3] = 1;
+    map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {16, 24},
+                                gameplay::FacingDirection::down});
+    map.playerSpawns.push_back({simulation::SpawnId{"entry.return"}, {32, 24},
+                                gameplay::FacingDirection::left});
+    map.enemies.push_back({{1}, gameplay::creatures::soldierEnemyId(), {40, 24},
+                           gameplay::FacingDirection::left});
+    map.objects.push_back({{2}, simulation::DefinitionId{"object.chest"}, {48, 24},
+                           {{gameplay::lifePotionItemId(), 2}}});
+    map.objects.push_back({{3}, simulation::DefinitionId{"object.crate"}, {56, 24}, {}});
+    map.pickups.push_back({{4}, simulation::DefinitionId{"pickup.money"},
+        simulation::DefinitionId{"visual.pickup.money"}, {24, 24}, {-5,-5,10,10},
+        gameplay::CurrencyPickup{1}});
+    map.pickups.push_back({{5}, simulation::DefinitionId{"pickup.life_potion"},
+        simulation::DefinitionId{"visual.item.life_potion"}, {30, 24}, {-5,-5,10,10},
+        gameplay::ItemPickup{gameplay::lifePotionItemId(), 4}});
+    map.links.push_back({"exit", {55, 0, 9, 48}, simulation::MapId{std::move(target)},
+                         simulation::SpawnId{"entry.return"}});
+    return map;
+}
+
+void testPhase8PersistentMapsAndSave() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
+    namespace serialization = underworld::serialization;
+    namespace simulation = underworld::simulation;
+
+    const simulation::PersistentInstanceId invalid{};
+    const simulation::PersistentInstanceId first{1}, second{2};
+    expect(!invalid && first && first != second, "PersistentInstanceId reserves zero and compares strongly");
+    const simulation::PersistentEntityKey roomAOne{simulation::MapId{"map.a"}, first};
+    const simulation::PersistentEntityKey roomBOne{simulation::MapId{"map.b"}, first};
+    expect(roomAOne != roomBOne && simulation::PersistentEntityKeyHash{}(roomAOne) !=
+               simulation::PersistentEntityKeyHash{}(roomBOne),
+           "persistent entity identity combines MapId and local instance id");
+
+    serialization::ByteWriter writer;
+    writer.writeU8(0x12); writer.writeU16(0x3456); writer.writeU32(0x789abcdeU);
+    writer.writeU64(0x0123456789abcdefULL); writer.writeI32(-123456); writer.writeString("map.test");
+    const auto bytes = writer.bytes();
+    expect(bytes[1] == 0x56 && bytes[2] == 0x34 && bytes[3] == 0xde,
+           "ByteWriter uses explicit little-endian encoding");
+    serialization::ByteReader reader(bytes); std::uint8_t u8{}; std::uint16_t u16{};
+    std::uint32_t u32{}; std::uint64_t u64{}; std::int32_t i32{}; std::string text;
+    expect(reader.readU8(u8) && reader.readU16(u16) && reader.readU32(u32) &&
+               reader.readU64(u64) && reader.readI32(i32) && reader.readString(text, 32) &&
+               reader.remaining() == 0 && u8 == 0x12 && u16 == 0x3456 &&
+               u32 == 0x789abcdeU && u64 == 0x0123456789abcdefULL && i32 == -123456 &&
+               text == "map.test", "ByteReader roundtrips every Phase 8 primitive at exact boundary");
+    expect(!reader.readU8(u8) && reader.failed(), "ByteReader rejects reads beyond the exact boundary");
+    const std::array<std::uint8_t, 3> badString{{0xff,0xff,0xff}};
+    serialization::ByteReader truncated(badString);
+    expect(!truncated.readString(text, 8), "ByteReader rejects truncated and oversized string lengths without access violation");
+
+    gameplay::ItemCatalog items; items.add(gameplay::makeLifePotionDefinition());
+    gameplay::WorldObjectCatalog objects;
+    objects.add({simulation::DefinitionId{"object.chest"}, simulation::DefinitionId{"visual.object.chest"},
+                 gameplay::ObjectInteractionDefinition{{-12,-12,24,24}},
+                 gameplay::ObjectContainerDefinition{5}, std::nullopt});
+    objects.add({simulation::DefinitionId{"object.crate"}, simulation::DefinitionId{"visual.object.crate"},
+                 std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2,{-8,-24,16,24}}});
+    gameplay::AttackCatalog attacks; attacks.add(creatures::makeSoldierSwordAttackDefinition());
+    gameplay::ProjectileCatalog projectiles;
+    creatures::BehaviorCatalog behaviors; behaviors.add(creatures::makeSoldierBehaviorProfile());
+    creatures::EnemyCatalog enemies; enemies.add(creatures::makeSoldierEnemyDefinition());
+    maps::MapValidationCatalogs validation{&enemies,&objects,&items};
+
+    auto map = makePhase8TestMap();
+    expect(maps::validateMapData(map,&validation).valid,
+           "MapData validates tiles collision spawns enemies objects pickups links and catalogs before runtime");
+    auto duplicate = map; duplicate.pickups[0].id = duplicate.objects[0].id;
+    expect(!maps::validateMapData(duplicate,&validation),
+           "persistent ids use one unique namespace across all placement kinds");
+    auto invalidReference = map; invalidReference.objects[0].initialContents[0].itemId = simulation::DefinitionId{"item.missing"};
+    expect(!maps::validateMapData(invalidReference,&validation),
+           "MapData rejects unknown item definition references before construction");
+    auto invalidDimensions = map; invalidDimensions.width = 0;
+    expect(!maps::validateMapData(invalidDimensions), "MapData rejects zero dimensions before allocation");
+
+    const auto encoded = maps::serializeDmap(map);
+    const auto decoded = maps::deserializeDmap(encoded,&validation);
+    expect(decoded && maps::semanticallyEqual(map,decoded.data),
+           "DMAP v1 provides a semantic MapData roundtrip");
+    expect(encoded == maps::serializeDmap(decoded.data),
+           "DMAP output is deterministic byte-for-byte after roundtrip");
+    auto corrupt = encoded; corrupt[0] = 'X';
+    expect(!maps::deserializeDmap(corrupt), "DMAP rejects wrong magic");
+    corrupt = encoded; corrupt[4] = 2;
+    expect(!maps::deserializeDmap(corrupt), "DMAP rejects unsupported major version");
+    corrupt.assign(encoded.begin(), encoded.begin()+10);
+    expect(!maps::deserializeDmap(corrupt), "DMAP rejects truncated headers");
+    corrupt = encoded; corrupt.resize(corrupt.size()-1);
+    expect(!maps::deserializeDmap(corrupt), "DMAP rejects declared-size and truncated chunk corruption");
+    corrupt = encoded; corrupt[20] = 'Z'; corrupt[21] = 'Z'; corrupt[22] = 'Z'; corrupt[23] = 'Z';
+    expect(!maps::deserializeDmap(corrupt), "DMAP rejects a missing required singleton chunk");
+    corrupt = encoded; corrupt.insert(corrupt.end(), {'F','U','T','R',0,0,0,0,0,0,0,0});
+    const std::uint64_t newSize = corrupt.size(); for(unsigned i=0;i<8;++i) corrupt[12+i]=static_cast<std::uint8_t>(newSize>>(i*8U));
+    expect(static_cast<bool>(maps::deserializeDmap(corrupt)),
+           "DMAP safely skips an unknown size-bounded future chunk");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId()};
+    creatures::EnemyFactory enemyFactory(handles,enemies,behaviors,attacks,projectiles,visuals);
+    gameplay::WorldObjectFactory objectFactory(handles,objects,items);
+    maps::RuntimeWorldBuilder builder(validation,enemyFactory,objectFactory,handles,
+        {{simulation::DefinitionId{"tileset.dungeon"},1}});
+    auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
+    expect(runtime && runtime.world->map().layerCount()==1 && runtime.world->enemies().size()==1 &&
+               runtime.world->objects().size()==2 && runtime.world->pickups().size()==2 &&
+               runtime.world->spawn().position==underworld::core::WorldPointI{16,24},
+           "validated DMAP data transactionally constructs RuntimeMap and factory-backed entities with new handles");
+    expect(runtime.world->objects()[0].persistentId==simulation::PersistentInstanceId{2} &&
+               runtime.world->objects()[0].instance.handle(),
+           "runtime entities keep persistent identity separate from generated EntityHandle");
+    expect(!builder.build(decoded.data,simulation::SpawnId{"missing"}),
+           "runtime builder fails clearly instead of silently spawning at zero");
+
+    save::SaveData saved;
+    saved.player.currentMapId=map.id; saved.player.position={20,22};
+    saved.player.facing=gameplay::FacingDirection::up; saved.player.health=3;
+    saved.player.inventory[0]=gameplay::ItemStack{gameplay::lifePotionItemId(),7};
+    saved.player.inventory[29]=gameplay::ItemStack{gameplay::lifePotionItemId(),1};
+    saved.player.gold=99; saved.player.quickSlots[0]=gameplay::lifePotionItemId();
+    saved.world.set(save::ObjectDelta{{map.id,{2}},true,false,{{gameplay::lifePotionItemId(),1}}});
+    saved.world.set(save::ObjectDelta{{map.id,{3}},false,true,{}});
+    saved.world.set(save::PickupDelta{{map.id,{4}},true,std::nullopt});
+    saved.world.set(save::PickupDelta{{map.id,{5}},false,2});
+    save::SaveValidationCatalogs saveCatalogs{&items,{&map}};
+    expect(save::validateSaveData(saved,saveCatalogs).empty(),
+           "save validation accepts player state and explicit chest crate and pickup deltas");
+    const auto saveBytes=save::serializeSave(saved);const auto loaded=save::deserializeSave(saveBytes,saveCatalogs);
+    expect(loaded && loaded.data.player.health==3 && loaded.data.player.gold==99 &&
+               loaded.data.player.inventory[0]->quantity==7 && !loaded.data.player.inventory[1] &&
+               loaded.data.player.quickSlots[0] && loaded.data.world.objects.size()==2 &&
+               loaded.data.world.pickups.size()==2,
+           "DSAV v1 roundtrips Health ordered 30-slot inventory Wallet QuickSlots and world deltas");
+    expect(saveBytes==save::serializeSave(loaded.data), "DSAV output is deterministic for equivalent state");
+    auto badSave=saved;badSave.player.inventory[0]->quantity=67;
+    expect(!save::deserializeSave(save::serializeSave(badSave),saveCatalogs),
+           "save load rejects inventory quantities above ItemDefinition stack limit");
+    badSave=saved;badSave.world.pickups.push_back(badSave.world.pickups[0]);
+    expect(!save::deserializeSave(save::serializeSave(badSave),saveCatalogs),
+           "save load rejects duplicate persistent delta keys");
+
+    std::string applyError;
+    expect(save::applyWorldState(saved.world,*runtime.world,handles,items,applyError) &&
+               runtime.world->objects().size()==1 && runtime.world->objects()[0].instance.state()==gameplay::WorldObjectState::opened &&
+               runtime.world->objects()[0].instance.contents()->count(gameplay::lifePotionItemId())==1 &&
+               runtime.world->pickups().size()==1 &&
+               std::get<gameplay::ItemPickup>(runtime.world->pickups()[0].instance.payload()).quantity==2,
+           "SessionWorldState reapplies opened chest destroyed crate collected and partial pickup deltas");
+
+    const auto temporary=std::filesystem::temp_directory_path()/"underworld_phase8_save_test.sav";
+    std::error_code ec;std::filesystem::remove(temporary,ec);std::filesystem::remove(temporary.wstring()+L".bak",ec);
+    std::string fileError;
+    expect(save::writeSaveAtomic(temporary,saved,fileError) && save::readSave(temporary,saveCatalogs),
+           "atomic save writes through a temporary file and reloads from a test-only path");
+    auto secondSave=saved;secondSave.player.gold=100;
+    expect(save::writeSaveAtomic(temporary,secondSave,fileError) &&
+               std::filesystem::exists(temporary.wstring()+L".bak"),
+           "a second atomic save preserves one backup of the prior valid save");
+    std::filesystem::remove(temporary,ec);std::filesystem::remove(temporary.wstring()+L".bak",ec);
+
+    auto roomB=makePhase8TestMap("map.test.room_b","map.test.room_a");
+    const auto dmapA=std::filesystem::temp_directory_path()/"underworld_room_a.dmap";
+    const auto dmapB=std::filesystem::temp_directory_path()/"underworld_room_b.dmap";
+    expect(maps::writeDmap(dmapA,map,fileError)&&maps::writeDmap(dmapB,roomB,fileError),
+           "DMAP filesystem boundary writes deterministic authoring data separately from decoding");
+    maps::MapCatalog mapCatalog;mapCatalog.add(map.id,dmapA);mapCatalog.add(roomB.id,dmapB);
+    expect(mapCatalog.validateLinks(&validation).empty(),
+           "MapCatalog resolves MapId resources and validates cross-map destination spawns");
+    save::SessionWorldState sessionState=saved.world;
+    maps::MapSession session(mapCatalog,validation,builder,handles,sessionState);
+    const auto initial=session.activate(map.id,simulation::SpawnId{"entry.start"});
+    expect(initial.changed&&session.world()&&session.world()->id()==map.id&&
+               session.world()->objects().size()==1&&session.world()->pickups().size()==1,
+           "MapSession applies in-memory deltas while transactionally activating its initial room");
+    session.beginTick();
+    expect(session.requestTransition({56,8,4,4})&&session.pending().has_value(),
+           "map overlap queues a PendingMapTransition instead of mutating world during iteration");
+    const auto toB=session.commitPending();
+    expect(toB.changed&&session.world()->id()==roomB.id&&toB.spawn.id==simulation::SpawnId{"entry.return"},
+           "pending transition validates and builds target before swapping to its explicit spawn");
+    expect(!session.requestTransition({56,8,4,4}),
+           "transition latch prevents an immediate return loop on the activation tick");
+    session.beginTick();expect(session.requestTransition({56,8,4,4})&&session.commitPending().changed&&
+                                   session.world()->id()==map.id&&session.world()->objects().size()==1,
+           "Room A to B to A rebuilds original DMAP and reapplies the same SessionWorldState deltas");
+    std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -2371,6 +2582,7 @@ int main() {
         testItemsInventoryAndWallet();
         testPickupsQuickSlotsAndInventoryOverlay();
         testViewModelAndWorldObjects();
+        testPhase8PersistentMapsAndSave();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

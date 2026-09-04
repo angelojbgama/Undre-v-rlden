@@ -152,6 +152,15 @@ void Player::applyKnockback(int deltaX, int deltaY,
     position_.y = checkedSubpixelCoordinate(resolvedFeet.y);
 }
 
+void Player::relocate(core::WorldPointI feetPosition, FacingDirection facing) {
+    position_ = {checkedSubpixelCoordinate(feetPosition.x),
+                 checkedSubpixelCoordinate(feetPosition.y)};
+    facing_ = facing;
+    motionState_ = PlayerMotionState::idle;
+    actionState_ = PlayerActionState::none;
+    lastMovement_ = {};
+}
+
 InteractionArea Player::interactionArea() const noexcept {
     const auto feet = feetPosition();
     return {{feet.x - 11, feet.y - 14, 22, 18}, true};

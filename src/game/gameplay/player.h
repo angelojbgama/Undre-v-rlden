@@ -80,6 +80,7 @@ public:
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
                         int tileSize);
+    void relocate(core::WorldPointI feetPosition, FacingDirection facing);
     void finishAttack() noexcept { actionState_ = PlayerActionState::none; }
 
 private:
