@@ -2342,6 +2342,7 @@ underworld::game::maps::MapData makePhase8TestMap(
 }
 
 void testPhase8PersistentMapsAndSave() {
+    namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
     namespace creatures = underworld::game::gameplay::creatures;
     namespace maps = underworld::game::maps;
@@ -2391,7 +2392,9 @@ void testPhase8PersistentMapsAndSave() {
     behaviors.add(creatures::makeSkullBehaviorProfile());
     creatures::EnemyCatalog enemies; enemies.add(creatures::makeSoldierEnemyDefinition());
     enemies.add(creatures::makeSkullEnemyDefinition());
-    maps::MapValidationCatalogs validation{&enemies,&objects,&items};
+    game::TilesetCatalog tilesets;
+    tilesets.add({simulation::DefinitionId{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
+    maps::MapValidationCatalogs validation{&enemies,&objects,&items,&tilesets};
 
     auto map = makePhase8TestMap();
     expect(maps::validateMapData(map,&validation).valid,
@@ -2430,8 +2433,9 @@ void testPhase8PersistentMapsAndSave() {
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
     creatures::EnemyFactory enemyFactory(handles,enemies,behaviors,attacks,projectiles,visuals);
     gameplay::WorldObjectFactory objectFactory(handles,objects,items);
+    const game::RuntimeTilesetCatalog runtimeTilesets(tilesets);
     maps::RuntimeWorldBuilder builder(validation,enemyFactory,objectFactory,handles,
-        {{simulation::DefinitionId{"tileset.dungeon"},1}});
+        runtimeTilesets);
     auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
     expect(runtime && runtime.world->map().layerCount()==1 && runtime.world->enemies().size()==1 &&
                runtime.world->objects().size()==2 && runtime.world->pickups().size()==2 &&
@@ -2674,7 +2678,7 @@ void testNearestImageRegions() {
 
     underworld::render::Framebuffer framebuffer(4, 4);
     underworld::render::Renderer2D renderer(framebuffer);
-    framebuffer.clear(black);
+    framebuffer.clear(ColorRGBA8{0, 0, 0, 255});
     renderer.drawImageRegionNearest(image, {0, 0, 2, 2}, {0, 0, 4, 4});
     expect(framebufferPixel(framebuffer, 0, 0) == red && framebufferPixel(framebuffer, 1, 1) == red &&
                framebufferPixel(framebuffer, 2, 0) == green && framebufferPixel(framebuffer, 0, 2) == blue &&
@@ -3016,8 +3020,9 @@ void testEditorSmokeMapIntegrationFixture() {
     creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
                                          content.attacks(), content.projectiles(), visuals);
     gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
-        {{simulation::DefinitionId{"tileset.dungeon"}, 1}});
+        runtimeTilesets);
     const auto runtime = builder.build(decoded.data, simulation::SpawnId{"entry.start"});
     expect(runtime && runtime.world->spawn().id == simulation::SpawnId{"entry.start"} &&
                runtime.world->enemies().size() == 2 && runtime.world->objects().size() == 2 &&
@@ -3069,8 +3074,9 @@ void testEditorPlaygroundAuthoringAsset() {
     creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
                                          content.attacks(), content.projectiles(), visuals);
     gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
-        {{simulation::DefinitionId{"tileset.dungeon"}, 1}});
+        runtimeTilesets);
     const auto runtime = loaded ? builder.build(loaded.data, loaded.data.playerSpawns.front().id)
                                 : maps::RuntimeWorldBuildResult{};
     expect(runtime && runtime.world->map().collision().width() == 48 &&
@@ -3091,6 +3097,113 @@ void testEditorPlaygroundAuthoringAsset() {
                maps::semanticallyEqual(document->data(), reopened->data()),
            "Map Editor opens the playground clean and saves a persistable roundtrip copy");
     std::filesystem::remove(copy, removeError);
+}
+
+void testMultiTilesetAuthoringAndRuntime() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    const simulation::DefinitionId tilesetA{"tileset.test_a"};
+    const simulation::DefinitionId tilesetB{"tileset.test_b"};
+    game::TilesetCatalog tilesets;
+    tilesets.add({tilesetA, "Test A", "test_a.png", 16, 2, 1});
+    tilesets.add({tilesetB, "Test B", "test_b.png", 16, 2, 1});
+    expect(tilesets.find(tilesetA) && tilesets.require(tilesetB).tileCount() == 2 &&
+               tilesets.definitions().size() == 2,
+           "TilesetCatalog registers immutable metadata and reports tile counts");
+    bool duplicateRejected = false;
+    try { tilesets.add({tilesetA, "Duplicate", "duplicate.png", 16, 1, 1}); }
+    catch (const std::logic_error&) { duplicateRejected = true; }
+    expect(duplicateRejected, "TilesetCatalog rejects duplicate DefinitionIds");
+
+    maps::MapData map;
+    map.id = simulation::MapId{"map.test.multi_tileset"};
+    map.width = 2; map.height = 1; map.tileSize = 16;
+    map.tileReferences = {{tilesetA, 1, underworld::world::TileFlags::flipX},
+                          {tilesetB, 0, underworld::world::TileFlags::none}};
+    map.layers = {{"ground", true, {0U, 1U}}};
+    map.collision = {0, 0};
+    game::GameContentRegistry content;
+    expect(content.tilesets().find(simulation::DefinitionId{"tileset.dungeon"}) &&
+               content.tilesets().find(simulation::DefinitionId{"tileset.block"}) &&
+               content.tilesets().find(simulation::DefinitionId{"tileset.block_2"}) &&
+               content.tilesets().find(simulation::DefinitionId{"tileset.block_destroyed"}),
+           "GameContentRegistry exposes every shared authoring tileset definition");
+    const maps::MapValidationCatalogs validation{
+        &content.enemies(), &content.objects(), &content.items(), &tilesets};
+    expect(static_cast<bool>(maps::validateMapData(map, &validation)),
+           "MapData accepts multiple known tilesets in the same layer");
+    const auto bytes = maps::serializeDmap(map);
+    const auto decoded = maps::deserializeDmap(bytes, &validation);
+    expect(decoded && maps::dmapMajorVersion == 1 && maps::dmapMinorVersion == 0 &&
+               decoded.data.tileReferences[0] == map.tileReferences[0] &&
+               decoded.data.tileReferences[1] == map.tileReferences[1],
+           "DMAP v1 preserves multi-tileset DefinitionIds source indices and flags");
+    auto missing = map; missing.tileReferences[1].tilesetId = simulation::DefinitionId{"tileset.missing"};
+    auto invalidIndex = map; invalidIndex.tileReferences[0].sourceIndex = 2;
+    auto sizeMismatch = map;
+    game::TilesetCatalog wrongSize;
+    wrongSize.add({tilesetA, "Test A", "test_a.png", 32, 1, 1});
+    wrongSize.add({tilesetB, "Test B", "test_b.png", 16, 2, 1});
+    const maps::MapValidationCatalogs wrongSizeValidation{
+        &content.enemies(), &content.objects(), &content.items(), &wrongSize};
+    expect(!maps::validateMapData(missing, &validation) &&
+               !maps::validateMapData(invalidIndex, &validation) &&
+               !maps::validateMapData(sizeMismatch, &wrongSizeValidation),
+           "tileset validation rejects unknown IDs invalid source indices and tile-size mismatches");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
+                                         content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    game::RuntimeTilesetCatalog runtimeTilesets(tilesets);
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles, runtimeTilesets);
+    const auto runtime = builder.build(map, simulation::SpawnId{});
+    // Maps without a PlayerSpawn are intentionally rejected by the builder request; add one for runtime.
+    map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {8, 8},
+                                gameplay::FacingDirection::down});
+    const auto built = builder.build(map, simulation::SpawnId{"entry.start"});
+    expect(!runtime && built && built.world->map().layer(0).cell(0, 0)->definition.tilesetId !=
+               built.world->map().layer(0).cell(1, 0)->definition.tilesetId,
+           "RuntimeWorldBuilder resolves distinct persistent tileset definitions to distinct runtime IDs");
+
+    using underworld::core::ColorRGBA8;
+    const std::vector<ColorRGBA8> pixelsA(32U * 16U, ColorRGBA8{240, 20, 20, 255});
+    const std::vector<ColorRGBA8> pixelsB(32U * 16U, ColorRGBA8{20, 220, 40, 255});
+    const underworld::render::Image imageA(makeImageData(32, 16, pixelsA));
+    const underworld::render::Image imageB(makeImageData(32, 16, pixelsB));
+    game::TilesetVisualCatalog tileVisuals;
+    tileVisuals.add(runtimeTilesets.requireRuntimeId(tilesetA),
+                    std::make_shared<const underworld::render::Image>(imageA), tilesets.require(tilesetA));
+    tileVisuals.add(runtimeTilesets.requireRuntimeId(tilesetB),
+                    std::make_shared<const underworld::render::Image>(imageB), tilesets.require(tilesetB));
+    underworld::render::Framebuffer framebuffer(32, 16);
+    underworld::render::Renderer2D renderer(framebuffer);
+    framebuffer.clear(ColorRGBA8{0, 0, 0, 255});
+    const auto* visualA = tileVisuals.find(runtimeTilesets.requireRuntimeId(tilesetA));
+    const auto* visualB = tileVisuals.find(runtimeTilesets.requireRuntimeId(tilesetB));
+    renderer.drawImageRegionNearest(*visualA->image, visualA->atlas.sourceRect(0), {0, 0, 16, 16}, true);
+    renderer.drawImageRegionNearest(*visualB->image, visualB->atlas.sourceRect(0), {16, 0, 16, 16});
+    expect(framebufferPixel(framebuffer, 0, 0) == ColorRGBA8{240, 20, 20, 255} &&
+               framebufferPixel(framebuffer, 16, 0) == ColorRGBA8{20, 220, 40, 255},
+           "loaded tileset visuals render independently with nearest sampling and flip support");
+
+    editor::EditorDocument document = editor::EditorDocument::newMap(
+        simulation::MapId{"map.test.editor_brush"}, 2, 1, 16);
+    std::string error;
+    expect(document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{0, 0}}, map.tileReferences[0]), error) &&
+               document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{1, 0}}, map.tileReferences[1]), error) &&
+               document.undo() && document.redo(error) &&
+               document.data().tileReferences[*document.data().layers[0].cells[0]].tilesetId == tilesetA &&
+               document.data().tileReferences[*document.data().layers[0].cells[1]].tilesetId == tilesetB,
+           "editor tile commands preserve multi-tileset brush identity through undo and redo");
 }
 
 void testFixedStepAccumulator() {
@@ -3172,6 +3285,7 @@ int main() {
         testPhase9EditorFoundation();
         testEditorSmokeMapIntegrationFixture();
         testEditorPlaygroundAuthoringAsset();
+        testMultiTilesetAuthoringAndRuntime();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

@@ -10,6 +10,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
+#include "game/tilesets.h"
 
 #include <cstdint>
 #include <optional>
@@ -101,6 +102,7 @@ struct MapValidationCatalogs final {
     const gameplay::creatures::EnemyCatalog* enemies{};
     const gameplay::WorldObjectCatalog* objects{};
     const gameplay::ItemCatalog* items{};
+    const TilesetCatalog* tilesets{};
 };
 
 struct MapValidationResult final {

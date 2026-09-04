@@ -1003,6 +1003,21 @@ Playtest deve criar runtime a partir de uma cópia/DTO validado sem transformar 
 
 Copy/paste gera novos IDs persistentes e reescreve referências internas do grupo copiado.
 
+### Tilesets compartilhados
+
+`GameContentRegistry` possui o catálogo puro `TilesetCatalog`. Cada
+`TilesetDefinition` é metadata imutável: `DefinitionId`, display name, path relativo ao
+asset root, tile size, colunas e linhas. `MapTileReference`/DMAP v1 persistem somente o
+`DefinitionId`, source index e flags; `world::TilesetId` é criado deterministicamente por
+`RuntimeTilesetCatalog` durante a composição e nunca é serializado.
+
+`TilesetVisualCatalog` é a fronteira de assets carregados: resolve o mesmo runtime ID para
+`Image + TileAtlasLayout`. Assim editor e game escolhem a imagem acima de `Renderer2D`,
+sem colocar imagens/WIC no registry de conteúdo. O editor usa o catálogo para selector,
+palette dinâmica e eyedropper; mapas podem misturar packs numa mesma `TileLayer`.
+Definição desconhecida, source index inválido e tile size incompatível são erros semânticos
+de `MapData`; imagem local ausente é um diagnóstico visual, nunca fallback para Dungeon.
+
 ---
 
 ## 17. Multiplayer futuro

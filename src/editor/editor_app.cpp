@@ -48,12 +48,18 @@ void outline(render::Renderer2D& renderer, core::RectI bounds, core::ColorRGBA8 
 EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot)
     : document_(EditorDocument::newMap(simulation::MapId{"map.untitled"},32,24,16,true)),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
+    for (const auto& definition : content_.tilesets().definitions()) {
+        std::string error;
+        if (!tilesetVisuals_.load(definition, runtimeTilesets_.requireRuntimeId(definition.id),
+                                 assets_, decoder, assetRoot, error)) {
+            status_ += definition.displayName + " unavailable: " + error + "  ";
+        }
+    }
     try {
-        tileset_=assets_.loadImage("editor.tileset",assetRoot/"Tileset/tileset.png",decoder);
         const auto fontImage=assets_.loadImage("editor.font",assetRoot/"fonts_index.png",decoder);
         font_=std::make_unique<render::BitmapFont>(fontImage);
     } catch (const std::exception& exception) {
-        status_=std::string("Assets unavailable; authoring shell remains active: ")+exception.what();
+        status_ += std::string("Font unavailable; authoring shell remains active: ")+exception.what();
     }
 }
 
@@ -104,6 +110,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if(ui.button({97,y,85,18},"RECT",document_.activeTool()==EditorTool::tileRectangle))document_.activeTool()=EditorTool::tileRectangle;y+=20;
     if(ui.button({8,y,85,18},"FILL",document_.activeTool()==EditorTool::tileFill))document_.activeTool()=EditorTool::tileFill;
     if(ui.button({97,y,85,18},tileFlipX_?"FLIP X ON":"FLIP X",tileFlipX_))tileFlipX_=!tileFlipX_;y+=20;
+    if(ui.button({8,y,85,18},"PICK",document_.activeTool()==EditorTool::tileEyedropper))document_.activeTool()=EditorTool::tileEyedropper;y+=20;
     if(ui.button({8,y,85,18},"COLL +",document_.activeTool()==EditorTool::collisionPaint))document_.activeTool()=EditorTool::collisionPaint;
     if(ui.button({97,y,85,18},"COLL -",document_.activeTool()==EditorTool::collisionErase))document_.activeTool()=EditorTool::collisionErase;y+=24;
     if(ui.button({8,y,85,18},"COLL R+",document_.activeTool()==EditorTool::collisionRectangle))document_.activeTool()=EditorTool::collisionRectangle;
@@ -126,13 +133,24 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     }y+=20;
     if(ui.button({8,y,174,18},"Region (experimental)",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
 
-    if(tileset_){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label("TILES",8,paletteTop-12);
-        const int paletteHeight=std::max(18,viewportHeight-paletteTop); const int maxScroll=std::max(0,23*17-paletteHeight);
-        if(ui.pointerInside({0,paletteTop,leftPanelWidth,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
-        for(std::uint32_t index=0;index<228;++index){const int column=static_cast<int>(index%10),row=static_cast<int>(index/10);const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
-            render::Renderer2D renderer(*framebuffer_);const core::RectI source{static_cast<int>(index%19)*16,static_cast<int>(index/19)*16,16,16};renderer.drawImageRegion(*tileset_,source,cell.x,cell.y);
-            if(index==selectedTile_)outline(renderer,cell,selectedColor);if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
+    const auto* selectedDefinition=content_.tilesets().find(selectedTileset_);
+    if(selectedDefinition){
+        ui.label("TILESET",8,y+8); y+=20;
+        if(ui.button({8,y,28,18},"<"))selectTileset(-1);
+        if(ui.button({38,y,116,18},selectedDefinition->displayName,true)){}
+        if(ui.button({156,y,26,18},">"))selectTileset(1);
+        y+=22;
     }
+    if(const auto* tileset=selectedTilesetVisual()){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label("TILES",8,paletteTop-12);
+        const int paletteHeight=std::max(18,viewportHeight-paletteTop);
+        const int paletteColumns=std::max(1,std::min(10,static_cast<int>(selectedDefinition->columns)));
+        const int contentHeight=((static_cast<int>(selectedDefinition->tileCount())+paletteColumns-1)/paletteColumns)*17;
+        const int maxScroll=std::max(0,contentHeight-paletteHeight);
+        if(ui.pointerInside({0,paletteTop,leftPanelWidth,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
+        for(std::uint32_t index=0;index<selectedDefinition->tileCount();++index){const int column=static_cast<int>(index%static_cast<std::uint32_t>(paletteColumns)),row=static_cast<int>(index/static_cast<std::uint32_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
+            render::Renderer2D renderer(*framebuffer_);const core::RectI source=tileset->atlas.sourceRect(index);renderer.drawImageRegion(*tileset->image,source,cell.x,cell.y);
+            if(index==selectedTile_)outline(renderer,cell,selectedColor);if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
+    } else if (selectedDefinition) { ui.label("Tileset image unavailable",8,y+4); }
 
     render::Renderer2D renderer(*framebuffer_);drawViewport(renderer,viewportBounds_,input);drawInspector(ui,right);
     ui.label(status_,6,viewportHeight+6);
@@ -145,10 +163,12 @@ void EditorApp::drawViewport(render::Renderer2D& renderer,core::RectI viewport,c
 
 void EditorApp::drawMap(render::Renderer2D& renderer,core::RectI viewport) const{
     const auto& data=document_.data();const int scaled=std::max(1,static_cast<int>(std::lround(data.tileSize*zoom())));
-    if(tileset_){for(std::size_t layerIndex=0;layerIndex<data.layers.size();++layerIndex){if(layerIndex>=document_.layerStates().size()||!document_.layerStates()[layerIndex].visible)continue;const auto& layer=data.layers[layerIndex];
-        for(std::uint32_t y=0;y<data.height;++y)for(std::uint32_t x=0;x<data.width;++x){const auto cell=layer.cells[static_cast<std::size_t>(y)*data.width+x];if(!cell||*cell>=data.tileReferences.size())continue;const auto& reference=data.tileReferences[*cell];if(reference.tilesetId.value()!="tileset.dungeon"||reference.sourceIndex>=228)continue;const auto screen=worldToScreen({static_cast<int>(x*data.tileSize),static_cast<int>(y*data.tileSize)},viewport);if(screen.x+scaled<viewport.x||screen.y+scaled<viewport.y||screen.x>=viewport.x+viewport.width||screen.y>=viewport.y+viewport.height)continue;
-            const core::RectI source{static_cast<int>(reference.sourceIndex%19)*16,static_cast<int>(reference.sourceIndex/19)*16,16,16};renderer.drawImageRegionNearest(*tileset_,source,{screen.x,screen.y,scaled,scaled},world::hasFlag(reference.flags,world::TileFlags::flipX));}}
-    }
+    for(std::size_t layerIndex=0;layerIndex<data.layers.size();++layerIndex){if(layerIndex>=document_.layerStates().size()||!document_.layerStates()[layerIndex].visible)continue;const auto& layer=data.layers[layerIndex];
+        for(std::uint32_t y=0;y<data.height;++y)for(std::uint32_t x=0;x<data.width;++x){const auto cell=layer.cells[static_cast<std::size_t>(y)*data.width+x];if(!cell||*cell>=data.tileReferences.size())continue;const auto& reference=data.tileReferences[*cell];
+            const auto* definition=content_.tilesets().find(reference.tilesetId);if(!definition||reference.sourceIndex>=definition->tileCount())continue;
+            const auto* tileset=tilesetVisuals_.find(runtimeTilesets_.requireRuntimeId(reference.tilesetId));if(!tileset)continue;
+            const auto screen=worldToScreen({static_cast<int>(x*data.tileSize),static_cast<int>(y*data.tileSize)},viewport);if(screen.x+scaled<viewport.x||screen.y+scaled<viewport.y||screen.x>=viewport.x+viewport.width||screen.y>=viewport.y+viewport.height)continue;
+            renderer.drawImageRegionNearest(*tileset->image,tileset->atlas.sourceRect(reference.sourceIndex),{screen.x,screen.y,scaled,scaled},world::hasFlag(reference.flags,world::TileFlags::flipX));}}
     if(showCollision_){for(std::uint32_t y=0;y<data.height;++y)for(std::uint32_t x=0;x<data.width;++x){if(data.collision[static_cast<std::size_t>(y)*data.width+x]==0)continue;const auto screen=worldToScreen({static_cast<int>(x*data.tileSize),static_cast<int>(y*data.tileSize)},viewport);renderer.fillRect({screen.x,screen.y,scaled,scaled},collisionColor);}}
     if(document_.viewport().showGrid&&scaled>=4){for(std::uint32_t x=0;x<=data.width;++x){const auto p=worldToScreen({static_cast<int>(x*data.tileSize),0},viewport);renderer.fillRect({p.x,viewport.y,1,viewport.height},gridColor);}for(std::uint32_t y=0;y<=data.height;++y){const auto p=worldToScreen({0,static_cast<int>(y*data.tileSize)},viewport);renderer.fillRect({viewport.x,p.y,viewport.width,1},gridColor);}}
 }
@@ -179,7 +199,8 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     if(input.pointer.leftPressed&&inside){
         if((tool==EditorTool::tilePencil||tool==EditorTool::tileErase||tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase) && tile){drag_.kind=DragState::Kind::brush;drag_.stroke={*tile};}
         else if((tool==EditorTool::tileRectangle||tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase) && tile){drag_.kind=DragState::Kind::rectangle;drag_.worldStart={static_cast<int>(tile->x),static_cast<int>(tile->y)};drag_.worldCurrent=drag_.worldStart;}
-        else if(tool==EditorTool::tileFill && tile){if(input.alt){const auto index=static_cast<std::size_t>(tile->y)*document_.data().width+tile->x;const auto cell=document_.data().layers[document_.activeLayer()].cells[index];if(cell){const auto& ref=document_.data().tileReferences[*cell];selectedTile_=ref.sourceIndex;tileFlipX_=world::hasFlag(ref.flags,world::TileFlags::flipX);}}else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),tileFloodCells(document_.data(),document_.activeLayer(),tile->x,tile->y),maps::MapTileReference{simulation::DefinitionId{"tileset.dungeon"},selectedTile_,tileFlipX_?world::TileFlags::flipX:world::TileFlags::none}));}
+        else if((tool==EditorTool::tileFill && input.alt)||tool==EditorTool::tileEyedropper){if(tile){const auto index=static_cast<std::size_t>(tile->y)*document_.data().width+tile->x;const auto cell=document_.data().layers[document_.activeLayer()].cells[index];if(cell){const auto& ref=document_.data().tileReferences[*cell];selectedTileset_=ref.tilesetId;selectedTile_=ref.sourceIndex;tileFlipX_=world::hasFlag(ref.flags,world::TileFlags::flipX);tilePaletteScroll_=0;}if(tool==EditorTool::tileEyedropper)document_.activeTool()=EditorTool::tilePencil;}}
+        else if(tool==EditorTool::tileFill && tile)execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),tileFloodCells(document_.data(),document_.activeLayer(),tile->x,tile->y),selectedTileReference()));
         else if((tool==EditorTool::collisionFill||tool==EditorTool::collisionFillErase) && tile)execute(std::make_unique<SetCollisionCommand>(collisionFloodCells(document_.data(),tile->x,tile->y),tool==EditorTool::collisionFill));
         else if(tool==EditorTool::entityPlace)placeSelected(snapped);
         else if(tool==EditorTool::regionCreate){drag_.kind=DragState::Kind::regionCreate;drag_.worldStart=snapped;drag_.worldCurrent=snapped;}
@@ -188,8 +209,8 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     if(drag_.kind==DragState::Kind::brush&&input.pointer.leftDown&&tile){if(std::none_of(drag_.stroke.begin(),drag_.stroke.end(),[&](auto v){return v.x==tile->x&&v.y==tile->y;}))drag_.stroke.push_back(*tile);}
     if(drag_.kind==DragState::Kind::rectangle||drag_.kind==DragState::Kind::regionCreate||drag_.kind==DragState::Kind::regionResize||drag_.kind==DragState::Kind::move){if(drag_.kind!=DragState::Kind::rectangle||tile)drag_.worldCurrent=(drag_.kind==DragState::Kind::rectangle)?core::WorldPointI{static_cast<int>(tile->x),static_cast<int>(tile->y)}:snapped;}
     if(input.pointer.leftReleased){
-        if(drag_.kind==DragState::Kind::brush){if(tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase)execute(std::make_unique<SetCollisionCommand>(drag_.stroke,tool==EditorTool::collisionPaint));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),drag_.stroke,tool==EditorTool::tileErase?std::nullopt:std::optional<maps::MapTileReference>{{simulation::DefinitionId{"tileset.dungeon"},selectedTile_,tileFlipX_?world::TileFlags::flipX:world::TileFlags::none}}));}
-        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),cells,maps::MapTileReference{simulation::DefinitionId{"tileset.dungeon"},selectedTile_,tileFlipX_?world::TileFlags::flipX:world::TileFlags::none}));}
+        if(drag_.kind==DragState::Kind::brush){if(tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase)execute(std::make_unique<SetCollisionCommand>(drag_.stroke,tool==EditorTool::collisionPaint));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),drag_.stroke,tool==EditorTool::tileErase?std::nullopt:std::optional<maps::MapTileReference>{selectedTileReference()}));}
+        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),cells,selectedTileReference()));}
         else if(drag_.kind==DragState::Kind::move&&drag_.worldCurrent!=drag_.entityStart)execute(std::make_unique<MoveEntityCommand>(document_.selection().kind,document_.selection().instanceId,drag_.entityStart,drag_.worldCurrent,document_.selection().authoredId));
         else if(drag_.kind==DragState::Kind::regionCreate){world::AabbI bounds{std::min(drag_.worldStart.x,drag_.worldCurrent.x),std::min(drag_.worldStart.y,drag_.worldCurrent.y),std::abs(drag_.worldCurrent.x-drag_.worldStart.x),std::abs(drag_.worldCurrent.y-drag_.worldStart.y)};if(bounds.width>0&&bounds.height>0){const auto id=document_.allocatePersistentId();execute(std::make_unique<PlaceEntityCommand>(RegionPlacement{id,"region."+std::to_string(id.value),bounds}));}}
         else if(drag_.kind==DragState::Kind::regionResize){world::AabbI after=drag_.regionStart;after.width=std::max(1,drag_.worldCurrent.x-after.x);after.height=std::max(1,drag_.worldCurrent.y-after.y);execute(std::make_unique<ResizeRegionCommand>(document_.selection().instanceId,drag_.regionStart,after));}
@@ -209,6 +230,33 @@ std::optional<EditorSelection> EditorApp::hitTest(core::WorldPointI point) const
     for(auto it=document_.data().playerSpawns.rbegin();it!=document_.data().playerSpawns.rend();++it)if(near(it->position))return EditorSelection{SelectionKind::playerSpawn,{},std::string(it->id.value())};
     for(auto it=document_.data().links.rbegin();it!=document_.data().links.rend();++it)if(point.x>=it->trigger.x&&point.y>=it->trigger.y&&point.x<it->trigger.x+it->trigger.width&&point.y<it->trigger.y+it->trigger.height)return EditorSelection{SelectionKind::mapLink,{},it->id};
     return std::nullopt;
+}
+
+maps::MapTileReference EditorApp::selectedTileReference() const {
+    return {selectedTileset_, selectedTile_,
+            tileFlipX_ ? world::TileFlags::flipX : world::TileFlags::none};
+}
+
+const game::LoadedTilesetVisual* EditorApp::selectedTilesetVisual() const noexcept {
+    const auto* definition = content_.tilesets().find(selectedTileset_);
+    if (!definition) { return nullptr; }
+    return tilesetVisuals_.find(runtimeTilesets_.requireRuntimeId(definition->id));
+}
+
+void EditorApp::selectTileset(int direction) {
+    const auto& definitions = content_.tilesets().definitions();
+    if (definitions.empty() || direction == 0) { return; }
+    auto current = std::find_if(definitions.begin(), definitions.end(), [&](const auto& value) {
+        return value.id == selectedTileset_;
+    });
+    std::size_t index = current == definitions.end() ? 0U :
+        static_cast<std::size_t>(current - definitions.begin());
+    const std::size_t count = definitions.size();
+    index = direction > 0 ? (index + 1U) % count : (index + count - 1U) % count;
+    selectedTileset_ = definitions[index].id;
+    selectedTile_ = 0;
+    tilePaletteScroll_ = 0;
+    if (!selectedTilesetVisual()) { status_ = definitions[index].displayName + " image is unavailable"; }
 }
 
 void EditorApp::placeSelected(core::WorldPointI point){const auto id=document_.allocatePersistentId();

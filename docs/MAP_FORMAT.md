@@ -59,6 +59,10 @@ repeat count:
     flags u8                    # bit 0 = flipX
 ```
 
+DMAP v1.0 já suporta múltiplos tilesets: cada reference usa um `tilesetDefinitionId`
+estável. O Map Maker e o game resolvem esse ID pelo catálogo compartilhado; o
+`world::TilesetId` numérico é runtime-only e não faz parte do layout binário.
+
 ### `LAYR`
 
 ```text

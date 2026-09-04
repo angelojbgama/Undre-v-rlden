@@ -9,7 +9,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace underworld::game::maps {
@@ -67,10 +66,9 @@ public:
                         const gameplay::creatures::EnemyFactory& enemies,
                         const gameplay::WorldObjectFactory& objects,
                         simulation::EntityHandlePool& handles,
-                        std::unordered_map<simulation::DefinitionId, world::TilesetId,
-                                           simulation::DefinitionIdHash> tilesets)
+                        const RuntimeTilesetCatalog& tilesets)
         : catalogs_(catalogs), enemyFactory_(enemies), objectFactory_(objects),
-          handles_(handles), tilesets_(std::move(tilesets)) {}
+          handles_(handles), tilesets_(tilesets) {}
     [[nodiscard]] RuntimeWorldBuildResult build(const MapData& data,
                                                 const simulation::SpawnId& spawnId) const;
 private:
@@ -78,8 +76,7 @@ private:
     const gameplay::creatures::EnemyFactory& enemyFactory_;
     const gameplay::WorldObjectFactory& objectFactory_;
     simulation::EntityHandlePool& handles_;
-    std::unordered_map<simulation::DefinitionId, world::TilesetId,
-                       simulation::DefinitionIdHash> tilesets_;
+    RuntimeTilesetCatalog tilesets_;
 };
 
 } // namespace underworld::game::maps

@@ -53,8 +53,6 @@
 namespace underworld::game {
 namespace {
 
-constexpr int atlasColumns = 19;
-constexpr world::TilesetId dungeonTilesetId = 1;
 constexpr simulation::PlayerId localPlayerId{0};
 constexpr core::WorldPointI playerSpawn{104, 144};
 constexpr core::WorldPointI puppetSpawn{136, 144};
@@ -230,9 +228,10 @@ struct Phase7Demo::State final {
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
           projectiles(handles, projectileCatalog), playerItems(itemCatalog) {
-        if (atlas.columns() != 19 || atlas.rows() != 12) {
-            throw std::runtime_error("Phase 8 demo expects the audited 19x12 dungeon tileset");
-        }
+        const auto& dungeonDefinition = content.tilesets().require(
+            simulation::DefinitionId{"tileset.dungeon"});
+        tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
+                          dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
         attackCatalog.add(swordDefinition);
         attackCatalog.add(bowDefinition);
@@ -286,12 +285,10 @@ struct Phase7Demo::State final {
             availableVisuals);
         objectFactory = std::make_unique<gameplay::WorldObjectFactory>(
             handles, objectCatalog, itemCatalog);
-        validationCatalogs = {&enemyCatalog, &objectCatalog, &itemCatalog};
+        validationCatalogs = mapValidationCatalogs(content);
         runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
             validationCatalogs, *enemyFactory, *objectFactory, handles,
-            std::unordered_map<simulation::DefinitionId, world::TilesetId,
-                               simulation::DefinitionIdHash>{{
-                simulation::DefinitionId{"tileset.dungeon"}, dungeonTilesetId}});
+            runtimeTilesets);
         const auto dataDirectory = this->executableDirectory / "data";
         std::error_code directoryError;
         std::filesystem::create_directories(dataDirectory, directoryError);
@@ -738,16 +735,15 @@ struct Phase7Demo::State final {
             for (int x = visible.firstX; x <= visible.lastX; ++x) {
                 const world::TileCell& cell = layer.cell(x, y);
                 if (!cell) { continue; }
-                if (cell->definition.tilesetId != dungeonTilesetId) {
-                    throw std::runtime_error("Phase 6 demo encountered an unknown tileset id");
-                }
-                const core::RectI source = atlas.sourceRect(cell->definition.sourceIndex);
+                const auto* tilesetVisual = tilesetVisuals.find(cell->definition.tilesetId);
+                if (!tilesetVisual) { throw std::runtime_error("active map references an unavailable tileset image"); }
+                const core::RectI source = tilesetVisual->atlas.sourceRect(cell->definition.sourceIndex);
                 const int dx = x * activeMap().tileSize() - cameraPosition.x;
                 const int dy = y * activeMap().tileSize() - cameraPosition.y;
                 if (world::hasFlag(cell->flags, world::TileFlags::flipX)) {
-                    renderer.drawImageRegionFlipX(*tileset, source, dx, dy);
+                    renderer.drawImageRegionFlipX(*tilesetVisual->image, source, dx, dy);
                 } else {
-                    renderer.drawImageRegion(*tileset, source, dx, dy);
+                    renderer.drawImageRegion(*tilesetVisual->image, source, dx, dy);
                 }
             }
         }
@@ -1025,6 +1021,8 @@ struct Phase7Demo::State final {
     simulation::EntityHandle playerHandle{};
     gameplay::Player player;
     GameContentRegistry content;
+    RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
+    TilesetVisualCatalog tilesetVisuals;
     gameplay::AttackCatalog& attackCatalog{content.attacks()};
     gameplay::ProjectileCatalog& projectileCatalog{content.projectiles()};
     gameplay::creatures::BehaviorCatalog& behaviorCatalog{content.behaviors()};
@@ -1077,7 +1075,11 @@ struct Phase7Demo::State final {
 Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
                        const std::filesystem::path& executableDirectory) {
-    const auto tileset = assets_.loadImage("tileset.dungeon", assetRoot / "Tileset/tileset.png", decoder);
+    const GameContentRegistry contentDefinitions;
+    const auto& dungeonDefinition = contentDefinitions.tilesets().require(
+        simulation::DefinitionId{"tileset.dungeon"});
+    const auto tileset = assets_.loadImage("tileset.dungeon",
+        assetRoot / dungeonDefinition.relativeAssetPath, decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
     const auto idle = assets_.loadImage("player.idle", assetRoot / "Characters/Player/idle/player_idle.png", decoder);
     const auto walk = assets_.loadImage("player.walk", assetRoot / "Characters/Player/walking/player_walking.png", decoder);

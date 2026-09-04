@@ -5,6 +5,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
+#include "game/tilesets.h"
 
 #include <string>
 #include <vector>
@@ -48,6 +49,8 @@ public:
     [[nodiscard]] const gameplay::WorldObjectCatalog& objects() const noexcept {
         return objects_;
     }
+    [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
+    [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -67,6 +70,7 @@ private:
     gameplay::creatures::EnemyCatalog enemies_;
     gameplay::ItemCatalog items_;
     gameplay::WorldObjectCatalog objects_;
+    TilesetCatalog tilesets_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };

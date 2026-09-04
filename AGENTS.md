@@ -239,7 +239,7 @@ FASE 8 — `.dmap` + transições + save
 CONCLUÍDA
 
 FASE 9 — Map Maker
-PRÓXIMA
+IN PROGRESS — Block 1 authoring foundation
 ```
 
 Baseline registrada:
@@ -268,7 +268,10 @@ scaling/letterbox, perda real de foco e encerramento por `WM_CLOSE` com exit cod
 
 A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.0, duas salas carregadas por
 MapId, transitions A→B→A, deltas de sessão, F5/F9, backup atômico e restart/load entre
-processos. A Fase 9 é a próxima; não iniciar Map Maker sem tarefa explícita.
+processos. A Fase 9 está em progresso por tarefa explícita; DMAP e DSAV continuam v1.0.
+O Map Maker compartilha `GameContentRegistry`, incluindo `TilesetCatalog`: cada tile
+persiste `DefinitionId`, enquanto `world::TilesetId` é uma resolução runtime local.
+Packs licenciados continuam externos ao Git e são localizados por asset root + path relativo.
 
 A implementação inclui:
 
@@ -1265,6 +1268,12 @@ Compartilhar:
 - serialização.
 
 Não compartilhar o estado global do jogo.
+
+Capacidades implementadas no Block 1 incluem authoring por múltiplos tilesets: um
+`TilesetDefinition` imutável fornece ID, nome de exibição, path relativo e layout;
+`RuntimeTilesetCatalog` produz IDs locais e `TilesetVisualCatalog` associa esses IDs a
+imagens carregadas. Um mapa pode misturar packs na mesma layer. Ausência de imagem de
+pack opcional não troca o ID persistido nem impede mapas que não o usam.
 
 Capacidades previstas:
 

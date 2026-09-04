@@ -61,6 +61,9 @@ private:
                                              core::RectI viewport) const noexcept;
     [[nodiscard]] double zoom() const noexcept;
     [[nodiscard]] std::optional<EditorSelection> hitTest(core::WorldPointI world) const;
+    [[nodiscard]] maps::MapTileReference selectedTileReference() const;
+    [[nodiscard]] const game::LoadedTilesetVisual* selectedTilesetVisual() const noexcept;
+    void selectTileset(int direction);
     void placeSelected(core::WorldPointI world);
     void execute(std::unique_ptr<EditorCommand> command);
     void updateStatus(core::RectI viewport, const EditorInputState& input);
@@ -68,13 +71,15 @@ private:
     game::GameContentRegistry content_;
     EditorDocument document_;
     assets::AssetManager assets_;
-    std::shared_ptr<const render::Image> tileset_;
+    game::RuntimeTilesetCatalog runtimeTilesets_{content_.tilesets()};
+    game::TilesetVisualCatalog tilesetVisuals_;
     std::unique_ptr<render::BitmapFont> font_;
     std::unique_ptr<render::Framebuffer> framebuffer_;
     core::RectI viewportBounds_{};
     DragState drag_;
     simulation::DefinitionId selectedDefinition_{game::gameplay::creatures::soldierEnemyId()};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
+    simulation::DefinitionId selectedTileset_{"tileset.dungeon"};
     std::uint32_t selectedTile_{};
     int tilePaletteScroll_{};
     bool tileFlipX_{};

@@ -13,7 +13,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         [&](const PlayerSpawn& candidate) { return candidate.id == spawnId; });
     if (spawn == data.playerSpawns.end()) { return {nullptr, "requested player spawn does not exist"}; }
     for (const auto& tile : data.tileReferences) {
-        if (!tilesets_.contains(tile.tilesetId)) {
+        if (!tilesets_.mapping().contains(tile.tilesetId)) {
             return {nullptr, "map references an unavailable runtime tileset"};
         }
     }
@@ -29,7 +29,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                     if (!sourceLayer.cells[index]) { continue; }
                     const auto& source = data.tileReferences[*sourceLayer.cells[index]];
                     layer.set(static_cast<int>(x), static_cast<int>(y),
-                        world::TileRef{{tilesets_.at(source.tilesetId), source.sourceIndex}, source.flags});
+                        world::TileRef{{tilesets_.requireRuntimeId(source.tilesetId), source.sourceIndex}, source.flags});
                 }
             }
         }

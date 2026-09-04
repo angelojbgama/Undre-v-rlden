@@ -42,7 +42,7 @@ FASE 5 — Combat Foundation + vertical slice de combate   DONE
 FASE 6 — Creature Engine reutilizável                    DONE
 FASE 7 — Objetos + pickup + HUD + inventário            DONE
 FASE 8 — .dmap + transições + save                     DONE
-FASE 9 — Map Maker                                     NEXT
+FASE 9 — Map Maker                                     IN PROGRESS
 FASE 10 — NPC + diálogo
 FASE 11 — Quests
 FASE 12 — RPG + XP + equipment + loot
@@ -704,6 +704,16 @@ Vertical slice com duas salas, transição e pelo menos um delta persistente.
 ---
 
 # Fase 9 — Map Maker
+
+## Status
+
+**IN PROGRESS — Block 1.** O editor e runtime compartilham `TilesetCatalog` no
+`GameContentRegistry`. Multi-tileset authoring está implementado: `MapTileReference`
+persiste `DefinitionId`, o runtime resolve `world::TilesetId` local e o Map Maker oferece
+selector, palette dinâmica, painting/rectangle/fill e eyedropper por pack. A validação
+rejeita tileset desconhecido, source index fora do atlas e tile size incompatível. DMAP e
+DSAV permanecem v1.0. O smoke interativo geral ainda é gate separado para declarar Block 1
+como concluído.
 
 ## Gate
 

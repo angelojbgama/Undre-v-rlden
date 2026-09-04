@@ -30,7 +30,7 @@ struct EditorSelection final {
 };
 
 enum class EditorTool {
-    select, tilePencil, tileErase, tileRectangle, tileFill, collisionPaint,
+    select, tilePencil, tileErase, tileRectangle, tileFill, tileEyedropper, collisionPaint,
     collisionErase, collisionRectangle, collisionRectangleErase, collisionFill,
     collisionFillErase, entityPlace, regionCreate
 };

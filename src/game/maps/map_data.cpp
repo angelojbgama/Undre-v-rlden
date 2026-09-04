@@ -76,6 +76,16 @@ MapValidationResult validateMapData(const MapData& data,
         if ((static_cast<std::uint8_t>(tile.flags) & ~static_cast<std::uint8_t>(world::TileFlags::flipX)) != 0) {
             return failure("tile reference contains unsupported flags");
         }
+        if (catalogs && catalogs->tilesets) {
+            const auto* tileset = catalogs->tilesets->find(tile.tilesetId);
+            if (!tileset) { return failure("tile reference references an unknown tileset"); }
+            if (tileset->tileSize != data.tileSize) {
+                return failure("tile reference tileset tile size does not match map tile size");
+            }
+            if (tile.sourceIndex >= tileset->tileCount()) {
+                return failure("tile reference source index is outside tileset metadata");
+            }
+        }
     }
     if (data.enemies.size() + data.objects.size() + data.pickups.size() >
         MapLimits::maximumPlacements) { return failure("placement count exceeds safety limit"); }

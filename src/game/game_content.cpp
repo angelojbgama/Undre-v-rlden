@@ -7,6 +7,14 @@
 namespace underworld::game {
 
 GameContentRegistry::GameContentRegistry() {
+    tilesets_.add({simulation::DefinitionId{"tileset.dungeon"}, "Dungeon",
+                   "Tileset/tileset.png", 16, 19, 12});
+    tilesets_.add({simulation::DefinitionId{"tileset.block"}, "Block",
+                   "Tileset/block.png", 16, 1, 2});
+    tilesets_.add({simulation::DefinitionId{"tileset.block_2"}, "Block 2",
+                   "Tileset/block_2.png", 16, 1, 2});
+    tilesets_.add({simulation::DefinitionId{"tileset.block_destroyed"}, "Block Destroyed",
+                   "Tileset/block_destroied.png", 16, 1, 2});
     attacks_.add(gameplay::creatures::makeSoldierSwordAttackDefinition());
     attacks_.add(gameplay::creatures::makeSkullArrowAttackDefinition());
     projectiles_.add(gameplay::creatures::makeSkullArrowProjectileDefinition());
@@ -73,7 +81,7 @@ std::vector<const AuthoringDescriptor*> GameContentRegistry::authoringDescriptor
 
 maps::MapValidationCatalogs mapValidationCatalogs(
     const GameContentRegistry& content) noexcept {
-    return {&content.enemies(), &content.objects(), &content.items()};
+    return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets()};
 }
 
 } // namespace underworld::game
