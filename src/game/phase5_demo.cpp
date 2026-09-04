@@ -272,7 +272,8 @@ struct Phase7Demo::State final {
             skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
             32, 2, 8, {16, 31}, {{}, {"spawn_projectile"}}));
         itemCatalog.add(gameplay::makeLifePotionDefinition());
-        itemVisuals.emplace(simulation::DefinitionId{"visual.item.life_potion"}, potionImage);
+        itemVisuals.emplace(
+            simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
 
         pickupDefinitions.reserve(3);
         pickupDefinitions.push_back({simulation::DefinitionId{"pickup.heart"},
@@ -286,7 +287,7 @@ struct Phase7Demo::State final {
             gameplay::ItemPickup{gameplay::lifePotionItemId(), 4}});
         pickupVisuals.emplace(pickupDefinitions[0].visualId, heartPickupImage);
         pickupVisuals.emplace(pickupDefinitions[1].visualId, moneyPickupImage);
-        pickupVisuals.emplace(pickupDefinitions[2].visualId, potionImage);
+        pickupVisuals.emplace(pickupDefinitions[2].visualId, this->potionImage);
         pickups.emplace_back(handles.create(), pickupDefinitions[0], core::WorldPointI{104, 176});
         pickups.emplace_back(handles.create(), pickupDefinitions[1], core::WorldPointI{120, 144});
         pickups.emplace_back(handles.create(), pickupDefinitions[2], core::WorldPointI{88, 144});

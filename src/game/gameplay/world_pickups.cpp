@@ -49,14 +49,14 @@ PickupCollectionResult collectPickup(
     }
     const simulation::PickupPayloadKind kind = payloadKind(pickup.payload());
     std::optional<simulation::DefinitionId> itemId;
-    if (auto* value = std::get_if<HealthPickup>(&pickup.payload())) {
-        result.amount = static_cast<std::uint64_t>(health.restore(value->amount));
+    if (auto* healthPickup = std::get_if<HealthPickup>(&pickup.payload())) {
+        result.amount = static_cast<std::uint64_t>(health.restore(healthPickup->amount));
         result.fullyConsumed = result.amount > 0;
-    } else if (auto* value = std::get_if<CurrencyPickup>(&pickup.payload())) {
-        const std::uint64_t original = value->amount;
-        value->amount = wallet.addGold(original);
-        result.amount = original - value->amount;
-        result.fullyConsumed = value->amount == 0;
+    } else if (auto* currencyPickup = std::get_if<CurrencyPickup>(&pickup.payload())) {
+        const std::uint64_t original = currencyPickup->amount;
+        currencyPickup->amount = wallet.addGold(original);
+        result.amount = original - currencyPickup->amount;
+        result.fullyConsumed = currencyPickup->amount == 0;
     } else {
         auto& item = std::get<ItemPickup>(pickup.payload());
         itemId = item.itemId;
