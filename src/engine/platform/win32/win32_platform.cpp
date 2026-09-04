@@ -31,7 +31,7 @@ namespace underworld::platform::win32 {
 namespace {
 
 constexpr wchar_t windowClassName[] = L"UnderworldCpuFramebufferWindow";
-constexpr wchar_t windowTitle[] = L"Underworld Engine - Phase 7 Items and Objects";
+constexpr wchar_t windowTitle[] = L"Dungeon Underworld - Phase 8 Persistent Maps";
 
 class Win32Platform final : public Platform {
 public:
@@ -429,6 +429,12 @@ private:
             break;
         case VK_F4:
             if (down && !wasDown) { debugInput_.toggleInteractionPressed = true; }
+            break;
+        case VK_F5:
+            if (down && !wasDown) { actionEdges_.pushSaveGame(); }
+            break;
+        case VK_F9:
+            if (down && !wasDown) { actionEdges_.pushLoadGame(); }
             break;
         default: break;
         }

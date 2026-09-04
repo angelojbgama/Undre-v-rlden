@@ -94,4 +94,12 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
     });
 }
 
+void ProjectileSystem::clear(CombatSystem& combat) noexcept {
+    for (const Projectile& projectile : projectiles_) {
+        combat.finishAttack(projectile.attack);
+        static_cast<void>(handles_.destroy(projectile.handle));
+    }
+    projectiles_.clear();
+}
+
 } // namespace underworld::game::gameplay

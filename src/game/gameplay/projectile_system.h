@@ -43,6 +43,7 @@ public:
                 std::span<CombatTargetRef> targets, CombatSystem& combat,
                 simulation::EventBuffer& events,
                 std::vector<CombatResolution>& resolutions);
+    void clear(CombatSystem& combat) noexcept;
 
     [[nodiscard]] const std::vector<Projectile>& projectiles() const noexcept {
         return projectiles_;

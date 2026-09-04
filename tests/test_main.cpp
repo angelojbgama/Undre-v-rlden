@@ -43,6 +43,7 @@
 #include "game/player_visual.h"
 #include "game/training_puppet.h"
 #include "game/maps/dmap.h"
+#include "game/maps/demo_maps.h"
 #include "game/maps/map_catalog.h"
 #include "game/maps/runtime_world.h"
 #include "game/save/save_data.h"
@@ -2379,9 +2380,13 @@ void testPhase8PersistentMapsAndSave() {
     objects.add({simulation::DefinitionId{"object.crate"}, simulation::DefinitionId{"visual.object.crate"},
                  std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2,{-8,-24,16,24}}});
     gameplay::AttackCatalog attacks; attacks.add(creatures::makeSoldierSwordAttackDefinition());
+    attacks.add(creatures::makeSkullArrowAttackDefinition());
     gameplay::ProjectileCatalog projectiles;
+    projectiles.add(creatures::makeSkullArrowProjectileDefinition());
     creatures::BehaviorCatalog behaviors; behaviors.add(creatures::makeSoldierBehaviorProfile());
+    behaviors.add(creatures::makeSkullBehaviorProfile());
     creatures::EnemyCatalog enemies; enemies.add(creatures::makeSoldierEnemyDefinition());
+    enemies.add(creatures::makeSkullEnemyDefinition());
     maps::MapValidationCatalogs validation{&enemies,&objects,&items};
 
     auto map = makePhase8TestMap();
@@ -2418,7 +2423,7 @@ void testPhase8PersistentMapsAndSave() {
            "DMAP safely skips an unknown size-bounded future chunk");
 
     simulation::EntityHandlePool handles;
-    const std::array visuals{creatures::soldierVisualId()};
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
     creatures::EnemyFactory enemyFactory(handles,enemies,behaviors,attacks,projectiles,visuals);
     gameplay::WorldObjectFactory objectFactory(handles,objects,items);
     maps::RuntimeWorldBuilder builder(validation,enemyFactory,objectFactory,handles,
@@ -2519,6 +2524,139 @@ void testPhase8PersistentMapsAndSave() {
                                    session.world()->id()==map.id&&session.world()->objects().size()==1,
            "Room A to B to A rebuilds original DMAP and reapplies the same SessionWorldState deltas");
     std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
+
+    auto demoA = maps::makeDemoRoomA();
+    auto demoB = maps::makeDemoRoomB();
+    expect(maps::validateMapData(demoA, &validation) &&
+               maps::validateMapData(demoB, &validation),
+           "both deterministic demo rooms are complete validated MapData documents");
+    const auto demoBytes = maps::serializeDmap(demoA);
+    const auto demoDecoded = maps::deserializeDmap(demoBytes, &validation);
+    auto demoRuntime = builder.build(demoDecoded.data, simulation::SpawnId{"entry.start"});
+    expect(demoDecoded && demoRuntime && demoRuntime.world->objects().size() == 2 &&
+               demoRuntime.world->pickups().size() == 2 &&
+               demoRuntime.world->enemies()[0].instance.feetPosition() ==
+                   demoA.enemies[0].position,
+           "playable Room A is sourced through the real DMAP decode and runtime builder chain");
+    demoA.enemies[0].position = {300, 222};
+    auto movedRuntime = builder.build(demoA, simulation::SpawnId{"entry.start"});
+    expect(movedRuntime && movedRuntime.world->enemies()[0].instance.feetPosition() ==
+                               underworld::core::WorldPointI{300, 222},
+           "runtime entity placement follows MapData without hard-coded spawn logic");
+
+    auto& runtimeObjects = demoRuntime.world->objects();
+    runtimeObjects[0].instance.open();
+    static_cast<void>(runtimeObjects[0].instance.contents()->remove(
+        gameplay::lifePotionItemId(), 1));
+    runtimeObjects[1].instance.combatant()->health.current = 0;
+    static_cast<void>(runtimeObjects[1].instance.syncDestructionState());
+    static_cast<void>(runtimeObjects[1].instance.completeDestruction(handles));
+    runtimeObjects.erase(runtimeObjects.begin() + 1);
+    auto& runtimePickups = demoRuntime.world->pickups();
+    static_cast<void>(handles.destroy(runtimePickups[0].instance.handle()));
+    runtimePickups.erase(runtimePickups.begin());
+    std::get<gameplay::ItemPickup>(runtimePickups[0].instance.payload()).quantity = 2;
+    save::SessionWorldState captured;
+    save::captureWorldState(demoDecoded.data, *demoRuntime.world, captured);
+    expect(captured.findObject({demoDecoded.data.id, {1}})->opened &&
+               captured.findObject({demoDecoded.data.id, {1}})->remainingContents[0].quantity == 1,
+           "runtime mutation capture records opened Chest and exact remaining contents");
+    expect(captured.findObject({demoDecoded.data.id, {2}})->destroyed,
+           "runtime mutation capture records a removed destructible as destroyed");
+    expect(captured.findPickup({demoDecoded.data.id, {3}})->collected &&
+               *captured.findPickup({demoDecoded.data.id, {4}})->remainingQuantity == 2,
+           "runtime mutation capture records collected and partially collected pickups");
+
+    const auto demoPathA = std::filesystem::temp_directory_path()/"underworld_demo_room_a.dmap";
+    const auto demoPathB = std::filesystem::temp_directory_path()/"underworld_demo_room_b.dmap";
+    expect(maps::writeDmap(demoPathA, maps::makeDemoRoomA(), fileError) &&
+               maps::writeDmap(demoPathB, demoB, fileError),
+           "playable demo resources are generated deterministically through the DMAP writer");
+    maps::MapCatalog demoCatalog;
+    demoCatalog.add(maps::demoRoomAId(), demoPathA);
+    demoCatalog.add(maps::demoRoomBId(), demoPathB);
+    save::SessionWorldState automaticState;
+    maps::MapSession demoSession(demoCatalog, validation, builder, handles, automaticState);
+    expect(demoSession.activate(maps::demoRoomAId(), simulation::SpawnId{"entry.start"}).changed,
+           "MapSession activates playable Room A by MapId");
+    const auto oldEnemyHandle = demoSession.world()->enemies()[0].instance.handle();
+    const auto oldChestHandle = demoSession.world()->objects()[0].instance.handle();
+    demoSession.world()->objects()[0].instance.open();
+    static_cast<void>(demoSession.world()->objects()[0].instance.contents()->remove(
+        gameplay::lifePotionItemId(), 1));
+    auto& sessionObjects = demoSession.world()->objects();
+    sessionObjects[1].instance.combatant()->health.current = 0;
+    static_cast<void>(sessionObjects[1].instance.syncDestructionState());
+    static_cast<void>(sessionObjects[1].instance.completeDestruction(handles));
+    sessionObjects.erase(sessionObjects.begin() + 1);
+    auto& sessionPickups = demoSession.world()->pickups();
+    static_cast<void>(handles.destroy(sessionPickups[0].instance.handle()));
+    sessionPickups.erase(sessionPickups.begin());
+    demoSession.beginTick();
+    expect(demoSession.requestTransition({960, 144, 16, 16}) &&
+               demoSession.commitPending().changed &&
+               demoSession.world()->id() == maps::demoRoomBId(),
+           "Room A queues and commits a safe transition to playable Room B");
+    expect(!handles.valid(oldEnemyHandle) && !handles.valid(oldChestHandle),
+           "world swap invalidates every old map-local runtime handle");
+    demoSession.beginTick();
+    expect(demoSession.requestTransition({32, 144, 16, 16}) &&
+               demoSession.commitPending().changed &&
+               demoSession.world()->id() == maps::demoRoomAId() &&
+               demoSession.world()->objects().size() == 1 &&
+               demoSession.world()->objects()[0].instance.state() ==
+                   gameplay::WorldObjectState::opened &&
+               demoSession.world()->objects()[0].instance.contents()->count(
+                   gameplay::lifePotionItemId()) == 1 &&
+               demoSession.world()->pickups().size() == 1,
+           "A to B to A automatically captures and reapplies Chest Crate and Pickup deltas");
+    const auto* retainedWorld = demoSession.world();
+    const auto failedRestore = demoSession.restore(
+        simulation::MapId{"map.missing"}, automaticState);
+    expect(!failedRestore.changed && demoSession.world() == retainedWorld &&
+               demoSession.world()->id() == maps::demoRoomAId(),
+           "failed transactional restore retains the active RuntimeWorld unchanged");
+
+    demoSession.beginTick();
+    expect(demoSession.requestTransition({960, 144, 16, 16}) &&
+               demoSession.commitPending().changed,
+           "session can leave modified Room A again before a cross-map save");
+    save::SaveData crossMapSave;
+    crossMapSave.player.currentMapId = maps::demoRoomBId();
+    crossMapSave.player.position = {80, 160};
+    crossMapSave.player.health = gameplay::Player::maximumHealth;
+    crossMapSave.world = automaticState;
+    save::SaveValidationCatalogs demoSaveCatalogs{&items, {&demoA, &demoB}};
+    const auto crossMapReload = save::deserializeSave(
+        save::serializeSave(crossMapSave), demoSaveCatalogs);
+    expect(crossMapReload && crossMapReload.data.player.currentMapId == maps::demoRoomBId() &&
+               crossMapReload.data.world.findObject({maps::demoRoomAId(), {1}}) &&
+               crossMapReload.data.world.findPickup({maps::demoRoomAId(), {3}}),
+           "saving in Room B retains the complete session delta set for modified Room A");
+
+    gameplay::ProjectileSystem transientProjectiles(handles, projectiles);
+    gameplay::CombatSystem transientCombat;
+    const auto transientHandle = transientProjectiles.spawn(
+        {{777, 1}, 1}, gameplay::Faction::enemy, creatures::skullArrowProjectileId(),
+        {100, 100}, gameplay::FacingDirection::left, {1, 0});
+    transientProjectiles.clear(transientCombat);
+    expect(transientProjectiles.projectiles().empty() && !handles.valid(transientHandle),
+           "map transient cleanup removes projectiles and invalidates their handles");
+
+    underworld::platform::ActionEdgeBuffer persistenceEdges;
+    underworld::platform::InputState persistenceInput;
+    persistenceEdges.pushSaveGame(); persistenceEdges.pushLoadGame();
+    persistenceEdges.applyNext(persistenceInput);
+    expect(persistenceInput.saveGamePressed && persistenceInput.loadGamePressed,
+           "logical F5 and F9 actions are buffered as one-shot fixed-tick edges");
+    persistenceInput.clear(); persistenceEdges.applyNext(persistenceInput);
+    expect(!persistenceInput.saveGamePressed && !persistenceInput.loadGamePressed,
+           "held save and load keys cannot repeat without a new physical edge");
+    persistenceEdges.pushSaveGame(); persistenceEdges.pushLoadGame(); persistenceEdges.clear();
+    persistenceEdges.applyNext(persistenceInput);
+    expect(!persistenceInput.saveGamePressed && !persistenceInput.loadGamePressed,
+           "focus-loss clearing removes pending save and load actions");
+    std::filesystem::remove(demoPathA, ec); std::filesystem::remove(demoPathB, ec);
 }
 
 void testFixedStepAccumulator() {

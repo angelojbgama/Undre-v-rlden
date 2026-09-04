@@ -19,7 +19,8 @@ simulation::PlayerCommand CommandBuilder::build(
     else if (input.quickSlot4Pressed) { quickSlot = 3; }
     return {tick, playerId, nextSequence_++, {moveX, moveY},
             {primary, secondary, input.interactPressed,
-             input.toggleInventoryPressed, quickSlot}};
+             input.toggleInventoryPressed, quickSlot,
+             input.saveGamePressed, input.loadGamePressed}};
 }
 
 } // namespace underworld::game

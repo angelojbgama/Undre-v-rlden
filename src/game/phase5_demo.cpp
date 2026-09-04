@@ -31,6 +31,11 @@
 #include "game/player_visual.h"
 #include "game/training_puppet.h"
 #include "game/world_object_visual.h"
+#include "game/maps/demo_maps.h"
+#include "game/maps/dmap.h"
+#include "game/maps/map_catalog.h"
+#include "game/maps/runtime_world.h"
+#include "game/save/save_data.h"
 
 #include <algorithm>
 #include <array>
@@ -47,32 +52,11 @@
 namespace underworld::game {
 namespace {
 
-constexpr int mapWidthTiles = 64;
-constexpr int mapHeightTiles = 48;
 constexpr int atlasColumns = 19;
 constexpr world::TilesetId dungeonTilesetId = 1;
 constexpr simulation::PlayerId localPlayerId{0};
 constexpr core::WorldPointI playerSpawn{104, 144};
 constexpr core::WorldPointI puppetSpawn{136, 144};
-
-constexpr std::uint32_t atlasIndex(int x, int y) {
-    return static_cast<std::uint32_t>(y * atlasColumns + x);
-}
-
-// Demo-only tile selection; it is not a semantic catalog for the full atlas.
-constexpr std::uint32_t floorPlain = atlasIndex(10, 4);
-constexpr std::uint32_t floorCracked = atlasIndex(11, 4);
-constexpr std::uint32_t wallHorizontal = atlasIndex(11, 2);
-constexpr std::uint32_t wallVertical = atlasIndex(1, 6);
-constexpr std::uint32_t wallLowerFace = atlasIndex(4, 9);
-constexpr std::uint32_t floorMarkFirst = atlasIndex(14, 4);
-constexpr std::array<std::uint32_t, 3> archTiles{
-    atlasIndex(4, 0), atlasIndex(5, 0), atlasIndex(6, 0)};
-
-world::TileCell tile(std::uint32_t sourceIndex, bool flipX = false) {
-    return world::TileRef{{dungeonTilesetId, sourceIndex},
-                          flipX ? world::TileFlags::flipX : world::TileFlags::none};
-}
 
 std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
     std::string id, std::shared_ptr<const render::SpriteSheet> sheet, int row,
@@ -200,7 +184,8 @@ struct Phase7Demo::State final {
           std::shared_ptr<const render::Image> crateImage,
           std::shared_ptr<const render::Image> breakingCrateImage,
           std::shared_ptr<const render::Image> hudHeartImage,
-          std::shared_ptr<const render::Image> hudMoneyImage)
+          std::shared_ptr<const render::Image> hudMoneyImage,
+          std::filesystem::path executableDirectory)
         : tileset(std::move(tileImage)),
           atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
           font(std::move(fontImage)),
@@ -237,7 +222,7 @@ struct Phase7Demo::State final {
           breakingCrateSheet(std::make_shared<const render::SpriteSheet>(
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
-          map(mapWidthTiles, mapHeightTiles, core::GameMetrics::tileSize),
+          executableDirectory(std::move(executableDirectory)),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, playerSpawn),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
@@ -245,8 +230,9 @@ struct Phase7Demo::State final {
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
           projectiles(handles, projectileCatalog), playerItems(itemCatalog) {
         if (atlas.columns() != 19 || atlas.rows() != 12) {
-            throw std::runtime_error("Phase 7 demo expects the audited 19x12 dungeon tileset");
+            throw std::runtime_error("Phase 8 demo expects the audited 19x12 dungeon tileset");
         }
+        savePath = this->executableDirectory / "savegame.sav";
         attackCatalog.add(swordDefinition);
         attackCatalog.add(bowDefinition);
         attackCatalog.add(gameplay::creatures::makeSoldierSwordAttackDefinition());
@@ -275,22 +261,9 @@ struct Phase7Demo::State final {
         itemVisuals.emplace(
             simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
 
-        pickupDefinitions.reserve(3);
-        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.heart"},
-            simulation::DefinitionId{"visual.pickup.heart"}, {-5, -5, 10, 10},
-            gameplay::HealthPickup{2}});
-        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.money"},
-            simulation::DefinitionId{"visual.pickup.money"}, {-5, -5, 10, 10},
-            gameplay::CurrencyPickup{1}});
-        pickupDefinitions.push_back({simulation::DefinitionId{"pickup.life_potion"},
-            simulation::DefinitionId{"visual.item.life_potion"}, {-5, -5, 10, 10},
-            gameplay::ItemPickup{gameplay::lifePotionItemId(), 4}});
-        pickupVisuals.emplace(pickupDefinitions[0].visualId, heartPickupImage);
-        pickupVisuals.emplace(pickupDefinitions[1].visualId, moneyPickupImage);
-        pickupVisuals.emplace(pickupDefinitions[2].visualId, this->potionImage);
-        pickups.emplace_back(handles.create(), pickupDefinitions[0], core::WorldPointI{104, 176});
-        pickups.emplace_back(handles.create(), pickupDefinitions[1], core::WorldPointI{120, 144});
-        pickups.emplace_back(handles.create(), pickupDefinitions[2], core::WorldPointI{88, 144});
+        pickupVisuals.emplace(simulation::DefinitionId{"visual.pickup.heart"}, heartPickupImage);
+        pickupVisuals.emplace(simulation::DefinitionId{"visual.pickup.money"}, moneyPickupImage);
+        pickupVisuals.emplace(simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
 
         const simulation::DefinitionId chestVisualId{"visual.object.chest"};
         const simulation::DefinitionId crateVisualId{"visual.object.crate"};
@@ -309,25 +282,6 @@ struct Phase7Demo::State final {
             nullptr,
             makeObjectClip("crate.break", breakingCrateSheet, 32, 32, 7, 4,
                            {16, 31}, false)});
-        gameplay::WorldObjectFactory objectFactory(handles, objectCatalog, itemCatalog);
-        const std::array<gameplay::ItemStack, 1> chestContents{{
-            {gameplay::lifePotionItemId(), 2}}};
-        objects.push_back(objectFactory.create(
-            simulation::DefinitionId{"object.chest"}, {152, 144}, chestContents));
-        objects.push_back(objectFactory.create(
-            simulation::DefinitionId{"object.crate"}, {184, 144}));
-        for (const auto& object : objects) {
-            objectVisuals.emplace_back(object.handle(), objectVisualCatalog.require(
-                object.definition().visualSetId));
-            objectVisuals.back().update(object, 0);
-        }
-        groundLayer = map.addLayer("ground");
-        lowLayer = map.addLayer("decoration_low");
-        foregroundLayer = map.addLayer("foreground");
-        buildDungeon();
-        if (world::querySolidTiles(map.collision(), player.collisionBody(), map.tileSize()).collides) {
-            throw std::runtime_error("Phase 6 player spawn overlaps map collision");
-        }
         puppet = std::make_unique<TrainingPuppet>(handles.create(), puppetSpawn);
         visual = std::make_unique<PlayerVisual>(
             makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
@@ -340,83 +294,76 @@ struct Phase7Demo::State final {
                       {{}, {"spawn_projectile"}}));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         const auto availableVisuals = enemyVisualCatalog.ids();
-        gameplay::creatures::EnemyFactory enemyFactory(
+        enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
             handles, enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog,
             availableVisuals);
-        enemies.reserve(3);
-        enemyVisuals.reserve(3);
-        enemies.push_back(enemyFactory.create(
-            gameplay::creatures::soldierEnemyId(), {220, 144},
-            gameplay::FacingDirection::left));
-        enemies.push_back(enemyFactory.create(
-            gameplay::creatures::soldierEnemyId(), {112, 248},
-            gameplay::FacingDirection::up));
-        enemies.push_back(enemyFactory.create(
-            gameplay::creatures::skullEnemyId(), {264, 144},
-            gameplay::FacingDirection::left));
-        for (const auto& enemy : enemies) {
-            enemyVisuals.emplace_back(
-                enemy.handle(), enemyVisualCatalog.require(enemy.definition().visualSetId));
-            enemyVisuals.back().update(enemy, 0);
+        objectFactory = std::make_unique<gameplay::WorldObjectFactory>(
+            handles, objectCatalog, itemCatalog);
+        validationCatalogs = {&enemyCatalog, &objectCatalog, &itemCatalog};
+        runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
+            validationCatalogs, *enemyFactory, *objectFactory, handles,
+            std::unordered_map<simulation::DefinitionId, world::TilesetId,
+                               simulation::DefinitionIdHash>{{
+                simulation::DefinitionId{"tileset.dungeon"}, dungeonTilesetId}});
+        const auto dataDirectory = this->executableDirectory / "data";
+        std::error_code directoryError;
+        std::filesystem::create_directories(dataDirectory, directoryError);
+        if (directoryError) { throw std::runtime_error("could not create demo map directory"); }
+        roomAData = maps::makeDemoRoomA();
+        roomBData = maps::makeDemoRoomB();
+        const auto roomAPath = dataDirectory / "room_a.dmap";
+        const auto roomBPath = dataDirectory / "room_b.dmap";
+        std::string mapError;
+        if (!maps::writeDmap(roomAPath, roomAData, mapError) ||
+            !maps::writeDmap(roomBPath, roomBData, mapError)) {
+            throw std::runtime_error("could not generate demo DMAP: " + mapError);
         }
+        mapCatalog.add(roomAData.id, roomAPath);
+        mapCatalog.add(roomBData.id, roomBPath);
+        if (const auto linkError = mapCatalog.validateLinks(&validationCatalogs);
+            !linkError.empty()) {
+            throw std::runtime_error("invalid demo map links: " + linkError);
+        }
+        mapSession = std::make_unique<maps::MapSession>(
+            mapCatalog, validationCatalogs, *runtimeBuilder, handles, sessionWorldState);
+        const auto activated = mapSession->activate(
+            maps::demoRoomAId(), simulation::SpawnId{"entry.start"});
+        if (!activated.changed) {
+            throw std::runtime_error("could not activate demo DMAP: " + activated.error);
+        }
+        player.relocate(activated.spawn.position, activated.spawn.facing);
+        rebuildWorldVisuals();
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();
     }
 
-    void buildDungeon() {
-        auto& ground = map.layer(groundLayer);
-        for (int y = 0; y < map.heightTiles(); ++y) {
-            for (int x = 0; x < map.widthTiles(); ++x) {
-                ground.set(x, y, tile((x * 7 + y * 11) % 29 == 0 ? floorCracked : floorPlain));
-            }
-        }
-        horizontalWall(2, 61, 2); horizontalWall(2, 61, 45);
-        verticalWall(2, 3, 44, false); verticalWall(61, 3, 44, true);
-        horizontalWall(2, 10, 15); horizontalWall(14, 28, 15);
-        verticalWallWithGap(28, 2, 28, 9, 11, true);
-        horizontalWall(28, 43, 28); horizontalWall(47, 61, 28);
-        verticalWallWithGap(44, 28, 45, 36, 38, false);
-        for (int index = 0; index < 3; ++index) {
-            map.layer(foregroundLayer).set(
-                11 + index, 14, tile(archTiles[static_cast<std::size_t>(index)]));
-        }
-        auto& low = map.layer(lowLayer);
-        for (int y = 5; y < map.heightTiles() - 3; y += 7) {
-            for (int x = 5; x < map.widthTiles() - 3; x += 11) {
-                if (!map.collision().isSolid(x, y)) {
-                    low.set(x, y, tile(floorMarkFirst + static_cast<std::uint32_t>((x + y) % 5)));
-                }
-            }
-        }
-        low.set(7, 7, tile(wallVertical));
-        map.collision().setSolid(6, 7, true);
-    }
+    [[nodiscard]] maps::RuntimeWorld& activeWorld() { return *mapSession->world(); }
+    [[nodiscard]] const maps::RuntimeWorld& activeWorld() const { return *mapSession->world(); }
+    [[nodiscard]] world::RuntimeMap& activeMap() { return activeWorld().map(); }
+    [[nodiscard]] const world::RuntimeMap& activeMap() const { return activeWorld().map(); }
 
-    void horizontalWall(int firstX, int lastX, int y) {
-        for (int x = firstX; x <= lastX; ++x) {
-            map.layer(lowLayer).set(x, y, tile(wallHorizontal));
-            map.collision().setSolid(x, y, true);
-            if (y + 1 < map.heightTiles()) {
-                map.layer(foregroundLayer).set(x, y + 1, tile(wallLowerFace));
-            }
+    void rebuildWorldVisuals() {
+        enemyVisuals.clear();
+        enemyVisuals.reserve(activeWorld().enemies().size());
+        for (const auto& persistent : activeWorld().enemies()) {
+            const auto& enemy = persistent.instance;
+            enemyVisuals.emplace_back(
+                enemy.handle(), enemyVisualCatalog.require(enemy.definition().visualSetId));
+            enemyVisuals.back().update(enemy, 0);
         }
-    }
-    void verticalWall(int x, int firstY, int lastY, bool flip) {
-        for (int y = firstY; y <= lastY; ++y) {
-            map.layer(lowLayer).set(x, y, tile(wallVertical, flip));
-            map.collision().setSolid(x, y, true);
-        }
-    }
-    void verticalWallWithGap(int x, int firstY, int lastY,
-                             int gapFirstY, int gapLastY, bool flip) {
-        for (int y = firstY; y <= lastY; ++y) {
-            if (y < gapFirstY || y > gapLastY) { verticalWall(x, y, y, flip); }
+        objectVisuals.clear();
+        objectVisuals.reserve(activeWorld().objects().size());
+        for (const auto& persistent : activeWorld().objects()) {
+            const auto& object = persistent.instance;
+            objectVisuals.emplace_back(object.handle(), objectVisualCatalog.require(
+                object.definition().visualSetId));
+            objectVisuals.back().update(object, 0);
         }
     }
 
     void followPlayer() {
         camera.centerOn(player.feetPosition());
-        camera.clampToWorld(map.worldWidthPixels(), map.worldHeightPixels());
+        camera.clampToWorld(activeMap().worldWidthPixels(), activeMap().worldHeightPixels());
     }
 
     void consumeAnimationMarkers() {
@@ -447,22 +394,23 @@ struct Phase7Demo::State final {
         if (resolution.target == player.entityHandle()) {
             player.applyKnockback(resolution.requestedKnockbackX,
                                   resolution.requestedKnockbackY,
-                                  map.collision(), map.tileSize());
+                                  activeMap().collision(), activeMap().tileSize());
             return;
         }
         if (resolution.target == puppet->combatant().handle) {
             puppet->applyKnockback(resolution.requestedKnockbackX,
                                    resolution.requestedKnockbackY,
-                                   map.collision(), map.tileSize());
+                                   activeMap().collision(), activeMap().tileSize());
             return;
         }
+        auto& enemies = activeWorld().enemies();
         const auto found = std::find_if(enemies.begin(), enemies.end(), [&](const auto& enemy) {
-            return enemy.handle() == resolution.target;
+            return enemy.instance.handle() == resolution.target;
         });
         if (found != enemies.end()) {
-            found->applyKnockback(resolution.requestedKnockbackX,
-                                  resolution.requestedKnockbackY,
-                                  map.collision(), map.tileSize());
+            found->instance.applyKnockback(resolution.requestedKnockbackX,
+                                           resolution.requestedKnockbackY,
+                                           activeMap().collision(), activeMap().tileSize());
         }
     }
 
@@ -471,12 +419,12 @@ struct Phase7Demo::State final {
         activeSword.bounds = swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
             player.feetPosition());
         applyResolution(combat.resolve(activeSword, puppet->combatTarget(), events));
-        for (auto& enemy : enemies) {
-            applyResolution(combat.resolve(activeSword, enemy.combatTarget(), events));
+        for (auto& enemy : activeWorld().enemies()) {
+            applyResolution(combat.resolve(activeSword, enemy.instance.combatTarget(), events));
         }
-        for (auto& object : objects) {
-            if (object.combatant()) {
-                applyResolution(combat.resolve(activeSword, object.combatTarget(), events));
+        for (auto& object : activeWorld().objects()) {
+            if (object.instance.combatant()) {
+                applyResolution(combat.resolve(activeSword, object.instance.combatTarget(), events));
             }
         }
     }
@@ -507,8 +455,9 @@ struct Phase7Demo::State final {
     }
 
     void updateEnemies() {
+        auto& enemies = activeWorld().enemies();
         for (std::size_t index = 0; index < enemies.size();) {
-            auto& enemy = enemies[index];
+            auto& enemy = enemies[index].instance;
             auto& enemyVisual = enemyVisuals[index];
             const auto& profile = behaviorCatalog.require(
                 enemy.definition().behaviorProfileId);
@@ -518,7 +467,7 @@ struct Phase7Demo::State final {
             static_cast<void>(enemyBehavior.update(
                 enemy, player.entityHandle(), player.feetPosition(),
                 !player.health().depleted(), profile, attackCatalog,
-                map.collision(), map.tileSize()));
+                activeMap().collision(), activeMap().tileSize()));
             if (previousAttack && !enemy.activeAttack()) {
                 combat.finishAttack(*previousAttack);
             }
@@ -558,33 +507,38 @@ struct Phase7Demo::State final {
 
     std::vector<gameplay::CombatTargetRef> combatTargets() {
         std::vector<gameplay::CombatTargetRef> targets;
-        targets.reserve(enemies.size() + objects.size() + 2);
+        targets.reserve(activeWorld().enemies().size() + activeWorld().objects().size() + 2);
         targets.push_back(player.combatTarget());
         targets.push_back(puppet->combatTarget());
-        for (auto& enemy : enemies) { targets.push_back(enemy.combatTarget()); }
-        for (auto& object : objects) {
-            if (object.combatant()) { targets.push_back(object.combatTarget()); }
+        for (auto& enemy : activeWorld().enemies()) {
+            targets.push_back(enemy.instance.combatTarget());
+        }
+        for (auto& object : activeWorld().objects()) {
+            if (object.instance.combatant()) { targets.push_back(object.instance.combatTarget()); }
         }
         return targets;
     }
 
     void collectNearbyPickups() {
         const world::AabbI area = player.collisionBody();
+        auto& pickups = activeWorld().pickups();
         for (std::size_t index = 0; index < pickups.size();) {
             const auto result = gameplay::collectPickup(
-                pickups[index], player.entityHandle(), area, player.health(),
+                pickups[index].instance, player.entityHandle(), area, player.health(),
                 playerItems.inventory().items(), playerItems.wallet(), handles, events);
             if (result.fullyConsumed) {
                 pickups.erase(pickups.begin() + static_cast<std::ptrdiff_t>(index));
             } else {
                 ++index;
             }
+            if (result.collected) { captureActiveWorld(); }
         }
     }
 
     void updateObjects() {
+        auto& objects = activeWorld().objects();
         for (std::size_t index = 0; index < objects.size();) {
-            auto& object = objects[index];
+            auto& object = objects[index].instance;
             static_cast<void>(object.syncDestructionState());
             objectVisuals[index].update(object);
             if (object.state() == gameplay::WorldObjectState::destroying &&
@@ -592,6 +546,7 @@ struct Phase7Demo::State final {
                 static_cast<void>(object.completeDestruction(handles));
                 objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
                 objectVisuals.erase(objectVisuals.begin() + static_cast<std::ptrdiff_t>(index));
+                captureActiveWorld();
                 continue;
             }
             if (object.combatant()) { gameplay::tickInvulnerability(*object.combatant()); }
@@ -617,6 +572,118 @@ struct Phase7Demo::State final {
         }
     }
 
+    void captureActiveWorld() {
+        if (mapSession->data() && mapSession->world()) {
+            save::captureWorldState(*mapSession->data(), *mapSession->world(), sessionWorldState);
+        }
+    }
+
+    void interactWithWorld() {
+        maps::PersistentObject* selected{};
+        std::int64_t selectedDistance{};
+        const auto playerFeet = player.feetPosition();
+        const auto playerArea = player.interactionArea().bounds;
+        for (auto& persistent : activeWorld().objects()) {
+            auto& object = persistent.instance;
+            const auto area = object.interactionArea();
+            if (!area || !gameplay::overlaps(playerArea, *area)) { continue; }
+            const auto dx = static_cast<std::int64_t>(playerFeet.x) - object.position().x;
+            const auto dy = static_cast<std::int64_t>(playerFeet.y) - object.position().y;
+            const auto distance = dx * dx + dy * dy;
+            const bool earlierHandle = selected &&
+                (object.handle().index < selected->instance.handle().index ||
+                 (object.handle().index == selected->instance.handle().index &&
+                  object.handle().generation < selected->instance.handle().generation));
+            if (!selected || distance < selectedDistance ||
+                (distance == selectedDistance && earlierHandle)) {
+                selected = &persistent;
+                selectedDistance = distance;
+            }
+        }
+        if (!selected) { return; }
+        auto& object = selected->instance;
+        object.open();
+        if (auto* contents = object.contents()) {
+            for (std::size_t index = 0; index < contents->capacity(); ++index) {
+                const auto slot = contents->slot(index);
+                if (slot) {
+                    static_cast<void>(contents->transferTo(
+                        playerItems.inventory().items(), slot->itemId, slot->quantity));
+                }
+            }
+        }
+        captureActiveWorld();
+    }
+
+    void clearMapTransients() {
+        projectiles.clear(combat);
+        effects->clear();
+        combat.clearTransientRecords();
+        activeSword.enabled = false;
+        player.finishAttack();
+    }
+
+    void commitTransitionIfRequested() {
+        mapSession->beginTick();
+        static_cast<void>(mapSession->requestTransition(player.collisionBody()));
+        if (!mapSession->pending()) { return; }
+        const auto transition = mapSession->commitPending();
+        if (!transition.changed) {
+            lastEvent = "MAP ERROR";
+            return;
+        }
+        clearMapTransients();
+        player.relocate(transition.spawn.position, transition.spawn.facing);
+        rebuildWorldVisuals();
+        followPlayer();
+        lastEvent = "MAP " + std::string(activeWorld().id().value());
+    }
+
+    [[nodiscard]] save::SaveValidationCatalogs saveCatalogs() const {
+        return {&itemCatalog, {&roomAData, &roomBData}};
+    }
+
+    void saveGame() {
+        captureActiveWorld();
+        save::SaveData data{save::capturePlayer(player, playerItems, activeWorld().id()),
+                            sessionWorldState};
+        std::string error;
+        if (save::writeSaveAtomic(savePath, data, error)) {
+            lastEvent = "SAVED";
+        } else {
+            lastEvent = "SAVE ERROR";
+        }
+    }
+
+    void loadGame() {
+        const auto loaded = save::readSave(savePath, saveCatalogs());
+        if (!loaded) {
+            lastEvent = "LOAD ERROR";
+            return;
+        }
+        const auto previousPlayer = save::capturePlayer(player, playerItems, activeWorld().id());
+        const auto previousWorldState = sessionWorldState;
+        const auto restored = mapSession->restore(
+            loaded.data.player.currentMapId, loaded.data.world);
+        if (!restored.changed) {
+            lastEvent = "LOAD ERROR";
+            return;
+        }
+        std::string error;
+        if (!save::applyPlayer(loaded.data.player, player, playerItems, itemCatalog, error)) {
+            static_cast<void>(mapSession->restore(previousPlayer.currentMapId, previousWorldState));
+            static_cast<void>(save::applyPlayer(
+                previousPlayer, player, playerItems, itemCatalog, error));
+            rebuildWorldVisuals();
+            lastEvent = "LOAD ERROR";
+            return;
+        }
+        clearMapTransients();
+        rebuildWorldVisuals();
+        followPlayer();
+        lastEvent = "LOADED";
+    }
+
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
         events.clear();
@@ -624,6 +691,8 @@ struct Phase7Demo::State final {
         gameplay::tickInvulnerability(player.combatant());
         const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
+        if (command.actions.saveGamePressed) { saveGame(); }
+        if (command.actions.loadGamePressed) { loadGame(); }
         if (gameplay::routeInventoryCommand(
                 inventoryOverlay, command, playerItems, itemCatalog, player.health())) {
             lastTick = tick;
@@ -635,11 +704,9 @@ struct Phase7Demo::State final {
                 static_cast<std::size_t>(command.actions.quickSlotPressed), itemCatalog,
                 player.health()));
         }
-        player.update(command, map.collision(), map.tileSize());
+        player.update(command, activeMap().collision(), activeMap().tileSize());
         if (command.actions.interactPressed) {
-            static_cast<void>(gameplay::interactNearest(
-                player.feetPosition(), player.interactionArea().bounds,
-                playerItems.inventory().items(), objects));
+            interactWithWorld();
         }
         visual->update(player.motionState(), player.facing(), player.actionState());
         consumeAnimationMarkers();
@@ -647,7 +714,7 @@ struct Phase7Demo::State final {
         updateEnemies();
         auto targets = combatTargets();
         std::vector<gameplay::CombatResolution> projectileResolutions;
-        projectiles.update(map.collision(), map.tileSize(), targets, combat, events,
+        projectiles.update(activeMap().collision(), activeMap().tileSize(), targets, combat, events,
                            projectileResolutions);
         for (const gameplay::CombatResolution& resolution : projectileResolutions) {
             applyResolution(resolution);
@@ -670,6 +737,7 @@ struct Phase7Demo::State final {
         }
         if (debugInput.toggleCollisionPressed) { collisionOverlay = !collisionOverlay; }
         combatDebug.apply(debugInput);
+        commitTransitionIfRequested();
         followPlayer();
         lastTick = tick;
         lastSequence = command.sequence;
@@ -687,8 +755,8 @@ struct Phase7Demo::State final {
                     throw std::runtime_error("Phase 6 demo encountered an unknown tileset id");
                 }
                 const core::RectI source = atlas.sourceRect(cell->definition.sourceIndex);
-                const int dx = x * map.tileSize() - cameraPosition.x;
-                const int dy = y * map.tileSize() - cameraPosition.y;
+                const int dx = x * activeMap().tileSize() - cameraPosition.x;
+                const int dy = y * activeMap().tileSize() - cameraPosition.y;
                 if (world::hasFlag(cell->flags, world::TileFlags::flipX)) {
                     renderer.drawImageRegionFlipX(*tileset, source, dx, dy);
                 } else {
@@ -709,20 +777,26 @@ struct Phase7Demo::State final {
             std::size_t contentIndex{};
         };
         std::vector<Actor> actors;
-        actors.reserve(enemies.size() + 2);
+        const auto& enemies = activeWorld().enemies();
+        const auto& objects = activeWorld().objects();
+        const auto& pickups = activeWorld().pickups();
+        actors.reserve(enemies.size() + objects.size() + pickups.size() + 2);
         actors.push_back({player.feetPosition().y, player.entityHandle(), ActorKind::player});
         actors.push_back(
             {puppet->feetPosition().y, puppet->combatant().handle, ActorKind::puppet});
         for (std::size_t index = 0; index < enemies.size(); ++index) {
-            actors.push_back({enemies[index].feetPosition().y, enemies[index].handle(),
+            actors.push_back({enemies[index].instance.feetPosition().y,
+                              enemies[index].instance.handle(),
                               ActorKind::enemy, index});
         }
         for (std::size_t index = 0; index < objects.size(); ++index) {
-            actors.push_back({objects[index].position().y, objects[index].handle(),
+            actors.push_back({objects[index].instance.position().y,
+                              objects[index].instance.handle(),
                               ActorKind::object, 0, index});
         }
         for (std::size_t index = 0; index < pickups.size(); ++index) {
-            actors.push_back({pickups[index].position().y, pickups[index].handle(),
+            actors.push_back({pickups[index].instance.position().y,
+                              pickups[index].instance.handle(),
                               ActorKind::pickup, 0, index});
         }
         std::sort(actors.begin(), actors.end(), [](const Actor& left, const Actor& right) {
@@ -739,17 +813,17 @@ struct Phase7Demo::State final {
                 render::drawSprite(renderer, *puppetSheet, frame, {logical.x, logical.y});
             } else if (actor.kind == ActorKind::enemy) {
                 const auto logical = camera.worldToLogical(
-                    enemies[actor.enemyIndex].feetPosition());
+                    enemies[actor.enemyIndex].instance.feetPosition());
                 render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
                                      {logical.x, logical.y},
                                      enemyVisuals[actor.enemyIndex].flipX());
             } else if (actor.kind == ActorKind::object) {
                 const auto logical = camera.worldToLogical(
-                    objects[actor.contentIndex].position());
+                    objects[actor.contentIndex].instance.position());
                 render::drawAnimator(renderer, objectVisuals[actor.contentIndex].animator(),
                                      {logical.x, logical.y});
             } else {
-                const auto& pickup = pickups[actor.contentIndex];
+                const auto& pickup = pickups[actor.contentIndex].instance;
                 const auto found = pickupVisuals.find(pickup.definition().visualId);
                 if (found == pickupVisuals.end()) {
                     throw std::runtime_error("pickup visual definition was not registered");
@@ -790,10 +864,10 @@ struct Phase7Demo::State final {
             constexpr core::ColorRGBA8 fill{255, 24, 32, 72};
             for (int y = visible.firstY; y <= visible.lastY; ++y) {
                 for (int x = visible.firstX; x <= visible.lastX; ++x) {
-                    if (map.collision().isSolid(x, y)) {
-                        renderer.fillRect({x * map.tileSize() - cameraPosition.x,
-                                           y * map.tileSize() - cameraPosition.y,
-                                           map.tileSize(), map.tileSize()}, fill);
+                    if (activeMap().collision().isSolid(x, y)) {
+                        renderer.fillRect({x * activeMap().tileSize() - cameraPosition.x,
+                                           y * activeMap().tileSize() - cameraPosition.y,
+                                           activeMap().tileSize(), activeMap().tileSize()}, fill);
                     }
                 }
             }
@@ -802,8 +876,8 @@ struct Phase7Demo::State final {
             outline(renderer, player.collisionBody(), cameraPosition, {32, 255, 96, 255});
             outline(renderer, puppet->collisionBody().bounds, cameraPosition,
                     {32, 255, 96, 255});
-            for (const auto& enemy : enemies) {
-                outline(renderer, enemy.collisionBody(), cameraPosition, {32, 255, 96, 255});
+            for (const auto& enemy : activeWorld().enemies()) {
+                outline(renderer, enemy.instance.collisionBody(), cameraPosition, {32, 255, 96, 255});
             }
         }
         if (combatDebug.hurtbox) {
@@ -812,15 +886,15 @@ struct Phase7Demo::State final {
                 outline(renderer, puppet->hurtbox().bounds, cameraPosition,
                         {32, 220, 255, 255});
             }
-            for (const auto& enemy : enemies) {
-                if (enemy.hurtbox().enabled) {
-                    outline(renderer, enemy.hurtbox().bounds, cameraPosition,
+            for (const auto& enemy : activeWorld().enemies()) {
+                if (enemy.instance.hurtbox().enabled) {
+                    outline(renderer, enemy.instance.hurtbox().bounds, cameraPosition,
                             {32, 220, 255, 255});
                 }
             }
-            for (const auto& object : objects) {
-                if (object.hurtbox().enabled) {
-                    outline(renderer, object.hurtbox().bounds, cameraPosition,
+            for (const auto& object : activeWorld().objects()) {
+                if (object.instance.hurtbox().enabled) {
+                    outline(renderer, object.instance.hurtbox().bounds, cameraPosition,
                             {32, 220, 255, 255});
                 }
             }
@@ -832,7 +906,8 @@ struct Phase7Demo::State final {
             for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
                 outline(renderer, projectile.hitbox(), cameraPosition, {255, 220, 32, 255});
             }
-            for (const auto& enemy : enemies) {
+            for (const auto& persistent : activeWorld().enemies()) {
+                const auto& enemy = persistent.instance;
                 if (!enemy.activeAttack() || !enemy.activeAttack()->meleeHitboxActive ||
                     !enemy.activeAttack()->definition->meleeHitboxes) {
                     continue;
@@ -846,13 +921,13 @@ struct Phase7Demo::State final {
         if (combatDebug.interaction) {
             outline(renderer, player.interactionArea().bounds, cameraPosition,
                     {255, 64, 255, 255});
-            for (const auto& object : objects) {
-                if (const auto area = object.interactionArea()) {
+            for (const auto& object : activeWorld().objects()) {
+                if (const auto area = object.instance.interactionArea()) {
                     outline(renderer, *area, cameraPosition, {255, 64, 255, 255});
                 }
             }
-            for (const auto& pickup : pickups) {
-                outline(renderer, pickup.collectionArea(), cameraPosition,
+            for (const auto& pickup : activeWorld().pickups()) {
+                outline(renderer, pickup.instance.collectionArea(), cameraPosition,
                         {255, 200, 64, 255});
             }
         }
@@ -871,6 +946,9 @@ struct Phase7Demo::State final {
         }
         renderer.drawImage(*hudMoneyImage, 68, 2);
         render::drawText(renderer, font, std::to_string(view.gold), 79, 2);
+        const bool roomA = activeWorld().id() == maps::demoRoomAId();
+        render::drawText(renderer, font, roomA ? "MAP: ROOM_A" : "MAP: ROOM_B", 116, 2);
+        if (!lastEvent.empty()) { render::drawText(renderer, font, lastEvent, 190, 2); }
 
         renderer.fillRect({0, 194, core::GameMetrics::logicalWidth, 30}, {8, 10, 16, 220});
         for (std::size_t index = 0; index < view.quickSlots.size(); ++index) {
@@ -913,12 +991,12 @@ struct Phase7Demo::State final {
     void render(render::Framebuffer& framebuffer) const {
         framebuffer.clear({28, 13, 22, 255});
         render::Renderer2D renderer(framebuffer);
-        const auto visible = camera.visibleTiles(map.widthTiles(), map.heightTiles(), map.tileSize());
-        renderLayer(renderer, map.layer(groundLayer), visible);
-        renderLayer(renderer, map.layer(lowLayer), visible);
+        const auto visible = camera.visibleTiles(activeMap().widthTiles(), activeMap().heightTiles(), activeMap().tileSize());
+        renderLayer(renderer, activeMap().layer(groundLayer), visible);
+        renderLayer(renderer, activeMap().layer(lowLayer), visible);
         renderActors(renderer);
         renderProjectiles(renderer);
-        renderLayer(renderer, map.layer(foregroundLayer), visible);
+        renderLayer(renderer, activeMap().layer(foregroundLayer), visible);
         renderEffects(renderer);
         renderDebug(renderer, visible);
         renderHud(renderer);
@@ -953,7 +1031,8 @@ struct Phase7Demo::State final {
     std::shared_ptr<const render::Image> hudMoneyImage;
     std::unique_ptr<PlayerVisual> visual;
     std::unique_ptr<EffectSystem> effects;
-    world::RuntimeMap map;
+    std::filesystem::path executableDirectory;
+    std::filesystem::path savePath;
     render::Camera2D camera;
     simulation::EntityHandlePool handles;
     simulation::EntityHandle playerHandle{};
@@ -970,7 +1049,6 @@ struct Phase7Demo::State final {
     gameplay::creatures::EnemyCatalog enemyCatalog;
     EnemyVisualCatalog enemyVisualCatalog;
     gameplay::creatures::EnemyBehaviorSystem enemyBehavior;
-    std::vector<gameplay::creatures::EnemyInstance> enemies;
     std::vector<EnemyVisualInstance> enemyVisuals;
     std::unique_ptr<TrainingPuppet> puppet;
     gameplay::CombatSystem combat;
@@ -978,16 +1056,22 @@ struct Phase7Demo::State final {
     gameplay::ItemCatalog itemCatalog;
     gameplay::PlayerItems playerItems;
     gameplay::InventoryOverlayState inventoryOverlay;
-    std::vector<gameplay::PickupDefinition> pickupDefinitions;
-    std::vector<gameplay::WorldPickup> pickups;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
                        simulation::DefinitionIdHash> pickupVisuals;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
                        simulation::DefinitionIdHash> itemVisuals;
     gameplay::WorldObjectCatalog objectCatalog;
     WorldObjectVisualCatalog objectVisualCatalog;
-    std::vector<gameplay::WorldObjectInstance> objects;
     std::vector<WorldObjectVisualInstance> objectVisuals;
+    std::unique_ptr<gameplay::creatures::EnemyFactory> enemyFactory;
+    std::unique_ptr<gameplay::WorldObjectFactory> objectFactory;
+    maps::MapValidationCatalogs validationCatalogs{};
+    std::unique_ptr<maps::RuntimeWorldBuilder> runtimeBuilder;
+    maps::MapCatalog mapCatalog;
+    maps::MapData roomAData;
+    maps::MapData roomBData;
+    save::SessionWorldState sessionWorldState;
+    std::unique_ptr<maps::MapSession> mapSession;
     simulation::EventBuffer events;
     gameplay::Hitbox activeSword{};
     CommandBuilder commandBuilder;
@@ -1003,7 +1087,8 @@ struct Phase7Demo::State final {
 };
 
 Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
-                       const std::filesystem::path& assetRoot) {
+                       const std::filesystem::path& assetRoot,
+                       const std::filesystem::path& executableDirectory) {
     const auto tileset = assets_.loadImage("tileset.dungeon", assetRoot / "Tileset/tileset.png", decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
     const auto idle = assets_.loadImage("player.idle", assetRoot / "Characters/Player/idle/player_idle.png", decoder);
@@ -1060,7 +1145,8 @@ Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
         tileset, font, idle, walk, sword, bow, arrow, puppet, impact,
         soldierIdle, soldierWalk, soldierAttack, soldierDeath,
         skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
-        heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney);
+        heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney,
+        executableDirectory);
 }
 
 Phase7Demo::~Phase7Demo() = default;

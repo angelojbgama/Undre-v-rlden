@@ -19,5 +19,8 @@
 
 # Common local/generated files
 *.log
+*.sav
+*.sav.tmp
+*.sav.bak
 .DS_Store
 Thumbs.db

@@ -19,6 +19,7 @@ public:
 
     void spawnImpact(core::WorldPointI position);
     void update(std::uint64_t ticks = 1);
+    void clear() noexcept { effects_.clear(); }
     [[nodiscard]] const std::vector<EffectInstance>& effects() const noexcept { return effects_; }
 
 private:

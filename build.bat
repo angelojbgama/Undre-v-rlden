@@ -106,6 +106,10 @@ echo Compiling map catalog and transitions...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\map_catalog.obj" "src\game\maps\map_catalog.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling deterministic demo maps...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\demo_maps.obj" "src\game\maps\demo_maps.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [15/39] Compiling combat data...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\combat_types.obj" "src\game\gameplay\combat_types.cpp"
 if errorlevel 1 goto :build_failed
@@ -205,7 +209,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
     "build\obj\runtime_world.obj" ^
-    "build\obj\save_data.obj" "build\obj\map_catalog.obj" ^
+    "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
     "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^
@@ -236,7 +240,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
     "build\obj\runtime_world.obj" ^
-    "build\obj\save_data.obj" "build\obj\map_catalog.obj" ^
+    "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" "build\obj\items.obj" ^
     "build\obj\player_items.obj" "build\obj\world_pickups.obj" ^

@@ -44,6 +44,8 @@ public:
                                             const simulation::SpawnId& spawnId);
     [[nodiscard]] bool requestTransition(world::AabbI playerArea);
     [[nodiscard]] TransitionResult commitPending();
+    [[nodiscard]] TransitionResult restore(const simulation::MapId& mapId,
+                                           const save::SessionWorldState& state);
     void beginTick() noexcept { if (transitionLatch_ > 0) --transitionLatch_; }
     [[nodiscard]] RuntimeWorld* world() noexcept { return world_.get(); }
     [[nodiscard]] const RuntimeWorld* world() const noexcept { return world_.get(); }

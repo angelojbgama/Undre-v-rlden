@@ -17,6 +17,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
             return {nullptr, "map references an unavailable runtime tileset"};
         }
     }
+    std::unique_ptr<RuntimeWorld> result;
     try {
         world::RuntimeMap runtime(static_cast<int>(data.width), static_cast<int>(data.height),
                                   static_cast<int>(data.tileSize));
@@ -38,7 +39,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                 runtime.collision().setSolid(static_cast<int>(x), static_cast<int>(y), data.collision[index] != 0);
             }
         }
-        auto result = std::make_unique<RuntimeWorld>(data.id, std::move(runtime), *spawn);
+        result = std::make_unique<RuntimeWorld>(data.id, std::move(runtime), *spawn);
         result->enemies_.reserve(data.enemies.size());
         for (const auto& placement : data.enemies) {
             result->enemies_.push_back({placement.id, enemyFactory_.create(
@@ -61,6 +62,17 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         }
         return {std::move(result), {}};
     } catch (const std::exception& exception) {
+        if (result) {
+            for (auto& enemy : result->enemies_) {
+                static_cast<void>(handles_.destroy(enemy.instance.handle()));
+            }
+            for (auto& object : result->objects_) {
+                static_cast<void>(handles_.destroy(object.instance.handle()));
+            }
+            for (auto& pickup : result->pickups_) {
+                static_cast<void>(handles_.destroy(pickup.instance.handle()));
+            }
+        }
         return {nullptr, exception.what()};
     }
 }

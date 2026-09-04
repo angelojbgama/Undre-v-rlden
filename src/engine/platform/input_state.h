@@ -16,6 +16,8 @@ struct InputState final {
     bool quickSlot2Pressed{};
     bool quickSlot3Pressed{};
     bool quickSlot4Pressed{};
+    bool saveGamePressed{};
+    bool loadGamePressed{};
 
     void clear() noexcept { *this = {}; }
     [[nodiscard]] constexpr bool operator==(const InputState&) const noexcept = default;

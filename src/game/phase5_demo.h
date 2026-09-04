@@ -15,7 +15,8 @@ namespace underworld::game {
 
 class Phase7Demo final {
 public:
-    Phase7Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
+    Phase7Demo(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
+               const std::filesystem::path& executableDirectory);
     ~Phase7Demo();
 
     void fixedTick(simulation::Tick tick, const platform::InputState& input,

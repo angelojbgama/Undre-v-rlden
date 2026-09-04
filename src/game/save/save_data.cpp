@@ -99,6 +99,65 @@ bool applyWorldState(const SessionWorldState& state,maps::RuntimeWorld& world,si
     auto& pickups=world.pickups();for(auto it=pickups.begin();it!=pickups.end();){const auto* delta=state.findPickup({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->collected){static_cast<void>(handles.destroy(it->instance.handle()));it=pickups.erase(it);continue;}if(delta->remainingQuantity){if(auto* currency=std::get_if<gameplay::CurrencyPickup>(&it->instance.payload()))currency->amount=*delta->remainingQuantity;else if(auto* item=std::get_if<gameplay::ItemPickup>(&it->instance.payload())){if(*delta->remainingQuantity>std::numeric_limits<std::uint32_t>::max()){error="saved item pickup remainder overflows";return false;}item->quantity=static_cast<std::uint32_t>(*delta->remainingQuantity);}else{error="health pickup cannot have partial remainder";return false;}}++it;}static_cast<void>(items);return true;
 }
 
+void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& world,
+                       SessionWorldState& state) {
+    for (const auto& placement : original.objects) {
+        const auto runtime = std::find_if(
+            world.objects().begin(), world.objects().end(), [&](const auto& candidate) {
+                return candidate.persistentId == placement.id;
+            });
+        if (runtime == world.objects().end()) {
+            state.set(ObjectDelta{{original.id, placement.id}, false, true, {}});
+            continue;
+        }
+
+        std::vector<gameplay::ItemStack> contents;
+        if (const auto* container = runtime->instance.contents()) {
+            for (std::size_t index = 0; index < container->capacity(); ++index) {
+                if (const auto& slot = container->slot(index)) { contents.push_back(*slot); }
+            }
+        }
+        const bool opened = runtime->instance.state() == gameplay::WorldObjectState::opened;
+        const auto sameContents = [&] {
+            if (contents.size() != placement.initialContents.size()) { return false; }
+            for (std::size_t index = 0; index < contents.size(); ++index) {
+                if (!(contents[index].itemId == placement.initialContents[index].itemId) ||
+                    contents[index].quantity != placement.initialContents[index].quantity) {
+                    return false;
+                }
+            }
+            return true;
+        }();
+        if (opened || !sameContents) {
+            state.set(ObjectDelta{{original.id, placement.id}, opened, false,
+                                  std::move(contents)});
+        }
+    }
+
+    for (const auto& placement : original.pickups) {
+        const auto runtime = std::find_if(
+            world.pickups().begin(), world.pickups().end(), [&](const auto& candidate) {
+                return candidate.persistentId == placement.id;
+            });
+        if (runtime == world.pickups().end()) {
+            state.set(PickupDelta{{original.id, placement.id}, true, std::nullopt});
+            continue;
+        }
+        std::optional<std::uint64_t> originalQuantity;
+        std::optional<std::uint64_t> runtimeQuantity;
+        if (const auto* currency = std::get_if<gameplay::CurrencyPickup>(&placement.payload)) {
+            originalQuantity = currency->amount;
+            runtimeQuantity = std::get<gameplay::CurrencyPickup>(runtime->instance.payload()).amount;
+        } else if (const auto* item = std::get_if<gameplay::ItemPickup>(&placement.payload)) {
+            originalQuantity = item->quantity;
+            runtimeQuantity = std::get<gameplay::ItemPickup>(runtime->instance.payload()).quantity;
+        }
+        if (originalQuantity && runtimeQuantity && *originalQuantity != *runtimeQuantity) {
+            state.set(PickupDelta{{original.id, placement.id}, false, runtimeQuantity});
+        }
+    }
+}
+
 SavedPlayer capturePlayer(const gameplay::Player& player,const gameplay::PlayerItems& items,const simulation::MapId& currentMapId){SavedPlayer saved;saved.currentMapId=currentMapId;saved.position=player.feetPosition();saved.facing=player.facing();saved.health=player.health().current;saved.gold=items.wallet().gold();for(std::size_t index=0;index<saved.inventory.size();++index)saved.inventory[index]=items.inventory().items().slot(index);for(std::size_t index=0;index<saved.quickSlots.size();++index)saved.quickSlots[index]=items.quickSlots().binding(index);return saved;}
 bool applyPlayer(const SavedPlayer& saved,gameplay::Player& player,gameplay::PlayerItems& items,const gameplay::ItemCatalog& catalog,std::string& error){try{if(saved.health<0||saved.health>player.health().maximum){error="saved player health is invalid";return false;}for(const auto& binding:saved.quickSlots)if(binding&&!catalog.find(*binding)){error="saved quick slot item is unknown";return false;}items.inventory().items().restoreSlots(saved.inventory);items.wallet().restoreGold(saved.gold);for(std::size_t index=0;index<saved.quickSlots.size();++index){if(saved.quickSlots[index])items.quickSlots().bind(index,*saved.quickSlots[index]);else items.quickSlots().clear(index);}player.health().current=saved.health;player.relocate(saved.position,saved.facing);return true;}catch(const std::exception& exception){error=exception.what();return false;}}
 

@@ -16,6 +16,7 @@ public:
     [[nodiscard]] CombatResolution resolve(const Hitbox& attack, CombatTargetRef target,
                                            simulation::EventBuffer& events);
     void finishAttack(AttackKey attack) noexcept;
+    void clearTransientRecords() noexcept { hits_.clear(); }
 
 private:
     struct HitRecord final {

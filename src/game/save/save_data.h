@@ -80,6 +80,8 @@ inline constexpr std::uint16_t saveMinorVersion = 0;
 [[nodiscard]] bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
                                    simulation::EntityHandlePool& handles,
                                    const gameplay::ItemCatalog& items, std::string& error);
+void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& world,
+                       SessionWorldState& state);
 [[nodiscard]] SavedPlayer capturePlayer(const gameplay::Player& player,
                                         const gameplay::PlayerItems& items,
                                         const simulation::MapId& currentMapId);

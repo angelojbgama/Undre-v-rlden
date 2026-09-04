@@ -24,8 +24,9 @@ constexpr core::FixedStepConfig fixedStepConfig{
 int run(platform::Platform& platform) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
+    const auto executableDirectory = platform.executableDirectory();
     Phase7Demo demo(platform.imageDecoder(),
-                    findLicensedAssetRoot(platform.executableDirectory()));
+                    findLicensedAssetRoot(executableDirectory), executableDirectory);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;

@@ -23,6 +23,8 @@ struct ActionIntent final {
     bool interactPressed{};
     bool toggleInventoryPressed{};
     int quickSlotPressed{-1};
+    bool saveGamePressed{};
+    bool loadGamePressed{};
     [[nodiscard]] constexpr bool operator==(const ActionIntent&) const noexcept = default;
 };
 
