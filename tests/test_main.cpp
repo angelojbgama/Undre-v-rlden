@@ -44,6 +44,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/quests/quest_model.h"
+#include "game/gameplay/quests/quest_state.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/world_objects.h"
@@ -2883,6 +2884,56 @@ void testPhase11QuestDefinitions() {
     expect(rejectedDuplicateQuest, "QuestCatalog rejects duplicate quest definition IDs");
 }
 
+void testPhase11QuestState() {
+    namespace quests = underworld::game::gameplay::quests;
+    namespace simulation = underworld::simulation;
+
+    const underworld::game::GameContentRegistry content;
+    const auto& definition = content.quests().require(quests::scholarQuestId());
+    quests::QuestStateStore state;
+
+    expect(state.status(definition.id) == quests::QuestStatus::inactive &&
+               state.find(definition.id) == nullptr,
+           "unstarted quests expose the inactive status without a runtime record");
+    expect(state.start(definition) && state.status(definition.id) == quests::QuestStatus::active &&
+               state.require(definition.id).objectives.size() == definition.objectives.size() &&
+               state.require(definition.id).objectives[0].currentCount == 0,
+           "starting a quest creates independent zeroed objective progress");
+    expect(!state.start(definition) && state.size() == 1,
+           "a quest cannot be started twice while its progress is active");
+
+    expect(state.advanceObjective(definition,
+                                  simulation::DefinitionId{"quest.scholar.talk"}) &&
+               quests::findObjectiveProgress(state.require(definition.id),
+                                              simulation::DefinitionId{"quest.scholar.talk"})
+                       ->currentCount == 1 &&
+               state.status(definition.id) == quests::QuestStatus::active,
+           "advancing one objective updates only its runtime progress");
+    expect(state.setObjectiveProgress(definition,
+                                      simulation::DefinitionId{"quest.scholar.kill"}, 99) &&
+               quests::findObjectiveProgress(state.require(definition.id),
+                                              simulation::DefinitionId{"quest.scholar.kill"})
+                       ->currentCount == 1 &&
+               state.status(definition.id) == quests::QuestStatus::active,
+           "objective progress clamps to the immutable required count");
+    expect(!state.advanceObjective(definition,
+                                   simulation::DefinitionId{"quest.scholar.missing"}) &&
+               !state.setObjectiveProgress(definition,
+                                           simulation::DefinitionId{"quest.scholar.missing"}, 1),
+           "unknown objectives do not mutate quest state");
+    expect(state.advanceObjective(definition,
+                                  simulation::DefinitionId{"quest.scholar.pickup"}) &&
+               state.status(definition.id) == quests::QuestStatus::completed,
+           "completing the final objective transitions the quest to completed");
+    expect(!state.advanceObjective(definition,
+                                   simulation::DefinitionId{"quest.scholar.talk"}) &&
+               state.status(definition.id) == quests::QuestStatus::completed,
+           "completed quests reject further objective progress");
+    expect(state.reset(definition.id) && state.status(definition.id) == quests::QuestStatus::inactive &&
+               state.find(definition.id) == nullptr && !state.reset(definition.id),
+           "reset removes runtime progress and returns a quest to inactive");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -4166,6 +4217,7 @@ int main() {
         testPhase10DialogueDataModel();
         testPhase10DialogueSession();
         testPhase11QuestDefinitions();
+        testPhase11QuestState();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

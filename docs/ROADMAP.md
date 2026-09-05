@@ -903,8 +903,19 @@ estável, seis tipos de objetivo (`talk`, `kill`, `pickup`, `enter`, `open`,
 `deliver`) e IDs explícitos para os alvos. O `GameContentRegistry` registra uma
 quest multiobjetivo pequena para exercitar o modelo com conteúdo real.
 
-Progresso de quest, avanço orientado a eventos e persistência permanecem fora deste
-bloco.
+Avanço orientado a eventos e persistência permanecem fora deste bloco.
+
+## Block 11B — Quest state (DONE)
+
+`QuestStateStore` mantém `QuestProgress` separado de `QuestDefinition`, com status
+`inactive`, `active` e `completed`, contadores por objetivo e reset explícito.
+Iniciar uma quest copia somente os IDs dos objetivos e os contadores; os limites
+continuam pertencendo às definições imutáveis. O estado aceita avanço incremental ou
+atribuição clamped ao limite requerido e conclui automaticamente quando todos os
+objetivos terminam.
+
+Avanço dirigido por eventos e persistência de save permanecem deferidos para os
+blocos seguintes.
 
 ## Gate
 

@@ -1374,6 +1374,18 @@ objective IDs and provides stable lookup for runtime systems that will be added 
 later blocks.
 
 The shared `GameContentRegistry` registers the current Scholar quest definition so
-the model is exercised by real content registration. This block deliberately does
-not add quest progress, event consumption or save data; DMAP and DSAV formats remain
-unchanged.
+the model is exercised by real content registration. Runtime progress is defined by
+the following Fase 11B block; event consumption and save data remain outside these
+two foundations. DMAP and DSAV formats remain unchanged.
+
+## Fase 11B — Quest state
+
+`QuestStateStore` owns runtime-only `QuestProgress` records and never stores mutable
+state in `QuestDefinition`. An absent record is `inactive`; `start` creates ordered
+zeroed `QuestObjectiveProgress` entries and marks the quest `active`. Objective
+progress can be advanced or explicitly set, is clamped to the definition's required
+count, and changes the quest to `completed` only after all definition objectives are
+complete. `reset` removes the record and returns the quest to its inactive state.
+
+This block does not consume domain events and does not serialize state; those concerns
+remain deferred to the later quest progression and persistence blocks.
