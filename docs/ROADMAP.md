@@ -44,7 +44,7 @@ FASE 7 — Objetos + pickup + HUD + inventário            DONE
 FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               IN PROGRESS
-FASE 11 — Quests
+FASE 11 — Quests                                      IN PROGRESS
 FASE 12 — RPG + XP + equipment + loot
 FASE 13 — Headless + replay + auditoria multiplayer
 FASE 14 — Networking
@@ -894,6 +894,17 @@ Dois NPCs diferentes reutilizam o mesmo sistema e pelo menos uma condição/flag
 ---
 
 # Fase 11 — Quests
+
+## Block 11A — Quest definitions (DONE)
+
+`QuestDefinition`, `QuestObjectiveDefinition` e `QuestCatalog` formam a primeira
+fundação de quests independente de renderer. As definições usam `DefinitionId`
+estável, seis tipos de objetivo (`talk`, `kill`, `pickup`, `enter`, `open`,
+`deliver`) e IDs explícitos para os alvos. O `GameContentRegistry` registra uma
+quest multiobjetivo pequena para exercitar o modelo com conteúdo real.
+
+Progresso de quest, avanço orientado a eventos e persistência permanecem fora deste
+bloco.
 
 ## Gate
 

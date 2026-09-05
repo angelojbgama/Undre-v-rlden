@@ -1362,3 +1362,18 @@ unset and can set or clear a flag when selected. The game carries this state in
 `SaveData`; DSAV 1.1 adds the optional bounds-checked `FLGS` chunk while DSAV 1.0 saves
 without flags remain readable. Conditions/actions are intentionally limited to these
 two flag operations; quest state and a broader scripting model remain deferred.
+
+## Fase 11A — Quest definitions
+
+Quest content begins with immutable, renderer-independent `QuestDefinition` values
+containing ordered `QuestObjectiveDefinition` values. Each objective has a stable
+`DefinitionId`, one of the declared objective kinds (`talk`, `kill`, `pickup`,
+`enter`, `open`, `deliver`), a target definition ID, a required count and authoring
+text. `QuestCatalog` validates complete definitions, duplicate quest IDs, duplicate
+objective IDs and provides stable lookup for runtime systems that will be added in
+later blocks.
+
+The shared `GameContentRegistry` registers the current Scholar quest definition so
+the model is exercised by real content registration. This block deliberately does
+not add quest progress, event consumption or save data; DMAP and DSAV formats remain
+unchanged.

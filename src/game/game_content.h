@@ -5,6 +5,7 @@
 #include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
+#include "game/gameplay/quests/quest_model.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
@@ -64,6 +65,10 @@ public:
     [[nodiscard]] const gameplay::dialogue::DialogueCatalog& dialogues() const noexcept {
         return dialogues_;
     }
+    [[nodiscard]] gameplay::quests::QuestCatalog& quests() noexcept { return quests_; }
+    [[nodiscard]] const gameplay::quests::QuestCatalog& quests() const noexcept {
+        return quests_;
+    }
     [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
     [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
@@ -91,6 +96,7 @@ private:
     gameplay::npcs::NpcCatalog npcs_;
     gameplay::npcs::NpcVisualCatalog npcVisuals_;
     gameplay::dialogue::DialogueCatalog dialogues_;
+    gameplay::quests::QuestCatalog quests_;
     TilesetCatalog tilesets_;
     authoring::AuthoringSemanticRegistry authoringSemantics_;
     std::vector<gameplay::PickupDefinition> pickups_;

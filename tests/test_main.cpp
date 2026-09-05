@@ -43,6 +43,7 @@
 #include "game/gameplay/dialogue/dialogue_session.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
+#include "game/gameplay/quests/quest_model.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/world_objects.h"
@@ -2801,6 +2802,87 @@ void testPhase10DialogueSession() {
            "dialogue conditions select choices from the current persistent flag state");
 }
 
+void testPhase11QuestDefinitions() {
+    namespace quests = underworld::game::gameplay::quests;
+    namespace simulation = underworld::simulation;
+
+    const underworld::game::GameContentRegistry content;
+    const auto& scholarQuest = content.quests().require(quests::scholarQuestId());
+    expect(content.quests().size() == 1 && scholarQuest.title == "The Scholar's Path" &&
+               scholarQuest.objectives.size() == 3 &&
+               scholarQuest.objectives[0].kind == quests::QuestObjectiveKind::talk &&
+               scholarQuest.objectives[0].targetId ==
+                   simulation::DefinitionId{"npc.scholar"} &&
+               scholarQuest.objectives[1].kind == quests::QuestObjectiveKind::kill &&
+               scholarQuest.objectives[2].kind == quests::QuestObjectiveKind::pickup,
+           "GameContentRegistry exposes a reusable multi-objective quest definition");
+
+    expect(quests::findObjective(scholarQuest,
+                                 simulation::DefinitionId{"quest.scholar.kill"}) != nullptr &&
+               quests::requireObjective(scholarQuest,
+                                         simulation::DefinitionId{"quest.scholar.pickup"})
+                       .requiredCount == 1,
+           "quest objectives are addressable by stable DefinitionId");
+
+    quests::QuestCatalog catalog;
+    quests::QuestDefinition allKinds{simulation::DefinitionId{"quest.test.all_kinds"},
+                                     "All objective kinds", {}, {"test"}};
+    const std::array kinds{quests::QuestObjectiveKind::talk,
+                           quests::QuestObjectiveKind::kill,
+                           quests::QuestObjectiveKind::pickup,
+                           quests::QuestObjectiveKind::enter,
+                           quests::QuestObjectiveKind::open,
+                           quests::QuestObjectiveKind::deliver};
+    for (std::size_t index = 0; index < kinds.size(); ++index) {
+        allKinds.objectives.push_back(
+            {simulation::DefinitionId{"quest.test.objective." + std::to_string(index)},
+             kinds[index], simulation::DefinitionId{"target.test." + std::to_string(index)},
+             1, "Test objective"});
+    }
+    catalog.add(allKinds);
+    expect(catalog.size() == 1 &&
+               catalog.require(simulation::DefinitionId{"quest.test.all_kinds"}) == allKinds,
+           "QuestCatalog accepts all declared objective kinds without runtime state");
+
+    bool rejectedIncompleteQuest = false;
+    try {
+        catalog.add({simulation::DefinitionId{"quest.test.empty"}, "", {}, {}});
+    } catch (const std::invalid_argument&) {
+        rejectedIncompleteQuest = true;
+    }
+    expect(rejectedIncompleteQuest, "QuestCatalog rejects incomplete quest definitions");
+
+    bool rejectedIncompleteObjective = false;
+    try {
+        catalog.add({simulation::DefinitionId{"quest.test.invalid_objective"}, "Invalid",
+                     {{simulation::DefinitionId{"quest.test.objective"},
+                       quests::QuestObjectiveKind::talk, {}, 0, ""}}, {}});
+    } catch (const std::invalid_argument&) {
+        rejectedIncompleteObjective = true;
+    }
+    expect(rejectedIncompleteObjective,
+           "QuestCatalog rejects objectives without target IDs or required count");
+
+    bool rejectedDuplicateObjective = false;
+    try {
+        auto invalid = allKinds;
+        invalid.objectives.push_back(invalid.objectives.front());
+        invalid.id = simulation::DefinitionId{"quest.test.duplicate_objective"};
+        catalog.add(std::move(invalid));
+    } catch (const std::logic_error&) {
+        rejectedDuplicateObjective = true;
+    }
+    expect(rejectedDuplicateObjective, "QuestCatalog rejects duplicate objective IDs");
+
+    bool rejectedDuplicateQuest = false;
+    try {
+        catalog.add(allKinds);
+    } catch (const std::logic_error&) {
+        rejectedDuplicateQuest = true;
+    }
+    expect(rejectedDuplicateQuest, "QuestCatalog rejects duplicate quest definition IDs");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -4083,6 +4165,7 @@ int main() {
         testPhase10NpcFoundation();
         testPhase10DialogueDataModel();
         testPhase10DialogueSession();
+        testPhase11QuestDefinitions();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();
