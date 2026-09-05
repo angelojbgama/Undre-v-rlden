@@ -24,6 +24,11 @@ screenshots/
 abre arquivos diretamente. IDs de definição e IDs persistentes são serializados;
 handles runtime e ponteiros não fazem parte do snapshot.
 
+O Block B adiciona `writeBmp32`, que lê diretamente um `PixelBufferView` RGBA8. O
+arquivo é BMP 32-bit bottom-up, com dimensões e pixels do framebuffer lógico; não há
+captura da janela ou do desktop. `AuditSession::captureScreenshot` restringe o nome
+ao diretório `screenshots/` da sessão e atualiza o contador do resumo.
+
 Uma sessão habilitada usa um identificador explícito seguro ou gera um timestamp UTC.
 O diretório padrão é `audit/<session-id>/`, que é somente artefato de desenvolvimento
 e está no `.gitignore`. A sessão cria `screenshots/` desde já para manter o contrato
@@ -39,7 +44,7 @@ projéteis ativos.
 
 ```text
 A — AuditSession, eventos estruturados e snapshot       DONE
-B — captura do framebuffer lógico em BMP                 DEFERRED
+B — captura do framebuffer lógico em BMP                 DONE
 C — HeadlessAuditPlatform                                DEFERRED
 D — playtest runner/scripted input                       DEFERRED
 E — integração de auditoria manual no Windows/F12       DEFERRED

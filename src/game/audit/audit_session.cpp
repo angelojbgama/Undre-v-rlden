@@ -1,5 +1,7 @@
 #include "game/audit/audit_session.h"
 
+#include "game/audit/bmp_writer.h"
+
 #include <chrono>
 #include <cctype>
 #include <ctime>
@@ -197,6 +199,26 @@ bool AuditSession::recordState(const GameAuditSnapshot& snapshot, bool force) {
     lastStateTick_ = snapshot.tick;
     hasState_ = true;
     ++stateCount_;
+    return true;
+}
+
+bool AuditSession::captureScreenshot(std::string_view name,
+                                     core::PixelBufferView surface, std::string& error) {
+    if (!enabled_ || closed_) { return false; }
+    if (name.empty()) {
+        error = "audit screenshot name cannot be empty";
+        return false;
+    }
+    for (const unsigned char character : name) {
+        if (!std::isalnum(character) && character != '_' && character != '-' && character != '.') {
+            error = "audit screenshot name contains an unsafe character";
+            return false;
+        }
+    }
+    const auto path = sessionDirectory_ / "screenshots" /
+        (std::string{name} + (name.ends_with(".bmp") ? "" : ".bmp"));
+    if (!writeBmp32(path, surface, error)) { return false; }
+    ++screenshotCount_;
     return true;
 }
 

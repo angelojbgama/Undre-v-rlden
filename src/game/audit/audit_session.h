@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/audit/audit_snapshot.h"
+#include "engine/core/pixel_buffer_view.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -67,6 +68,9 @@ public:
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }
     [[nodiscard]] bool recordEvent(const AuditEvent& event);
     [[nodiscard]] bool recordState(const GameAuditSnapshot& snapshot, bool force = false);
+    [[nodiscard]] bool captureScreenshot(std::string_view name,
+                                         core::PixelBufferView surface,
+                                         std::string& error);
     [[nodiscard]] bool writeSummary(std::string_view result, std::string_view failure = {});
     [[nodiscard]] bool close(std::string_view result = "PASS");
     [[nodiscard]] const std::filesystem::path& sessionDirectory() const noexcept {
@@ -74,6 +78,7 @@ public:
     }
     [[nodiscard]] std::size_t eventCount() const noexcept { return eventCount_; }
     [[nodiscard]] std::size_t stateCount() const noexcept { return stateCount_; }
+    [[nodiscard]] std::size_t screenshotCount() const noexcept { return screenshotCount_; }
 
 private:
     bool writeMetadata(const AuditSessionMetadata& metadata, std::string& error);

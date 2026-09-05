@@ -1428,3 +1428,9 @@ explicit force option for important transitions. Audit output is development-onl
 `audit/<session-id>/` and is ignored by Git. The logical framebuffer and screenshot
 writer, headless platform, scripted playtest runner and Linux build are subsequent
 blocks; DMAP/DSAV remain unchanged at their current runtime versions.
+
+The next audit increment adds a small BMP adapter at the same boundary. It accepts
+the renderer's read-only `PixelBufferView` in RGBA8 and writes a 32-bit bottom-up BMP
+without capturing a desktop window. Screenshot names are confined to the audit
+session's `screenshots` directory. This adapter is still passive; automatic capture,
+F12 wiring and headless presentation belong to later blocks.

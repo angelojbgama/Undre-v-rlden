@@ -31,6 +31,7 @@
 #include "game/command_builder.h"
 #include "game/audit/audit_session.h"
 #include "game/audit/audit_snapshot.h"
+#include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
@@ -78,6 +79,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -4356,6 +4358,51 @@ void testAuditSessionFoundation() {
     std::filesystem::remove_all(root, cleanupError);
 }
 
+void testAuditFramebufferScreenshots() {
+    using namespace underworld;
+    namespace audit = game::audit;
+    using core::ColorRGBA8;
+
+    render::Framebuffer framebuffer(2, 2);
+    framebuffer.pixels()[0] = {255, 0, 0, 17};
+    framebuffer.pixels()[1] = {0, 255, 0, 34};
+    framebuffer.pixels()[2] = {0, 0, 255, 51};
+    framebuffer.pixels()[3] = {255, 255, 255, 68};
+    const auto path = std::filesystem::temp_directory_path() / "underworld_audit_test.bmp";
+    std::string error;
+    expect(audit::writeBmp32(path, framebuffer.view(), error),
+           "BMP writer accepts a logical RGBA8 framebuffer");
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
+    expect(bytes.size() == 70U && bytes[0] == 'B' && bytes[1] == 'M' &&
+               bytes[18] == 2U && bytes[22] == 2U && bytes[28] == 32U,
+           "BMP writer emits a 32-bit header with the source dimensions");
+    expect(bytes.size() >= 70U && bytes[54] == 255U && bytes[55] == 0U &&
+               bytes[56] == 0U && bytes[57] == 51U &&
+               bytes[62] == 0U && bytes[63] == 0U && bytes[64] == 255U &&
+               bytes[65] == 17U,
+           "BMP writer preserves bottom-up pixel order and RGBA alpha bytes");
+
+    core::PixelBufferView invalid{nullptr, 2, 2, 8, core::PixelFormat::rgba8};
+    expect(!audit::writeBmp32(path, invalid, error) && !error.empty(),
+           "BMP writer rejects invalid pixel buffers with a clear error");
+
+    const auto root = std::filesystem::temp_directory_path() / "underworld_bmp_session_test";
+    std::error_code cleanupError;
+    std::filesystem::remove_all(root, cleanupError);
+    audit::AuditSession session;
+    audit::AuditSessionConfig config;
+    config.outputRoot = root;
+    config.sessionId = "bmp";
+    expect(session.open(config, error) && session.captureScreenshot("startup", framebuffer.view(), error) &&
+               session.screenshotCount() == 1U && session.close(),
+           "audit session captures the framebuffer into its screenshot directory");
+    expect(std::filesystem::exists(root / "bmp" / "screenshots" / "startup.bmp"),
+           "audit screenshot names resolve only inside the session screenshot directory");
+    std::filesystem::remove(path, cleanupError);
+    std::filesystem::remove_all(root, cleanupError);
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -4449,6 +4496,7 @@ int main() {
         testSemanticAuthoringFoundation();
         testMapCompositionFoundation();
         testAuditSessionFoundation();
+        testAuditFramebufferScreenshots();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

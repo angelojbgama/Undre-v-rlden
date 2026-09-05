@@ -1171,3 +1171,8 @@ Still deferred, in order, are logical-framebuffer BMP capture, the real headless
 platform, deterministic scripted playtest runner, Windows manual/F12 integration,
 portable Linux build/runtime, and seeded stress playtesting. Formal command replay,
 state hashing, network identity and multiplayer authority remain Phase 13/14 work.
+
+The logical framebuffer screenshot increment is also complete: `writeBmp32` preserves
+the framebuffer dimensions and RGBA8 pixels in a development-only 32-bit BMP, and
+`AuditSession` can place named captures inside its session directory. Desktop capture,
+automatic checkpoints, headless presentation and the playtest runner remain deferred.
