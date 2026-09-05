@@ -1287,3 +1287,34 @@ nova quest
 ```
 
 sejam principalmente operações de conteúdo e configuração, sem reescrever sistemas centrais.
+
+# Current authored map set
+
+The current playable content is the three-map DMAP 1.0 set in `maps/gameplay/`:
+`map.dungeon.01`, `map.dungeon.02`, and `map.dungeon.03`. They are registered together
+through the small official map manifest so `MapCatalog::validateLinks()` resolves the
+bidirectional 01 <-> 02 <-> 03 graph before a session starts. Startup selects Map 01
+and `entry.start`; `--map` and `--spawn` remain explicit overrides.
+
+The runtime path is:
+
+```text
+GameLaunchOptions
+    -> official startup map selection
+    -> MapCatalog
+    -> MapSession
+    -> RuntimeWorldBuilder
+    -> RuntimeWorld
+    -> synchronized runtime visuals
+```
+
+Map Maker authored content follows the same boundary:
+
+```text
+EditorDocument -> MapData -> DMAP v1.0 -> readDmap/validateMapData
+                -> MapCatalog/MapSession -> RuntimeWorld
+```
+
+The three reference maps cover the current 72 semantic Dungeon atlas cells and the
+8 registered stamps. Coverage is tested from `AuthoringSemanticRegistry`; the maps do
+not add a second atlas catalog or infer collision from artwork.

@@ -1064,3 +1064,13 @@ O roadmap é uma ordem de dependências, não uma obrigação de construir toda 
 Se o código real mostrar que uma pequena fundação simplifica várias etapas seguintes, ela pode ser antecipada conforme os critérios acima.
 
 Se uma abstração ainda não possui consumidores reais, preservar apenas a fronteira arquitetural e continuar construindo o próximo comportamento jogável.
+
+# Phase 9 current content checkpoint
+
+Phase 9 Block 1 now uses three small authored gameplay maps (`map.dungeon.01` through
+`map.dungeon.03`) instead of generated demo rooms or the editor playground. The maps
+are linked in both directions, remain DMAP 1.0, and exercise the current enemy,
+object, pickup, spawn, collision, semantic-tile, and stamp authoring contracts.
+
+`MapComposer` remains a small composition foundation for deterministic room geometry;
+procedural generation, MapLogic, and LLM blueprint production remain deferred.

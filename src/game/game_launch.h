@@ -15,10 +15,10 @@ struct GameLaunchOptions final {
     std::optional<simulation::SpawnId> spawnId;
 };
 
-enum class StartupMapSource { explicitPath, authoredPlayground, demoFallback };
+enum class StartupMapSource { explicitPath, officialGameplay };
 
 struct StartupMapSelection final {
-    StartupMapSource source{StartupMapSource::demoFallback};
+    StartupMapSource source{StartupMapSource::officialGameplay};
     std::filesystem::path path;
 };
 

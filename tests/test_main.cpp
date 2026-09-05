@@ -48,8 +48,8 @@
 #include "game/runtime_visual_sync.h"
 #include "game/training_puppet.h"
 #include "game/maps/dmap.h"
-#include "game/maps/demo_maps.h"
 #include "game/maps/map_catalog.h"
+#include "game/maps/official_maps.h"
 #include "game/maps/map_composition.h"
 #include "game/maps/reachability.h"
 #include "game/maps/runtime_world.h"
@@ -2312,8 +2312,8 @@ void testViewModelAndWorldObjects() {
            "completed object destruction invalidates runtime handle");
 }
 
-underworld::game::maps::MapData makePhase8TestMap(
-    std::string mapName = "map.test.room_a", std::string target = "map.test.room_b") {
+underworld::game::maps::MapData makeSyntheticMap(
+    std::string mapName = "map.test.alpha", std::string target = "map.test.beta") {
     namespace gameplay = underworld::game::gameplay;
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
@@ -2400,7 +2400,7 @@ void testPhase8PersistentMapsAndSave() {
     tilesets.add({simulation::DefinitionId{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
     maps::MapValidationCatalogs validation{&enemies,&objects,&items,&tilesets};
 
-    auto map = makePhase8TestMap();
+    auto map = makeSyntheticMap();
     expect(maps::validateMapData(map,&validation).valid,
            "MapData validates tiles collision spawns enemies objects pickups links and catalogs before runtime");
     auto duplicate = map; duplicate.pickups[0].id = duplicate.objects[0].id;
@@ -2510,9 +2510,9 @@ void testPhase8PersistentMapsAndSave() {
            "a second atomic save preserves one backup of the prior valid save");
     std::filesystem::remove(temporary,ec);std::filesystem::remove(temporary.wstring()+L".bak",ec);
 
-    auto roomB=makePhase8TestMap("map.test.room_b","map.test.room_a");
-    const auto dmapA=std::filesystem::temp_directory_path()/"underworld_room_a.dmap";
-    const auto dmapB=std::filesystem::temp_directory_path()/"underworld_room_b.dmap";
+    auto roomB=makeSyntheticMap("map.test.beta","map.test.alpha");
+    const auto dmapA=std::filesystem::temp_directory_path()/"underworld_test_alpha.dmap";
+    const auto dmapB=std::filesystem::temp_directory_path()/"underworld_test_beta.dmap";
     expect(maps::writeDmap(dmapA,map,fileError)&&maps::writeDmap(dmapB,roomB,fileError),
            "DMAP filesystem boundary writes deterministic authoring data separately from decoding");
     maps::MapCatalog mapCatalog;mapCatalog.add(map.id,dmapA);mapCatalog.add(roomB.id,dmapB);
@@ -2537,115 +2537,6 @@ void testPhase8PersistentMapsAndSave() {
            "Room A to B to A rebuilds original DMAP and reapplies the same SessionWorldState deltas");
     std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
 
-    auto demoA = maps::makeDemoRoomA();
-    auto demoB = maps::makeDemoRoomB();
-    expect(maps::validateMapData(demoA, &validation) &&
-               maps::validateMapData(demoB, &validation),
-           "both deterministic demo rooms are complete validated MapData documents");
-    const auto demoBytes = maps::serializeDmap(demoA);
-    const auto demoDecoded = maps::deserializeDmap(demoBytes, &validation);
-    auto demoRuntime = builder.build(demoDecoded.data, simulation::SpawnId{"entry.start"});
-    expect(demoDecoded && demoRuntime && demoRuntime.world->objects().size() == 2 &&
-               demoRuntime.world->pickups().size() == 2 &&
-               demoRuntime.world->enemies()[0].instance.feetPosition() ==
-                   demoA.enemies[0].position,
-           "playable Room A is sourced through the real DMAP decode and runtime builder chain");
-    demoA.enemies[0].position = {300, 222};
-    auto movedRuntime = builder.build(demoA, simulation::SpawnId{"entry.start"});
-    expect(movedRuntime && movedRuntime.world->enemies()[0].instance.feetPosition() ==
-                               underworld::core::WorldPointI{300, 222},
-           "runtime entity placement follows MapData without hard-coded spawn logic");
-
-    auto& runtimeObjects = demoRuntime.world->objects();
-    runtimeObjects[0].instance.open();
-    static_cast<void>(runtimeObjects[0].instance.contents()->remove(
-        gameplay::lifePotionItemId(), 1));
-    runtimeObjects[1].instance.combatant()->health.current = 0;
-    static_cast<void>(runtimeObjects[1].instance.syncDestructionState());
-    static_cast<void>(runtimeObjects[1].instance.completeDestruction(handles));
-    runtimeObjects.erase(runtimeObjects.begin() + 1);
-    auto& runtimePickups = demoRuntime.world->pickups();
-    static_cast<void>(handles.destroy(runtimePickups[0].instance.handle()));
-    runtimePickups.erase(runtimePickups.begin());
-    std::get<gameplay::ItemPickup>(runtimePickups[0].instance.payload()).quantity = 2;
-    save::SessionWorldState captured;
-    save::captureWorldState(demoDecoded.data, *demoRuntime.world, captured);
-    expect(captured.findObject({demoDecoded.data.id, {1}})->opened &&
-               captured.findObject({demoDecoded.data.id, {1}})->remainingContents[0].quantity == 1,
-           "runtime mutation capture records opened Chest and exact remaining contents");
-    expect(captured.findObject({demoDecoded.data.id, {2}})->destroyed,
-           "runtime mutation capture records a removed destructible as destroyed");
-    expect(captured.findPickup({demoDecoded.data.id, {3}})->collected &&
-               *captured.findPickup({demoDecoded.data.id, {4}})->remainingQuantity == 2,
-           "runtime mutation capture records collected and partially collected pickups");
-
-    const auto demoPathA = std::filesystem::temp_directory_path()/"underworld_demo_room_a.dmap";
-    const auto demoPathB = std::filesystem::temp_directory_path()/"underworld_demo_room_b.dmap";
-    expect(maps::writeDmap(demoPathA, maps::makeDemoRoomA(), fileError) &&
-               maps::writeDmap(demoPathB, demoB, fileError),
-           "playable demo resources are generated deterministically through the DMAP writer");
-    maps::MapCatalog demoCatalog;
-    demoCatalog.add(maps::demoRoomAId(), demoPathA);
-    demoCatalog.add(maps::demoRoomBId(), demoPathB);
-    save::SessionWorldState automaticState;
-    maps::MapSession demoSession(demoCatalog, validation, builder, handles, automaticState);
-    expect(demoSession.activate(maps::demoRoomAId(), simulation::SpawnId{"entry.start"}).changed,
-           "MapSession activates playable Room A by MapId");
-    const auto oldEnemyHandle = demoSession.world()->enemies()[0].instance.handle();
-    const auto oldChestHandle = demoSession.world()->objects()[0].instance.handle();
-    demoSession.world()->objects()[0].instance.open();
-    static_cast<void>(demoSession.world()->objects()[0].instance.contents()->remove(
-        gameplay::lifePotionItemId(), 1));
-    auto& sessionObjects = demoSession.world()->objects();
-    sessionObjects[1].instance.combatant()->health.current = 0;
-    static_cast<void>(sessionObjects[1].instance.syncDestructionState());
-    static_cast<void>(sessionObjects[1].instance.completeDestruction(handles));
-    sessionObjects.erase(sessionObjects.begin() + 1);
-    auto& sessionPickups = demoSession.world()->pickups();
-    static_cast<void>(handles.destroy(sessionPickups[0].instance.handle()));
-    sessionPickups.erase(sessionPickups.begin());
-    demoSession.beginTick();
-    expect(demoSession.requestTransition({960, 144, 16, 16}) &&
-               demoSession.commitPending().changed &&
-               demoSession.world()->id() == maps::demoRoomBId(),
-           "Room A queues and commits a safe transition to playable Room B");
-    expect(!handles.valid(oldEnemyHandle) && !handles.valid(oldChestHandle),
-           "world swap invalidates every old map-local runtime handle");
-    demoSession.beginTick();
-    expect(demoSession.requestTransition({32, 144, 16, 16}) &&
-               demoSession.commitPending().changed &&
-               demoSession.world()->id() == maps::demoRoomAId() &&
-               demoSession.world()->objects().size() == 1 &&
-               demoSession.world()->objects()[0].instance.state() ==
-                   gameplay::WorldObjectState::opened &&
-               demoSession.world()->objects()[0].instance.contents()->count(
-                   gameplay::lifePotionItemId()) == 1 &&
-               demoSession.world()->pickups().size() == 1,
-           "A to B to A automatically captures and reapplies Chest Crate and Pickup deltas");
-    const auto* retainedWorld = demoSession.world();
-    const auto failedRestore = demoSession.restore(
-        simulation::MapId{"map.missing"}, automaticState);
-    expect(!failedRestore.changed && demoSession.world() == retainedWorld &&
-               demoSession.world()->id() == maps::demoRoomAId(),
-           "failed transactional restore retains the active RuntimeWorld unchanged");
-
-    demoSession.beginTick();
-    expect(demoSession.requestTransition({960, 144, 16, 16}) &&
-               demoSession.commitPending().changed,
-           "session can leave modified Room A again before a cross-map save");
-    save::SaveData crossMapSave;
-    crossMapSave.player.currentMapId = maps::demoRoomBId();
-    crossMapSave.player.position = {80, 160};
-    crossMapSave.player.health = gameplay::Player::maximumHealth;
-    crossMapSave.world = automaticState;
-    save::SaveValidationCatalogs demoSaveCatalogs{&items, {&demoA, &demoB}};
-    const auto crossMapReload = save::deserializeSave(
-        save::serializeSave(crossMapSave), demoSaveCatalogs);
-    expect(crossMapReload && crossMapReload.data.player.currentMapId == maps::demoRoomBId() &&
-               crossMapReload.data.world.findObject({maps::demoRoomAId(), {1}}) &&
-               crossMapReload.data.world.findPickup({maps::demoRoomAId(), {3}}),
-           "saving in Room B retains the complete session delta set for modified Room A");
-
     gameplay::ProjectileSystem transientProjectiles(handles, projectiles);
     gameplay::CombatSystem transientCombat;
     const auto transientHandle = transientProjectiles.spawn(
@@ -2668,7 +2559,7 @@ void testPhase8PersistentMapsAndSave() {
     persistenceEdges.applyNext(persistenceInput);
     expect(!persistenceInput.saveGamePressed && !persistenceInput.loadGamePressed,
            "focus-loss clearing removes pending save and load actions");
-    std::filesystem::remove(demoPathA, ec); std::filesystem::remove(demoPathB, ec);
+    std::filesystem::remove(dmapA, ec); std::filesystem::remove(dmapB, ec);
 }
 
 void testNearestImageRegions() {
@@ -2738,6 +2629,25 @@ void testPhase9EditorFoundation() {
     expect(document.dirty() && document.data().layers.size() == 1 &&
                document.data().layers[0].name == "Ground" && document.data().collision.size() == 12,
            "New Map creates Ground and collision authoring data without arbitrary content");
+    auto authoredDocument = editor::EditorDocument::newAuthoredMap(
+        simulation::MapId{"map.editor.authored"}, 10, 8, 16, content);
+    const auto& authoredData = authoredDocument.data();
+    const auto authoredSurface = [&] {
+        for (const auto& reference : authoredData.tileReferences) {
+            if (const auto* semantic = content.authoringSemantics().findTile(
+                    reference.tilesetId, reference.sourceIndex);
+                semantic && semantic->id.value() == std::string_view{"tile.dungeon.masonry.39"}) {
+                return true;
+            }
+        }
+        return false;
+    }();
+    expect(authoredData.layers.size() == 5 && authoredData.layers[0].name == "ground" &&
+               authoredData.layers[1].name == "walls" && authoredData.layers[0].cells[11].has_value() &&
+               authoredData.collision[0] != 0 && authoredData.playerSpawns.size() == 1 &&
+               authoredData.collision[static_cast<std::size_t>(4) * authoredData.width + 5U] == 0 &&
+               authoredSurface,
+           "authored New Map creates canonical layers, a dataset surface, collision boundary, and safe spawn");
     document.markSaved();
     std::string error;
     const maps::MapTileReference tile{simulation::DefinitionId{"tileset.dungeon"}, 17,
@@ -2833,7 +2743,7 @@ void testPhase9EditorFoundation() {
                !editor::worldPointToTile(document.data(), {64,0}),
            "world-to-tile rejects negative and beyond-map coordinates without clamping");
 
-    auto placementDocument = editor::EditorDocument(makePhase8TestMap());
+    auto placementDocument = editor::EditorDocument(makeSyntheticMap());
     const auto firstNew = placementDocument.allocatePersistentId();
     expect(firstNew.value > 5, "persistent id allocation starts above every placement namespace id");
     expect(placementDocument.execute(std::make_unique<editor::DeleteEntityCommand>(
@@ -2964,7 +2874,7 @@ void testPhase9EditorFoundation() {
                content, error),
            "DMAP 1.0 save explicitly blocks experimental regions instead of silently dropping them");
 
-    auto roundtripMap = makePhase8TestMap("map.editor.roundtrip", "map.other");
+    auto roundtripMap = makeSyntheticMap("map.test.roundtrip", "map.test.other");
     const auto temporary = std::filesystem::temp_directory_path() / "underworld_editor_roundtrip.dmap";
     editor::EditorDocument roundtrip(roundtripMap);
     expect(roundtrip.saveAs(temporary, content, error) && !roundtrip.dirty(),
@@ -2977,47 +2887,47 @@ void testPhase9EditorFoundation() {
     std::filesystem::remove(temporary, removeError);
 }
 
-void testEditorSmokeMapIntegrationFixture() {
+void testSyntheticMapIntegrationFixture() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
     namespace creatures = underworld::game::gameplay::creatures;
     namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
 
-    const auto source = maps::makeEditorSmokeMap();
+    const auto source = makeSyntheticMap("map.test.editor", "map.test.editor");
     game::GameContentRegistry content;
     const auto validation = game::mapValidationCatalogs(content);
-    expect(source.id == maps::editorSmokeMapId() && source.width == 32 && source.height == 24 &&
+    expect(source.id == simulation::MapId{"map.test.editor"} && source.width == 4 && source.height == 3 &&
                source.tileSize == 16 && source.layers.size() >= 1 &&
                std::any_of(source.collision.begin(), source.collision.end(),
                            [](std::uint8_t value) { return value != 0; }),
-           "editor smoke fixture is a deterministic 32 by 24 tiled map with collision");
+           "synthetic editor fixture is a deterministic tiled map with collision");
     expect(static_cast<bool>(maps::validateMapData(source, &validation)),
-           "editor smoke fixture resolves only shared GameContentRegistry definitions");
+           "synthetic editor fixture resolves only shared GameContentRegistry definitions");
 
     const auto bytes = maps::serializeDmap(source);
     const auto decoded = maps::deserializeDmap(bytes, &validation);
     expect(decoded && maps::semanticallyEqual(source, decoded.data),
-           "map.editor.smoke roundtrips through the official DMAP v1 reader and writer");
-    expect(decoded.data.playerSpawns.size() == 1 && decoded.data.enemies.size() == 2 &&
+           "synthetic fixture roundtrips through the official DMAP v1 reader and writer");
+    expect(decoded.data.playerSpawns.size() == 2 && decoded.data.enemies.size() == 1 &&
                decoded.data.objects.size() == 2 && decoded.data.pickups.size() == 2 &&
-               decoded.data.links.size() == 1 && decoded.data.enemies[0].id.value == 101 &&
-               decoded.data.enemies[1].id.value == 102 && decoded.data.objects[0].id.value == 201 &&
-               decoded.data.objects[1].id.value == 202 && decoded.data.pickups[0].id.value == 301 &&
-               decoded.data.pickups[1].id.value == 302 &&
+               decoded.data.links.size() == 1 && decoded.data.enemies[0].id.value == 1 &&
+               decoded.data.objects[0].id.value == 2 &&
+               decoded.data.objects[1].id.value == 3 && decoded.data.pickups[0].id.value == 4 &&
+               decoded.data.pickups[1].id.value == 5 &&
                decoded.data.enemies[0].definitionId == creatures::soldierEnemyId() &&
-               decoded.data.enemies[1].definitionId == creatures::skullEnemyId() &&
                decoded.data.objects[0].definitionId == simulation::DefinitionId{"object.chest"} &&
                decoded.data.objects[1].definitionId == simulation::DefinitionId{"object.crate"} &&
                decoded.data.pickups[0].definitionId == simulation::DefinitionId{"pickup.money"} &&
                decoded.data.pickups[1].definitionId == simulation::DefinitionId{"pickup.life_potion"} &&
-               decoded.data.links[0].targetMapId == maps::editorSmokeMapId() &&
-               decoded.data.links[0].targetSpawnId == simulation::SpawnId{"entry.start"} &&
+               decoded.data.links[0].targetMapId == simulation::MapId{"map.test.editor"} &&
+               decoded.data.links[0].targetSpawnId == simulation::SpawnId{"entry.return"} &&
                std::any_of(decoded.data.playerSpawns.begin(), decoded.data.playerSpawns.end(),
                            [&](const maps::PlayerSpawn& spawn) {
                                return spawn.id == decoded.data.links[0].targetSpawnId;
                            }),
-           "DMAP persists deterministic non-zero placement identities without runtime handles");
+           "DMAP persists synthetic placement identities without runtime handles");
 
     simulation::EntityHandlePool handles;
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
@@ -3029,20 +2939,19 @@ void testEditorSmokeMapIntegrationFixture() {
         runtimeTilesets);
     const auto runtime = builder.build(decoded.data, simulation::SpawnId{"entry.start"});
     expect(runtime && runtime.world->spawn().id == simulation::SpawnId{"entry.start"} &&
-               runtime.world->enemies().size() == 2 && runtime.world->objects().size() == 2 &&
-               runtime.world->pickups().size() == 2 && runtime.world->enemies()[0].persistentId.value == 101 &&
-               runtime.world->enemies()[1].persistentId.value == 102 &&
-               runtime.world->objects()[0].persistentId.value == 201 &&
-               runtime.world->objects()[1].persistentId.value == 202 &&
-               runtime.world->pickups()[0].persistentId.value == 301 &&
-               runtime.world->pickups()[1].persistentId.value == 302 &&
-               runtime.world->map().collision().isSolid(1, 1) &&
+               runtime.world->enemies().size() == 1 && runtime.world->objects().size() == 2 &&
+               runtime.world->pickups().size() == 2 && runtime.world->enemies()[0].persistentId.value == 1 &&
+               runtime.world->objects()[0].persistentId.value == 2 &&
+               runtime.world->objects()[1].persistentId.value == 3 &&
+               runtime.world->pickups()[0].persistentId.value == 4 &&
+               runtime.world->pickups()[1].persistentId.value == 5 &&
+               runtime.world->map().collision().isSolid(3, 0) &&
                runtime.world->enemies()[0].instance.handle() && runtime.world->objects()[0].instance.handle() &&
                runtime.world->pickups()[0].instance.handle(),
            "RuntimeWorldBuilder creates the smoke fixture placements and allocates handles only at runtime");
 }
 
-void testEditorPlaygroundAuthoringAsset() {
+void testOfficialGameplayMapAuthoringAsset() {
     namespace editor = underworld::editor;
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
@@ -3051,11 +2960,11 @@ void testEditorPlaygroundAuthoringAsset() {
     namespace simulation = underworld::simulation;
 
     std::filesystem::path root = std::filesystem::current_path();
-    std::filesystem::path playground;
+    std::filesystem::path gameplayMap;
     for (;;) {
-        const auto candidate = root / "maps" / "authoring" / "editor_playground.dmap";
+        const auto candidate = root / "maps" / "gameplay" / "dungeon_01_entry.dmap";
         if (std::filesystem::exists(candidate)) {
-            playground = candidate;
+            gameplayMap = candidate;
             break;
         }
         const auto parent = root.parent_path();
@@ -3064,14 +2973,14 @@ void testEditorPlaygroundAuthoringAsset() {
     }
     game::GameContentRegistry content;
     const auto validation = game::mapValidationCatalogs(content);
-    const auto loaded = playground.empty() ? maps::DmapLoadResult{}
-                                           : maps::readDmap(playground, &validation);
-    expect(loaded && loaded.data.id == simulation::MapId{"map.editor.playground"} &&
-               loaded.data.width == 48 && loaded.data.height == 32 && loaded.data.tileSize == 16 &&
+    const auto loaded = gameplayMap.empty() ? maps::DmapLoadResult{}
+                                            : maps::readDmap(gameplayMap, &validation);
+    expect(loaded && loaded.data.id == simulation::MapId{"map.dungeon.01"} &&
+               loaded.data.width == 24 && loaded.data.height == 18 && loaded.data.tileSize == 16 &&
                !loaded.data.layers.empty() && !loaded.data.playerSpawns.empty(),
-           "editable playground asset is a readable DMAP v1 map with stable broad invariants");
+           "official gameplay asset is a readable DMAP v1 map with stable broad invariants");
     expect(loaded && maps::validateMapData(loaded.data, &validation),
-           "editable playground asset validates against shared game content definitions");
+           "official gameplay asset validates against shared game content definitions");
 
     simulation::EntityHandlePool handles;
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
@@ -3090,18 +2999,18 @@ void testEditorPlaygroundAuthoringAsset() {
                                 : maps::RuntimeWorldBuildResult{};
     expect(startupSpawn && *startupSpawn == loaded.data.playerSpawns.front().id,
            "authored map resolves a deterministic PlayerSpawn for game startup");
-    expect(selectedRuntime && selectedRuntime.world->map().collision().width() == 48 &&
-               selectedRuntime.world->map().collision().height() == 32,
-           "editable playground DMAP builds through RuntimeWorldBuilder with runtime-only handles");
+    expect(selectedRuntime && selectedRuntime.world->map().collision().width() == 24 &&
+               selectedRuntime.world->map().collision().height() == 18,
+           "official gameplay DMAP builds through RuntimeWorldBuilder with runtime-only handles");
     expect(selectedRuntime && selectedRuntime.world->enemies().size() == loaded.data.enemies.size() &&
                selectedRuntime.world->objects().size() == loaded.data.objects.size() &&
                selectedRuntime.world->pickups().size() == loaded.data.pickups.size(),
-           "authored enemy object and pickup placements become runtime instances");
+           "official enemy object and pickup placements become runtime instances");
 
     std::string error;
-    auto document = playground.empty() ? std::optional<editor::EditorDocument>{}
-                                       : editor::EditorDocument::open(playground, content, error);
-    const auto copy = std::filesystem::temp_directory_path() / "underworld_editor_playground_copy.dmap";
+    auto document = gameplayMap.empty() ? std::optional<editor::EditorDocument>{}
+                                        : editor::EditorDocument::open(gameplayMap, content, error);
+    const auto copy = std::filesystem::temp_directory_path() / "underworld_gameplay_map_copy.dmap";
     std::error_code removeError;
     std::filesystem::remove(copy, removeError);
     const bool savedCopy = document && !document->dirty() && !document->hasExperimentalData() &&
@@ -3110,8 +3019,196 @@ void testEditorPlaygroundAuthoringAsset() {
                                     : std::optional<editor::EditorDocument>{};
     expect(savedCopy && reopened && !reopened->dirty() &&
                maps::semanticallyEqual(document->data(), reopened->data()),
-           "Map Editor opens the playground clean and saves a persistable roundtrip copy");
+           "Map Editor opens an official gameplay map and saves a persistable roundtrip copy");
     std::filesystem::remove(copy, removeError);
+}
+
+void testOfficialGameplayMapSet() {
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
+    namespace simulation = underworld::simulation;
+
+    game::GameContentRegistry content;
+    const auto validation = game::mapValidationCatalogs(content);
+    const auto manifest = maps::officialGameplayMaps();
+    expect(manifest.size() == 3, "official gameplay manifest contains exactly three maps");
+    std::vector<maps::MapData> loadedMaps;
+    std::vector<std::filesystem::path> paths;
+    std::vector<std::string> coveredTiles;
+    std::vector<std::string> coveredStamps;
+    auto addUnique = [](std::vector<std::string>& values, std::string_view value) {
+        if (std::find(values.begin(), values.end(), value) == values.end()) {
+            values.emplace_back(value);
+        }
+    };
+    auto tileAt = [&](const maps::MapData& map, std::size_t layer, int x, int y)
+        -> const underworld::game::authoring::TileSemanticDefinition* {
+        if (x < 0 || y < 0 || static_cast<std::uint32_t>(x) >= map.width ||
+            static_cast<std::uint32_t>(y) >= map.height) { return nullptr; }
+        const auto cell = map.layers[layer].cells[static_cast<std::size_t>(y) * map.width +
+                                                   static_cast<std::size_t>(x)];
+        if (!cell || *cell >= map.tileReferences.size()) { return nullptr; }
+        const auto& ref = map.tileReferences[*cell];
+        return content.authoringSemantics().findTile(ref.tilesetId, ref.sourceIndex);
+    };
+    for (const auto& entry : manifest) {
+        const auto path = maps::resolveOfficialGameplayMapPath(
+            entry.relativePath, std::filesystem::current_path(), std::filesystem::current_path());
+        const auto loaded = path ? maps::readDmap(*path, &validation) : maps::DmapLoadResult{};
+        expect(path && loaded && loaded.data.id == entry.id && loaded.data.width <= 28 &&
+                   loaded.data.height <= 20,
+               "official gameplay DMAP reads with independent persistent MapId and small bounds");
+        if (!loaded) { continue; }
+        paths.push_back(*path);
+        loadedMaps.push_back(loaded.data);
+        expect(maps::validateMapData(loaded.data, &validation).valid,
+               "official gameplay map passes structural validation");
+        const auto semanticReport = game::authoring::MapSemanticValidator{}.validate(
+            loaded.data, content.authoringSemantics());
+        const bool semanticClean = std::none_of(
+            semanticReport.issues.begin(), semanticReport.issues.end(), [](const auto& issue) {
+                return issue.code == "unclassified_tile" || issue.code == "forbidden_flip_x" ||
+                       issue.severity == game::authoring::SemanticIssueSeverity::warning;
+            });
+        expect(semanticClean, "official gameplay map has no unclassified or forbidden semantic tiles");
+        for (const auto& layer : loaded.data.layers) {
+            for (const auto cell : layer.cells) {
+                if (!cell || *cell >= loaded.data.tileReferences.size()) { continue; }
+                const auto& ref = loaded.data.tileReferences[*cell];
+                const auto* tile = content.authoringSemantics().findTile(ref.tilesetId, ref.sourceIndex);
+                expect(tile != nullptr && !underworld::world::hasFlag(
+                    ref.flags, underworld::world::TileFlags::flipX),
+                    "official gameplay tile references resolve without transparent or forbidden cells");
+                if (tile) { addUnique(coveredTiles, tile->id.value()); }
+            }
+        }
+        const auto entrySpawn = entry.id == simulation::MapId{"map.dungeon.01"}
+            ? simulation::SpawnId{"entry.start"}
+            : entry.id == simulation::MapId{"map.dungeon.02"}
+                ? simulation::SpawnId{"entry.from_01"}
+                : simulation::SpawnId{"entry.from_02"};
+        const auto spawn = std::find_if(loaded.data.playerSpawns.begin(),
+            loaded.data.playerSpawns.end(), [&](const auto& value) { return value.id == entrySpawn; });
+        expect(spawn != loaded.data.playerSpawns.end(), "official gameplay entry spawn exists");
+        if (spawn != loaded.data.playerSpawns.end()) {
+            std::vector<underworld::core::TileCoord> targets;
+            for (const auto& link : loaded.data.links) {
+                targets.push_back({(link.trigger.x + link.trigger.width / 2) /
+                                       static_cast<int>(loaded.data.tileSize),
+                                   (link.trigger.y + link.trigger.height / 2) /
+                                       static_cast<int>(loaded.data.tileSize)});
+            }
+            const auto start = underworld::core::worldToTile(spawn->position, loaded.data.tileSize);
+            expect(maps::ReachabilityValidator{}.validate(loaded.data, start, targets).valid(),
+                   "official gameplay map reaches every declared exit from its entry spawn");
+        }
+        for (std::size_t layerIndex = 0; layerIndex < loaded.data.layers.size(); ++layerIndex) {
+            for (const auto& stamp : content.authoringSemantics().stamps()) {
+                bool found = false;
+                for (std::uint32_t y = 0; y < loaded.data.height && !found; ++y) {
+                    for (std::uint32_t x = 0; x < loaded.data.width && !found; ++x) {
+                        if (x + stamp.width > loaded.data.width || y + stamp.height > loaded.data.height) continue;
+                        bool matches = true;
+                        for (const auto& member : stamp.cells) {
+                            matches = matches && tileAt(loaded.data, layerIndex,
+                                static_cast<int>(x) + member.x, static_cast<int>(y) + member.y) != nullptr &&
+                                tileAt(loaded.data, layerIndex, static_cast<int>(x) + member.x,
+                                       static_cast<int>(y) + member.y)->id == member.tileId;
+                        }
+                        found = matches;
+                    }
+                }
+                if (found) { addUnique(coveredStamps, stamp.id.value()); }
+            }
+        }
+    }
+    for (const auto& tile : content.authoringSemantics().tiles()) {
+        expect(std::find(coveredTiles.begin(), coveredTiles.end(), tile.id.value()) != coveredTiles.end(),
+               "all current Dungeon semantic tiles are represented by official gameplay maps");
+    }
+    for (const auto& stamp : content.authoringSemantics().stamps()) {
+        expect(std::find(coveredStamps.begin(), coveredStamps.end(), stamp.id.value()) != coveredStamps.end(),
+               "all registered Dungeon stamps occur as complete authored patterns");
+    }
+    expect(coveredTiles.size() == content.authoringSemantics().tiles().size() &&
+               coveredStamps.size() == content.authoringSemantics().stamps().size(),
+           "official gameplay content has complete live semantic and stamp coverage");
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+        std::string editorError;
+        auto document = underworld::editor::EditorDocument::open(
+            paths[index], content, editorError);
+        const auto copy = std::filesystem::temp_directory_path() /
+            ("underworld_official_map_" + std::to_string(index) + ".dmap");
+        std::error_code removeError;
+        std::filesystem::remove(copy, removeError);
+        const bool roundtrip = document && !document->dirty() &&
+            document->saveAs(copy, content, editorError);
+        const auto reopened = roundtrip
+            ? underworld::editor::EditorDocument::open(copy, content, editorError)
+            : std::optional<underworld::editor::EditorDocument>{};
+        expect(roundtrip && reopened && maps::semanticallyEqual(document->data(), reopened->data()),
+               "Map Maker opens and roundtrips every official authored map");
+        std::filesystem::remove(copy, removeError);
+    }
+    maps::MapCatalog catalog;
+    for (std::size_t index = 0; index < manifest.size() && index < paths.size(); ++index) {
+        catalog.add(manifest[index].id, paths[index]);
+    }
+    expect(catalog.validateLinks(&validation).empty(),
+           "official gameplay catalog resolves all bidirectional map links");
+    std::vector<const maps::MapData*> saveMaps;
+    for (const auto& map : loadedMaps) { saveMaps.push_back(&map); }
+    for (const auto& map : loadedMaps) {
+        save::SaveData saveData;
+        saveData.player.currentMapId = map.id;
+        saveData.player.health = gameplay::Player::maximumHealth;
+        expect(save::validateSaveData(saveData, {&content.items(), saveMaps}).empty(),
+               "save validation recognizes every official gameplay MapId");
+    }
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
+        content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
+                                      runtimeTilesets);
+    for (const auto& map : loadedMaps) {
+        const auto spawn = map.playerSpawns.front().id;
+        const auto runtime = builder.build(map, spawn);
+        expect(runtime && runtime.world->enemies().size() == map.enemies.size() &&
+                   runtime.world->objects().size() == map.objects.size() &&
+                   runtime.world->pickups().size() == map.pickups.size(),
+               "official gameplay placements build through RuntimeWorldBuilder");
+    }
+    save::SessionWorldState sessionState;
+    maps::MapSession session(catalog, validation, builder, handles, sessionState);
+    expect(session.activate(simulation::MapId{"map.dungeon.01"},
+                            simulation::SpawnId{"entry.start"}).changed,
+           "official Map 01 activates at entry.start");
+    session.beginTick();
+    const auto to02 = session.requestTransition({23 * 16, 8 * 16, 16, 32})
+        ? session.commitPending() : maps::TransitionResult{};
+    expect(to02.changed && session.world()->id() == simulation::MapId{"map.dungeon.02"},
+           "official map transition follows Map 01 east link to Map 02");
+    session.beginTick();
+    const auto to03 = session.requestTransition({23 * 16, 8 * 16, 16, 32})
+        ? session.commitPending() : maps::TransitionResult{};
+    expect(to03.changed && session.world()->id() == simulation::MapId{"map.dungeon.03"},
+           "official map transition follows Map 02 east link to Map 03");
+    session.beginTick();
+    const auto back02 = session.requestTransition({0, 8 * 16, 16, 32})
+        ? session.commitPending() : maps::TransitionResult{};
+    expect(back02.changed && session.world()->id() == simulation::MapId{"map.dungeon.02"},
+           "official map transition returns from Map 03 to Map 02");
+    session.beginTick();
+    const auto back01 = session.requestTransition({0, 8 * 16, 16, 32})
+        ? session.commitPending() : maps::TransitionResult{};
+    expect(back01.changed && session.world()->id() == simulation::MapId{"map.dungeon.01"},
+           "official map transition returns from Map 02 to Map 01");
 }
 
 void testPhase9StartupAndEditorPerformanceContracts() {
@@ -3124,8 +3221,8 @@ void testPhase9StartupAndEditorPerformanceContracts() {
                       "underworld_phase9_startup_contract";
     std::error_code cleanupError;
     std::filesystem::remove_all(root, cleanupError);
-    std::filesystem::create_directories(root / "maps" / "authoring");
-    const auto canonical = root / "maps" / "authoring" / "editor_playground.dmap";
+    std::filesystem::create_directories(root / "maps" / "gameplay");
+    const auto canonical = root / "maps" / "gameplay" / "dungeon_01_entry.dmap";
     { std::ofstream file(canonical, std::ios::binary); file << "candidate"; }
 
     const game::GameLaunchOptions defaults;
@@ -3138,9 +3235,9 @@ void testPhase9StartupAndEditorPerformanceContracts() {
                parsed->spawnId && parsed->spawnId->value() == "entry.start",
            "game startup options parse authored map and spawn arguments");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
-    expect(authored.source == game::StartupMapSource::authoredPlayground &&
+    expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
-           "canonical authored playground is selected when present");
+           "official Map 01 is selected when present");
     game::GameLaunchOptions explicitMap;
     explicitMap.mapPath = root / "explicit.dmap";
     const auto explicitSelection = game::selectStartupMap(
@@ -3150,10 +3247,11 @@ void testPhase9StartupAndEditorPerformanceContracts() {
            "explicit map path overrides canonical authored startup");
     std::filesystem::remove(canonical, cleanupError);
     const auto fallback = game::selectStartupMap(defaults, root / "build" / "bin", root);
-    expect(fallback.source == game::StartupMapSource::demoFallback,
-           "missing canonical authored map selects demo fallback");
+    expect(fallback.source == game::StartupMapSource::officialGameplay &&
+               fallback.path == canonical,
+           "missing official Map 01 keeps a deterministic startup error path");
 
-    const auto authoredMap = maps::makeEditorSmokeMap();
+    const auto authoredMap = makeSyntheticMap("map.test.startup", "map.test.startup");
     std::string spawnError;
     const auto canonicalSpawn = game::selectStartupSpawn(authoredMap, std::nullopt, spawnError);
     expect(canonicalSpawn && *canonicalSpawn == simulation::SpawnId{"entry.start"},
@@ -3240,7 +3338,7 @@ void testRuntimeVisualSynchronization() {
     const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
                                       runtimeTilesets);
-    const auto authored = maps::makeEditorSmokeMap();
+    const auto authored = makeSyntheticMap("map.test.visuals", "map.test.visuals");
     const auto runtime = builder.build(authored, authored.playerSpawns.front().id);
 
     game::EnemyVisualCatalog enemyCatalog;
@@ -3269,8 +3367,6 @@ void testRuntimeVisualSynchronization() {
            "runtime world activation creates synchronized enemy and object visual instances");
 
     game::EnemyVisualCatalog incompleteEnemyCatalog;
-    incompleteEnemyCatalog.add({creatures::soldierVisualId(), directional, directional,
-                                directional, {}});
     std::vector<game::EnemyVisualInstance> incompleteEnemyVisuals;
     std::vector<game::WorldObjectVisualInstance> incompleteObjectVisuals;
     const auto failedSynchronization = game::synchronizeRuntimeWorldVisuals(
@@ -3691,8 +3787,9 @@ int main() {
         testViewModelAndWorldObjects();
         testPhase8PersistentMapsAndSave();
         testPhase9EditorFoundation();
-        testEditorSmokeMapIntegrationFixture();
-        testEditorPlaygroundAuthoringAsset();
+        testSyntheticMapIntegrationFixture();
+        testOfficialGameplayMapAuthoringAsset();
+        testOfficialGameplayMapSet();
         testPhase9StartupAndEditorPerformanceContracts();
         testRuntimeVisualSynchronization();
         testMultiTilesetAuthoringAndRuntime();

@@ -1,6 +1,7 @@
 #include "game/game_launch.h"
 
 #include "game/maps/map_data.h"
+#include "game/maps/official_maps.h"
 
 #include <algorithm>
 #include <vector>
@@ -19,10 +20,11 @@ std::string narrowId(const wchar_t* value) {
 }
 
 void addCandidate(std::vector<std::filesystem::path>& candidates,
-                  const std::filesystem::path& start) {
+                  const std::filesystem::path& start,
+                  const std::filesystem::path& relativePath) {
     std::filesystem::path current = start;
     for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
-        candidates.push_back(current / "maps" / "authoring" / "editor_playground.dmap");
+        candidates.push_back(current / relativePath);
         const auto parent = current.parent_path();
         if (parent == current) { break; }
         current = parent;
@@ -97,15 +99,16 @@ StartupMapSelection selectStartupMap(const GameLaunchOptions& options,
         return {StartupMapSource::explicitPath, *options.mapPath};
     }
     std::vector<std::filesystem::path> candidates;
-    addCandidate(candidates, currentDirectory);
-    addCandidate(candidates, executableDirectory);
+    const auto relativePath = maps::officialGameplayMaps().front().relativePath;
+    addCandidate(candidates, currentDirectory, relativePath);
+    addCandidate(candidates, executableDirectory, relativePath);
     for (const auto& candidate : candidates) {
         std::error_code error;
         if (std::filesystem::is_regular_file(candidate, error)) {
-            return {StartupMapSource::authoredPlayground, candidate};
+            return {StartupMapSource::officialGameplay, candidate};
         }
     }
-    return {StartupMapSource::demoFallback, {}};
+    return {StartupMapSource::officialGameplay, candidates.front()};
 }
 
 std::optional<simulation::SpawnId> selectStartupSpawn(

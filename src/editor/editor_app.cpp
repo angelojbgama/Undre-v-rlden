@@ -135,7 +135,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
 
     const auto& semantics = content_.authoringSemantics();
     static const std::array<std::string, 6> semanticFamilies{"ALL", "masonry", "ledge", "architectural_detail", "detail", "RAW"};
-    ui.label("SEMANTIC",8,y+8); y+=20;
+    ui.label("DATASET TILES",8,y+8); y+=20;
     if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
     if(ui.button({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
     if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
@@ -301,7 +301,7 @@ void EditorApp::drawNewMapDialog(EditorUiContext& ui,const EditorInputState& inp
     for(int i=0;i<4;++i){const int fy=y+38+i*34;ui.label(names[static_cast<std::size_t>(i)],x+12,fy);if(ui.button({x+110,fy-4,230,24},*fields[static_cast<std::size_t>(i)],newMapField_==i))newMapField_=i;}
     if(!input.textInput.empty()){auto& field=*fields[static_cast<std::size_t>(newMapField_)];for(char c:input.textInput)if(c>=32&&c<127)field.push_back(c);}if(input.backspacePressed){auto& field=*fields[static_cast<std::size_t>(newMapField_)];if(!field.empty())field.pop_back();}
     const bool create=ui.button({x+110,y+184,100,24},"CREATE")||input.enterPressed;const bool cancel=ui.button({x+220,y+184,100,24},"CANCEL")||input.escapePressed;
-    if(create){const int w=parsePositive(newMapWidth_),h=parsePositive(newMapHeight_),tile=parsePositive(newMapTileSize_);if(!newMapId_.empty()&&w>0&&h>0&&tile>0){try{document_=EditorDocument::newMap(simulation::MapId{newMapId_},static_cast<std::uint32_t>(w),static_cast<std::uint32_t>(h),static_cast<std::uint16_t>(tile));validationCache_.invalidate();newMapDialog_=false;frameMap(viewportBounds_);}catch(const std::exception& e){status_=e.what();}}else status_="New Map fields are invalid";}if(cancel)newMapDialog_=false;
+    if(create){const int w=parsePositive(newMapWidth_),h=parsePositive(newMapHeight_),tile=parsePositive(newMapTileSize_);if(!newMapId_.empty()&&w>0&&h>0&&tile>0){try{document_=EditorDocument::newAuthoredMap(simulation::MapId{newMapId_},static_cast<std::uint32_t>(w),static_cast<std::uint32_t>(h),static_cast<std::uint16_t>(tile),content_);validationCache_.invalidate();newMapDialog_=false;frameMap(viewportBounds_);status_="Created authored canvas: choose a semantic tile and paint";}catch(const std::exception& e){status_=e.what();}}else status_="New Map fields are invalid";}if(cancel)newMapDialog_=false;
 }
 
 void EditorApp::frameMap(core::RectI viewport) noexcept{const double mapWidth=static_cast<double>(document_.data().width)*document_.data().tileSize,mapHeight=static_cast<double>(document_.data().height)*document_.data().tileSize;std::size_t best=0;for(std::size_t i=0;i<zoomSteps.size();++i)if(mapWidth*zoomSteps[i]<=viewport.width&&mapHeight*zoomSteps[i]<=viewport.height)best=i;document_.viewport().zoomStep=best;document_.viewport().worldX=(mapWidth-viewport.width/zoom())/2.0;document_.viewport().worldY=(mapHeight-viewport.height/zoom())/2.0;}

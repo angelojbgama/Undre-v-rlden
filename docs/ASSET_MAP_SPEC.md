@@ -1209,3 +1209,13 @@ visual asset + collision + gameplay metadata
 ```
 
 Se a LLM precisa “adivinhar” a função de uma imagem para terminar o mapa, a especificação ainda está incompleta e o correto é marcar a decisão como `UNVERIFIED`, não inventá-la.
+
+# Current map coverage boundary
+
+The official playable map resources use only semantic references resolved through the
+Dungeon authoring registry. `Tileset/tileset.png` coverage is limited to its 72
+catalogued visible cells; transparent cells and uncatalogued PNG regions are never
+used as filler. The remaining individual assets in `Tileset/` (doors, gates, traps,
+spikes, fire blocks, destroyed/breaking variants, and similar artwork) are not
+placeable gameplay content until they have a corresponding runtime definition and
+behavior. Their presence in the asset folder alone does not grant a map mechanic.

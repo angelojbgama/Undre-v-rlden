@@ -75,6 +75,15 @@ visual cells empty while still representing the walkable area in the composition
 and collision data. Adding floor art requires catalog evidence and a later small content
 update; the compositor does not invent `floor.*` IDs or raw atlas coordinates.
 
+The official authored maps add a separate, explicit visual-surface pass after the
+rectangular composition. It uses the catalogued `tile.dungeon.masonry.39` reference
+as a conservative masonry surface because that cell is visibly suitable for
+continuous painting and was already used by the runtime's authored predecessor.
+This is still visual authoring data, not a new floor role: walkability continues to
+come only from the DMAP collision grid. The editor's authored New Map action uses the
+same content-aware path, so a new document opens with a visible dataset canvas and
+can immediately be painted with the semantic palette or approved stamps.
+
 An optional blueprint spawn is converted to the existing `PlayerSpawn` contract at the
 center of its authored tile. It must have a stable `SpawnId` and be in a walkable or
 opening cell. Invalid spawns produce `spawn_not_walkable` or `invalid_player_spawn`.
@@ -107,3 +116,15 @@ LLM integration
 
 Approved stamps remain an editor authoring feature. The composition slice deliberately
 does not reinterpret an opening as a transition or infer gameplay from an asset role.
+
+# Official authored reference maps
+
+The first production content set produced from the authoring/composition direction is
+stored as three ordinary DMAP 1.0 files under `maps/gameplay/`. The runtime does not
+serialize or regenerate a blueprint at startup: it reads the authored DMAP, validates
+it, registers all three resources in `MapCatalog`, and builds the normal `RuntimeWorld`.
+
+The maps are also a semantic reference set. Their aggregate coverage is checked
+against the live `AuthoringSemanticRegistry` (72 Dungeon tile definitions and 8
+stamps), while collision remains an explicit authored grid. Visual `PROBABLE` or
+`UNVERIFIED` meanings do not become gameplay mechanics.

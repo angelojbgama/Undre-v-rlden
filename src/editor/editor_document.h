@@ -141,6 +141,13 @@ public:
     static EditorDocument newMap(simulation::MapId id, std::uint32_t width,
                                  std::uint32_t height, std::uint16_t tileSize = 16,
                                  bool includePlayerSpawn = false);
+    // Creates a content-aware authored canvas.  The generic newMap() remains empty
+    // for tests and low-level document fixtures; the editor uses this entry point so
+    // a newly created map is immediately paintable with the registered dataset.
+    static EditorDocument newAuthoredMap(simulation::MapId id, std::uint32_t width,
+                                         std::uint32_t height, std::uint16_t tileSize,
+                                         const game::GameContentRegistry& content,
+                                         bool includePlayerSpawn = true);
     static std::optional<EditorDocument> open(const std::filesystem::path& path,
                                                const game::GameContentRegistry& content,
                                                std::string& error);

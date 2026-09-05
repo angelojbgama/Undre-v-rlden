@@ -1,6 +1,7 @@
 #include "editor/editor_document.h"
 
 #include "game/maps/dmap.h"
+#include "game/maps/map_composition.h"
 
 #include <algorithm>
 #include <cmath>
@@ -110,6 +111,63 @@ EditorDocument EditorDocument::newMap(simulation::MapId id, std::uint32_t width,
             {static_cast<int>(tileSize / 2), static_cast<int>(tileSize / 2)},
             game::gameplay::FacingDirection::down});
     }
+    EditorDocument document(std::move(data));
+    document.dirty_ = true;
+    return document;
+}
+
+EditorDocument EditorDocument::newAuthoredMap(
+    simulation::MapId id, std::uint32_t width, std::uint32_t height,
+    std::uint16_t tileSize, const game::GameContentRegistry& content,
+    bool includePlayerSpawn) {
+    maps::MapBlueprint blueprint;
+    blueprint.id = id;
+    blueprint.room.width = width;
+    blueprint.room.height = height;
+    blueprint.tileSize = tileSize;
+    if (includePlayerSpawn) {
+        blueprint.room.playerSpawn = maps::PlayerSpawnBlueprint{
+            simulation::SpawnId{"entry.start"},
+            {static_cast<int>(width / 2U), static_cast<int>(height / 2U)},
+            game::gameplay::FacingDirection::down};
+    }
+
+    const auto composed = maps::MapComposer{}.compose(blueprint,
+                                                        content.authoringSemantics());
+    if (!composed) {
+        throw std::invalid_argument("authored map composition failed");
+    }
+    maps::MapData data = *composed.map;
+    const auto cells = static_cast<std::size_t>(width) * height;
+
+    // Keep the runtime/editor layer contract explicit.  The compositor owns the
+    // boundary and collision; the editor owns the immediately paintable canvas.
+    data.layers.insert(data.layers.begin(),
+                       {"ground", true, std::vector<std::optional<std::uint32_t>>(cells)});
+    data.layers.push_back(
+        {"decoration_low", true, std::vector<std::optional<std::uint32_t>>(cells)});
+    data.layers.push_back(
+        {"objects_visual", true, std::vector<std::optional<std::uint32_t>>(cells)});
+    data.layers.push_back(
+        {"decoration_high", true, std::vector<std::optional<std::uint32_t>>(cells)});
+
+    // masonry.39 is a catalogued interior masonry surface already used by the
+    // authored runtime content.  It is a visual starter only; collision remains
+    // the explicit perimeter grid produced by MapComposer.
+    const auto* surface = content.authoringSemantics().findTile(
+        simulation::DefinitionId{"tile.dungeon.masonry.39"});
+    if (!surface) {
+        throw std::invalid_argument("authored map surface semantic is unavailable");
+    }
+    data.tileReferences.push_back(game::authoring::tileReferenceFor(*surface));
+    const auto surfaceIndex = static_cast<std::uint32_t>(data.tileReferences.size() - 1U);
+    auto& ground = data.layers.front().cells;
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            ground[static_cast<std::size_t>(y) * width + x] = surfaceIndex;
+        }
+    }
+
     EditorDocument document(std::move(data));
     document.dirty_ = true;
     return document;
