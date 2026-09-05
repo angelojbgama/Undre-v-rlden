@@ -56,7 +56,7 @@ C — HeadlessAuditPlatform                                DONE
 D — playtest runner/scripted input                       DONE
 E — integração de auditoria manual no Windows/F12       DONE (não executado neste host)
 F — build portátil Linux                                 PREPARAÇÃO Docker DONE
-G — plataforma gráfica Linux                             DEFERRED
+G — plataforma gráfica Linux                             IN PROGRESS
 H — seeded stress playtest                              DEFERRED
 ```
 
@@ -102,3 +102,12 @@ não compila Win32, não inclui assets licenciados e não fornece janela gráfic
 Dockerfile Windows (`docker/Dockerfile.windows`) é uma receita para Docker Desktop
 em modo Windows containers num host Windows; um daemon Linux não pode executar
 MSVC/Windows containers. A plataforma gráfica Linux permanece Block G.
+
+## Block G — runtime gráfico Linux
+
+`LinuxPlatform` implementa o contrato comum com X11, relógio monotônico, input
+lógico, perda de foco, resize com integer scaling e apresentação do framebuffer de
+software. `LinuxImageDecoder` usa libpng para converter PNGs em RGBA8 sem alterar o
+renderer. O container Linux instala `libx11-dev` e `libpng-dev` e produz o ELF
+jogável `build/linux/game`, além dos testes e do playtest runner. O smoke gráfico
+depende de um display X11/WSLg disponível no host.

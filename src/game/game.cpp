@@ -223,8 +223,9 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
     const auto executableDirectory = platform.executableDirectory();
+    const auto assetRoot = options.assetRoot.value_or(findLicensedAssetRoot(executableDirectory));
     Phase7Demo demo(platform.imageDecoder(),
-                    findLicensedAssetRoot(executableDirectory), executableDirectory, options);
+                    assetRoot, executableDirectory, options);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;

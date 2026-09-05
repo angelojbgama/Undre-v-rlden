@@ -1205,10 +1205,17 @@ Windows execution remains a host-dependent validation gate and was not run on th
 current Linux/WSL host.
 
 `docker/build_linux.sh` now provides a reproducible Debian container for the
-portable Linux targets (`tests` and `playtest_runner`). `docker/build_windows.ps1`
+Linux targets (`game`, `tests` and `playtest_runner`). `docker/build_windows.ps1`
 and `docker/Dockerfile.windows` provide the corresponding Windows-container recipe
 for the existing MSVC `build.bat`; it can only run on a Windows Docker daemon.
-This Docker plumbing does not mark the interactive Linux platform complete: Block F
-is only prepared for portable targets, while Block G remains the graphical Linux
-runtime step. Formal replay, state hashing, networking and multiplayer audit remain
-deferred.
+The Linux graphical runtime implementation is now present in the working tree;
+formal replay, state hashing, networking and multiplayer audit remain deferred.
+
+## Linux graphical runtime — Block G
+
+The Linux runtime boundary is implemented with X11 presentation, platform-neutral
+input mapping, monotonic time and libpng-based RGBA8 image loading. The Docker
+Linux image builds `build/linux/game` using the same gameplay and software renderer
+as the other targets. No Linux-specific gameplay or renderer path was created. A
+graphical smoke requires an X11/WSLg display; formal replay, seeded stress
+playtesting and networking remain deferred.

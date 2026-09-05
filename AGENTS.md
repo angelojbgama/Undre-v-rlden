@@ -1930,11 +1930,11 @@ input lógico por tick. O Block E integra `--audit` no loop Win32 e mapeia F12 p
 captura manual. A execução Windows continua sendo uma validação dependente de host;
 este ambiente Linux/WSL não a executou.
 
-O repositório também fornece `docker/build_linux.sh` para compilar os alvos
-portáteis Linux em Debian e uma receita `docker/build_windows.ps1` para Docker
-Desktop em modo Windows containers. O Docker Linux não produz ainda o jogo gráfico:
-isso depende do Block G (plataforma Linux e decoder de imagem). Replay formal, hash
-de estado, rede e multiplayer permanecem fora desta antecipação.
+O repositório também fornece `docker/build_linux.sh` para compilar os alvos Linux
+em Debian e uma receita `docker/build_windows.ps1` para Docker Desktop em modo
+Windows containers. O Docker Linux agora produz `build/linux/game` usando X11 e
+libpng; a execução gráfica exige X11/WSLg e assets licenciados locais. Replay
+formal, hash de estado, rede e multiplayer permanecem fora desta antecipação.
 
 ## Estado atual — audit playtest Block D/E
 
@@ -1944,6 +1944,7 @@ lógico e valida cenários por `GameAuditSnapshot`. Cada cenário cria uma sess�
 auditoria própria, com checkpoints/screenshots e falha não-zero. O runner aceita
 `--asset-root` e `UNDERWORLD_ASSET_ROOT`; sem assets licenciados/decoder portátil,
 usa decoder sintético somente para validar o fluxo real de runtime e renderização.
-O próximo incremento funcional é F — build portátil Linux; a preparação Docker para
-os alvos portáteis já está disponível, mas não substitui a validação do bloco nem
-inicia a plataforma gráfica Linux.
+O Block G (plataforma gráfica Linux) está implementado no working tree e validado
+por build Docker e smoke X11/WSLg. O próximo incremento continua sendo H — seeded
+stress playtest; o build Windows/MSVC e o smoke manual Windows permanecem gates
+dependentes do host Windows.

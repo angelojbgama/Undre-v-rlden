@@ -1471,8 +1471,18 @@ captures use the same tick for the event, snapshot and framebuffer image. Gamepl
 systems remain unaware of file I/O.
 
 The repository also contains Docker build helpers. The Linux container compiles
-the portable tests and headless playtest runner without Win32 sources; it is not a
-replacement for the existing MSVC `build.bat`. The Windows Docker recipe requires
-a Windows host with Docker Desktop in Windows-container mode. Interactive Linux
-presentation and a Linux `game` executable remain deferred until Block G provides
-the Linux platform/image-decoder boundary.
+the portable tests, headless playtest runner and Linux `game` without Win32 sources;
+it is not a replacement for the existing MSVC `build.bat`. The Windows Docker recipe
+requires a Windows host with Docker Desktop in Windows-container mode. Interactive
+Linux execution requires X11/WSLg and local licensed assets.
+
+## Linux runtime platform — Block G
+
+The Linux executable uses the same `game::run`, `Phase7Demo`, fixed timestep,
+`Renderer2D` and 272x224 `Framebuffer` as the Win32 executable. `LinuxPlatform`
+is an X11 adapter that owns only the window, event mapping, monotonic clock and
+nearest-neighbor presentation; gameplay receives only `InputState` and
+`DebugInputState`. `LinuxImageDecoder` is the Linux-side libpng adapter and returns
+the same owned RGBA8 `ImageData` contract as WIC on Windows. The portable Docker
+build emits `build/linux/game`; interactive execution requires X11/WSLg and local
+licensed assets.

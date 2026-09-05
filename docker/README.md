@@ -11,9 +11,12 @@ Em Linux, WSL ou Docker Desktop em modo Linux:
 ./docker/build_linux.sh
 ```
 
-O container gera `build/linux/tests` e `build/linux/playtest_runner`, executa ambos
-e usa o decoder sintético do runner quando os assets licenciados não estão montados.
-O build Linux não produz janela gráfica nem usa Win32/WIC.
+O container gera `build/linux/tests`, `build/linux/playtest_runner` e
+`build/linux/game`, executa os testes e o runner e instala as dependências de sistema
+X11/libpng necessárias ao runtime Linux. O jogo Linux usa uma janela X11; para
+executá-lo graficamente, o host precisa expor um display (por exemplo WSLg) e os
+assets licenciados devem ser fornecidos via `--asset-root`. Sem assets locais, o
+runner continua usando seu decoder sintético de testes.
 
 ## Windows/MSVC
 

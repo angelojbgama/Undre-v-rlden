@@ -68,6 +68,11 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             if (!*mapResult) { return std::nullopt; }
             continue;
         }
+        const auto assetResult = consumeValue(L"--asset-root", "--asset-root", options.assetRoot);
+        if (assetResult.has_value()) {
+            if (!*assetResult) { return std::nullopt; }
+            continue;
+        }
         if (argument == L"--spawn") {
             if (index + 1 >= argc || argv[index + 1] == nullptr ||
                 std::wstring(argv[index + 1]).empty()) {
@@ -91,6 +96,67 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             continue;
         }
         error = "unknown game option: " + narrowId(argv[index]);
+        return std::nullopt;
+    }
+    return options;
+}
+
+std::optional<GameLaunchOptions> parseGameLaunchOptions(
+    int argc, const char* const* argv, std::string& error) {
+    error.clear();
+    GameLaunchOptions options;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index] == nullptr ? "" : argv[index];
+        const auto consumeValue = [&](const char* name, std::optional<std::filesystem::path>& target)
+            -> std::optional<bool> {
+            if (argument == name) {
+                if (index + 1 >= argc || argv[index + 1] == nullptr ||
+                    std::string(argv[index + 1]).empty()) {
+                    error = std::string(name) + " requires a value";
+                    return false;
+                }
+                target = std::filesystem::path(argv[++index]);
+                return true;
+            }
+            const std::string prefix = std::string(name) + "=";
+            if (argument.rfind(prefix, 0) == 0) {
+                if (argument.size() == prefix.size()) {
+                    error = std::string(name) + " requires a value";
+                    return false;
+                }
+                target = std::filesystem::path(argument.substr(prefix.size()));
+                return true;
+            }
+            return std::optional<bool>{};
+        };
+        const auto mapResult = consumeValue("--map", options.mapPath);
+        if (mapResult.has_value()) {
+            if (!*mapResult) { return std::nullopt; }
+            continue;
+        }
+        const auto assetResult = consumeValue("--asset-root", options.assetRoot);
+        if (assetResult.has_value()) {
+            if (!*assetResult) { return std::nullopt; }
+            continue;
+        }
+        if (argument == "--spawn" || argument.rfind("--spawn=", 0) == 0) {
+            std::string value;
+            if (argument == "--spawn") {
+                if (index + 1 >= argc || argv[index + 1] == nullptr ||
+                    std::string(argv[index + 1]).empty()) {
+                    error = "--spawn requires a value";
+                    return std::nullopt;
+                }
+                value = argv[++index];
+            } else {
+                value = argument.substr(8);
+                if (value.empty()) { error = "--spawn requires a value"; return std::nullopt; }
+            }
+            options.spawnId = simulation::SpawnId{value};
+            continue;
+        }
+        if (argument == "--audit") { options.auditEnabled = true; continue; }
+        error = "unknown game option: " + argument;
         return std::nullopt;
     }
     return options;
