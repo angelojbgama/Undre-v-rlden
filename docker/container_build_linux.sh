@@ -11,7 +11,7 @@ mapfile -d '' portable_sources < <(find src -name '*.cpp' \
     ! -path 'src/tools/*' \
     -print0)
 
-common_flags=(-std=c++20 -Wall -Wextra -Wpedantic -Isrc)
+common_flags=(-std=c++20 -Wall -Wextra -Wpedantic -Werror -Isrc)
 g++ "${common_flags[@]}" tests/test_main.cpp "${portable_sources[@]}" \
     -o build/linux/tests
 

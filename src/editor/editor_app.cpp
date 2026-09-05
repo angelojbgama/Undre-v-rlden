@@ -106,18 +106,25 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         y+=20;
     }
     if(ui.button({8,y,85,18},"SELECT",document_.activeTool()==EditorTool::select))document_.activeTool()=EditorTool::select;
-    if(ui.button({97,y,85,18},"TILE",document_.activeTool()==EditorTool::tilePencil))document_.activeTool()=EditorTool::tilePencil;y+=20;
+    if(ui.button({97,y,85,18},"TILE",document_.activeTool()==EditorTool::tilePencil)) { document_.activeTool()=EditorTool::tilePencil; }
+    y+=20;
     if(ui.button({8,y,85,18},"ERASE",document_.activeTool()==EditorTool::tileErase))document_.activeTool()=EditorTool::tileErase;
-    if(ui.button({97,y,85,18},"RECT",document_.activeTool()==EditorTool::tileRectangle))document_.activeTool()=EditorTool::tileRectangle;y+=20;
+    if(ui.button({97,y,85,18},"RECT",document_.activeTool()==EditorTool::tileRectangle)) { document_.activeTool()=EditorTool::tileRectangle; }
+    y+=20;
     if(ui.button({8,y,85,18},"FILL",document_.activeTool()==EditorTool::tileFill))document_.activeTool()=EditorTool::tileFill;
-    if(ui.button({97,y,85,18},tileFlipX_?"FLIP X ON":"FLIP X",tileFlipX_))tileFlipX_=!tileFlipX_;y+=20;
-    if(ui.button({8,y,85,18},"PICK",document_.activeTool()==EditorTool::tileEyedropper))document_.activeTool()=EditorTool::tileEyedropper;y+=20;
+    if(ui.button({97,y,85,18},tileFlipX_?"FLIP X ON":"FLIP X",tileFlipX_)) { tileFlipX_=!tileFlipX_; }
+    y+=20;
+    if(ui.button({8,y,85,18},"PICK",document_.activeTool()==EditorTool::tileEyedropper)) { document_.activeTool()=EditorTool::tileEyedropper; }
+    y+=20;
     if(ui.button({8,y,85,18},"COLL +",document_.activeTool()==EditorTool::collisionPaint))document_.activeTool()=EditorTool::collisionPaint;
-    if(ui.button({97,y,85,18},"COLL -",document_.activeTool()==EditorTool::collisionErase))document_.activeTool()=EditorTool::collisionErase;y+=24;
+    if(ui.button({97,y,85,18},"COLL -",document_.activeTool()==EditorTool::collisionErase)) { document_.activeTool()=EditorTool::collisionErase; }
+    y+=24;
     if(ui.button({8,y,85,18},"COLL R+",document_.activeTool()==EditorTool::collisionRectangle))document_.activeTool()=EditorTool::collisionRectangle;
-    if(ui.button({97,y,85,18},"COLL R-",document_.activeTool()==EditorTool::collisionRectangleErase))document_.activeTool()=EditorTool::collisionRectangleErase;y+=20;
+    if(ui.button({97,y,85,18},"COLL R-",document_.activeTool()==EditorTool::collisionRectangleErase)) { document_.activeTool()=EditorTool::collisionRectangleErase; }
+    y+=20;
     if(ui.button({8,y,85,18},"COLL F+",document_.activeTool()==EditorTool::collisionFill))document_.activeTool()=EditorTool::collisionFill;
-    if(ui.button({97,y,85,18},"COLL F-",document_.activeTool()==EditorTool::collisionFillErase))document_.activeTool()=EditorTool::collisionFillErase;y+=24;
+    if(ui.button({97,y,85,18},"COLL F-",document_.activeTool()==EditorTool::collisionFillErase)) { document_.activeTool()=EditorTool::collisionFillErase; }
+    y+=24;
 
     ui.label("CONTENT",8,y);y+=14;
     for(const auto& descriptor:content_.authoringDescriptors()){
@@ -172,7 +179,8 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         if(ui.pointerInside({0,paletteTop,leftPanelWidth,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
         for(std::size_t paletteIndex=0;paletteIndex<paletteTiles.size();++paletteIndex){const auto index=paletteTiles[paletteIndex];const int column=static_cast<int>(paletteIndex%static_cast<std::size_t>(paletteColumns)),row=static_cast<int>(paletteIndex/static_cast<std::size_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
             render::Renderer2D renderer(*framebuffer_);const core::RectI source=tileset->atlas.sourceRect(index);renderer.drawImageRegion(*tileset->image,source,cell.x,cell.y);
-            if(index==selectedTile_)outline(renderer,cell,selectedColor);if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
+            if(index==selectedTile_) { outline(renderer,cell,selectedColor); }
+            if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
     } else if (selectedDefinition) { ui.label("Tileset image unavailable",8,y+4); }
 
     render::Renderer2D renderer(*framebuffer_);drawViewport(renderer,viewportBounds_,input);drawInspector(ui,right);
@@ -246,7 +254,8 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     }
     if(input.deletePressed&&document_.selection().kind!=SelectionKind::none)execute(std::make_unique<DeleteEntityCommand>(document_.selection().kind,document_.selection().instanceId,document_.selection().authoredId));
     if(input.duplicatePressed){const auto& selection=document_.selection();if(selection.instanceId){const auto id=document_.allocatePersistentId();const auto copy=duplicatePlacement(document_,selection.kind,selection.instanceId,id,tileSize);if(copy){std::optional<PropertyOverrideSet> overrides;const auto found=document_.propertyOverrides().find(selection.instanceId.value);if(found!=document_.propertyOverrides().end())overrides=found->second;execute(std::make_unique<PlaceEntityCommand>(*copy,std::move(overrides)));}}else {const auto copy=duplicateAuthoredPlacement(document_,selection.kind,selection.authoredId,tileSize);if(copy)execute(std::make_unique<PlaceEntityCommand>(*copy));}}
-    if(input.undoPressed)document_.undo();if(input.redoPressed){std::string error;if(!document_.redo(error))status_=error;}
+    if(input.undoPressed) { document_.undo(); }
+    if(input.redoPressed){std::string error;if(!document_.redo(error))status_=error;}
 }
 
 std::optional<EditorSelection> EditorApp::hitTest(core::WorldPointI point) const{

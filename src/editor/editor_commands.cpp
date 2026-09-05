@@ -321,7 +321,12 @@ std::vector<TileCoordinate> rectangleCells(int x0,int y0,int x1,int y1,const map
     const int bottom=std::min(static_cast<int>(data.height)-1,std::max(y0,y1));
     std::vector<TileCoordinate> result;if(left>right||top>bottom)return result;
     result.reserve(static_cast<std::size_t>(right-left+1)*static_cast<std::size_t>(bottom-top+1));
-    for(int y=top;y<=bottom;++y)for(int x=left;x<=right;++x)result.push_back({static_cast<std::uint32_t>(x),static_cast<std::uint32_t>(y)});return result;
+    for(int y=top;y<=bottom;++y) {
+        for(int x=left;x<=right;++x) {
+            result.push_back({static_cast<std::uint32_t>(x),static_cast<std::uint32_t>(y)});
+        }
+    }
+    return result;
 }
 
 std::vector<TileCoordinate> tileFloodCells(const maps::MapData& data,std::size_t layer,std::uint32_t startX,std::uint32_t startY){
@@ -329,15 +334,24 @@ std::vector<TileCoordinate> tileFloodCells(const maps::MapData& data,std::size_t
     const std::size_t start=static_cast<std::size_t>(startY)*data.width+startX;const auto target=data.layers[layer].cells[start];
     std::vector<TileCoordinate> result;std::vector<std::uint8_t> visited(data.layers[layer].cells.size());std::deque<TileCoordinate> pending{{startX,startY}};
     while(!pending.empty()){const auto cell=pending.front();pending.pop_front();const std::size_t index=static_cast<std::size_t>(cell.y)*data.width+cell.x;if(visited[index]||data.layers[layer].cells[index]!=target)continue;visited[index]=1;result.push_back(cell);
-        if(cell.x>0)pending.push_back({cell.x-1,cell.y});if(cell.x+1<data.width)pending.push_back({cell.x+1,cell.y});if(cell.y>0)pending.push_back({cell.x,cell.y-1});if(cell.y+1<data.height)pending.push_back({cell.x,cell.y+1});}
+        if(cell.x>0) pending.push_back({cell.x-1,cell.y});
+        if(cell.x+1<data.width) pending.push_back({cell.x+1,cell.y});
+        if(cell.y>0) pending.push_back({cell.x,cell.y-1});
+        if(cell.y+1<data.height) pending.push_back({cell.x,cell.y+1});
+    }
     return result;
 }
 
 std::vector<TileCoordinate> collisionFloodCells(const maps::MapData& data,std::uint32_t startX,std::uint32_t startY){
-    if(startX>=data.width||startY>=data.height)return{};const std::size_t start=static_cast<std::size_t>(startY)*data.width+startX;const auto target=data.collision[start];
+    if(startX>=data.width||startY>=data.height)return{};
+    const std::size_t start=static_cast<std::size_t>(startY)*data.width+startX;const auto target=data.collision[start];
     std::vector<TileCoordinate> result;std::vector<std::uint8_t> visited(data.collision.size());std::deque<TileCoordinate> pending{{startX,startY}};
     while(!pending.empty()){const auto cell=pending.front();pending.pop_front();const std::size_t index=static_cast<std::size_t>(cell.y)*data.width+cell.x;if(visited[index]||data.collision[index]!=target)continue;visited[index]=1;result.push_back(cell);
-        if(cell.x>0)pending.push_back({cell.x-1,cell.y});if(cell.x+1<data.width)pending.push_back({cell.x+1,cell.y});if(cell.y>0)pending.push_back({cell.x,cell.y-1});if(cell.y+1<data.height)pending.push_back({cell.x,cell.y+1});}
+        if(cell.x>0) pending.push_back({cell.x-1,cell.y});
+        if(cell.x+1<data.width) pending.push_back({cell.x+1,cell.y});
+        if(cell.y>0) pending.push_back({cell.x,cell.y-1});
+        if(cell.y+1<data.height) pending.push_back({cell.x,cell.y+1});
+    }
     return result;
 }
 

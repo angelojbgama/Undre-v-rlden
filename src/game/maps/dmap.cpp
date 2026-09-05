@@ -252,28 +252,36 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
     }
     {
         ByteReader in(chunks["SPWN"]);std::uint32_t count{};if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid SPWN count");
-        data.playerSpawns.reserve(count);for(std::uint32_t i=0;i<count;++i){simulation::SpawnId id;core::WorldPointI point;gameplay::FacingDirection facing;
-            if(!readId(in,strings,id)||!readPoint(in,point)||!readFacing(in,facing))return fail("invalid SPWN record");data.playerSpawns.push_back({std::move(id),point,facing});}
+        data.playerSpawns.reserve(count);
+        for(std::uint32_t i=0;i<count;++i){simulation::SpawnId id;core::WorldPointI point;gameplay::FacingDirection facing;
+            if(!readId(in,strings,id)||!readPoint(in,point)||!readFacing(in,facing)) return fail("invalid SPWN record");
+            data.playerSpawns.push_back({std::move(id),point,facing});}
         if(in.remaining()!=0)return fail("trailing SPWN data");
     }
     {
         ByteReader in(chunks["ENTS"]);std::uint32_t count{};
-        if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid enemy count");data.enemies.reserve(count);
+        if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid enemy count");
+        data.enemies.reserve(count);
         for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def;core::WorldPointI point;gameplay::FacingDirection facing;
-            if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||!readFacing(in,facing))return fail("invalid enemy record");data.enemies.push_back({{id},std::move(def),point,facing});}
-        if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid object count");data.objects.reserve(count);
+            if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||!readFacing(in,facing)) return fail("invalid enemy record");
+            data.enemies.push_back({{id},std::move(def),point,facing});}
+        if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid object count");
+        data.objects.reserve(count);
         for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def;core::WorldPointI point;std::uint32_t stackCount{};
             if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||!readCount(in,MapLimits::maximumPlacements,stackCount))return fail("invalid object record");
             ObjectPlacement object{{id},std::move(def),point,{}};object.initialContents.reserve(stackCount);
-            for(std::uint32_t s=0;s<stackCount;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity))return fail("invalid object contents");object.initialContents.push_back({std::move(item),quantity});}data.objects.push_back(std::move(object));}
-        if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid pickup count");data.pickups.reserve(count);
+            for(std::uint32_t s=0;s<stackCount;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity)) return fail("invalid object contents");object.initialContents.push_back({std::move(item),quantity});}
+            data.objects.push_back(std::move(object));}
+        if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid pickup count");
+        data.pickups.reserve(count);
         for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def,visual;core::WorldPointI point;world::AabbI area;std::uint8_t kind{};
             if(!in.readU64(id)||!readId(in,strings,def)||!readId(in,strings,visual)||!readPoint(in,point)||!readArea(in,area)||!in.readU8(kind))return fail("invalid pickup record");
             gameplay::PickupPayload payload=gameplay::HealthPickup{1};
             if(kind==0){std::int32_t amount{};if(!in.readI32(amount))return fail("invalid health pickup");payload=gameplay::HealthPickup{amount};}
             else if(kind==1){std::uint64_t amount{};if(!in.readU64(amount))return fail("invalid currency pickup");payload=gameplay::CurrencyPickup{amount};}
             else if(kind==2){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity))return fail("invalid item pickup");payload=gameplay::ItemPickup{std::move(item),quantity};}
-            else return fail("unknown pickup payload kind");data.pickups.push_back({{id},std::move(def),std::move(visual),point,area,std::move(payload)});}
+            else return fail("unknown pickup payload kind");
+            data.pickups.push_back({{id},std::move(def),std::move(visual),point,area,std::move(payload)});}
         if(in.remaining()!=0)return fail("trailing ENTS data");
     }
     if (const auto found = chunks.find("NPCS"); found != chunks.end()) {
@@ -290,9 +298,10 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         if (in.remaining() != 0) return fail("trailing NPCS data");
     }
     {
-        ByteReader in(chunks["LINK"]);std::uint32_t count{};if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid LINK count");data.links.reserve(count);
+        ByteReader in(chunks["LINK"]);std::uint32_t count{};if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid LINK count");data.links.reserve(count);
         for(std::uint32_t i=0;i<count;++i){std::string id;world::AabbI area;simulation::MapId target;simulation::SpawnId spawn;
-            if(!readIndex(in,strings,id)||!readArea(in,area)||!readId(in,strings,target)||!readId(in,strings,spawn))return fail("invalid LINK record");data.links.push_back({std::move(id),area,std::move(target),std::move(spawn)});}
+            if(!readIndex(in,strings,id)||!readArea(in,area)||!readId(in,strings,target)||!readId(in,strings,spawn)) return fail("invalid LINK record");
+            data.links.push_back({std::move(id),area,std::move(target),std::move(spawn)});}
         if(in.remaining()!=0)return fail("trailing LINK data");
     }
     const auto validation=validateMapData(data,catalogs);if(!validation)return fail(validation.error);
