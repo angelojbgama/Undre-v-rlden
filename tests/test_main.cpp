@@ -1068,8 +1068,12 @@ void testPlayerVisualAndCameraFollow() {
         std::move(sword), std::move(bow));
     combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right,
                         gameplay::PlayerActionState::swordAttack, 2);
+    expect(combatVisual.animator().clip().id() == "sword.side" && !combatVisual.flipX(),
+           "right sword attack preserves the authored attack sheet orientation");
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::left,
+                        gameplay::PlayerActionState::swordAttack, 0);
     expect(combatVisual.animator().clip().id() == "sword.side" && combatVisual.flipX(),
-           "right sword attack reuses the side-left clip with horizontal flip");
+           "left sword attack mirrors the authored right-facing attack sheet");
     expect(combatVisual.consumeMarkerEvents().size() == 1,
            "PlayerVisual forwards attack animation markers exactly once");
     combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::up,
