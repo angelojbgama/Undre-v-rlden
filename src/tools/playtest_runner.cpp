@@ -307,6 +307,8 @@ bool runCollision(ScenarioContext& context) {
                            "scripted collision movement left the authored map bounds");
 }
 
+struct PointTarget final { int x{}; int y{}; };
+
 template<class Actor>
 bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500) {
     for (int index = 0; index < maximumTicks; ++index) {
@@ -324,14 +326,50 @@ bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500
     return false;
 }
 
+bool moveToContent(ScenarioContext& context, PointTarget target) {
+    for (int index = 0; index < 500; ++index) {
+        const auto& current = context.snapshot();
+        PointTarget waypoint = target;
+        // Map 03 has an authored chest on the direct horizontal approach to
+        // the potion.  Use the open row below it, then approach the pickup.
+        if (current.currentMap == "map.dungeon.03" && target.y == 184 &&
+            std::abs(current.playerY - 216) > 8) {
+            waypoint.y = 216;
+        }
+        if (current.currentMap == "map.dungeon.01" && target.x == 136 && target.y == 136 &&
+            (std::abs(current.playerX - 168) > 8 || std::abs(current.playerY - 104) > 8)) {
+            waypoint.x = 168;
+            waypoint.y = 104;
+        }
+        if (std::abs(target.x - current.playerX) <= 4 &&
+            std::abs(target.y - current.playerY) <= 4) { return true; }
+        platform::InputState input;
+        input.moveRight = waypoint.x > current.playerX;
+        input.moveLeft = waypoint.x < current.playerX;
+        input.moveDown = waypoint.y > current.playerY;
+        input.moveUp = waypoint.y < current.playerY;
+        for (const auto& enemy : current.enemies) {
+            const int distanceX = enemy.x - current.playerX;
+            const int distanceY = enemy.y - current.playerY;
+            if (std::abs(distanceX) <= 160 && std::abs(distanceY) <= 160) {
+                input.primaryAttackPressed = enemy.definitionId == "enemy.evil_soldier" &&
+                                             index % 12 == 0;
+                input.secondaryAttackPressed = enemy.definitionId == "enemy.skull" &&
+                                               index % 12 == 0;
+                break;
+            }
+        }
+        if (!context.step(input)) { return false; }
+    }
+    return false;
+}
+
 std::optional<game::maps::MapData> loadMap(const ScenarioContext& context,
                                            std::string_view mapId) {
     auto loaded = game::maps::readDmap(mapPath(context.root(), mapId));
     if (!loaded) { return std::nullopt; }
     return std::move(loaded.data);
 }
-
-struct PointTarget final { int x{}; int y{}; };
 
 PointTarget linkCenter(const world::AabbI& area) {
     return {area.x + area.width / 2, area.y + area.height / 2};
@@ -348,8 +386,8 @@ bool runPickup(ScenarioContext& context, std::string_view definition) {
     const PointTarget target{found->x, found->y};
     const auto initialGold = initial.gold;
     const auto initialPickupCount = initial.pickups.size();
-    if (!moveTo(context, target)) { return context.fail("could not approach expected pickup"); }
-    for (int index = 0; index < 12; ++index) { if (!context.step()) { return false; } }
+    if (!moveToContent(context, target)) { return context.fail("could not approach expected pickup"); }
+    for (int index = 0; index < 2; ++index) { if (!context.step()) { return false; } }
     const auto& after = context.snapshot();
     if (definition == "pickup.money") {
         const bool changed = context.require(after.gold > initialGold,
@@ -425,6 +463,16 @@ bool runTransition(ScenarioContext& context, std::string_view targetMap) {
         input.moveLeft = target.x < player.playerX;
         input.moveDown = target.y > player.playerY;
         input.moveUp = target.y < player.playerY;
+        for (const auto& enemy : player.enemies) {
+            if (std::abs(enemy.x - player.playerX) <= 96 &&
+                std::abs(enemy.y - player.playerY) <= 96) {
+                input.primaryAttackPressed = enemy.definitionId == "enemy.evil_soldier" &&
+                                             index % 24 == 0;
+                input.secondaryAttackPressed = enemy.definitionId == "enemy.skull" &&
+                                               index % 24 == 0;
+                break;
+            }
+        }
         if (!context.step(input)) { return false; }
     }
     return context.require(context.snapshot().currentMap == targetMap,
@@ -439,8 +487,31 @@ bool runContentAction(ScenarioContext& context, std::string_view definition,
         const auto found = std::find_if(initial.enemies.begin(), initial.enemies.end(),
                                         [&](const auto& actor) { return actor.definitionId == definition; });
         if (!context.require(found != initial.enemies.end(), "expected enemy is absent")) { return false; }
-        const PointTarget target{found->x, found->y};
-        if (!moveTo(context, target)) { return context.fail("could not approach expected enemy"); }
+        // Stop at attack range instead of entering the enemy collision body.
+        // Contact damage is intentionally part of the real gameplay path, so
+        // the playtest must exercise attacks without depending on body overlap.
+        for (int index = 0; index < 500; ++index) {
+            const auto& current = context.snapshot();
+            const auto enemy = std::find_if(current.enemies.begin(), current.enemies.end(),
+                [&](const auto& actor) { return actor.definitionId == definition; });
+            if (enemy == current.enemies.end()) { break; }
+            if (std::abs(enemy->x - current.playerX) <= 20 &&
+                std::abs(enemy->y - current.playerY) <= 20) { break; }
+            platform::InputState input;
+            input.moveRight = enemy->x > current.playerX;
+            input.moveLeft = enemy->x < current.playerX;
+            input.moveDown = enemy->y > current.playerY;
+            input.moveUp = enemy->y < current.playerY;
+            if (!context.step(input)) { return false; }
+        }
+        const auto& positioned = context.snapshot();
+        const bool inRange = std::any_of(positioned.enemies.begin(), positioned.enemies.end(),
+            [&](const auto& actor) { return actor.definitionId == definition &&
+                std::abs(actor.x - positioned.playerX) <= 20 &&
+                std::abs(actor.y - positioned.playerY) <= 20; });
+        if (!context.require(inRange, "could not approach expected enemy without body overlap")) {
+            return false;
+        }
         const auto initialHealth = found->health;
         bool sawAttack = false;
         for (int index = 0; index < 240; ++index) {
@@ -462,7 +533,7 @@ bool runContentAction(ScenarioContext& context, std::string_view definition,
                                         [&](const auto& actor) { return actor.definitionId == definition; });
         if (!context.require(found != initial.objects.end(), "expected object is absent")) { return false; }
         const PointTarget target{found->x, found->y};
-        if (!moveTo(context, target)) { return context.fail("could not approach expected object"); }
+        if (!moveToContent(context, target)) { return context.fail("could not approach expected object"); }
         for (int index = 0; index < 160; ++index) {
             platform::InputState input;
             input.interactPressed = definition == "object.chest" && index == 0;
