@@ -4,9 +4,9 @@
 collision e placements originais continuam vindo dos mapas.
 
 Todos os inteiros são little-endian. O header é `DSAV:char[4]`, major `u16=1`, minor
-`u16=0`, flags `u16=0`, headerSize `u16=20` e declaredFileSize `u64`. Cada chunk usa
+`u16=1`, flags `u16=0`, headerSize `u16=20` e declaredFileSize `u64`. Cada chunk usa
 `tag:char[4] + payloadSize:u64 + payload`. `STRS`, `PLYR` e `DELT` são obrigatórios e
-singleton; chunks desconhecidos size-bounded são ignorados. Major incompatível,
+singleton; `FLGS` é singleton opcional em DSAV 1.1; chunks desconhecidos size-bounded são ignorados. Major incompatível,
 minor futuro, flags desconhecidas, duplicatas, truncamento e tamanhos inválidos são
 rejeitados.
 
@@ -57,6 +57,21 @@ repeat:
     collected u8, hasRemainingQuantity u8
     if hasRemainingQuantity: remainingQuantity u64
 ```
+
+## `FLGS` (DSAV 1.1, opcional)
+
+O chunk contém as flags de diálogo persistentes como IDs estáveis, sem estado de
+renderer ou referências a `EntityHandle`:
+
+```text
+dialogueFlagCount u32
+repeat:
+    flagId stringIndex
+```
+
+Os IDs são únicos e gravados em ordem lexicográfica para manter serialização
+determinística. O reader aceita DSAV 1.0 sem `FLGS`; um arquivo 1.0 que contenha esse
+chunk é rejeitado, assim como contagens, índices ou payloads fora dos limites.
 
 Chest usa `opened` e conteúdo restante; Crate removida usa `destroyed`; pickup total
 usa `collected` e parcial usa `remainingQuantity`. Enemy death não persiste na v1.

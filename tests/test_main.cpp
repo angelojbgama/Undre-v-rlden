@@ -2465,6 +2465,8 @@ void testPhase8PersistentMapsAndSave() {
     saved.world.set(save::ObjectDelta{{map.id,{3}},false,true,{}});
     saved.world.set(save::PickupDelta{{map.id,{4}},true,std::nullopt});
     saved.world.set(save::PickupDelta{{map.id,{5}},false,2});
+    static_cast<void>(saved.dialogueFlags.set(simulation::DefinitionId{"dialogue.flag.zeta"}));
+    static_cast<void>(saved.dialogueFlags.set(simulation::DefinitionId{"dialogue.flag.alpha"}));
     save::SaveValidationCatalogs saveCatalogs{&items,{&map}};
     expect(save::validateSaveData(saved,saveCatalogs).empty(),
            "save validation accepts player state and explicit chest crate and pickup deltas");
@@ -2472,8 +2474,10 @@ void testPhase8PersistentMapsAndSave() {
     expect(loaded && loaded.data.player.health==3 && loaded.data.player.gold==99 &&
                loaded.data.player.inventory[0]->quantity==7 && !loaded.data.player.inventory[1] &&
                loaded.data.player.quickSlots[0] && loaded.data.world.objects.size()==2 &&
-               loaded.data.world.pickups.size()==2,
-           "DSAV v1 roundtrips Health ordered 30-slot inventory Wallet QuickSlots and world deltas");
+               loaded.data.world.pickups.size()==2 &&
+               loaded.data.dialogueFlags.isSet(simulation::DefinitionId{"dialogue.flag.alpha"}) &&
+               loaded.data.dialogueFlags.isSet(simulation::DefinitionId{"dialogue.flag.zeta"}),
+           "DSAV v1.1 roundtrips player state world deltas and persistent dialogue flags");
     expect(saveBytes==save::serializeSave(loaded.data), "DSAV output is deterministic for equivalent state");
     gameplay::PlayerItems restoredItems(items);simulation::EntityHandlePool playerHandles;
     gameplay::Player restoredPlayer({7},playerHandles.create(),{1,1});
@@ -2494,6 +2498,32 @@ void testPhase8PersistentMapsAndSave() {
     badSave=saved;badSave.world.pickups.push_back(badSave.world.pickups[0]);
     expect(!save::deserializeSave(save::serializeSave(badSave),saveCatalogs),
            "save load rejects duplicate persistent delta keys");
+    auto legacySave = saved;
+    legacySave.dialogueFlags.clearAll();
+    auto legacyBytes = save::serializeSave(legacySave);
+    legacyBytes[6] = 0;
+    legacyBytes[7] = 0;
+    const auto legacyLoaded = save::deserializeSave(legacyBytes, saveCatalogs);
+    expect(legacyLoaded && legacyLoaded.data.dialogueFlags.values().empty(),
+           "DSAV 1.0 saves without dialogue flags remain backward compatible");
+    auto incompatibleFlags = save::serializeSave(saved);
+    incompatibleFlags[6] = 0;
+    incompatibleFlags[7] = 0;
+    expect(!save::deserializeSave(incompatibleFlags, saveCatalogs),
+           "DSAV 1.0 rejects a future FLGS chunk instead of silently dropping flags");
+    auto corruptFlags = save::serializeSave(saved);
+    const std::array<std::uint8_t, 4> flagsTag{'F', 'L', 'G', 'S'};
+    const auto flagsPosition = std::search(corruptFlags.begin(), corruptFlags.end(),
+                                           flagsTag.begin(), flagsTag.end());
+    bool malformedFlagsRejected = false;
+    if (flagsPosition != corruptFlags.end()) {
+        const auto countOffset = static_cast<std::size_t>(flagsPosition - corruptFlags.begin()) + 12;
+        for (std::size_t index = 0; index < sizeof(std::uint32_t); ++index) {
+            corruptFlags[countOffset + index] = 0xff;
+        }
+        malformedFlagsRejected = !save::deserializeSave(corruptFlags, saveCatalogs);
+    }
+    expect(malformedFlagsRejected, "DSAV rejects an oversized persistent dialogue flag chunk");
 
     std::string applyError;
     expect(save::applyWorldState(saved.world,*runtime.world,handles,items,applyError) &&
@@ -2672,7 +2702,7 @@ void testPhase10DialogueDataModel() {
            "dialogue nodes support speaker, pagination and a linear next-node transition");
 
     const auto& scholarEntry = dialogue::requireNode(scholar, scholar.entryNodeId);
-    expect(scholarEntry.pages.size() == 1 && scholarEntry.choices.size() == 2 &&
+    expect(scholarEntry.pages.size() == 1 && scholarEntry.choices.size() == 3 &&
                dialogue::findNode(scholar, scholarEntry.choices[0].targetNodeId) != nullptr &&
                dialogue::findNode(scholar, scholarEntry.choices[1].targetNodeId) != nullptr,
            "dialogue nodes support data-driven choices targeting other nodes");
@@ -2717,7 +2747,8 @@ void testPhase10DialogueSession() {
     namespace simulation = underworld::simulation;
 
     const underworld::game::GameContentRegistry content;
-    dialogue::DialogueSession session(content.dialogues());
+    dialogue::DialogueFlagSet flags;
+    dialogue::DialogueSession session(content.dialogues(), flags);
     std::string error;
     expect(session.begin(dialogue::guardDialogueId(), error) && session.isOpen() &&
                session.state() == dialogue::DialogueSessionState::text &&
@@ -2757,6 +2788,17 @@ void testPhase10DialogueSession() {
     expect(!session.begin(simulation::DefinitionId{"dialogue.missing"}, error) &&
                !error.empty() && !session.isOpen(),
            "DialogueSession reports an unknown dialogue without opening a broken overlay");
+
+    expect(session.begin(dialogue::scholarDialogueId(), error) &&
+               session.handleCommand(actionCommand(9, true, false)) &&
+               session.handleCommand(actionCommand(10, true, false)) &&
+               flags.isSet(dialogue::scholarAskedFlagId()) && !session.choicesVisible(),
+           "selected dialogue action sets a persistent flag through the session");
+    session.close();
+    expect(session.begin(dialogue::scholarDialogueId(), error) &&
+               session.handleCommand(actionCommand(11, true, false)) &&
+               session.choiceCount() == 2 && session.choiceLabel(1) == "Recall the lesson",
+           "dialogue conditions select choices from the current persistent flag state");
 }
 
 void testNearestImageRegions() {

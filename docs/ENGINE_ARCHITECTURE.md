@@ -1340,8 +1340,7 @@ renderer-independent dialogue graph. Nodes own one or more ordered text pages an
 either continue to one next node or expose choices targeting nodes in the same
 definition. Catalog insertion validates IDs, non-empty pages, the entry node and every
 transition target. Guard and Scholar use separate catalogued definitions through their
-NPC `defaultDialogueId`; dialogue sessions, input routing, conditions, actions and
-persistent flags remain deferred to Blocks 10C–10D.
+NPC `defaultDialogueId`.
 
 ## Fase 10C — Dialogue runtime and UI
 
@@ -1354,3 +1353,12 @@ session from the interacted NPC's `defaultDialogueId` and renders a small overla
 session read-only state using the existing bitmap font and software renderer. Input
 mapping remains at the Win32 boundary; conditions, actions and persistence remain
 deferred to Phase 10D.
+
+## Fase 10D — Persistent dialogue flags
+
+`DialogueFlagSet` stores sorted stable flag IDs and exposes set, clear and query
+operations for dialogue conditions/actions. Choices can require a flag to be set or
+unset and can set or clear a flag when selected. The game carries this state in
+`SaveData`; DSAV 1.1 adds the optional bounds-checked `FLGS` chunk while DSAV 1.0 saves
+without flags remain readable. Conditions/actions are intentionally limited to these
+two flag operations; quest state and a broader scripting model remain deferred.

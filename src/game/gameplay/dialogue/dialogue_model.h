@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/simulation/definition_id.h"
+#include "game/gameplay/dialogue/dialogue_flags.h"
 
 #include <cstddef>
 #include <string>
@@ -12,9 +13,23 @@ namespace underworld::game::gameplay::dialogue {
 // Dialogue data is renderer- and input-independent. A page is already a unit that
 // the future DialogueSession can present and advance without splitting strings at
 // runtime.
+enum class DialogueConditionKind { flagSet, flagNotSet };
+struct DialogueCondition final {
+    DialogueConditionKind kind{DialogueConditionKind::flagSet};
+    simulation::DefinitionId flagId{};
+};
+
+enum class DialogueActionKind { setFlag, clearFlag };
+struct DialogueAction final {
+    DialogueActionKind kind{DialogueActionKind::setFlag};
+    simulation::DefinitionId flagId{};
+};
+
 struct DialogueChoice final {
     std::string label;
     simulation::DefinitionId targetNodeId{};
+    std::vector<DialogueCondition> conditions;
+    std::vector<DialogueAction> actions;
     [[nodiscard]] bool operator==(const DialogueChoice&) const noexcept = default;
 };
 
@@ -58,6 +73,7 @@ private:
 
 [[nodiscard]] const simulation::DefinitionId& guardDialogueId();
 [[nodiscard]] const simulation::DefinitionId& scholarDialogueId();
+[[nodiscard]] const simulation::DefinitionId& scholarAskedFlagId();
 [[nodiscard]] DialogueDefinition makeGuardDialogueDefinition();
 [[nodiscard]] DialogueDefinition makeScholarDialogueDefinition();
 

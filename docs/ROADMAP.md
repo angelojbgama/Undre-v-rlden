@@ -860,6 +860,14 @@ is open and presents speaker, page, text and choices in an overlay rendered with
 existing bitmap font. Dialogue conditions, actions and persistent flags remain
 deferred to Block 10D.
 
+## Block 10D — Persistent Dialogue Flags (DONE)
+
+Implemented in this increment: sorted `DialogueFlagSet`, `flagSet`/`flagNotSet`
+conditions and `setFlag`/`clearFlag` choice actions. The game persists the state through
+the optional `FLGS` chunk in DSAV 1.1 and restores it on load. DSAV 1.0 files without
+flags remain backward compatible; malformed or misplaced flag chunks are rejected.
+Quest state and general scripting remain outside this block.
+
 ## Dependências
 
 - entidades/IDs estáveis;

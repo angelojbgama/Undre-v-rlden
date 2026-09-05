@@ -27,6 +27,16 @@ void validateNodeTargets(const DialogueDefinition& definition,
             !findNode(definition, choice.targetNodeId)) {
             throw std::invalid_argument("dialogue choice is incomplete or targets an unknown node");
         }
+        for (const auto& condition : choice.conditions) {
+            if (condition.flagId.empty()) {
+                throw std::invalid_argument("dialogue condition flag is empty");
+            }
+        }
+        for (const auto& action : choice.actions) {
+            if (action.flagId.empty()) {
+                throw std::invalid_argument("dialogue action flag is empty");
+            }
+        }
     }
 }
 
@@ -99,6 +109,11 @@ const simulation::DefinitionId& scholarDialogueId() {
     return id;
 }
 
+const simulation::DefinitionId& scholarAskedFlagId() {
+    static const simulation::DefinitionId id{"dialogue.scholar.asked"};
+    return id;
+}
+
 DialogueDefinition makeGuardDialogueDefinition() {
     const simulation::DefinitionId entry{"guard.entry"};
     const simulation::DefinitionId response{"guard.response"};
@@ -114,7 +129,12 @@ DialogueDefinition makeScholarDialogueDefinition() {
     const simulation::DefinitionId right{"scholar.right"};
     return {scholarDialogueId(), entry,
             {{entry, "Scholar", {"The old stones remember every footstep."}, {},
-              {{"Ask about the dungeon", left}, {"Say farewell", right}}},
+              {{"Ask about the dungeon", left, {},
+                {{DialogueActionKind::setFlag, scholarAskedFlagId()}}},
+               {"Say farewell", right,
+                {{DialogueConditionKind::flagNotSet, scholarAskedFlagId()}}, {}},
+               {"Recall the lesson", left,
+                {{DialogueConditionKind::flagSet, scholarAskedFlagId()}}, {}}}},
              {left, "Scholar", {"Study the walls, but trust the path beneath your feet."}, {}, {}},
              {right, "Scholar", {"Then walk carefully, friend."}, {}, {}}}};
 }

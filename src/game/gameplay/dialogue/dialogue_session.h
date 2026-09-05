@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace underworld::game::gameplay::dialogue {
 
@@ -13,7 +14,8 @@ enum class DialogueSessionState { closed, text, choices };
 
 class DialogueSession final {
 public:
-    explicit DialogueSession(const DialogueCatalog& catalog) : catalog_(&catalog) {}
+    DialogueSession(const DialogueCatalog& catalog, DialogueFlagSet& flags)
+        : catalog_(&catalog), flags_(&flags) {}
 
     // Returns false and leaves the current session unchanged when the definition cannot
     // be opened. Invalid authored content is therefore reported at the boundary rather
@@ -44,11 +46,13 @@ private:
     void showChoices() noexcept;
 
     const DialogueCatalog* catalog_{};
+    DialogueFlagSet* flags_{};
     const DialogueDefinition* dialogue_{};
     const DialogueNode* node_{};
     DialogueSessionState state_{DialogueSessionState::closed};
     std::size_t pageIndex_{};
     std::size_t selectedChoice_{};
+    std::vector<std::size_t> availableChoiceIndices_;
 };
 
 } // namespace underworld::game::gameplay::dialogue

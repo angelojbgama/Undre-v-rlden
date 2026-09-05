@@ -3,6 +3,7 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/persistent_id.h"
 #include "game/gameplay/facing_direction.h"
+#include "game/gameplay/dialogue/dialogue_flags.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/player.h"
@@ -51,7 +52,11 @@ struct SessionWorldState final {
     [[nodiscard]] const PickupDelta* findPickup(const simulation::PersistentEntityKey& key) const noexcept;
 };
 
-struct SaveData final { SavedPlayer player; SessionWorldState world; };
+struct SaveData final {
+    SavedPlayer player;
+    SessionWorldState world;
+    gameplay::dialogue::DialogueFlagSet dialogueFlags;
+};
 
 struct SaveValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
@@ -66,7 +71,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-inline constexpr std::uint16_t saveMinorVersion = 0;
+// Minor 1 adds the optional FLGS chunk. Readers continue accepting 1.0 saves.
+inline constexpr std::uint16_t saveMinorVersion = 1;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

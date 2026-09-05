@@ -262,7 +262,7 @@ struct Phase7Demo::State final {
           executableDirectory(std::move(executableDirectory)),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, {}),
-          dialogue(content.dialogues()),
+          dialogueFlags(), dialogue(content.dialogues(), dialogueFlags),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
@@ -736,7 +736,7 @@ struct Phase7Demo::State final {
     void saveGame() {
         captureActiveWorld();
         save::SaveData data{save::capturePlayer(player, playerItems, activeWorld().id()),
-                            sessionWorldState};
+                            sessionWorldState, dialogueFlags};
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
             lastEvent = "SAVED";
@@ -769,6 +769,7 @@ struct Phase7Demo::State final {
             lastEvent = "LOAD ERROR";
             return;
         }
+        dialogueFlags = loaded.data.dialogueFlags;
         clearMapTransients();
         resolveRenderLayers();
         rebuildWorldVisuals();
@@ -1173,7 +1174,8 @@ struct Phase7Demo::State final {
     gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
     gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
     gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
-    gameplay::dialogue::DialogueSession dialogue;
+    gameplay::dialogue::DialogueFlagSet dialogueFlags;
+    gameplay::dialogue::DialogueSession dialogue{content.dialogues(), dialogueFlags};
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;

@@ -18,6 +18,7 @@ bool DialogueSession::begin(const simulation::DefinitionId& dialogueId,
         node_ = entry;
         pageIndex_ = 0;
         selectedChoice_ = 0;
+        availableChoiceIndices_.clear();
         state_ = DialogueSessionState::text;
         error.clear();
         return true;
@@ -33,6 +34,7 @@ void DialogueSession::close() noexcept {
     state_ = DialogueSessionState::closed;
     pageIndex_ = 0;
     selectedChoice_ = 0;
+    availableChoiceIndices_.clear();
 }
 
 bool DialogueSession::handleCommand(const simulation::PlayerCommand& command) {
@@ -50,7 +52,19 @@ bool DialogueSession::handleCommand(const simulation::PlayerCommand& command) {
                 next, 0, static_cast<int>(choiceCount() - 1)));
         }
         if (command.actions.primaryAttackPressed || command.actions.interactPressed) {
-            enterNode(node_->choices[selectedChoice_].targetNodeId);
+            if (availableChoiceIndices_.empty()) {
+                close();
+                return true;
+            }
+            const auto choiceIndex = availableChoiceIndices_[selectedChoice_];
+            for (const auto& action : node_->choices[choiceIndex].actions) {
+                if (action.kind == DialogueActionKind::setFlag) {
+                    static_cast<void>(flags_->set(action.flagId));
+                } else {
+                    static_cast<void>(flags_->clear(action.flagId));
+                }
+            }
+            enterNode(node_->choices[choiceIndex].targetNodeId);
         }
         return true;
     }
@@ -84,22 +98,33 @@ std::size_t DialogueSession::pageCount() const noexcept {
 }
 
 std::size_t DialogueSession::choiceCount() const noexcept {
-    return node_ && choicesVisible() ? node_->choices.size() : 0;
+    return choicesVisible() ? availableChoiceIndices_.size() : 0;
 }
 
 std::string_view DialogueSession::choiceLabel(std::size_t index) const noexcept {
-    if (!node_ || index >= node_->choices.size()) { return {}; }
-    return node_->choices[index].label;
+    if (!node_ || index >= availableChoiceIndices_.size()) { return {}; }
+    return node_->choices[availableChoiceIndices_[index]].label;
 }
 
 void DialogueSession::enterNode(const simulation::DefinitionId& nodeId) {
     node_ = &requireNode(*dialogue_, nodeId);
     pageIndex_ = 0;
     selectedChoice_ = 0;
+    availableChoiceIndices_.clear();
     state_ = DialogueSessionState::text;
 }
 
 void DialogueSession::showChoices() noexcept {
+    availableChoiceIndices_.clear();
+    for (std::size_t index = 0; index < node_->choices.size(); ++index) {
+        const auto& choice = node_->choices[index];
+        const bool available = std::all_of(choice.conditions.begin(), choice.conditions.end(),
+            [&](const auto& condition) {
+                const bool set = flags_->isSet(condition.flagId);
+                return condition.kind == DialogueConditionKind::flagSet ? set : !set;
+            });
+        if (available) { availableChoiceIndices_.push_back(index); }
+    }
     state_ = DialogueSessionState::choices;
     selectedChoice_ = 0;
 }
