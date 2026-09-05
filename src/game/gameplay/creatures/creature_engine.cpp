@@ -391,13 +391,15 @@ AttackDefinition makeSoldierSwordAttackDefinition() {
     }}};
     return {soldierSword, AttackKind::meleeHitbox, {1, 7}, 24, 45, 0, 27,
             simulation::DefinitionId{"visual.action.soldier.sword"}, boxes,
-            std::nullopt};
+            std::nullopt,
+            {{6, AttackTimelineEventKind::activateHitbox},
+             {18, AttackTimelineEventKind::deactivateHitbox}}};
 }
 
 AttackDefinition makeSkullArrowAttackDefinition() {
     return {skullArrowAttack, AttackKind::projectile, {1, 5}, 16, 60, 0, 120,
             simulation::DefinitionId{"visual.action.skull.arrow"}, std::nullopt,
-            skullArrowProjectile};
+            skullArrowProjectile, {{8, AttackTimelineEventKind::spawnProjectile}}};
 }
 
 ProjectileDefinition makeSkullArrowProjectileDefinition() {

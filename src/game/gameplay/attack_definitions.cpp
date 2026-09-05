@@ -41,8 +41,27 @@ void validate(const AttackDefinition& definition) {
                 throw std::invalid_argument("melee attack contains an invalid hitbox");
             }
         }
+        for (const AttackTimelineEvent& event : definition.timeline) {
+            if (event.tick == 0 || event.tick >= definition.totalTicks ||
+                event.kind == AttackTimelineEventKind::spawnProjectile) {
+                throw std::invalid_argument("melee attack contains an invalid timeline event");
+            }
+        }
     } else if (!definition.projectileDefinitionId || definition.meleeHitboxes) {
         throw std::invalid_argument("projectile attack requires only a projectile definition id");
+    } else {
+        for (const AttackTimelineEvent& event : definition.timeline) {
+            if (event.tick == 0 || event.tick >= definition.totalTicks ||
+                event.kind != AttackTimelineEventKind::spawnProjectile) {
+                throw std::invalid_argument("projectile attack contains an invalid timeline event");
+            }
+        }
+    }
+    if (!std::is_sorted(definition.timeline.begin(), definition.timeline.end(),
+                        [](const auto& left, const auto& right) {
+                            return left.tick < right.tick;
+                        })) {
+        throw std::invalid_argument("attack timeline events must be ordered by tick");
     }
 }
 
@@ -61,6 +80,22 @@ const simulation::DefinitionId bowId{"attack.player.bow"};
 const simulation::DefinitionId arrowId{"projectile.player.arrow"};
 
 } // namespace
+
+void AttackExecution::advance(std::vector<AttackTimelineEvent>& events) {
+    if (finished || definition == nullptr) { return; }
+    ++elapsedTicks;
+    while (nextTimelineEvent < definition->timeline.size() &&
+           definition->timeline[nextTimelineEvent].tick == elapsedTicks) {
+        const AttackTimelineEvent& event = definition->timeline[nextTimelineEvent++];
+        events.push_back(event);
+        if (event.kind == AttackTimelineEventKind::activateHitbox) {
+            meleeHitboxActive = true;
+        } else if (event.kind == AttackTimelineEventKind::deactivateHitbox) {
+            meleeHitboxActive = false;
+        }
+    }
+    if (elapsedTicks >= definition->totalTicks) { finished = true; }
+}
 
 const DirectionalBoxDefinition& DirectionalBoxes::forFacing(
     FacingDirection facing) const noexcept {
@@ -119,13 +154,15 @@ AttackDefinition makePlayerSwordAttackDefinition() {
         {6, -18, 21, 18},
     }}};
     return {playerSwordAttackId(), AttackKind::meleeHitbox, {1, 32}, 24, 0, 0, 27,
-            simulation::DefinitionId{"visual.player.sword"}, boxes, std::nullopt};
+            simulation::DefinitionId{"visual.player.sword"}, boxes, std::nullopt,
+            {{6, AttackTimelineEventKind::activateHitbox},
+             {18, AttackTimelineEventKind::deactivateHitbox}}};
 }
 
 AttackDefinition makePlayerBowAttackDefinition() {
     return {playerBowAttackId(), AttackKind::projectile, {1, 32}, 16, 0, 0, 512,
             simulation::DefinitionId{"visual.player.bow"}, std::nullopt,
-            playerArrowProjectileId()};
+            playerArrowProjectileId(), {{8, AttackTimelineEventKind::spawnProjectile}}};
 }
 
 ProjectileDefinition makePlayerArrowProjectileDefinition() {

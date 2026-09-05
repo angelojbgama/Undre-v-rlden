@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace underworld::game::gameplay {
 
@@ -34,6 +35,18 @@ struct DirectionalOffsets final {
     [[nodiscard]] core::WorldPointI forFacing(FacingDirection facing) const noexcept;
 };
 
+enum class AttackTimelineEventKind {
+    activateHitbox,
+    deactivateHitbox,
+    spawnProjectile,
+};
+
+struct AttackTimelineEvent final {
+    std::uint32_t tick{};
+    AttackTimelineEventKind kind{AttackTimelineEventKind::activateHitbox};
+    [[nodiscard]] constexpr bool operator==(const AttackTimelineEvent&) const noexcept = default;
+};
+
 struct ProjectileDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualId{};
@@ -56,6 +69,25 @@ struct AttackDefinition final {
     simulation::DefinitionId visualActionId{};
     std::optional<DirectionalBoxes> meleeHitboxes{};
     std::optional<simulation::DefinitionId> projectileDefinitionId{};
+    std::vector<AttackTimelineEvent> timeline{};
+};
+
+// Gameplay attack timing is measured in fixed ticks, independently from any
+// visual animation. An execution starts at elapsedTicks == 0. Each call to
+// advance() completes one simulation tick, increments elapsedTicks, and emits
+// all events at that tick exactly once. The execution is finished when
+// elapsedTicks reaches definition->totalTicks; events at totalTicks are
+// rejected by AttackCatalog validation.
+struct AttackExecution final {
+    const AttackDefinition* definition{};
+    AttackKey key{};
+    FacingDirection lockedFacing{FacingDirection::down};
+    bool meleeHitboxActive{};
+    std::uint32_t elapsedTicks{};
+    std::size_t nextTimelineEvent{};
+    bool finished{};
+
+    void advance(std::vector<AttackTimelineEvent>& events);
 };
 
 class AttackCatalog final {

@@ -27,6 +27,26 @@ Regras permanentes:
 - preferir estender sistemas existentes em vez de criar versões paralelas;
 - introduzir uma abstração antes da fase prevista somente quando houver uso concreto imediato e redução clara de retrabalho.
 
+### Fundação de separação gameplay/presentation — concluída
+
+O timing semântico dos ataques agora é definido por `AttackDefinition.timeline` e
+avança através de `AttackExecution` em ticks fixos. Hitbox activation/deactivation,
+projectile spawn e attack completion não dependem de `Animator`, sprites ou markers
+visuais. Animation markers permanecem disponíveis apenas como metadados de
+apresentação para usos futuros, como VFX ou áudio.
+
+Esta fundação prepara a futura separação `GameSession` / `GamePresentation`; ela não
+antecipa nem conclui a Fase 13 de headless/replay.
+
+### Composição `Phase7Demo` → `GameRuntime` — concluída
+
+O runtime ativo foi renomeado para `GameRuntime` e a responsabilidade de desenho foi
+extraída para `GamePresentation`. A apresentação agora concentra câmera, composição
+de layers/atores, projéteis, efeitos, HUD, diálogo, inventário e debug, consultando
+uma view somente-leitura do runtime. `GameRuntime` continua sendo uma composição
+transitória que contém a simulação; a extração de `GameSession` permanece como o
+próximo incremento e não deve ser considerada concluída por esta mudança.
+
 ---
 
 ## 2. Estado macro
@@ -1164,7 +1184,7 @@ procedural generation, MapLogic, and LLM blueprint production remain deferred.
 
 The first, deliberately partial, anticipation of the later headless/replay work is
 complete: `AuditSession` writes structured audit metadata/events/state checkpoints,
-and `Phase7Demo::auditSnapshot()` exposes a value-only diagnostic view. Output is
+and `GameRuntime::auditSnapshot()` exposes a value-only diagnostic view. Output is
 development-only and ignored by Git. This does not mark Phase 13 complete.
 
 Still deferred, in order, are logical-framebuffer BMP capture, the real headless
@@ -1185,7 +1205,7 @@ assertions; those belong to Blocks D and later.
 
 ## Audit/playtest portability track — Block D
 
-`playtest_runner` now runs the real `Phase7Demo` through
+`playtest_runner` now runs the real `GameRuntime` through
 `HeadlessAuditPlatform`, injects `InputState` by tick, renders the real logical
 framebuffer and checks gameplay through `GameAuditSnapshot`. It creates independent
 audit sessions, checkpoints and failure screenshots, and returns non-zero when an

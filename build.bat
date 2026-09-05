@@ -259,8 +259,12 @@ echo [33/40] Compiling WIC image decoder...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_image_decoder.obj" "src\engine\platform\win32\win32_image_decoder.cpp"
 if errorlevel 1 goto :build_failed
 
-echo [34/40] Compiling Phase 7 demo composition...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\phase5_demo.obj" "src\game\phase5_demo.cpp"
+echo [34/40] Compiling game runtime composition...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\game_runtime.obj" "src\game\game_runtime.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling game presentation...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\game_presentation.obj" "src\game\game_presentation.cpp"
 if errorlevel 1 goto :build_failed
 
 echo Compiling game launch options...
@@ -331,14 +335,14 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\game_presentation.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
     "build\obj\player.obj" "build\obj\player_visual.obj" ^
     "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
-    "build\obj\phase5_demo.obj" "build\obj\game.obj" ^
+    "build\obj\game_runtime.obj" "build\obj\game.obj" ^
     "build\obj\win32_platform.obj" ^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib shell32.lib
 if errorlevel 1 goto :build_failed
@@ -366,7 +370,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\game_presentation.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
@@ -403,10 +407,10 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
     "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
-    "build\obj\runtime_visual_sync.obj" "build\obj\creature_engine.obj" ^
+    "build\obj\runtime_visual_sync.obj" "build\obj\game_presentation.obj" "build\obj\creature_engine.obj" ^
     "build\obj\enemy_visual.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" "build\obj\player.obj" ^
-    "build\obj\player_visual.obj" "build\obj\phase5_demo.obj" ^
+    "build\obj\player_visual.obj" "build\obj\game_runtime.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" ^
     "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\playtest_runner.obj"

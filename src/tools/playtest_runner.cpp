@@ -5,7 +5,7 @@
 #include "game/audit/audit_session.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/world_objects.h"
-#include "game/phase5_demo.h"
+#include "game/game_runtime.h"
 #include "game/maps/dmap.h"
 #include "game/maps/official_maps.h"
 
@@ -159,7 +159,7 @@ public:
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
-        demo_ = std::make_unique<game::Phase7Demo>(
+        demo_ = std::make_unique<game::GameRuntime>(
             decoder_, options.assetRoot.empty() ? root_ : options.assetRoot,
             executableDirectory_, launch);
 
@@ -250,7 +250,7 @@ public:
 
     [[nodiscard]] std::uint64_t assertionsPassed() const noexcept { return assertionsPassed_; }
 
-    [[nodiscard]] game::Phase7Demo& demo() noexcept { return *demo_; }
+    [[nodiscard]] game::GameRuntime& demo() noexcept { return *demo_; }
     [[nodiscard]] platform::HeadlessAuditPlatform& platform() noexcept { return platform_; }
     [[nodiscard]] const std::filesystem::path& root() const noexcept { return root_; }
 
@@ -268,7 +268,7 @@ private:
     SyntheticImageDecoder decoder_;
     platform::HeadlessAuditPlatform platform_;
     render::Framebuffer framebuffer_;
-    std::unique_ptr<game::Phase7Demo> demo_;
+    std::unique_ptr<game::GameRuntime> demo_;
     AuditSession audit_;
     GameAuditSnapshot snapshot_;
     std::uint64_t tick_{};

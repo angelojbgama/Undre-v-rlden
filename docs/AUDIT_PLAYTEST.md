@@ -70,7 +70,7 @@ Windows não foi possível neste host Linux/WSL.
 
 ## Block D — cenários automatizados
 
-O `playtest_runner` instancia o `Phase7Demo` real com `HeadlessAuditPlatform`, injeta
+O `playtest_runner` instancia o `GameRuntime` real com `HeadlessAuditPlatform`, injeta
 somente `InputState` por tick e valida o resultado por `GameAuditSnapshot`. Cada
 cenário escreve uma sessão independente, com screenshots de startup, checkpoints
 relevantes e conclusão/falha. O runner retorna código diferente de zero para qualquer

@@ -1263,8 +1263,85 @@ TestCombatActor makeCombatTarget(
             {{feet.x - 7, feet.y - 22, 14, 22}, true}};
 }
 
+void testAttackTimeline() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+
+    gameplay::AttackDefinition definition;
+    definition.id = simulation::DefinitionId{"attack.test.timeline"};
+    definition.kind = gameplay::AttackKind::meleeHitbox;
+    definition.damage = {1, 2};
+    definition.totalTicks = 6;
+    definition.visualActionId = simulation::DefinitionId{"visual.test.attack"};
+    definition.meleeHitboxes = gameplay::DirectionalBoxes{};
+    for (auto& box : definition.meleeHitboxes->values) { box = {0, 0, 1, 1}; }
+    definition.timeline = {{2, gameplay::AttackTimelineEventKind::activateHitbox},
+                           {4, gameplay::AttackTimelineEventKind::deactivateHitbox}};
+    gameplay::AttackCatalog catalog;
+    catalog.add(definition);
+    simulation::EntityHandlePool handles;
+    gameplay::AttackExecution execution{
+        &catalog.require(definition.id), {handles.create(), 1},
+        gameplay::FacingDirection::right};
+    std::vector<gameplay::AttackTimelineEvent> events;
+    execution.advance(events);
+    expect(events.empty() && !execution.meleeHitboxActive,
+           "attack timeline does not emit before its event tick");
+    execution.advance(events);
+    expect(events.size() == 1 && events[0].tick == 2 && execution.meleeHitboxActive,
+           "attack timeline activates a melee hitbox at the declared tick");
+    events.clear();
+    execution.advance(events);
+    expect(events.empty() && execution.meleeHitboxActive,
+           "attack timeline keeps the melee hitbox active between events");
+    execution.advance(events);
+    expect(events.size() == 1 && events[0].tick == 4 && !execution.meleeHitboxActive,
+           "attack timeline deactivates a melee hitbox at the declared tick");
+    events.clear();
+    execution.advance(events);
+    execution.advance(events);
+    expect(events.empty() && execution.finished,
+           "attack timeline finishes exactly at totalTicks without repeating events");
+
+    gameplay::AttackDefinition projectileDefinition;
+    projectileDefinition.id = simulation::DefinitionId{"attack.test.projectile.timeline"};
+    projectileDefinition.kind = gameplay::AttackKind::projectile;
+    projectileDefinition.damage = {1, 1};
+    projectileDefinition.totalTicks = 5;
+    projectileDefinition.visualActionId = simulation::DefinitionId{"visual.test.projectile"};
+    projectileDefinition.projectileDefinitionId =
+        simulation::DefinitionId{"projectile.test"};
+    projectileDefinition.timeline = {{3, gameplay::AttackTimelineEventKind::spawnProjectile}};
+    catalog.add(projectileDefinition);
+    gameplay::AttackExecution projectileExecution{
+        &catalog.require(projectileDefinition.id), {handles.create(), 2},
+        gameplay::FacingDirection::down};
+    events.clear();
+    projectileExecution.advance(events);
+    projectileExecution.advance(events);
+    expect(events.empty(), "projectile timeline does not spawn before its event tick");
+    projectileExecution.advance(events);
+    expect(events.size() == 1 &&
+               events[0].kind == gameplay::AttackTimelineEventKind::spawnProjectile,
+           "projectile timeline emits exactly one spawn event at its declared tick");
+    projectileExecution.advance(events);
+    projectileExecution.advance(events);
+    expect(events.size() == 1, "projectile timeline does not repeat a spawn event");
+
+    bool rejected = false;
+    try {
+        auto invalid = definition;
+        invalid.timeline = {{6, gameplay::AttackTimelineEventKind::activateHitbox}};
+        catalog.add(std::move(invalid));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    expect(rejected, "attack catalog rejects timeline events at or after totalTicks");
+}
+
 void testCombatSystem() {
     namespace gameplay = underworld::game::gameplay;
+    namespace creatures = underworld::game::gameplay::creatures;
     namespace simulation = underworld::simulation;
     underworld::world::CollisionGrid grid(32, 32);
     simulation::EntityHandlePool pool;
@@ -1370,8 +1447,18 @@ void testCombatSystem() {
            "sword Hitboxes are explicit per facing and anchored to feet");
     expect(sword.totalTicks == 24 && bow.totalTicks == 16 &&
                sword.kind == gameplay::AttackKind::meleeHitbox &&
-               bow.kind == gameplay::AttackKind::projectile,
-           "Sword and Bow share small immutable AttackDefinition data");
+               bow.kind == gameplay::AttackKind::projectile &&
+               sword.timeline == std::vector<gameplay::AttackTimelineEvent>{
+                   {6, gameplay::AttackTimelineEventKind::activateHitbox},
+                   {18, gameplay::AttackTimelineEventKind::deactivateHitbox}} &&
+               bow.timeline == std::vector<gameplay::AttackTimelineEvent>{
+                   {8, gameplay::AttackTimelineEventKind::spawnProjectile}},
+           "Sword and Bow define gameplay timing independently from visuals");
+    const auto soldierAttack = creatures::makeSoldierSwordAttackDefinition();
+    const auto skullAttack = creatures::makeSkullArrowAttackDefinition();
+    expect(soldierAttack.timeline == sword.timeline &&
+               skullAttack.timeline == bow.timeline,
+           "Soldier and Skull preserve the characterized gameplay attack timing");
 }
 
 void testProjectilesAndEffects() {
@@ -4621,6 +4708,7 @@ int main() {
         testPlayerCollision();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();
+        testAttackTimeline();
         testEntityHandlesAndActorOrder();
         testCombatSystem();
         testProjectilesAndEffects();

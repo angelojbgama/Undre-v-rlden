@@ -1919,7 +1919,7 @@ O objetivo é construir Dungeon Underworld como uma sequência de sistemas peque
 
 Foi antecipada uma fatia pequena da futura trilha headless/replay para observabilidade
 dos sistemas reais: `AuditSession`, eventos estruturados JSONL e
-`Phase7Demo::auditSnapshot()` estão implementados e cobertos por testes portáveis.
+`GameRuntime::auditSnapshot()` estão implementados e cobertos por testes portáveis.
 As sessões usam `audit/<session-id>/`, não permitem traversal no identificador e não
 persistem handles runtime ou ponteiros. A saída é artefato de desenvolvimento e está
 ignorada pelo Git.
@@ -1938,7 +1938,7 @@ formal, hash de estado, rede e multiplayer permanecem fora desta antecipação.
 
 ## Estado atual — audit playtest Block D/E
 
-O Block D está implementado: `src/tools/playtest_runner.cpp` compõe o `Phase7Demo`
+O Block D está implementado: `src/tools/playtest_runner.cpp` compõe o `GameRuntime`
 real com `HeadlessAuditPlatform`, injeta `InputState` por tick, renderiza o framebuffer
 lógico e valida cenários por `GameAuditSnapshot`. Cada cenário cria uma sessão de
 auditoria própria, com checkpoints/screenshots e falha não-zero. O runner aceita

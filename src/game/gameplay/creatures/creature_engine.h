@@ -79,12 +79,7 @@ struct AttackCooldown final {
     std::uint32_t remainingTicks{};
 };
 
-struct ActiveAttack final {
-    const AttackDefinition* definition{};
-    AttackKey key{};
-    FacingDirection lockedFacing{FacingDirection::down};
-    bool meleeHitboxActive{};
-};
+using ActiveAttack = AttackExecution;
 
 class EnemyInstance final {
 public:

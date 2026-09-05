@@ -198,6 +198,28 @@ O jogo pode continuar com objetos e sistemas explícitos enquanto isso for sufic
 
 Input físico não chama diretamente uma função de movimento do Player. O renderer não aplica dano, não decide IA, não cria loot e não altera estado persistente.
 
+### 3.1 Composição transitória do runtime
+
+O executável ativo usa `GameRuntime` como composition root do jogo. Ele ainda coordena
+estado de gameplay, mundo, save/load, diálogo, quests e auditoria, mas delega a
+apresentação para `GamePresentation`.
+
+`GamePresentation` possui a câmera e os passes visuais do mundo, atores, projéteis,
+efeitos, HUD, diálogo, inventário e debug. Ele recebe uma view somente-leitura do
+estado necessário para desenhar; não possui acesso mutável irrestrito ao runtime nem
+autoridade sobre gameplay.
+
+Esta é uma etapa intermediária intencional:
+
+```text
+GameRuntime
+    ├── gameplay/runtime state ainda interno
+    └── GamePresentation
+```
+
+O próximo incremento poderá extrair `GameSession` para a simulação dirigida por
+`PlayerCommand`. A separação atual não altera DMAP/DSAV e não conclui headless/replay.
+
 ---
 
 ## 4. Módulos e dependências
@@ -528,7 +550,13 @@ attack_off
 spawn_projectile
 ```
 
-são sinais para gameplay. O renderer apenas desenha o frame selecionado.
+são metadados de apresentação. Eles podem alimentar VFX ou áudio futuros, mas não
+governam dano, hitboxes, projéteis ou o término de ataques.
+
+O timing semântico de ataques pertence às definições de gameplay e avança em ticks
+fixos por `AttackExecution`. A execução emite eventos de timeline diretamente para
+o combate/projéteis, enquanto `PlayerVisual` e `EnemyVisualInstance` apenas
+observam o estado da ação e reproduzem a animação correspondente.
 
 Não resetar clip todo tick nem reconstruir definição de animação a cada frame.
 
@@ -683,7 +711,7 @@ PlayerCommand / ActionCommand
     ↓
 attack state
     ↓
-Animator / gameplay marker
+AttackDefinition / AttackExecution timeline
     ↓
 AttackSystem / gameplay
     ↓
@@ -1414,7 +1442,7 @@ DMAP is unchanged.
 
 ## Audit foundation (Block A)
 
-The project now has a small platform-neutral observability boundary. `Phase7Demo` can
+The project now has a small platform-neutral observability boundary. `GameRuntime` can
 expose `auditSnapshot()` as a value-only `GameAuditSnapshot`; the snapshot contains
 stable map/content/persistent IDs and diagnostic state, but no runtime handles,
 pointers or renderer ownership. `AuditSession` consumes snapshots and structured
@@ -1446,7 +1474,7 @@ the later playtest runner.
 ## Audit/playtest portability track — Block D
 
 `playtest_runner` is a separate harness, not a second game. It composes the real
-`Phase7Demo` with `HeadlessAuditPlatform`, injects logical `InputState` values on
+`GameRuntime` with `HeadlessAuditPlatform`, injects logical `InputState` values on
 controlled ticks, calls the real fixed-tick/update boundary and presents the real
 272x224 framebuffer. Assertions read the value-only `GameAuditSnapshot`; failures
 write an audit event, forced state checkpoint and framebuffer screenshot before the
@@ -1478,7 +1506,7 @@ Linux execution requires X11/WSLg and local licensed assets.
 
 ## Linux runtime platform — Block G
 
-The Linux executable uses the same `game::run`, `Phase7Demo`, fixed timestep,
+The Linux executable uses the same `game::run`, `GameRuntime`, fixed timestep,
 `Renderer2D` and 272x224 `Framebuffer` as the Win32 executable. `LinuxPlatform`
 is an X11 adapter that owns only the window, event mapping, monotonic clock and
 nearest-neighbor presentation; gameplay receives only `InputState` and

@@ -5,7 +5,7 @@
 #include "engine/platform/platform.h"
 #include "engine/render/framebuffer.h"
 #include "game/audit/audit_session.h"
-#include "game/phase5_demo.h"
+#include "game/game_runtime.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -224,7 +224,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
                                     core::GameMetrics::logicalHeight);
     const auto executableDirectory = platform.executableDirectory();
     const auto assetRoot = options.assetRoot.value_or(findLicensedAssetRoot(executableDirectory));
-    Phase7Demo demo(platform.imageDecoder(),
+    GameRuntime runtime(platform.imageDecoder(),
                     assetRoot, executableDirectory, options);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
@@ -235,13 +235,13 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
     double lastReport = previous;
 
     platform.log(platform::LogLevel::info, "startup: entering fixed-step loop");
-    platform.log(platform::LogLevel::info, demo.startupSummary());
+    platform.log(platform::LogLevel::info, runtime.startupSummary());
 
     std::unique_ptr<ManualAuditObserver> auditObserver;
     if (options.auditEnabled) {
         auditObserver = std::make_unique<ManualAuditObserver>();
         std::string auditError;
-        if (!auditObserver->open(demo.auditSnapshot(), auditError)) {
+        if (!auditObserver->open(runtime.auditSnapshot(), auditError)) {
             platform.log(platform::LogLevel::error, auditError);
             return 1;
         }
@@ -269,7 +269,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
             const auto debugInput = platform.consumeDebugInput();
             manualCaptureRequested = manualCaptureRequested ||
                                       debugInput.captureAuditSnapshotPressed;
-            demo.fixedTick(tickCount, platform.consumeInputState(), debugInput);
+            runtime.fixedTick(tickCount, platform.consumeInputState(), debugInput);
         });
 
         if (step.frameDeltaClamped || step.catchUpLimited) {
@@ -278,18 +278,18 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
             platform.log(platform::LogLevel::warning, message.str());
         }
 
-        demo.render(framebuffer);
+        runtime.render(framebuffer);
         if (!platform.present(framebuffer.view())) {
             platform.log(platform::LogLevel::error, "framebuffer presentation failed");
             if (auditObserver) {
                 std::string ignored;
-                static_cast<void>(auditObserver->close(demo.auditSnapshot(), ignored));
+                static_cast<void>(auditObserver->close(runtime.auditSnapshot(), ignored));
             }
             return 1;
         }
         if (auditObserver) {
             std::string auditError;
-            const auto snapshot = demo.auditSnapshot();
+            const auto snapshot = runtime.auditSnapshot();
             if (!auditObserver->observe(snapshot, framebuffer.view(), auditError) ||
                 (manualCaptureRequested && !auditObserver->captureManual(
                     snapshot, framebuffer.view(), auditError))) {
@@ -313,7 +313,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
 
     if (auditObserver) {
         std::string auditError;
-        if (!auditObserver->close(demo.auditSnapshot(), auditError)) {
+        if (!auditObserver->close(runtime.auditSnapshot(), auditError)) {
             platform.log(platform::LogLevel::error, auditError);
             return 1;
         }

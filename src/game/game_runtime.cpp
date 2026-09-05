@@ -1,4 +1,4 @@
-#include "game/phase5_demo.h"
+#include "game/game_runtime.h"
 
 #include "engine/core/game_metrics.h"
 #include "engine/platform/image_decoder.h"
@@ -22,6 +22,7 @@
 #include "game/effect_system.h"
 #include "game/enemy_visual.h"
 #include "game/game_launch.h"
+#include "game/game_presentation.h"
 #include "game/runtime_visual_sync.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
@@ -134,6 +135,7 @@ std::shared_ptr<const render::AnimationClip> makeObjectClip(
         std::move(id), std::move(sheet), std::move(frames), loop);
 }
 
+#if 0
 void outline(render::Renderer2D& renderer, world::AabbI box,
              core::WorldPointI camera, core::ColorRGBA8 color) {
     const int x = box.x - camera.x;
@@ -193,6 +195,7 @@ render::QuarterTurn projectileRotation(gameplay::FacingDirection canonical,
     default: return render::QuarterTurn::r0;
     }
 }
+#endif
 
 EnemyVisualSet makeEnemyVisualSet(
     const simulation::DefinitionId& id,
@@ -218,7 +221,7 @@ EnemyVisualSet makeEnemyVisualSet(
 
 } // namespace
 
-struct Phase7Demo::State final {
+struct GameRuntime::State final {
     State(std::shared_ptr<const render::Image> tileImage,
           std::shared_ptr<const render::Image> fontImage,
           std::shared_ptr<const render::Image> idleImage,
@@ -284,7 +287,6 @@ struct Phase7Demo::State final {
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
-          camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, {}),
           dialogueFlags(), dialogue(content.dialogues(), dialogueFlags),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
@@ -307,12 +309,12 @@ struct Phase7Demo::State final {
             gameplay::creatures::soldierVisualId(),
             attackCatalog.require(gameplay::creatures::soldierSwordAttackId()).visualActionId,
             soldierIdleSheet, soldierWalkSheet, soldierAttackSheet, soldierDeathSheet,
-            48, 4, 6, {24, 31}, {{}, {"attack_on"}, {}, {"attack_off"}}));
+            48, 4, 6, {24, 31}, {}));
         enemyVisualCatalog.add(makeEnemyVisualSet(
             gameplay::creatures::skullVisualId(),
             attackCatalog.require(gameplay::creatures::skullArrowAttackId()).visualActionId,
             skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
-            32, 2, 8, {16, 31}, {{}, {"spawn_projectile"}}));
+            32, 2, 8, {16, 31}, {}));
         itemVisuals.emplace(
             simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
 
@@ -335,11 +337,9 @@ struct Phase7Demo::State final {
             makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
             makeClips("player.walk", walkSheet, 32, 4, 8, {16, 31}, true),
             makeClips("player.sword", swordSheet, 48, 4,
-                      swordDefinition.totalTicks / 4, {24, 31}, false,
-                      {{}, {"attack_on"}, {}, {"attack_off"}}),
+                      swordDefinition.totalTicks / 4, {24, 31}, false),
             makeClips("player.bow", bowSheet, 32, 2,
-                      bowDefinition.totalTicks / 2, {16, 31}, false,
-                      {{}, {"spawn_projectile"}}),
+                      bowDefinition.totalTicks / 2, {16, 31}, false),
             makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         const auto availableVisuals = enemyVisualCatalog.ids();
@@ -405,7 +405,6 @@ struct Phase7Demo::State final {
             throw std::runtime_error("could not activate startup DMAP: " + activated.error);
         }
         player.relocate(activated.spawn.position, activated.spawn.facing);
-        resolveRenderLayers();
         rebuildWorldVisuals();
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();
@@ -534,51 +533,50 @@ struct Phase7Demo::State final {
         }
     }
 
-    void resolveRenderLayers() {
-        groundLayer = 0;
-        foregroundLayer = activeMap().layerCount();
-        for (std::size_t index = 0; index < activeMap().layerCount(); ++index) {
-            const auto name = activeMap().layer(index).name();
-            if (name == "ground") {
-                groundLayer = index;
-            } else if (name == "foreground") {
-                foregroundLayer = index;
-            }
-        }
-
-        lowLayers.clear();
-        for (std::size_t index = 0; index < activeMap().layerCount(); ++index) {
-            if (index != groundLayer && index != foregroundLayer) {
-                lowLayers.push_back(index);
-        }
-        }
-    }
-
     void followPlayer() {
-        camera.centerOn(player.feetPosition());
-        camera.clampToWorld(activeMap().worldWidthPixels(), activeMap().worldHeightPixels());
+        presentation.followPlayer(player.feetPosition(), activeMap().worldWidthPixels(),
+                                  activeMap().worldHeightPixels());
     }
 
-    void consumeAnimationMarkers() {
-        for (const render::AnimationMarkerEvent& event : visual->consumeMarkerEvents()) {
-            if (event.marker == "attack_on") {
-                const auto direction = gameplay::directionVector(player.facing());
+    void startPlayerAttack() {
+        const auto& definition = player.actionState() == gameplay::PlayerActionState::swordAttack
+                                     ? swordDefinition : bowDefinition;
+        playerAttack_ = {&definition, {player.entityHandle(), player.attackInstance()},
+                         player.facing()};
+    }
+
+    void advancePlayerAttack() {
+        if (!playerAttack_) { return; }
+        std::vector<gameplay::AttackTimelineEvent> eventsAtTick;
+        playerAttack_->advance(eventsAtTick);
+        for (const auto& event : eventsAtTick) {
+            if (event.kind == gameplay::AttackTimelineEventKind::activateHitbox) {
+                const auto direction = gameplay::directionVector(playerAttack_->lockedFacing);
                 activeSword = {
-                    swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
-                        player.feetPosition()),
-                    {player.entityHandle(), player.attackInstance()}, gameplay::Faction::player,
-                    swordDefinition.damage,
-                    direction.x * swordDefinition.damage.knockbackPixels,
-                    direction.y * swordDefinition.damage.knockbackPixels, true};
-            } else if (event.marker == "attack_off") {
+                    playerAttack_->definition->meleeHitboxes->forFacing(
+                        playerAttack_->lockedFacing).at(player.feetPosition()),
+                    playerAttack_->key, gameplay::Faction::player,
+                    playerAttack_->definition->damage,
+                    direction.x * playerAttack_->definition->damage.knockbackPixels,
+                    direction.y * playerAttack_->definition->damage.knockbackPixels, true};
+            } else if (event.kind == gameplay::AttackTimelineEventKind::deactivateHitbox) {
                 activeSword.enabled = false;
-            } else if (event.marker == "spawn_projectile") {
-                const auto offset = arrowDefinition.spawnOffsets.forFacing(player.facing());
+            } else if (event.kind == gameplay::AttackTimelineEventKind::spawnProjectile) {
+                const auto& projectileDefinition = projectileCatalog.require(
+                    *playerAttack_->definition->projectileDefinitionId);
+                const auto offset = projectileDefinition.spawnOffsets.forFacing(
+                    playerAttack_->lockedFacing);
                 [[maybe_unused]] const auto handle = projectiles.spawn(
-                    {player.entityHandle(), player.attackInstance()}, gameplay::Faction::player,
-                    arrowDefinition.id, gameplay::addOffset(player.feetPosition(), offset),
-                    player.facing(), bowDefinition.damage);
+                    playerAttack_->key, gameplay::Faction::player, projectileDefinition.id,
+                    gameplay::addOffset(player.feetPosition(), offset),
+                    playerAttack_->lockedFacing, playerAttack_->definition->damage);
             }
+        }
+        if (playerAttack_->finished) {
+            combat.finishAttack(playerAttack_->key);
+            activeSword.enabled = false;
+            player.finishAttack();
+            playerAttack_.reset();
         }
     }
 
@@ -586,6 +584,10 @@ struct Phase7Demo::State final {
         if (!resolution.damaged) { return; }
         if (resolution.target == player.entityHandle()) {
             activeSword.enabled = false;
+            if (playerAttack_) {
+                combat.finishAttack(playerAttack_->key);
+                playerAttack_.reset();
+            }
             player.beginHurt();
             playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
             player.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
@@ -683,18 +685,15 @@ struct Phase7Demo::State final {
         }
     }
 
-    void consumeEnemyMarkers(gameplay::creatures::EnemyInstance& enemy,
-                             EnemyVisualInstance& enemyVisual) {
+    void advanceEnemyAttack(gameplay::creatures::EnemyInstance& enemy) {
         if (!enemy.activeAttack()) { return; }
-        for (const render::AnimationMarkerEvent& event : enemyVisual.consumeMarkerEvents()) {
-            auto& active = *enemy.activeAttack();
-            if (event.marker == "attack_on") {
-                active.meleeHitboxActive = true;
-            } else if (event.marker == "attack_off") {
-                active.meleeHitboxActive = false;
-            } else if (event.marker == "spawn_projectile") {
+        std::vector<gameplay::AttackTimelineEvent> eventsAtTick;
+        auto& active = *enemy.activeAttack();
+        active.advance(eventsAtTick);
+        for (const auto& event : eventsAtTick) {
+            if (event.kind == gameplay::AttackTimelineEventKind::spawnProjectile) {
                 if (!active.definition->projectileDefinitionId) {
-                    throw std::logic_error("projectile marker requires projectile attack data");
+                    throw std::logic_error("projectile timeline requires projectile attack data");
                 }
                 const auto& projectileDefinition = projectileCatalog.require(
                     *active.definition->projectileDefinitionId);
@@ -725,8 +724,8 @@ struct Phase7Demo::State final {
             if (previousAttack && !enemy.activeAttack()) {
                 combat.finishAttack(*previousAttack);
             }
+            advanceEnemyAttack(enemy);
             enemyVisual.update(enemy);
-            consumeEnemyMarkers(enemy, enemyVisual);
 
             if (enemy.activeAttack() && enemy.activeAttack()->meleeHitboxActive) {
                 const auto& active = *enemy.activeAttack();
@@ -743,8 +742,7 @@ struct Phase7Demo::State final {
                 applyResolution(combat.resolve(hitbox, player.combatTarget(), events));
             }
 
-            if (enemy.state() == gameplay::creatures::BehaviorState::attack &&
-                enemyVisual.animator().finished()) {
+            if (enemy.activeAttack() && enemy.activeAttack()->finished) {
                 combat.finishAttack(enemy.activeAttack()->key);
                 enemyBehavior.finishAttack(enemy, profile);
             }
@@ -896,6 +894,7 @@ struct Phase7Demo::State final {
         effects->clear();
         combat.clearTransientRecords();
         activeSword.enabled = false;
+        playerAttack_.reset();
         player.finishAttack();
     }
 
@@ -910,7 +909,6 @@ struct Phase7Demo::State final {
         }
         clearMapTransients();
         player.relocate(transition.spawn.position, transition.spawn.facing);
-        resolveRenderLayers();
         rebuildWorldVisuals();
         followPlayer();
         lastEvent = "MAP " + std::string(activeWorld().id().value());
@@ -954,7 +952,6 @@ struct Phase7Demo::State final {
             static_cast<void>(mapSession->restore(previousPlayer.currentMapId, previousWorldState));
             static_cast<void>(save::applyPlayer(
                 previousPlayer, player, playerItems, itemCatalog, error));
-            resolveRenderLayers();
             rebuildWorldVisuals();
             lastEvent = "LOAD ERROR";
             return;
@@ -962,7 +959,6 @@ struct Phase7Demo::State final {
         dialogueFlags = loaded.data.dialogueFlags;
         questState = loaded.data.quests;
         clearMapTransients();
-        resolveRenderLayers();
         rebuildWorldVisuals();
         followPlayer();
         lastEvent = "LOADED";
@@ -999,8 +995,13 @@ struct Phase7Demo::State final {
         if (command.actions.interactPressed) {
             interactWithWorld();
         }
+        if (previousAction == gameplay::PlayerActionState::none &&
+            (player.actionState() == gameplay::PlayerActionState::swordAttack ||
+             player.actionState() == gameplay::PlayerActionState::bowAttack)) {
+            startPlayerAttack();
+        }
         visual->update(player.motionState(), player.facing(), player.actionState());
-        consumeAnimationMarkers();
+        advancePlayerAttack();
         updateEnemies();
         // Resolve the Player's melee hit after enemy behavior has moved the
         // actors for this tick. Otherwise Chase can immediately overwrite the
@@ -1022,12 +1023,8 @@ struct Phase7Demo::State final {
         updateObjects();
         consumeSimulationEvents();
         effects->update();
-        if (player.actionState() != gameplay::PlayerActionState::none &&
+        if (player.actionState() == gameplay::PlayerActionState::hurt &&
             visual->animator().finished()) {
-            if (player.actionState() == gameplay::PlayerActionState::swordAttack) {
-                combat.finishAttack({player.entityHandle(), player.attackInstance()});
-            }
-            activeSword.enabled = false;
             player.finishAttack();
         }
         if (previousAction == gameplay::PlayerActionState::none &&
@@ -1042,10 +1039,31 @@ struct Phase7Demo::State final {
         lastSequence = command.sequence;
     }
 
+    void render(render::Framebuffer& framebuffer) const {
+        const auto view = buildGameViewModel(player, playerItems, itemCatalog, inventoryOverlay);
+        presentation.render(framebuffer, {
+            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects, projectiles,
+            tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
+            projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
+            dialogue, view, combatDebug, activeSword, lastEvent, collisionOverlay,
+            playerSpriteVisibleDuringInvulnerability()});
+    }
+
+    [[nodiscard]] bool playerSpriteVisibleDuringInvulnerability() const noexcept {
+        constexpr std::uint32_t blinkCadenceTicks = 4;
+        if (playerDamageBlinkTicksRemaining_ == 0) { return true; }
+        const auto elapsed = playerDamageBlinkDurationTicks - playerDamageBlinkTicksRemaining_;
+        return (elapsed / blinkCadenceTicks) % 2 == 0;
+    }
+
+    // Rendering is delegated to GamePresentation.  Keep the old helpers disabled in
+    // this transition patch so the runtime has one active rendering path while the
+    // next cleanup can remove their now-unused implementation wholesale.
+#if 0
     std::size_t renderLayer(render::Renderer2D& renderer, const world::TileLayer& layer,
                             render::VisibleTileRange visible) const {
         if (!layer.visible() || visible.empty()) { return 0; }
-        const auto cameraPosition = camera.position();
+        const auto cameraPosition = presentation.camera().position();
         for (int y = visible.firstY; y <= visible.lastY; ++y) {
             for (int x = visible.firstX; x <= visible.lastX; ++x) {
                 const world::TileCell& cell = layer.cell(x, y);
@@ -1109,11 +1127,11 @@ struct Phase7Demo::State final {
                 // visual blink.  Enemies keep their normal rendering while
                 // they are invulnerable, so this remains a Player-only effect.
                 if (!playerSpriteVisibleDuringInvulnerability()) { continue; }
-                const auto logical = camera.worldToLogical(player.feetPosition());
+                const auto logical = presentation.camera().worldToLogical(player.feetPosition());
                 render::drawAnimator(renderer, visual->animator(), {logical.x, logical.y},
                                      visual->flipX());
             } else if (actor.kind == ActorKind::enemy) {
-                const auto logical = camera.worldToLogical(
+                const auto logical = presentation.camera().worldToLogical(
                     enemies[actor.enemyIndex].instance.feetPosition());
                 render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
                                      {logical.x, logical.y},
@@ -1121,11 +1139,11 @@ struct Phase7Demo::State final {
             } else if (actor.kind == ActorKind::npc) {
                 const auto& npc = npcs[actor.contentIndex].instance;
                 const auto& visualSet = npcCatalogVisuals.require(npc.definition().visualSetId);
-                const auto logical = camera.worldToLogical(npc.position());
+                const auto logical = presentation.camera().worldToLogical(npc.position());
                 renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20},
                                   visualSet.markerColor);
             } else if (actor.kind == ActorKind::object) {
-                const auto logical = camera.worldToLogical(
+                const auto logical = presentation.camera().worldToLogical(
                     objects[actor.contentIndex].instance.position());
                 render::drawAnimator(renderer, objectVisuals[actor.contentIndex].animator(),
                                      {logical.x, logical.y});
@@ -1135,7 +1153,7 @@ struct Phase7Demo::State final {
                 if (found == pickupVisuals.end()) {
                     throw std::runtime_error("pickup visual definition was not registered");
                 }
-                const auto logical = camera.worldToLogical(pickup.position());
+                const auto logical = presentation.camera().worldToLogical(pickup.position());
                 renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
             }
         }
@@ -1150,7 +1168,7 @@ struct Phase7Demo::State final {
     }
 
     void renderProjectiles(render::Renderer2D& renderer) const {
-        const auto cameraPosition = camera.position();
+        const auto cameraPosition = presentation.camera().position();
         for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
             if (projectile.definition == nullptr) { continue; }
             const auto found = projectileVisuals.find(projectile.definition->visualId);
@@ -1168,13 +1186,13 @@ struct Phase7Demo::State final {
 
     void renderEffects(render::Renderer2D& renderer) const {
         for (const EffectInstance& effect : effects->effects()) {
-            const auto logical = camera.worldToLogical(effect.position);
+            const auto logical = presentation.camera().worldToLogical(effect.position);
             render::drawAnimator(renderer, effect.animator, {logical.x, logical.y});
         }
     }
 
     void renderDebug(render::Renderer2D& renderer, render::VisibleTileRange visible) const {
-        const auto cameraPosition = camera.position();
+        const auto cameraPosition = presentation.camera().position();
         if (collisionOverlay && !visible.empty()) {
             constexpr core::ColorRGBA8 fill{255, 24, 32, 72};
             for (int y = visible.firstY; y <= visible.lastY; ++y) {
@@ -1324,24 +1342,16 @@ struct Phase7Demo::State final {
     }
 
     void render(render::Framebuffer& framebuffer) const {
-        framebuffer.clear({28, 13, 22, 255});
-        render::Renderer2D renderer(framebuffer);
-        const auto visible = camera.visibleTiles(activeMap().widthTiles(), activeMap().heightTiles(), activeMap().tileSize());
-        if (groundLayer < activeMap().layerCount()) {
-        renderLayer(renderer, activeMap().layer(groundLayer), visible);
-        }
-        for (const auto layer : lowLayers) {
-            renderLayer(renderer, activeMap().layer(layer), visible);
-        }
-        renderActors(renderer);
-        renderProjectiles(renderer);
-        if (foregroundLayer < activeMap().layerCount()) {
-        renderLayer(renderer, activeMap().layer(foregroundLayer), visible);
-        }
-        renderEffects(renderer);
-        renderDebug(renderer, visible);
-        renderHud(renderer);
+        const auto view = buildGameViewModel(player, playerItems, itemCatalog, inventoryOverlay);
+        presentation.render(framebuffer, {
+            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects, projectiles,
+            tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
+            projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
+            dialogue, view, combatDebug, activeSword, lastEvent, collisionOverlay,
+            playerSpriteVisibleDuringInvulnerability()});
     }
+
+    #endif
 
     std::shared_ptr<const render::Image> tileset;
     world::TileAtlasLayout atlas;
@@ -1374,7 +1384,7 @@ struct Phase7Demo::State final {
     std::unique_ptr<EffectSystem> effects;
     std::filesystem::path executableDirectory;
     std::filesystem::path savePath;
-    render::Camera2D camera;
+    GamePresentation presentation;
     simulation::EntityHandlePool handles;
     simulation::EntityHandle playerHandle{};
     gameplay::Player player;
@@ -1422,6 +1432,7 @@ struct Phase7Demo::State final {
     std::unique_ptr<maps::MapSession> mapSession;
     simulation::EventBuffer events;
     gameplay::Hitbox activeSword{};
+    std::optional<gameplay::AttackExecution> playerAttack_{};
     gameplay::AttackInstanceId nextContactAttackInstance_{1};
     static constexpr std::uint32_t playerDamageBlinkDurationTicks = 12;
     static constexpr std::uint32_t playerDamageInvulnerabilityTicks = 30;
@@ -1430,15 +1441,12 @@ struct Phase7Demo::State final {
     simulation::Tick lastTick{};
     std::uint32_t lastSequence{};
     gameplay::AttackInstanceId lastAttack{};
-    std::size_t groundLayer{};
-    std::size_t foregroundLayer{};
-    std::vector<std::size_t> lowLayers;
     bool collisionOverlay{};
     CombatDebugVisibility combatDebug{};
     std::string lastEvent;
 };
 
-Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
+GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
                        const std::filesystem::path& executableDirectory,
                        const GameLaunchOptions& launchOptions) {
@@ -1507,16 +1515,16 @@ Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
     startupSummary_ = state_->startupSummary();
 }
 
-Phase7Demo::~Phase7Demo() = default;
+GameRuntime::~GameRuntime() = default;
 
-void Phase7Demo::fixedTick(simulation::Tick tick, const platform::InputState& input,
+void GameRuntime::fixedTick(simulation::Tick tick, const platform::InputState& input,
                            platform::DebugInputState debugInput) {
     state_->update(tick, input, debugInput);
 }
 
-void Phase7Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
+void GameRuntime::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
 
-audit::GameAuditSnapshot Phase7Demo::auditSnapshot() const {
+audit::GameAuditSnapshot GameRuntime::auditSnapshot() const {
     return state_->auditSnapshot();
 }
 
