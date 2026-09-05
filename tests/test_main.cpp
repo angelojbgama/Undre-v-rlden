@@ -40,6 +40,7 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
+#include "game/gameplay/dialogue/dialogue_session.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/player_items.h"
@@ -2711,6 +2712,53 @@ void testPhase10DialogueDataModel() {
     expect(rejectedEmptyPage, "dialogue catalog rejects empty pages");
 }
 
+void testPhase10DialogueSession() {
+    namespace dialogue = underworld::game::gameplay::dialogue;
+    namespace simulation = underworld::simulation;
+
+    const underworld::game::GameContentRegistry content;
+    dialogue::DialogueSession session(content.dialogues());
+    std::string error;
+    expect(session.begin(dialogue::guardDialogueId(), error) && session.isOpen() &&
+               session.state() == dialogue::DialogueSessionState::text &&
+               session.pageIndex() == 0 && session.pageCount() == 2 &&
+               session.currentPage() == "Halt, traveler.",
+           "DialogueSession opens at the catalogued entry node and first page");
+
+    expect(session.handleCommand(actionCommand(1, false, false, 1, 0)) &&
+               session.pageIndex() == 0,
+           "DialogueSession consumes movement while text is open without advancing");
+    expect(session.handleCommand(actionCommand(2, true, false)) && session.pageIndex() == 1,
+           "DialogueSession advances paginated text through PlayerCommand");
+    auto advanceCommand = actionCommand(3, false, false, 0, 0, {0});
+    advanceCommand.actions.interactPressed = true;
+    expect(session.handleCommand(advanceCommand) &&
+               session.currentPage() == "Keep your blade ready." && session.pageIndex() == 0,
+           "DialogueSession follows a linear next-node transition");
+    advanceCommand = actionCommand(4, false, false);
+    advanceCommand.actions.interactPressed = true;
+    expect(session.handleCommand(advanceCommand) && !session.isOpen(),
+           "DialogueSession closes after the final page of a terminal node");
+
+    expect(session.begin(dialogue::scholarDialogueId(), error) &&
+               session.handleCommand(actionCommand(5, true, false)) &&
+               session.choicesVisible() && session.choiceCount() == 2 &&
+               session.selectedChoice() == 0,
+           "DialogueSession reveals choices after the final text page");
+    expect(session.handleCommand(actionCommand(6, false, false, 0, 1)) &&
+               session.selectedChoice() == 1,
+           "DialogueSession moves the selected choice with logical movement");
+    expect(session.handleCommand(actionCommand(7, true, false)) && !session.choicesVisible() &&
+               session.currentPage() == "Then walk carefully, friend.",
+           "DialogueSession activates the selected choice and enters its target node");
+    expect(session.handleCommand(actionCommand(8, false, true)) && !session.isOpen(),
+           "DialogueSession closes through the secondary logical action");
+
+    expect(!session.begin(simulation::DefinitionId{"dialogue.missing"}, error) &&
+               !error.empty() && !session.isOpen(),
+           "DialogueSession reports an unknown dialogue without opening a broken overlay");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -3992,6 +4040,7 @@ int main() {
         testPhase8PersistentMapsAndSave();
         testPhase10NpcFoundation();
         testPhase10DialogueDataModel();
+        testPhase10DialogueSession();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

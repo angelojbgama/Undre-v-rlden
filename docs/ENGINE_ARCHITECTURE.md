@@ -1342,3 +1342,15 @@ definition. Catalog insertion validates IDs, non-empty pages, the entry node and
 transition target. Guard and Scholar use separate catalogued definitions through their
 NPC `defaultDialogueId`; dialogue sessions, input routing, conditions, actions and
 persistent flags remain deferred to Blocks 10C–10D.
+
+## Fase 10C — Dialogue runtime and UI
+
+`DialogueSession` consumes the existing `PlayerCommand` boundary and owns only the
+current definition/node, page and choice selection. While open it consumes the whole
+command, so movement, combat and inventory do not advance in parallel. `interact` or
+the primary logical action advances pages and confirms choices; movement selects a
+choice and the secondary logical action closes the session. The game opens the
+session from the interacted NPC's `defaultDialogueId` and renders a small overlay from
+session read-only state using the existing bitmap font and software renderer. Input
+mapping remains at the Win32 boundary; conditions, actions and persistence remain
+deferred to Phase 10D.

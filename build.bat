@@ -195,6 +195,10 @@ echo Compiling dialogue data model...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\dialogue_model.obj" "src\game\gameplay\dialogue\dialogue_model.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling dialogue session...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\dialogue_session.obj" "src\game\gameplay\dialogue\dialogue_session.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [23/40] Compiling game view model...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\game_view_model.obj" "src\game\game_view_model.cpp"
 if errorlevel 1 goto :build_failed
@@ -269,7 +273,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
-    "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\creature_engine.obj" ^
+    "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\creature_engine.obj" ^
     "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" ^
     "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
     "build\obj\editor_app.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
@@ -293,7 +297,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
-    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" ^
+    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\effect_system.obj" ^
@@ -327,7 +331,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
-    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" ^
+    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^

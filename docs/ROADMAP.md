@@ -851,6 +851,15 @@ separate dialogue definitions through their existing `defaultDialogueId` field.
 Dialogue sessions/UI, command routing, conditions, actions and persistence remain
 deferred to Blocks 10C–10D.
 
+## Block 10C — Dialogue Runtime + UI (DONE)
+
+Implemented in this increment: renderer-independent `DialogueSession`, command-based
+pagination and choice navigation, deterministic selection, close handling and
+integration with NPC `defaultDialogueId`. The game consumes commands while a dialogue
+is open and presents speaker, page, text and choices in an overlay rendered with the
+existing bitmap font. Dialogue conditions, actions and persistent flags remain
+deferred to Block 10D.
+
 ## Dependências
 
 - entidades/IDs estáveis;

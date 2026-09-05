@@ -25,6 +25,7 @@
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
+#include "game/gameplay/dialogue/dialogue_session.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
@@ -119,6 +120,45 @@ void outline(render::Renderer2D& renderer, world::AabbI box,
     renderer.fillRect({x, y + box.height - 1, box.width, 1}, color);
     renderer.fillRect({x, y, 1, box.height}, color);
     renderer.fillRect({x + box.width - 1, y, 1, box.height}, color);
+}
+
+void drawWrappedText(render::Renderer2D& renderer, const render::BitmapFont& font,
+                     std::string_view text, int x, int y, std::size_t maximumColumns,
+                     std::size_t maximumLines) {
+    std::string line;
+    std::size_t linesDrawn = 0;
+    std::size_t cursor = 0;
+    while (cursor < text.size() && linesDrawn < maximumLines) {
+        while (cursor < text.size() && text[cursor] == ' ') { ++cursor; }
+        const auto nextSpace = text.find_first_of(" \n", cursor);
+        const auto wordEnd = nextSpace == std::string_view::npos ? text.size() : nextSpace;
+        const std::string word{text.substr(cursor, wordEnd - cursor)};
+        if (line.empty()) {
+            line = word;
+        } else if (line.size() + 1U + word.size() <= maximumColumns) {
+            line += ' ';
+            line += word;
+        } else {
+            render::drawText(renderer, font, line, x,
+                              y + static_cast<int>(linesDrawn) * font.lineHeight());
+            ++linesDrawn;
+            line = word;
+        }
+        cursor = wordEnd;
+        if (cursor < text.size() && text[cursor] == '\n') {
+            render::drawText(renderer, font, line, x,
+                              y + static_cast<int>(linesDrawn) * font.lineHeight());
+            ++linesDrawn;
+            line.clear();
+            ++cursor;
+        } else if (cursor < text.size()) {
+            ++cursor;
+        }
+    }
+    if (!line.empty() && linesDrawn < maximumLines) {
+        render::drawText(renderer, font, line, x,
+                         y + static_cast<int>(linesDrawn) * font.lineHeight());
+    }
 }
 
 render::QuarterTurn projectileRotation(gameplay::FacingDirection canonical,
@@ -222,6 +262,7 @@ struct Phase7Demo::State final {
           executableDirectory(std::move(executableDirectory)),
           camera(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight),
           playerHandle(handles.create()), player(localPlayerId, playerHandle, {}),
+          dialogue(content.dialogues()),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
@@ -608,7 +649,23 @@ struct Phase7Demo::State final {
         const auto npcInteraction = gameplay::npcs::interactNearest(
             playerFeet, playerArea, activeWorld().npcs());
         if (npcInteraction.npc) {
-            lastEvent = "NPC INTERACTION";
+            const auto found = std::find_if(activeWorld().npcs().begin(),
+                                            activeWorld().npcs().end(),
+                                            [&](const auto& persistent) {
+                                                return persistent.instance.handle() ==
+                                                       npcInteraction.npc;
+                                            });
+            if (found == activeWorld().npcs().end() ||
+                found->instance.definition().defaultDialogueId.empty()) {
+                lastEvent = "NPC INTERACTION";
+                return;
+            }
+            std::string error;
+            if (dialogue.begin(found->instance.definition().defaultDialogueId, error)) {
+                lastEvent = "DIALOGUE";
+            } else {
+                lastEvent = "DIALOGUE ERROR";
+            }
             return;
         }
         for (auto& persistent : activeWorld().objects()) {
@@ -644,6 +701,7 @@ struct Phase7Demo::State final {
     }
 
     void clearMapTransients() {
+        dialogue.close();
         projectiles.clear(combat);
         effects->clear();
         combat.clearTransientRecords();
@@ -724,6 +782,11 @@ struct Phase7Demo::State final {
         gameplay::tickInvulnerability(player.combatant());
         const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
+        if (dialogue.handleCommand(command)) {
+            lastTick = tick;
+            lastSequence = command.sequence;
+            return;
+        }
         if (command.actions.saveGamePressed) { saveGame(); }
         if (command.actions.loadGamePressed) { loadGame(); }
         if (gameplay::routeInventoryCommand(
@@ -995,6 +1058,32 @@ struct Phase7Demo::State final {
         }
         render::drawText(renderer, font, "I ITEMS  E OPEN", 169, 203);
 
+        if (dialogue.isOpen()) {
+            renderer.fillRect({8, 130, 256, 62}, {8, 10, 16, 248});
+            renderer.fillRect({9, 131, 254, 60}, {54, 30, 38, 255});
+            render::drawText(renderer, font, std::string(dialogue.speaker()), 14, 134);
+            render::drawText(renderer, font,
+                             std::to_string(dialogue.pageIndex() + 1) + "/" +
+                                 std::to_string(dialogue.pageCount()),
+                             238, 134);
+            drawWrappedText(renderer, font, dialogue.currentPage(), 14, 145, 34, 2);
+            if (dialogue.choicesVisible()) {
+                for (std::size_t index = 0; index < dialogue.choiceCount(); ++index) {
+                    const int y = 164 + static_cast<int>(index) * 11;
+                    if (index == dialogue.selectedChoice()) {
+                        renderer.fillRect({12, y - 1, 244, 10}, {96, 62, 54, 255});
+                    }
+                    render::drawText(renderer, font,
+                                     std::to_string(index + 1) + ": " +
+                                         std::string(dialogue.choiceLabel(index)),
+                                     14, y);
+                }
+            } else {
+                render::drawText(renderer, font, "E NEXT  X CLOSE", 14, 181);
+            }
+            return;
+        }
+
         if (!view.inventoryOpen) { return; }
         renderer.fillRect({6, 52, 260, 78}, {8, 10, 16, 245});
         render::drawText(renderer, font, "INVENTORY", 10, 55);
@@ -1084,6 +1173,7 @@ struct Phase7Demo::State final {
     gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
     gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
     gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
+    gameplay::dialogue::DialogueSession dialogue;
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;
