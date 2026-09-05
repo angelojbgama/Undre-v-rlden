@@ -123,7 +123,8 @@ EnemyInstance::EnemyInstance(simulation::EntityHandle handle,
                              core::WorldPointI feet, FacingDirection facing,
                              const BehaviorProfile& profile)
     : definition_(&definition),
-      combatant_{handle, definition.faction, Health{definition.maximumHealth}, 0, false},
+      combatant_{handle, definition.faction, Health{definition.maximumHealth}, 0, false,
+                 definition.id},
       positionX_(subpixelCoordinate(feet.x)), positionY_(subpixelCoordinate(feet.y)),
       facing_(facing), stateTimer_(profile.idleDurationTicks) {
     cooldowns_.reserve(definition.attackIds.size());

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/coordinates.h"
+#include "engine/simulation/definition_id.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/world/collision.h"
 
@@ -66,6 +67,7 @@ struct CombatantState final {
     Health health{1};
     std::uint32_t invulnerabilityTicks{};
     bool defeatEmitted{};
+    simulation::DefinitionId definitionId{};
 };
 
 // Ephemeral receiver view. Actor position and geometry remain owned by the actor.

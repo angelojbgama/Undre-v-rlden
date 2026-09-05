@@ -917,6 +917,15 @@ objetivos terminam.
 Avanço dirigido por eventos e persistência de save permanecem deferidos para os
 blocos seguintes.
 
+## Block 11C — Event-driven quest progression (DONE)
+
+`QuestSystem` consome o `SimulationEvent` stream existente e atualiza somente
+quests ativas. Derrotas, coletas, conversas com NPCs, entrada em mapas, abertura de
+objetos e entregas de itens são convertidas em avanço dos objetivos correspondentes
+por `DefinitionId`, sem polling de entidades, inventário ou objetos. Os eventos de
+derrota e coleta carregam seus IDs de definição concretos; a persistência permanece
+deferida para o Block 11D.
+
 ## Gate
 
 Não iniciar sem event stream suficiente e IDs persistentes comprovados.

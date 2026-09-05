@@ -63,6 +63,18 @@ const QuestProgress& QuestStateStore::require(
     return *progress;
 }
 
+std::vector<simulation::DefinitionId> QuestStateStore::activeQuestIds() const {
+    std::vector<simulation::DefinitionId> result;
+    result.reserve(progress_.size());
+    for (const auto& [id, progress] : progress_) {
+        if (progress.status == QuestStatus::active) { result.push_back(id); }
+    }
+    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+        return left.value() < right.value();
+    });
+    return result;
+}
+
 QuestObjectiveProgress* QuestStateStore::findObjectiveProgressMutable(
     QuestProgress& progress, const simulation::DefinitionId& objectiveId) noexcept {
     for (auto& objective : progress.objectives) {

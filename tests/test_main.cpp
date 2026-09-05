@@ -45,6 +45,7 @@
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/quests/quest_model.h"
 #include "game/gameplay/quests/quest_state.h"
+#include "game/gameplay/quests/quest_system.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/world_objects.h"
@@ -2934,6 +2935,55 @@ void testPhase11QuestState() {
            "reset removes runtime progress and returns a quest to inactive");
 }
 
+void testPhase11QuestEvents() {
+    namespace quests = underworld::game::gameplay::quests;
+    namespace simulation = underworld::simulation;
+
+    const auto id = [](std::string value) { return simulation::DefinitionId{std::move(value)}; };
+    quests::QuestDefinition definition{id("quest.test.events"), "Event progression", {}, {}};
+    definition.objectives = {
+        {id("quest.test.talk"), quests::QuestObjectiveKind::talk, id("npc.test"), 1, "Talk"},
+        {id("quest.test.kill"), quests::QuestObjectiveKind::kill, id("enemy.test"), 1, "Kill"},
+        {id("quest.test.pickup"), quests::QuestObjectiveKind::pickup, id("pickup.test"), 2, "Pick up"},
+        {id("quest.test.enter"), quests::QuestObjectiveKind::enter, id("map.test"), 1, "Enter"},
+        {id("quest.test.open"), quests::QuestObjectiveKind::open, id("object.test"), 1, "Open"},
+        {id("quest.test.deliver"), quests::QuestObjectiveKind::deliver, id("item.test"), 2, "Deliver"},
+    };
+    quests::QuestCatalog catalog;
+    catalog.add(definition);
+    quests::QuestStateStore state;
+    quests::QuestSystem system(catalog, state);
+
+    expect(system.start(definition.id) && state.status(definition.id) == quests::QuestStatus::active,
+           "QuestSystem starts a catalogued quest without polling world collections");
+
+    simulation::EventBuffer events;
+    events.emit(simulation::EntityDamaged{});
+    events.emit(simulation::NpcTalked{{1, 1}, {2, 1}, id("npc.test")});
+    events.emit(simulation::EntityDefeated{{1, 1}, {3, 1}, 4, id("enemy.test")});
+    events.emit(simulation::PickupCollected{{1, 1}, {4, 1},
+                                            simulation::PickupPayloadKind::item,
+                                            id("item.test"), 2, id("pickup.test")});
+    events.emit(simulation::MapEntered{simulation::MapId{"map.test"}});
+    events.emit(simulation::ObjectOpened{{1, 1}, {5, 1}, id("object.test")});
+    events.emit(simulation::ItemDelivered{{1, 1}, id("item.test"), 1});
+    system.consume(events);
+    expect(state.status(definition.id) == quests::QuestStatus::active &&
+               quests::findObjectiveProgress(state.require(definition.id),
+                                              id("quest.test.deliver"))->currentCount == 1,
+           "QuestSystem consumes matching domain events and leaves partial objectives active");
+
+    simulation::EventBuffer finalEvent;
+    finalEvent.emit(simulation::ItemDelivered{{1, 1}, id("item.test"), 1});
+    finalEvent.emit(simulation::ProjectileImpact{});
+    system.consume(finalEvent.events());
+    expect(state.status(definition.id) == quests::QuestStatus::completed &&
+               state.require(definition.id).objectives.size() == definition.objectives.size(),
+           "QuestSystem completes a multi-objective quest from event stream input");
+    expect(!system.start(simulation::DefinitionId{"quest.missing"}),
+           "QuestSystem rejects unknown quest IDs without mutating state");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -4218,6 +4268,7 @@ int main() {
         testPhase10DialogueSession();
         testPhase11QuestDefinitions();
         testPhase11QuestState();
+        testPhase11QuestEvents();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

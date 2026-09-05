@@ -1389,3 +1389,13 @@ complete. `reset` removes the record and returns the quest to its inactive state
 
 This block does not consume domain events and does not serialize state; those concerns
 remain deferred to the later quest progression and persistence blocks.
+
+## Fase 11C — Event-driven quest progression
+
+`QuestSystem` consumes the existing `SimulationEvent` variant and advances only active
+quest records in `QuestStateStore`. `EntityDefeated`, `PickupCollected`, `NpcTalked`,
+`MapEntered`, `ObjectOpened` and `ItemDelivered` map to the corresponding objective
+kinds by stable IDs and event amounts. Unrelated events are ignored, and no system
+polls enemy lists, inventory or world objects. Defeat and pickup producers attach the
+concrete runtime definition ID needed by quest matching; quest persistence remains
+deferred to Block 11D.

@@ -37,6 +37,7 @@ public:
         const simulation::DefinitionId& questId) const noexcept;
     [[nodiscard]] const QuestProgress& require(
         const simulation::DefinitionId& questId) const;
+    [[nodiscard]] std::vector<simulation::DefinitionId> activeQuestIds() const;
     [[nodiscard]] std::size_t size() const noexcept { return progress_.size(); }
 
     // Progress is deliberately explicit about the definition it belongs to. This

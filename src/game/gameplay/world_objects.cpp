@@ -81,7 +81,7 @@ WorldObjectInstance::WorldObjectInstance(
     if (definition.destructible) {
         combatant_.emplace(CombatantState{
             handle, Faction::environment, Health{definition.destructible->maximumHealth}, 0,
-            false});
+            false, definition.id});
     }
 }
 

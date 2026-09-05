@@ -3,6 +3,7 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/simulation/definition_id.h"
+#include "engine/simulation/persistent_id.h"
 
 #include <cstdint>
 #include <optional>
@@ -24,6 +25,7 @@ struct EntityDefeated final {
     EntityHandle attacker{};
     EntityHandle target{};
     std::uint64_t attackInstanceId{};
+    DefinitionId defeatedDefinitionId{};
 };
 
 enum class ProjectileImpactKind { tile, target, expired };
@@ -42,10 +44,34 @@ struct PickupCollected final {
     PickupPayloadKind kind{PickupPayloadKind::health};
     std::optional<DefinitionId> itemId{};
     std::uint64_t amount{};
+    DefinitionId pickupDefinitionId{};
+};
+
+struct NpcTalked final {
+    EntityHandle player{};
+    EntityHandle npc{};
+    DefinitionId npcDefinitionId{};
+};
+
+struct MapEntered final {
+    MapId mapId{};
+};
+
+struct ObjectOpened final {
+    EntityHandle player{};
+    EntityHandle object{};
+    DefinitionId objectDefinitionId{};
+};
+
+struct ItemDelivered final {
+    EntityHandle player{};
+    DefinitionId itemId{};
+    std::uint64_t amount{};
 };
 
 using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
-                                     PickupCollected>;
+                                     PickupCollected, NpcTalked, MapEntered, ObjectOpened,
+                                     ItemDelivered>;
 
 class EventBuffer final {
 public:

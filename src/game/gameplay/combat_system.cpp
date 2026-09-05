@@ -48,7 +48,8 @@ CombatResolution CombatSystem::resolve(const Hitbox& attack, CombatTargetRef tar
         result.defeated = true;
         if (!combatant.defeatEmitted) {
             events.emit(simulation::EntityDefeated{
-                attack.attack.owner, combatant.handle, attack.attack.localInstance});
+                attack.attack.owner, combatant.handle, attack.attack.localInstance,
+                combatant.definitionId});
             combatant.defeatEmitted = true;
         }
     }

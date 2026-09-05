@@ -68,7 +68,7 @@ PickupCollectionResult collectPickup(
     result.collected = result.amount > 0;
     if (!result.collected) { return result; }
     events.emit(simulation::PickupCollected{
-        collector, pickup.handle(), kind, itemId, result.amount});
+        collector, pickup.handle(), kind, itemId, result.amount, pickup.definition().id});
     if (result.fullyConsumed) {
         [[maybe_unused]] const bool destroyed = handles.destroy(pickup.handle());
     }
