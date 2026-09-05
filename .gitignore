@@ -4,6 +4,7 @@
 
 # Build output
 /build/
+/audit/
 
 # MSVC output
 *.obj

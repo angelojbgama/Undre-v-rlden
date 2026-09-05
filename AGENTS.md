@@ -1913,3 +1913,17 @@ B) extrair a engine mínima comum que os casos reais já demonstraram
 escolha **B**.
 
 O objetivo é construir Dungeon Underworld como uma sequência de sistemas pequenos que se encaixam, até que adicionar mapas, criaturas, NPCs, quests e conteúdo deixe de exigir reescrever o jogo.
+
+# Estado atual — audit foundation
+
+Foi antecipada uma fatia pequena da futura trilha headless/replay para observabilidade
+dos sistemas reais: `AuditSession`, eventos estruturados JSONL e
+`Phase7Demo::auditSnapshot()` estão implementados e cobertos por testes portáveis.
+As sessões usam `audit/<session-id>/`, não permitem traversal no identificador e não
+persistem handles runtime ou ponteiros. A saída é artefato de desenvolvimento e está
+ignorada pelo Git.
+
+Esta antecipação não implementa screenshots, `HeadlessAuditPlatform`, playtest runner,
+Linux interactive, replay formal, hash de estado, rede ou multiplayer. Esses blocos
+devem ser implementados incrementalmente, nesta ordem, somente após o fundamento
+atual permanecer verde.

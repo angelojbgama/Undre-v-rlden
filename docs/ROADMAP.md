@@ -1159,3 +1159,15 @@ object, pickup, spawn, collision, semantic-tile, and stamp authoring contracts.
 
 `MapComposer` remains a small composition foundation for deterministic room geometry;
 procedural generation, MapLogic, and LLM blueprint production remain deferred.
+
+## Audit/playtest portability track — Block A
+
+The first, deliberately partial, anticipation of the later headless/replay work is
+complete: `AuditSession` writes structured audit metadata/events/state checkpoints,
+and `Phase7Demo::auditSnapshot()` exposes a value-only diagnostic view. Output is
+development-only and ignored by Git. This does not mark Phase 13 complete.
+
+Still deferred, in order, are logical-framebuffer BMP capture, the real headless
+platform, deterministic scripted playtest runner, Windows manual/F12 integration,
+portable Linux build/runtime, and seeded stress playtesting. Formal command replay,
+state hashing, network identity and multiplayer authority remain Phase 13/14 work.

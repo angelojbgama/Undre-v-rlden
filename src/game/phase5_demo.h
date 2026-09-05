@@ -4,6 +4,7 @@
 #include "engine/platform/debug_input.h"
 #include "engine/platform/input_state.h"
 #include "engine/simulation/player_command.h"
+#include "game/audit/audit_snapshot.h"
 #include "game/game_launch.h"
 
 #include <filesystem>
@@ -25,6 +26,7 @@ public:
     void fixedTick(simulation::Tick tick, const platform::InputState& input,
                    platform::DebugInputState debugInput);
     void render(render::Framebuffer& framebuffer) const;
+    [[nodiscard]] audit::GameAuditSnapshot auditSnapshot() const;
     [[nodiscard]] const std::string& startupSummary() const noexcept { return startupSummary_; }
 
 private:

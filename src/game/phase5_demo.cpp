@@ -17,6 +17,7 @@
 #include "game/game_view_model.h"
 #include "game/game_content.h"
 #include "game/actor_render_order.h"
+#include "game/audit/audit_snapshot.h"
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
 #include "game/enemy_visual.h"
@@ -26,6 +27,7 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_session.h"
+#include "game/gameplay/quests/quest_state.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
@@ -48,6 +50,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -73,6 +76,25 @@ std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
     }
     return std::make_shared<const render::AnimationClip>(
         std::move(id), std::move(sheet), std::move(frames), loop);
+}
+
+const char* objectStateName(gameplay::WorldObjectState state) noexcept {
+    switch (state) {
+    case gameplay::WorldObjectState::idle: return "idle";
+    case gameplay::WorldObjectState::opened: return "opened";
+    case gameplay::WorldObjectState::destroying: return "destroying";
+    case gameplay::WorldObjectState::destroyed: return "destroyed";
+    }
+    return "unknown";
+}
+
+const char* questStatusName(gameplay::quests::QuestStatus status) noexcept {
+    switch (status) {
+    case gameplay::quests::QuestStatus::inactive: return "inactive";
+    case gameplay::quests::QuestStatus::active: return "active";
+    case gameplay::quests::QuestStatus::completed: return "completed";
+    }
+    return "unknown";
 }
 
 PlayerVisual::DirectionalClips makeClips(
@@ -394,6 +416,99 @@ struct Phase7Demo::State final {
                 << " objects=" << activeWorld().objects().size()
                 << " pickups=" << activeWorld().pickups().size();
         return summary.str();
+    }
+
+    [[nodiscard]] audit::GameAuditSnapshot auditSnapshot() const {
+        audit::GameAuditSnapshot snapshot;
+        snapshot.tick = lastTick;
+        snapshot.currentMap = std::string(activeWorld().id().value());
+        snapshot.currentSpawn = std::string(activeWorld().spawn().id.value());
+        snapshot.playerX = player.feetPosition().x;
+        snapshot.playerY = player.feetPosition().y;
+        snapshot.playerFacing = gameplay::facingName(player.facing());
+        snapshot.playerHealth = player.health().current;
+        snapshot.playerMaximumHealth = player.health().maximum;
+        snapshot.gold = playerItems.wallet().gold();
+
+        for (std::size_t index = 0; index < playerItems.inventory().items().capacity(); ++index) {
+            const auto& slot = playerItems.inventory().items().slot(index);
+            if (!slot) { continue; }
+            snapshot.inventory.push_back({index, std::string(slot->itemId.value()), slot->quantity});
+        }
+        for (std::size_t index = 0; index < gameplay::QuickSlotBindings::slotCount; ++index) {
+            const auto& binding = playerItems.quickSlots().binding(index);
+            snapshot.quickSlots.push_back({
+                index, binding ? std::string(binding->value()) : std::string{}});
+        }
+
+        for (const auto& persistent : activeWorld().enemies()) {
+            const auto& enemy = persistent.instance;
+            snapshot.enemies.push_back({
+                persistent.persistentId.value, std::string(enemy.definition().id.value()),
+                enemy.feetPosition().x, enemy.feetPosition().y,
+                enemy.combatant().health.current, enemy.combatant().health.maximum,
+                gameplay::creatures::behaviorStateName(enemy.state())});
+        }
+        for (const auto& persistent : activeWorld().npcs()) {
+            const auto& npc = persistent.instance;
+            snapshot.npcs.push_back({
+                persistent.persistentId.value, std::string(npc.definition().id.value()),
+                npc.position().x, npc.position().y, 0, 0,
+                gameplay::facingName(npc.facing())});
+        }
+        for (const auto& persistent : activeWorld().objects()) {
+            const auto& object = persistent.instance;
+            int health = 0;
+            int maximumHealth = 0;
+            if (const auto* combatant = object.combatant()) {
+                health = combatant->health.current;
+                maximumHealth = combatant->health.maximum;
+            }
+            snapshot.objects.push_back({
+                persistent.persistentId.value, std::string(object.definition().id.value()),
+                object.position().x, object.position().y, health, maximumHealth,
+                objectStateName(object.state())});
+        }
+        for (const auto& persistent : activeWorld().pickups()) {
+            const auto& pickup = persistent.instance;
+            std::uint64_t quantity = 0;
+            std::visit([&quantity](const auto& payload) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(payload)>,
+                                              gameplay::HealthPickup>) {
+                    quantity = static_cast<std::uint64_t>(payload.amount);
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(payload)>,
+                                                     gameplay::CurrencyPickup>) {
+                    quantity = payload.amount;
+                } else {
+                    quantity = payload.quantity;
+                }
+            }, pickup.payload());
+            snapshot.pickups.push_back({
+                persistent.persistentId.value, std::string(pickup.definition().id.value()),
+                pickup.position().x, pickup.position().y, quantity});
+        }
+
+        snapshot.dialogue.active = dialogue.isOpen();
+        snapshot.dialogue.dialogueId = std::string(dialogue.dialogueId());
+        snapshot.dialogue.nodeId = std::string(dialogue.nodeId());
+        snapshot.dialogue.pageIndex = dialogue.pageIndex();
+        snapshot.dialogue.pageCount = dialogue.pageCount();
+        snapshot.dialogue.choicesVisible = dialogue.choicesVisible();
+        snapshot.dialogue.selectedChoice = dialogue.selectedChoice();
+        for (const auto& progress : questState.snapshot()) {
+            audit::AuditQuest quest{std::string(progress.questId.value()),
+                                    questStatusName(progress.status), {}};
+            for (const auto& objective : progress.objectives) {
+                quest.objectives.push_back({std::string(objective.objectiveId.value()),
+                                            objective.currentCount});
+            }
+            snapshot.quests.push_back(std::move(quest));
+        }
+        for (const auto& flag : dialogueFlags.values()) {
+            snapshot.dialogueFlags.emplace_back(flag.value());
+        }
+        snapshot.activeProjectileCount = projectiles.projectiles().size();
+        return snapshot;
     }
 
     [[nodiscard]] maps::RuntimeWorld& activeWorld() { return *mapSession->world(); }
@@ -1296,6 +1411,10 @@ void Phase7Demo::fixedTick(simulation::Tick tick, const platform::InputState& in
 }
 
 void Phase7Demo::render(render::Framebuffer& framebuffer) const { state_->render(framebuffer); }
+
+audit::GameAuditSnapshot Phase7Demo::auditSnapshot() const {
+    return state_->auditSnapshot();
+}
 
 std::filesystem::path findLicensedAssetRoot(const std::filesystem::path& executableDirectory) {
     std::array<std::filesystem::path, 2> starts{std::filesystem::current_path(), executableDirectory};

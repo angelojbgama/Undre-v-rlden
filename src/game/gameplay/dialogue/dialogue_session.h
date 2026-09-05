@@ -31,6 +31,12 @@ public:
     [[nodiscard]] bool isOpen() const noexcept { return state_ != DialogueSessionState::closed; }
     [[nodiscard]] DialogueSessionState state() const noexcept { return state_; }
     [[nodiscard]] std::string_view speaker() const noexcept;
+    [[nodiscard]] std::string_view dialogueId() const noexcept {
+        return dialogue_ ? dialogue_->id.value() : std::string_view{};
+    }
+    [[nodiscard]] std::string_view nodeId() const noexcept {
+        return node_ ? node_->id.value() : std::string_view{};
+    }
     [[nodiscard]] std::string_view currentPage() const noexcept;
     [[nodiscard]] std::size_t pageIndex() const noexcept { return pageIndex_; }
     [[nodiscard]] std::size_t pageCount() const noexcept;

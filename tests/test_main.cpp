@@ -29,6 +29,8 @@
 #include "editor/editor_document.h"
 #include "editor/editor_playtest.h"
 #include "game/command_builder.h"
+#include "game/audit/audit_session.h"
+#include "game/audit/audit_snapshot.h"
 #include "game/game_content.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
@@ -4258,6 +4260,102 @@ void testMapCompositionFoundation() {
            "missing composition semantics fail clearly without inventing an atlas tile");
 }
 
+void testAuditSessionFoundation() {
+    using namespace underworld;
+    namespace audit = game::audit;
+
+    expect(audit::escapeJsonString("quote\" slash\\ line\n tab\t") ==
+               "quote\\\" slash\\\\ line\\n tab\\t",
+           "audit JSON string escaping protects quotes backslashes and controls");
+
+    const audit::AuditEvent event{
+        812, "EntityDefeated",
+        {{"map", std::string{"map.dungeon.02"}}, {"instance", std::uint64_t{102}},
+         {"visible", true}}};
+    expect(audit::serializeAuditEvent(event) ==
+               "{\"tick\":812,\"type\":\"EntityDefeated\",\"map\":\"map.dungeon.02\","
+               "\"instance\":102,\"visible\":true}",
+           "audit events serialize as deterministic structured JSON lines");
+
+    const auto root = std::filesystem::temp_directory_path() / "underworld_audit_session_test";
+    std::error_code cleanupError;
+    std::filesystem::remove_all(root, cleanupError);
+    expect(audit::makeAuditSessionDirectory(root, "unit_01") == root / "unit_01",
+           "audit session directory uses an explicit safe session identifier");
+    bool unsafeRejected = false;
+    try {
+        static_cast<void>(audit::makeAuditSessionDirectory(root, "../escape"));
+    } catch (const std::invalid_argument&) {
+        unsafeRejected = true;
+    }
+    expect(unsafeRejected, "audit session directory rejects traversal identifiers");
+
+    audit::GameAuditSnapshot snapshot;
+    snapshot.tick = 60;
+    snapshot.currentMap = "map.dungeon.01";
+    snapshot.currentSpawn = "entry.start";
+    snapshot.playerX = 80;
+    snapshot.playerY = 96;
+    snapshot.playerFacing = "down";
+    snapshot.playerHealth = 4;
+    snapshot.playerMaximumHealth = 5;
+    snapshot.gold = 17;
+    snapshot.inventory.push_back({2, "item.life_potion", 3});
+    snapshot.enemies.push_back({9, "enemy.evil_soldier", 128, 96, 5, 5, "chase"});
+    snapshot.dialogue.active = true;
+    snapshot.dialogue.dialogueId = "dialogue.guard";
+    snapshot.dialogue.nodeId = "guard.entry";
+    snapshot.quests.push_back({"quest.scholar", "active", {{"objective.talk", 1}}});
+    const auto snapshotJson = audit::serializeAuditSnapshot(snapshot);
+    expect(snapshotJson.find("\"map\":\"map.dungeon.01\"") != std::string::npos &&
+               snapshotJson.find("enemy.evil_soldier") != std::string::npos &&
+               snapshotJson.find("dialogue.guard") != std::string::npos &&
+               snapshotJson.find("objective.talk") != std::string::npos,
+           "audit snapshot serialization includes stable gameplay diagnostics");
+
+    audit::AuditSession session;
+    audit::AuditSessionConfig config;
+    config.outputRoot = root;
+    config.sessionId = "unit_01";
+    config.metadata.mode = "automated";
+    config.metadata.scenario = "audit_foundation";
+    config.metadata.initialMap = "map.dungeon.01";
+    config.metadata.initialSpawn = "entry.start";
+    config.metadata.commandLine = {"tests", "--audit"};
+    config.stateCheckpointInterval = 60;
+    std::string error;
+    expect(session.open(config, error), "enabled audit session creates its output files");
+    expect(session.recordEvent(event), "enabled audit session records structured events");
+    expect(session.recordState(snapshot), "audit session records the first state checkpoint");
+    snapshot.tick = 90;
+    expect(!session.recordState(snapshot), "unchanged audit interval keeps state checkpoints cached");
+    snapshot.tick = 120;
+    expect(session.recordState(snapshot), "audit session records the next periodic checkpoint");
+    snapshot.tick = 121;
+    expect(session.recordState(snapshot, true), "audit session supports forced state checkpoints");
+    expect(session.close("PASS"), "audit session flushes event state and summary files");
+    expect(std::filesystem::exists(root / "unit_01" / "session.json") &&
+               std::filesystem::exists(root / "unit_01" / "events.jsonl") &&
+               std::filesystem::exists(root / "unit_01" / "state.jsonl") &&
+               std::filesystem::exists(root / "unit_01" / "summary.txt") &&
+               std::filesystem::is_directory(root / "unit_01" / "screenshots"),
+           "audit session creates the documented artifact layout");
+    std::ifstream summary(root / "unit_01" / "summary.txt");
+    const std::string summaryText((std::istreambuf_iterator<char>(summary)), {});
+    expect(summaryText.find("events: 1") != std::string::npos &&
+               summaryText.find("state checkpoints: 3") != std::string::npos,
+           "audit summary reports event and checkpoint counts");
+
+    audit::AuditSession disabled;
+    audit::AuditSessionConfig disabledConfig;
+    disabledConfig.enabled = false;
+    expect(disabled.open(disabledConfig, error) && !disabled.enabled() &&
+               !disabled.recordEvent(event) && !disabled.recordState(snapshot) &&
+               disabled.close(),
+           "disabled audit mode performs no file-backed work");
+    std::filesystem::remove_all(root, cleanupError);
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -4350,6 +4448,7 @@ int main() {
         testMultiTilesetAuthoringAndRuntime();
         testSemanticAuthoringFoundation();
         testMapCompositionFoundation();
+        testAuditSessionFoundation();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

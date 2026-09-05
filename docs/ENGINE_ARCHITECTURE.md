@@ -1411,3 +1411,20 @@ counter limits and active/completed consistency before replacing state. DSAV 1.0
 1.1 saves without `QSTS` remain readable, and older versions reject the future chunk.
 The game save/load path passes the quest catalog and carries the state through F5/F9;
 DMAP is unchanged.
+
+## Audit foundation (Block A)
+
+The project now has a small platform-neutral observability boundary. `Phase7Demo` can
+expose `auditSnapshot()` as a value-only `GameAuditSnapshot`; the snapshot contains
+stable map/content/persistent IDs and diagnostic state, but no runtime handles,
+pointers or renderer ownership. `AuditSession` consumes snapshots and structured
+events and writes a versioned metadata document, JSON Lines event/state streams and a
+human-readable summary. Gameplay remains responsible for gameplay state and does not
+perform file I/O.
+
+The session is mutation/event driven: state is not written every tick by default;
+the first state and periodic checkpoints (60 ticks by default) are recorded, with an
+explicit force option for important transitions. Audit output is development-only in
+`audit/<session-id>/` and is ignored by Git. The logical framebuffer and screenshot
+writer, headless platform, scripted playtest runner and Linux build are subsequent
+blocks; DMAP/DSAV remain unchanged at their current runtime versions.
