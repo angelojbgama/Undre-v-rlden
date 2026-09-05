@@ -39,6 +39,7 @@
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
+#include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/player_items.h"
@@ -2649,6 +2650,67 @@ void testPhase10NpcFoundation() {
            "Map Maker deletes and restores NPC placements through undo");
 }
 
+void testPhase10DialogueDataModel() {
+    namespace dialogue = underworld::game::gameplay::dialogue;
+    namespace game = underworld::game;
+
+    const game::GameContentRegistry content;
+    const auto& guard = content.dialogues().require(dialogue::guardDialogueId());
+    const auto& scholar = content.dialogues().require(dialogue::scholarDialogueId());
+    expect(content.dialogues().size() == 2 &&
+               content.npcs().require(underworld::game::gameplay::npcs::guardNpcId())
+                       .defaultDialogueId == dialogue::guardDialogueId() &&
+               content.npcs().require(underworld::game::gameplay::npcs::scholarNpcId())
+                       .defaultDialogueId == dialogue::scholarDialogueId(),
+           "GameContentRegistry connects both reusable NPCs to data-driven dialogues");
+
+    const auto& guardEntry = dialogue::requireNode(guard, guard.entryNodeId);
+    const auto& guardResponse = dialogue::requireNode(guard, guardEntry.nextNodeId);
+    expect(guardEntry.pages.size() == 2 && guardEntry.speaker == "Guard" &&
+               guardEntry.nextNodeId == guardResponse.id && guardResponse.choices.empty(),
+           "dialogue nodes support speaker, pagination and a linear next-node transition");
+
+    const auto& scholarEntry = dialogue::requireNode(scholar, scholar.entryNodeId);
+    expect(scholarEntry.pages.size() == 1 && scholarEntry.choices.size() == 2 &&
+               dialogue::findNode(scholar, scholarEntry.choices[0].targetNodeId) != nullptr &&
+               dialogue::findNode(scholar, scholarEntry.choices[1].targetNodeId) != nullptr,
+           "dialogue nodes support data-driven choices targeting other nodes");
+
+    bool rejectedUnknownTarget = false;
+    try {
+        auto invalid = dialogue::makeGuardDialogueDefinition();
+        invalid.nodes[0].nextNodeId = underworld::simulation::DefinitionId{"dialogue.missing"};
+        dialogue::DialogueCatalog catalog;
+        catalog.add(std::move(invalid));
+    } catch (const std::invalid_argument&) {
+        rejectedUnknownTarget = true;
+    }
+    expect(rejectedUnknownTarget, "dialogue catalog rejects unknown next-node targets");
+
+    bool rejectedAmbiguousTransition = false;
+    try {
+        auto invalid = dialogue::makeGuardDialogueDefinition();
+        invalid.nodes[0].choices.push_back({"Continue", invalid.nodes[1].id});
+        dialogue::DialogueCatalog catalog;
+        catalog.add(std::move(invalid));
+    } catch (const std::invalid_argument&) {
+        rejectedAmbiguousTransition = true;
+    }
+    expect(rejectedAmbiguousTransition,
+           "dialogue catalog rejects nodes with both next-node and choice transitions");
+
+    bool rejectedEmptyPage = false;
+    try {
+        auto invalid = dialogue::makeScholarDialogueDefinition();
+        invalid.nodes[0].pages.push_back({});
+        dialogue::DialogueCatalog catalog;
+        catalog.add(std::move(invalid));
+    } catch (const std::invalid_argument&) {
+        rejectedEmptyPage = true;
+    }
+    expect(rejectedEmptyPage, "dialogue catalog rejects empty pages");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -3929,6 +3991,7 @@ int main() {
         testViewModelAndWorldObjects();
         testPhase8PersistentMapsAndSave();
         testPhase10NpcFoundation();
+        testPhase10DialogueDataModel();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

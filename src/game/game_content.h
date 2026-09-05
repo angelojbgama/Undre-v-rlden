@@ -2,6 +2,7 @@
 
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/creatures/creature_engine.h"
+#include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/world_objects.h"
@@ -57,6 +58,12 @@ public:
     [[nodiscard]] const gameplay::npcs::NpcVisualCatalog& npcVisuals() const noexcept {
         return npcVisuals_;
     }
+    [[nodiscard]] gameplay::dialogue::DialogueCatalog& dialogues() noexcept {
+        return dialogues_;
+    }
+    [[nodiscard]] const gameplay::dialogue::DialogueCatalog& dialogues() const noexcept {
+        return dialogues_;
+    }
     [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
     [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
@@ -83,6 +90,7 @@ private:
     gameplay::WorldObjectCatalog objects_;
     gameplay::npcs::NpcCatalog npcs_;
     gameplay::npcs::NpcVisualCatalog npcVisuals_;
+    gameplay::dialogue::DialogueCatalog dialogues_;
     TilesetCatalog tilesets_;
     authoring::AuthoringSemanticRegistry authoringSemantics_;
     std::vector<gameplay::PickupDefinition> pickups_;

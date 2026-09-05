@@ -1,5 +1,7 @@
 #include "game/gameplay/npcs/npc_engine.h"
 
+#include "game/gameplay/dialogue/dialogue_model.h"
+
 #include <algorithm>
 #include <stdexcept>
 
@@ -112,12 +114,12 @@ const simulation::DefinitionId& scholarNpcId() {
 
 NpcDefinition makeGuardNpcDefinition() {
     return {guardNpcId(), simulation::DefinitionId{"visual.npc.guard"},
-            {{-14, -28, 28, 22}, true}, {}, {"npc", "guard"}};
+            {{-14, -28, 28, 22}, true}, dialogue::guardDialogueId(), {"npc", "guard"}};
 }
 
 NpcDefinition makeScholarNpcDefinition() {
     return {scholarNpcId(), simulation::DefinitionId{"visual.npc.scholar"},
-            {{-14, -28, 28, 22}, true}, {}, {"npc", "scholar"}};
+            {{-14, -28, 28, 22}, true}, dialogue::scholarDialogueId(), {"npc", "scholar"}};
 }
 
 } // namespace underworld::game::gameplay::npcs

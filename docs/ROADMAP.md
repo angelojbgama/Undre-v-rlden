@@ -42,8 +42,8 @@ FASE 5 — Combat Foundation + vertical slice de combate   DONE
 FASE 6 — Creature Engine reutilizável                    DONE
 FASE 7 — Objetos + pickup + HUD + inventário            DONE
 FASE 8 — .dmap + transições + save                     DONE
-FASE 9 — Map Maker                                     IN PROGRESS
-FASE 10 — NPC + diálogo
+FASE 9 — Map Maker                                     DONE
+FASE 10 — NPC + diálogo                               IN PROGRESS
 FASE 11 — Quests
 FASE 12 — RPG + XP + equipment + loot
 FASE 13 — Headless + replay + auditoria multiplayer
@@ -830,14 +830,26 @@ Não criar Scene Graph universal nem usar Scene como `GameObject` global.
 
 # Fase 10 — NPC e diálogo
 
-## Block 10A — NPC Foundation (IN PROGRESS)
+## Block 10A — NPC Foundation (DONE)
 
 Implemented in this increment: reusable `NpcDefinition`/`NpcCatalog`, runtime
 `NpcInstance`/`NpcFactory`, shared `InteractionArea` detection, editor placement
 commands, and authored persistence through DMAP 1.1's optional `NPCS` chunk. Two
 content definitions (`npc.guard` and `npc.scholar`) exercise the same runtime system.
-Dialogue data, sessions, choices, conditions and actions are deliberately deferred to
-Blocks 10B–10D.
+Dialogue sessions, choices, conditions and actions are deliberately deferred to the
+following blocks.
+
+## Block 10B — Dialogue Data Model (DONE)
+
+Implemented in this increment: renderer-independent `DialogueDefinition`,
+`DialogueNode`, `DialogueChoice` and `DialogueCatalog`. Nodes support ordered text
+pages, a linear next-node transition, or choices targeting nodes in the same dialogue.
+Catalog validation rejects empty pages, duplicate node IDs, unknown entry/transition
+targets and ambiguous next-node-plus-choice graphs. Guard and Scholar are connected to
+separate dialogue definitions through their existing `defaultDialogueId` field.
+
+Dialogue sessions/UI, command routing, conditions, actions and persistence remain
+deferred to Blocks 10C–10D.
 
 ## Dependências
 

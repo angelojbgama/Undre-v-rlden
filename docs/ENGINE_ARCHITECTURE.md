@@ -54,11 +54,12 @@ smoke visual/interativo passando.
 
 A Fase 8 também está concluída: DMAP/DSAV v1, `MapData`, persistent IDs,
 `RuntimeWorldBuilder`, `MapCatalog`, `MapSession`, transições e deltas de sessão/save
-alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) está em
-fechamento do Block 1: o editor já possui validação revision-cached, culling de tiles,
+alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) foi fechada
+no checkpoint Linux atual: o editor possui validação revision-cached, culling de tiles,
 playtest por snapshot via `RuntimeWorldBuilder` e sidecar `.autosave.dmap` sem substituir
-o arquivo authored. O build/smoke MSVC desta execução continua sendo um gate operacional;
-loot/XP, NPCs, quests e networking permanecem deferidos.
+o arquivo authored. A Fase 10 está em andamento; NPC foundation e dialogue data model
+estão concluídos, enquanto sessão/UI, conditions, actions, flags persistentes, quests,
+loot/XP e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
 
@@ -1330,5 +1331,14 @@ through `NpcFactory`; `NpcCatalog` validates definition IDs before construction.
 NPC interaction reuses the shared `InteractionArea` and a deterministic nearest-target
 query. Until the asset audit provides approved NPC sprite sheets, the runtime visual
 catalog uses explicit non-asset marker colors so authored NPCs remain visible without
-inventing PNG semantics. Dialogue, conditions, actions and persistent dialogue flags
-remain deferred to the following Phase 10 blocks.
+inventing PNG semantics.
+
+## Fase 10B — Dialogue data model
+
+`DialogueDefinition`, `DialogueNode`, `DialogueChoice` and `DialogueCatalog` provide a
+renderer-independent dialogue graph. Nodes own one or more ordered text pages and may
+either continue to one next node or expose choices targeting nodes in the same
+definition. Catalog insertion validates IDs, non-empty pages, the entry node and every
+transition target. Guard and Scholar use separate catalogued definitions through their
+NPC `defaultDialogueId`; dialogue sessions, input routing, conditions, actions and
+persistent flags remain deferred to Blocks 10C–10D.

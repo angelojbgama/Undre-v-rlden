@@ -16,6 +16,8 @@ GameContentRegistry::GameContentRegistry() {
     behaviors_.add(gameplay::creatures::makeSkullBehaviorProfile());
     enemies_.add(gameplay::creatures::makeSoldierEnemyDefinition());
     enemies_.add(gameplay::creatures::makeSkullEnemyDefinition());
+    dialogues_.add(gameplay::dialogue::makeGuardDialogueDefinition());
+    dialogues_.add(gameplay::dialogue::makeScholarDialogueDefinition());
     npcs_.add(gameplay::npcs::makeGuardNpcDefinition());
     npcs_.add(gameplay::npcs::makeScholarNpcDefinition());
     npcVisuals_.add({simulation::DefinitionId{"visual.npc.guard"}, {70, 150, 240, 255}});
