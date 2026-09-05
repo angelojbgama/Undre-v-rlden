@@ -23,6 +23,7 @@
 #include "game/enemy_visual.h"
 #include "game/game_launch.h"
 #include "game/game_presentation.h"
+#include "game/game_session.h"
 #include "game/runtime_visual_sync.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
@@ -135,67 +136,6 @@ std::shared_ptr<const render::AnimationClip> makeObjectClip(
         std::move(id), std::move(sheet), std::move(frames), loop);
 }
 
-#if 0
-void outline(render::Renderer2D& renderer, world::AabbI box,
-             core::WorldPointI camera, core::ColorRGBA8 color) {
-    const int x = box.x - camera.x;
-    const int y = box.y - camera.y;
-    renderer.fillRect({x, y, box.width, 1}, color);
-    renderer.fillRect({x, y + box.height - 1, box.width, 1}, color);
-    renderer.fillRect({x, y, 1, box.height}, color);
-    renderer.fillRect({x + box.width - 1, y, 1, box.height}, color);
-}
-
-void drawWrappedText(render::Renderer2D& renderer, const render::BitmapFont& font,
-                     std::string_view text, int x, int y, std::size_t maximumColumns,
-                     std::size_t maximumLines) {
-    std::string line;
-    std::size_t linesDrawn = 0;
-    std::size_t cursor = 0;
-    while (cursor < text.size() && linesDrawn < maximumLines) {
-        while (cursor < text.size() && text[cursor] == ' ') { ++cursor; }
-        const auto nextSpace = text.find_first_of(" \n", cursor);
-        const auto wordEnd = nextSpace == std::string_view::npos ? text.size() : nextSpace;
-        const std::string word{text.substr(cursor, wordEnd - cursor)};
-        if (line.empty()) {
-            line = word;
-        } else if (line.size() + 1U + word.size() <= maximumColumns) {
-            line += ' ';
-            line += word;
-        } else {
-            render::drawText(renderer, font, line, x,
-                              y + static_cast<int>(linesDrawn) * font.lineHeight());
-            ++linesDrawn;
-            line = word;
-        }
-        cursor = wordEnd;
-        if (cursor < text.size() && text[cursor] == '\n') {
-            render::drawText(renderer, font, line, x,
-                              y + static_cast<int>(linesDrawn) * font.lineHeight());
-            ++linesDrawn;
-            line.clear();
-            ++cursor;
-        } else if (cursor < text.size()) {
-            ++cursor;
-        }
-    }
-    if (!line.empty() && linesDrawn < maximumLines) {
-        render::drawText(renderer, font, line, x,
-                         y + static_cast<int>(linesDrawn) * font.lineHeight());
-    }
-}
-
-render::QuarterTurn projectileRotation(gameplay::FacingDirection canonical,
-                                       gameplay::FacingDirection direction) noexcept {
-    const auto turns = gameplay::clockwiseQuarterTurns(canonical, direction);
-    switch (turns) {
-    case 1: return render::QuarterTurn::r90;
-    case 2: return render::QuarterTurn::r180;
-    case 3: return render::QuarterTurn::r270;
-    default: return render::QuarterTurn::r0;
-    }
-}
-#endif
 
 EnemyVisualSet makeEnemyVisualSet(
     const simulation::DefinitionId& id,
@@ -287,7 +227,7 @@ struct GameRuntime::State final {
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
-          playerHandle(handles.create()), player(localPlayerId, playerHandle, {}),
+          session(handles, localPlayerId, {}),
           dialogueFlags(), dialogue(content.dialogues(), dialogueFlags),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
@@ -391,8 +331,6 @@ struct GameRuntime::State final {
             knownMapData.push_back(startupLoaded.data);
         }
         mapCatalog = std::move(startupCatalog);
-        mapSession = std::make_unique<maps::MapSession>(
-            mapCatalog, validationCatalogs, *runtimeBuilder, handles, sessionWorldState);
         const auto startMap = startupLoaded.data.id;
         std::string spawnError;
         const auto selectedSpawn = selectStartupSpawn(
@@ -400,11 +338,11 @@ struct GameRuntime::State final {
         if (!selectedSpawn) {
             throw std::runtime_error("could not select startup spawn: " + spawnError);
         }
-        const auto activated = mapSession->activate(startMap, *selectedSpawn);
-        if (!activated.changed) {
-            throw std::runtime_error("could not activate startup DMAP: " + activated.error);
+        std::string sessionError;
+        if (!session.initializeMap(mapCatalog, validationCatalogs, *runtimeBuilder, handles,
+                                    startMap, *selectedSpawn, sessionError)) {
+            throw std::runtime_error("could not activate startup DMAP: " + sessionError);
         }
-        player.relocate(activated.spawn.position, activated.spawn.facing);
         rebuildWorldVisuals();
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();
@@ -517,8 +455,8 @@ struct GameRuntime::State final {
         return snapshot;
     }
 
-    [[nodiscard]] maps::RuntimeWorld& activeWorld() { return *mapSession->world(); }
-    [[nodiscard]] const maps::RuntimeWorld& activeWorld() const { return *mapSession->world(); }
+    [[nodiscard]] maps::RuntimeWorld& activeWorld() { return session.worldForRuntime(); }
+    [[nodiscard]] const maps::RuntimeWorld& activeWorld() const { return session.world(); }
     [[nodiscard]] world::RuntimeMap& activeMap() { return activeWorld().map(); }
     [[nodiscard]] const world::RuntimeMap& activeMap() const { return activeWorld().map(); }
 
@@ -824,9 +762,7 @@ struct GameRuntime::State final {
     }
 
     void captureActiveWorld() {
-        if (mapSession->data() && mapSession->world()) {
-            save::captureWorldState(*mapSession->data(), *mapSession->world(), sessionWorldState);
-        }
+        save::captureWorldState(session.mapData(), session.world(), session.worldStateForRuntime());
     }
 
     void interactWithWorld() {
@@ -899,16 +835,12 @@ struct GameRuntime::State final {
     }
 
     void commitTransitionIfRequested() {
-        mapSession->beginTick();
-        static_cast<void>(mapSession->requestTransition(player.collisionBody()));
-        if (!mapSession->pending()) { return; }
-        const auto transition = mapSession->commitPending();
-        if (!transition.changed) {
-            lastEvent = "MAP ERROR";
-            return;
+        bool enteredMap = false;
+        for (const auto& event : events.events()) {
+            enteredMap = enteredMap || std::holds_alternative<simulation::MapEntered>(event);
         }
+        if (!enteredMap) { return; }
         clearMapTransients();
-        player.relocate(transition.spawn.position, transition.spawn.facing);
         rebuildWorldVisuals();
         followPlayer();
         lastEvent = "MAP " + std::string(activeWorld().id().value());
@@ -924,7 +856,7 @@ struct GameRuntime::State final {
     void saveGame() {
         captureActiveWorld();
         save::SaveData data{save::capturePlayer(player, playerItems, activeWorld().id()),
-                            sessionWorldState, dialogueFlags, questState};
+                            session.worldState(), dialogueFlags, questState};
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
             lastEvent = "SAVED";
@@ -940,16 +872,17 @@ struct GameRuntime::State final {
             return;
         }
         const auto previousPlayer = save::capturePlayer(player, playerItems, activeWorld().id());
-        const auto previousWorldState = sessionWorldState;
-        const auto restored = mapSession->restore(
-            loaded.data.player.currentMapId, loaded.data.world);
-        if (!restored.changed) {
+        const auto previousWorldState = session.worldState();
+        std::string restoreError;
+        if (!session.restoreMap(loaded.data.player.currentMapId, loaded.data.world,
+                                restoreError)) {
             lastEvent = "LOAD ERROR";
             return;
         }
         std::string error;
         if (!save::applyPlayer(loaded.data.player, player, playerItems, itemCatalog, error)) {
-            static_cast<void>(mapSession->restore(previousPlayer.currentMapId, previousWorldState));
+            static_cast<void>(session.restoreMap(previousPlayer.currentMapId,
+                                                  previousWorldState, restoreError));
             static_cast<void>(save::applyPlayer(
                 previousPlayer, player, playerItems, itemCatalog, error));
             rebuildWorldVisuals();
@@ -991,7 +924,11 @@ struct GameRuntime::State final {
                 static_cast<std::size_t>(command.actions.quickSlotPressed), itemCatalog,
                 player.health()));
         }
-        player.update(command, activeMap().collision(), activeMap().tileSize());
+        session.tick(command);
+        // The Session owns map transitions. Rebuild presentation immediately so
+        // the remaining systems in this transitional Runtime do not observe a
+        // world whose visual instances belong to the previous map.
+        commitTransitionIfRequested();
         if (command.actions.interactPressed) {
             interactWithWorld();
         }
@@ -1056,302 +993,6 @@ struct GameRuntime::State final {
         return (elapsed / blinkCadenceTicks) % 2 == 0;
     }
 
-    // Rendering is delegated to GamePresentation.  Keep the old helpers disabled in
-    // this transition patch so the runtime has one active rendering path while the
-    // next cleanup can remove their now-unused implementation wholesale.
-#if 0
-    std::size_t renderLayer(render::Renderer2D& renderer, const world::TileLayer& layer,
-                            render::VisibleTileRange visible) const {
-        if (!layer.visible() || visible.empty()) { return 0; }
-        const auto cameraPosition = presentation.camera().position();
-        for (int y = visible.firstY; y <= visible.lastY; ++y) {
-            for (int x = visible.firstX; x <= visible.lastX; ++x) {
-                const world::TileCell& cell = layer.cell(x, y);
-                if (!cell) { continue; }
-                const auto* tilesetVisual = tilesetVisuals.find(cell->definition.tilesetId);
-                if (!tilesetVisual) { throw std::runtime_error("active map references an unavailable tileset image"); }
-                const core::RectI source = tilesetVisual->atlas.sourceRect(cell->definition.sourceIndex);
-                const int dx = x * activeMap().tileSize() - cameraPosition.x;
-                const int dy = y * activeMap().tileSize() - cameraPosition.y;
-                if (world::hasFlag(cell->flags, world::TileFlags::flipX)) {
-                    renderer.drawImageRegionFlipX(*tilesetVisual->image, source, dx, dy);
-                } else {
-                    renderer.drawImageRegion(*tilesetVisual->image, source, dx, dy);
-                }
-            }
-        }
-        return visible.tileCount();
-    }
-
-    void renderActors(render::Renderer2D& renderer) const {
-        enum class ActorKind { player, enemy, npc, object, pickup };
-        struct Actor {
-            int sortY;
-            simulation::EntityHandle handle;
-            ActorKind kind;
-            std::size_t enemyIndex{};
-            std::size_t contentIndex{};
-        };
-        std::vector<Actor> actors;
-        const auto& enemies = activeWorld().enemies();
-        const auto& npcs = activeWorld().npcs();
-        const auto& objects = activeWorld().objects();
-        const auto& pickups = activeWorld().pickups();
-        actors.reserve(enemies.size() + npcs.size() + objects.size() + pickups.size() + 1);
-        actors.push_back({player.feetPosition().y, player.entityHandle(), ActorKind::player});
-        for (std::size_t index = 0; index < enemies.size(); ++index) {
-            actors.push_back({enemies[index].instance.feetPosition().y,
-                              enemies[index].instance.handle(),
-                              ActorKind::enemy, index});
-        }
-        for (std::size_t index = 0; index < npcs.size(); ++index) {
-            actors.push_back({npcs[index].instance.position().y,
-                              npcs[index].instance.handle(), ActorKind::npc, 0, index});
-        }
-        for (std::size_t index = 0; index < objects.size(); ++index) {
-            actors.push_back({objects[index].instance.position().y,
-                              objects[index].instance.handle(),
-                              ActorKind::object, 0, index});
-        }
-        for (std::size_t index = 0; index < pickups.size(); ++index) {
-            actors.push_back({pickups[index].instance.position().y,
-                              pickups[index].instance.handle(),
-                              ActorKind::pickup, 0, index});
-        }
-        std::sort(actors.begin(), actors.end(), [](const Actor& left, const Actor& right) {
-            return actorRendersBefore({left.sortY, left.handle}, {right.sortY, right.handle});
-        });
-        for (const Actor& actor : actors) {
-            if (actor.kind == ActorKind::player) {
-                // Damage invulnerability is communicated only by the Player's
-                // visual blink.  Enemies keep their normal rendering while
-                // they are invulnerable, so this remains a Player-only effect.
-                if (!playerSpriteVisibleDuringInvulnerability()) { continue; }
-                const auto logical = presentation.camera().worldToLogical(player.feetPosition());
-                render::drawAnimator(renderer, visual->animator(), {logical.x, logical.y},
-                                     visual->flipX());
-            } else if (actor.kind == ActorKind::enemy) {
-                const auto logical = presentation.camera().worldToLogical(
-                    enemies[actor.enemyIndex].instance.feetPosition());
-                render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
-                                     {logical.x, logical.y},
-                                     enemyVisuals[actor.enemyIndex].flipX());
-            } else if (actor.kind == ActorKind::npc) {
-                const auto& npc = npcs[actor.contentIndex].instance;
-                const auto& visualSet = npcCatalogVisuals.require(npc.definition().visualSetId);
-                const auto logical = presentation.camera().worldToLogical(npc.position());
-                renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20},
-                                  visualSet.markerColor);
-            } else if (actor.kind == ActorKind::object) {
-                const auto logical = presentation.camera().worldToLogical(
-                    objects[actor.contentIndex].instance.position());
-                render::drawAnimator(renderer, objectVisuals[actor.contentIndex].animator(),
-                                     {logical.x, logical.y});
-            } else {
-                const auto& pickup = pickups[actor.contentIndex].instance;
-                const auto found = pickupVisuals.find(pickup.definition().visualId);
-                if (found == pickupVisuals.end()) {
-                    throw std::runtime_error("pickup visual definition was not registered");
-                }
-                const auto logical = presentation.camera().worldToLogical(pickup.position());
-                renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
-            }
-        }
-    }
-
-    [[nodiscard]] bool playerSpriteVisibleDuringInvulnerability() const noexcept {
-        constexpr std::uint32_t blinkCadenceTicks = 4;
-        if (playerDamageBlinkTicksRemaining_ == 0) { return true; }
-        const auto elapsed = playerDamageBlinkDurationTicks -
-                             playerDamageBlinkTicksRemaining_;
-        return (elapsed / blinkCadenceTicks) % 2 == 0;
-    }
-
-    void renderProjectiles(render::Renderer2D& renderer) const {
-        const auto cameraPosition = presentation.camera().position();
-        for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
-            if (projectile.definition == nullptr) { continue; }
-            const auto found = projectileVisuals.find(projectile.definition->visualId);
-            if (found == projectileVisuals.end()) {
-                throw std::runtime_error("projectile visual definition was not registered");
-            }
-            renderer.drawImageRegionQuarterTurn(
-                found->second->image(), {0, 0, 16, 16},
-                projectile.position.x - cameraPosition.x - 8,
-                projectile.position.y - cameraPosition.y - 8,
-                projectileRotation(projectile.definition->canonicalFacing,
-                                   projectile.direction));
-        }
-    }
-
-    void renderEffects(render::Renderer2D& renderer) const {
-        for (const EffectInstance& effect : effects->effects()) {
-            const auto logical = presentation.camera().worldToLogical(effect.position);
-            render::drawAnimator(renderer, effect.animator, {logical.x, logical.y});
-        }
-    }
-
-    void renderDebug(render::Renderer2D& renderer, render::VisibleTileRange visible) const {
-        const auto cameraPosition = presentation.camera().position();
-        if (collisionOverlay && !visible.empty()) {
-            constexpr core::ColorRGBA8 fill{255, 24, 32, 72};
-            for (int y = visible.firstY; y <= visible.lastY; ++y) {
-                for (int x = visible.firstX; x <= visible.lastX; ++x) {
-                    if (activeMap().collision().isSolid(x, y)) {
-                        renderer.fillRect({x * activeMap().tileSize() - cameraPosition.x,
-                                           y * activeMap().tileSize() - cameraPosition.y,
-                                           activeMap().tileSize(), activeMap().tileSize()}, fill);
-                    }
-                }
-            }
-        }
-        if (combatDebug.collisionBody) {
-            outline(renderer, player.collisionBody(), cameraPosition, {32, 255, 96, 255});
-            for (const auto& enemy : activeWorld().enemies()) {
-                outline(renderer, enemy.instance.collisionBody(), cameraPosition, {32, 255, 96, 255});
-            }
-        }
-        if (combatDebug.hurtbox) {
-            outline(renderer, player.hurtbox().bounds, cameraPosition, {32, 220, 255, 255});
-            for (const auto& enemy : activeWorld().enemies()) {
-                if (enemy.instance.hurtbox().enabled) {
-                    outline(renderer, enemy.instance.hurtbox().bounds, cameraPosition,
-                            {32, 220, 255, 255});
-                }
-            }
-            for (const auto& object : activeWorld().objects()) {
-                if (object.instance.hurtbox().enabled) {
-                    outline(renderer, object.instance.hurtbox().bounds, cameraPosition,
-                            {32, 220, 255, 255});
-                }
-            }
-        }
-        if (combatDebug.hitbox) {
-            if (activeSword.enabled) {
-                outline(renderer, activeSword.bounds, cameraPosition, {255, 48, 48, 255});
-            }
-            for (const gameplay::Projectile& projectile : projectiles.projectiles()) {
-                outline(renderer, projectile.hitbox(), cameraPosition, {255, 220, 32, 255});
-            }
-            for (const auto& persistent : activeWorld().enemies()) {
-                const auto& enemy = persistent.instance;
-                if (!enemy.activeAttack() || !enemy.activeAttack()->meleeHitboxActive ||
-                    !enemy.activeAttack()->definition->meleeHitboxes) {
-                    continue;
-                }
-                outline(renderer,
-                        enemy.activeAttack()->definition->meleeHitboxes->forFacing(
-                            enemy.activeAttack()->lockedFacing).at(enemy.feetPosition()),
-                        cameraPosition, {255, 48, 48, 255});
-            }
-        }
-        if (combatDebug.interaction) {
-            outline(renderer, player.interactionArea().bounds, cameraPosition,
-                    {255, 64, 255, 255});
-            for (const auto& object : activeWorld().objects()) {
-                if (const auto area = object.instance.interactionArea()) {
-                    outline(renderer, *area, cameraPosition, {255, 64, 255, 255});
-                }
-            }
-            for (const auto& pickup : activeWorld().pickups()) {
-                outline(renderer, pickup.instance.collectionArea(), cameraPosition,
-                        {255, 200, 64, 255});
-            }
-        }
-    }
-
-    void renderHud(render::Renderer2D& renderer) const {
-        const GameViewModel view = buildGameViewModel(player, playerItems, itemCatalog,
-                                                       inventoryOverlay);
-        renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 14}, {8, 10, 16, 220});
-        for (int index = 0; index < view.playerMaximumHealth; ++index) {
-            if (index < view.playerHealth) {
-                renderer.drawImage(*hudHeartImage, 3 + index * 12, 2);
-            } else {
-                renderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
-            }
-        }
-        renderer.drawImage(*hudMoneyImage, 68, 2);
-        render::drawText(renderer, font, std::to_string(view.gold), 79, 2);
-        render::drawText(renderer, font,
-                         "MAP: " + std::string(activeWorld().id().value()), 116, 2);
-        if (!lastEvent.empty()) { render::drawText(renderer, font, lastEvent, 190, 2); }
-
-        renderer.fillRect({0, 194, core::GameMetrics::logicalWidth, 30}, {8, 10, 16, 220});
-        for (std::size_t index = 0; index < view.quickSlots.size(); ++index) {
-            const int x = 4 + static_cast<int>(index) * 40;
-            renderer.fillRect({x, 197, 34, 23}, {54, 30, 38, 255});
-            render::drawText(renderer, font, std::to_string(index + 1), x + 2, 199);
-            if (view.quickSlots[index].visualId) {
-                const auto found = itemVisuals.find(*view.quickSlots[index].visualId);
-                if (found != itemVisuals.end()) { renderer.drawImage(*found->second, x + 10, 199); }
-                render::drawText(renderer, font,
-                    std::to_string(view.quickSlots[index].quantity), x + 22, 209);
-            }
-        }
-        render::drawText(renderer, font, "I ITEMS  E OPEN", 169, 203);
-
-        if (dialogue.isOpen()) {
-            renderer.fillRect({8, 130, 256, 62}, {8, 10, 16, 248});
-            renderer.fillRect({9, 131, 254, 60}, {54, 30, 38, 255});
-            render::drawText(renderer, font, std::string(dialogue.speaker()), 14, 134);
-            render::drawText(renderer, font,
-                             std::to_string(dialogue.pageIndex() + 1) + "/" +
-                                 std::to_string(dialogue.pageCount()),
-                             238, 134);
-            drawWrappedText(renderer, font, dialogue.currentPage(), 14, 145, 34, 2);
-            if (dialogue.choicesVisible()) {
-                for (std::size_t index = 0; index < dialogue.choiceCount(); ++index) {
-                    const int y = 164 + static_cast<int>(index) * 11;
-                    if (index == dialogue.selectedChoice()) {
-                        renderer.fillRect({12, y - 1, 244, 10}, {96, 62, 54, 255});
-                    }
-                    render::drawText(renderer, font,
-                                     std::to_string(index + 1) + ": " +
-                                         std::string(dialogue.choiceLabel(index)),
-                                     14, y);
-                }
-            } else {
-                render::drawText(renderer, font, "E NEXT  X CLOSE", 14, 181);
-            }
-            return;
-        }
-
-        if (!view.inventoryOpen) { return; }
-        renderer.fillRect({6, 52, 260, 78}, {8, 10, 16, 245});
-        render::drawText(renderer, font, "INVENTORY", 10, 55);
-        for (std::size_t index = 0; index < view.inventory.size(); ++index) {
-            const int column = static_cast<int>(index % 10);
-            const int row = static_cast<int>(index / 10);
-            const int x = 10 + column * 25;
-            const int y = 66 + row * 20;
-            const core::ColorRGBA8 slotColor = index == view.inventorySelection
-                ? core::ColorRGBA8{220, 180, 72, 255}
-                : core::ColorRGBA8{54, 30, 38, 255};
-            renderer.fillRect({x, y, 22, 18}, slotColor);
-            if (view.inventory[index].visualId) {
-                const auto found = itemVisuals.find(*view.inventory[index].visualId);
-                if (found != itemVisuals.end()) { renderer.drawImage(*found->second, x + 3, y + 1); }
-                if (view.inventory[index].quantity > 1) {
-                    render::drawText(renderer, font,
-                        std::to_string(view.inventory[index].quantity), x + 10, y + 9);
-                }
-            }
-        }
-        render::drawText(renderer, font, "Z USE  1-4 BIND  I CLOSE", 10, 121);
-    }
-
-    void render(render::Framebuffer& framebuffer) const {
-        const auto view = buildGameViewModel(player, playerItems, itemCatalog, inventoryOverlay);
-        presentation.render(framebuffer, {
-            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects, projectiles,
-            tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
-            projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
-            dialogue, view, combatDebug, activeSword, lastEvent, collisionOverlay,
-            playerSpriteVisibleDuringInvulnerability()});
-    }
-
-    #endif
 
     std::shared_ptr<const render::Image> tileset;
     world::TileAtlasLayout atlas;
@@ -1386,8 +1027,8 @@ struct GameRuntime::State final {
     std::filesystem::path savePath;
     GamePresentation presentation;
     simulation::EntityHandlePool handles;
-    simulation::EntityHandle playerHandle{};
-    gameplay::Player player;
+    GameSession session;
+    gameplay::Player& player{session.playerForRuntime()};
     GameContentRegistry content;
     RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
     TilesetVisualCatalog tilesetVisuals;
@@ -1428,9 +1069,7 @@ struct GameRuntime::State final {
     std::unique_ptr<maps::RuntimeWorldBuilder> runtimeBuilder;
     maps::MapCatalog mapCatalog;
     std::vector<maps::MapData> knownMapData;
-    save::SessionWorldState sessionWorldState;
-    std::unique_ptr<maps::MapSession> mapSession;
-    simulation::EventBuffer events;
+    simulation::EventBuffer& events{session.eventsForRuntime()};
     gameplay::Hitbox activeSword{};
     std::optional<gameplay::AttackExecution> playerAttack_{};
     gameplay::AttackInstanceId nextContactAttackInstance_{1};

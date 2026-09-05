@@ -217,8 +217,20 @@ GameRuntime
     └── GamePresentation
 ```
 
-O próximo incremento poderá extrair `GameSession` para a simulação dirigida por
-`PlayerCommand`. A separação atual não altera DMAP/DSAV e não conclui headless/replay.
+Os próximos incrementos continuarão extraindo a simulação autoritativa para
+`GameSession` dirigida por `PlayerCommand`. A separação atual não altera DMAP/DSAV e
+não conclui headless/replay.
+
+### GameSession — fundação em progresso
+
+`GameSession` já fornece uma fronteira de simulação sem dependências de renderer,
+plataforma, decoder ou assets gráficos. Ela possui o Player, o `EventBuffer` e a
+sessão lógica do mapa (`MapSession`, `RuntimeWorld` e `SessionWorldState`). Seu
+`tick` recebe somente `PlayerCommand`, resolve internamente a colisão e o tile size
+do mapa ativo, e emite `MapEntered` após transições. `GameRuntime` continua compondo
+os sistemas restantes enquanto a migração de combate, criaturas, objetos, inventário,
+diálogo e quests é feita em incrementos
+menores. A API de filesystem para save/load permanece no runtime.
 
 ---
 

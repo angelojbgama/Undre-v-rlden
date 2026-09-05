@@ -47,6 +47,16 @@ uma view somente-leitura do runtime. `GameRuntime` continua sendo uma composiç�
 transitória que contém a simulação; a extração de `GameSession` permanece como o
 próximo incremento e não deve ser considerada concluída por esta mudança.
 
+### GameSession — em progresso
+
+O segundo corte de `GameSession` moveu para essa unidade o `MapSession`, `RuntimeWorld`
+e `SessionWorldState`. `GameSession::tick` recebe somente `PlayerCommand`, resolve a
+colisão/tile size do mapa ativo e emite `MapEntered` para transições. A migração dos
+demais sistemas autoritativos de gameplay ainda não foi concluída. Não marcar a
+separação `GameSession`/Presentation
+como pronta até que mapa, combate, criaturas, objetos, pickups, inventário, diálogo e
+quests sejam coordenados pela Session.
+
 ---
 
 ## 2. Estado macro

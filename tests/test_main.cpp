@@ -34,6 +34,7 @@
 #include "game/audit/audit_snapshot.h"
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
+#include "game/game_session.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
 #include "game/combat_debug.h"
@@ -964,6 +965,25 @@ void testPlayerMovementAndFacing() {
         wrongPlayerRejected = true;
     }
     expect(wrongPlayerRejected, "Player rejects commands addressed to another PlayerId");
+}
+
+void testGameSessionCommandBoundary() {
+    using underworld::game::GameSession;
+    underworld::simulation::EntityHandlePool firstHandles;
+    underworld::simulation::EntityHandlePool secondHandles;
+    GameSession first(firstHandles, {0}, {1000, 1000});
+    GameSession second(secondHandles, {0}, {1000, 1000});
+    const auto initial = first.player().subpixelPosition();
+    const auto firstCommand = movementCommand(1, 1, 0);
+    const auto secondCommand = movementCommand(2, 0, 0);
+    first.tick(firstCommand);
+    second.tick(firstCommand);
+    first.tick(secondCommand);
+    second.tick(secondCommand);
+    expect(first.player().subpixelPosition() == initial &&
+               first.player().subpixelPosition() == second.player().subpixelPosition() &&
+               first.player().facing() == second.player().facing(),
+           "uninitialized Sessions remain deterministic without a logical world");
 }
 
 void testPlayerCollision() {
@@ -3931,6 +3951,29 @@ void testOfficialGameplayMapSet() {
         ? session.commitPending() : maps::TransitionResult{};
     expect(back01.changed && session.world()->id() == simulation::MapId{"map.dungeon.01"},
            "official map transition returns from Map 02 to Map 01");
+
+    game::GameSession gameSession(handles, {0});
+    std::string sessionError;
+    expect(gameSession.initializeMap(catalog, validation, builder, handles,
+                                     simulation::MapId{"map.dungeon.01"},
+                                     simulation::SpawnId{"entry.start"}, sessionError) &&
+               gameSession.world().id() == simulation::MapId{"map.dungeon.01"},
+           "GameSession owns the active logical map without presentation dependencies");
+    const auto sessionInitial = gameSession.player().subpixelPosition();
+    gameSession.tick(movementCommand(1, 1, 0));
+    expect(gameSession.player().subpixelPosition().x > sessionInitial.x,
+           "GameSession resolves movement against active map collision");
+    gameSession.playerForRuntime().relocate({23 * 16, 8 * 16 + 8},
+                                            gameplay::FacingDirection::right);
+    gameSession.tick(movementCommand(2, 0, 0));
+    const bool enteredMap02 = std::any_of(
+        gameSession.events().events().begin(), gameSession.events().events().end(),
+        [](const simulation::SimulationEvent& event) {
+            const auto* entered = std::get_if<simulation::MapEntered>(&event);
+            return entered && entered->mapId == simulation::MapId{"map.dungeon.02"};
+        });
+    expect(enteredMap02 && gameSession.world().id() == simulation::MapId{"map.dungeon.02"},
+           "GameSession performs map transition and emits typed MapEntered");
 }
 
 void testPhase9StartupAndEditorPerformanceContracts() {
@@ -4705,6 +4748,7 @@ int main() {
         testCollisionMovement();
         testInputAndPlayerCommands();
         testPlayerMovementAndFacing();
+        testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();
