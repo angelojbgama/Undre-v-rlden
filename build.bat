@@ -223,6 +223,14 @@ echo [34/39] Compiling Phase 7 demo composition...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\phase5_demo.obj" "src\game\phase5_demo.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling game launch options...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\game_launch.obj" "src\game\game_launch.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling runtime visual synchronization...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\runtime_visual_sync.obj" "src\game\runtime_visual_sync.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [35/39] Compiling game loop...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\game.obj" "src\game\game.cpp"
 if errorlevel 1 goto :build_failed
@@ -237,7 +245,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\bitmap_font.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" ^
     "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" ^
-    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_content.obj" "build\obj\game_launch.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
@@ -257,7 +265,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
+    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
@@ -265,7 +273,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
@@ -273,7 +281,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
     "build\obj\phase5_demo.obj" "build\obj\game.obj" ^
     "build\obj\win32_platform.obj" ^
-    user32.lib gdi32.lib ole32.lib windowscodecs.lib
+    user32.lib gdi32.lib ole32.lib windowscodecs.lib shell32.lib
 if errorlevel 1 goto :build_failed
 
 echo [38/39] Compiling tests...
@@ -289,7 +297,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
+    "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\demo_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
@@ -298,7 +306,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^

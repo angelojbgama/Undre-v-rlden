@@ -20,6 +20,8 @@
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
 #include "game/enemy_visual.h"
+#include "game/game_launch.h"
+#include "game/runtime_visual_sync.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
@@ -184,7 +186,8 @@ struct Phase7Demo::State final {
           std::shared_ptr<const render::Image> breakingCrateImage,
           std::shared_ptr<const render::Image> hudHeartImage,
           std::shared_ptr<const render::Image> hudMoneyImage,
-          std::filesystem::path executableDirectory)
+          std::filesystem::path executableDirectory,
+          const GameLaunchOptions& launchOptions)
         : tileset(std::move(tileImage)),
           atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
           font(std::move(fontImage)),
@@ -302,23 +305,68 @@ struct Phase7Demo::State final {
             !maps::writeDmap(roomBPath, roomBData, mapError)) {
             throw std::runtime_error("could not generate demo DMAP: " + mapError);
         }
-        mapCatalog.add(roomAData.id, roomAPath);
-        mapCatalog.add(roomBData.id, roomBPath);
-        if (const auto linkError = mapCatalog.validateLinks(&validationCatalogs);
-            !linkError.empty()) {
-            throw std::runtime_error("invalid demo map links: " + linkError);
+        auto startup = selectStartupMap(launchOptions, this->executableDirectory,
+                                        std::filesystem::current_path());
+        if (startup.source != StartupMapSource::demoFallback) {
+            const auto authored = maps::readDmap(startup.path, &validationCatalogs);
+            if (!authored) {
+                if (startup.source == StartupMapSource::explicitPath) {
+                    throw std::runtime_error("could not load authored map '" +
+                        startup.path.string() + "': " + authored.error);
+                }
+                startup = {StartupMapSource::demoFallback, {}};
+            } else {
+                authoredData = std::move(authored.data);
+            }
         }
+
+        maps::MapCatalog startupCatalog;
+        startupCatalog.add(roomAData.id, roomAPath);
+        startupCatalog.add(roomBData.id, roomBPath);
+        if (authoredData) { startupCatalog.add(authoredData->id, startup.path); }
+        if (const auto linkError = startupCatalog.validateLinks(&validationCatalogs);
+            !linkError.empty()) {
+            if (authoredData && startup.source == StartupMapSource::authoredPlayground) {
+                authoredData.reset();
+                startup = {StartupMapSource::demoFallback, {}};
+                startupCatalog = maps::MapCatalog{};
+                startupCatalog.add(roomAData.id, roomAPath);
+                startupCatalog.add(roomBData.id, roomBPath);
+            } else {
+                throw std::runtime_error("invalid startup map links: " + linkError);
+            }
+        }
+        mapCatalog = std::move(startupCatalog);
         mapSession = std::make_unique<maps::MapSession>(
             mapCatalog, validationCatalogs, *runtimeBuilder, handles, sessionWorldState);
-        const auto activated = mapSession->activate(
-            maps::demoRoomAId(), simulation::SpawnId{"entry.start"});
+        const auto startMap = authoredData ? authoredData->id : maps::demoRoomAId();
+        std::string spawnError;
+        const auto selectedSpawn = authoredData
+            ? selectStartupSpawn(*authoredData, launchOptions.spawnId, spawnError)
+            : std::optional<simulation::SpawnId>{launchOptions.spawnId.value_or(
+                simulation::SpawnId{"entry.start"})};
+        if (!selectedSpawn) {
+            throw std::runtime_error("could not select startup spawn: " + spawnError);
+        }
+        const auto activated = mapSession->activate(startMap, *selectedSpawn);
         if (!activated.changed) {
-            throw std::runtime_error("could not activate demo DMAP: " + activated.error);
+            throw std::runtime_error("could not activate startup DMAP: " + activated.error);
         }
         player.relocate(activated.spawn.position, activated.spawn.facing);
+        resolveRenderLayers();
         rebuildWorldVisuals();
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();
+    }
+
+    [[nodiscard]] std::string startupSummary() const {
+        std::ostringstream summary;
+        summary << "startup map=" << activeWorld().id().value()
+                << " spawn=" << activeWorld().spawn().id.value()
+                << " enemies=" << activeWorld().enemies().size()
+                << " objects=" << activeWorld().objects().size()
+                << " pickups=" << activeWorld().pickups().size();
+        return summary.str();
     }
 
     [[nodiscard]] maps::RuntimeWorld& activeWorld() { return *mapSession->world(); }
@@ -327,21 +375,33 @@ struct Phase7Demo::State final {
     [[nodiscard]] const world::RuntimeMap& activeMap() const { return activeWorld().map(); }
 
     void rebuildWorldVisuals() {
-        enemyVisuals.clear();
-        enemyVisuals.reserve(activeWorld().enemies().size());
-        for (const auto& persistent : activeWorld().enemies()) {
-            const auto& enemy = persistent.instance;
-            enemyVisuals.emplace_back(
-                enemy.handle(), enemyVisualCatalog.require(enemy.definition().visualSetId));
-            enemyVisuals.back().update(enemy, 0);
+        const auto result = synchronizeRuntimeWorldVisuals(
+            activeWorld(), enemyVisualCatalog, enemyVisuals,
+            objectVisualCatalog, objectVisuals);
+        if (!result) { throw std::runtime_error(result.error); }
+        if (enemyVisuals.size() != activeWorld().enemies().size() ||
+            objectVisuals.size() != activeWorld().objects().size()) {
+            throw std::logic_error("runtime and visual actor counts are out of sync");
         }
-        objectVisuals.clear();
-        objectVisuals.reserve(activeWorld().objects().size());
-        for (const auto& persistent : activeWorld().objects()) {
-            const auto& object = persistent.instance;
-            objectVisuals.emplace_back(object.handle(), objectVisualCatalog.require(
-                object.definition().visualSetId));
-            objectVisuals.back().update(object, 0);
+    }
+
+    void resolveRenderLayers() {
+        groundLayer = 0;
+        foregroundLayer = activeMap().layerCount();
+        for (std::size_t index = 0; index < activeMap().layerCount(); ++index) {
+            const auto name = activeMap().layer(index).name();
+            if (name == "ground") {
+                groundLayer = index;
+            } else if (name == "foreground") {
+                foregroundLayer = index;
+            }
+        }
+
+        lowLayers.clear();
+        for (std::size_t index = 0; index < activeMap().layerCount(); ++index) {
+            if (index != groundLayer && index != foregroundLayer) {
+                lowLayers.push_back(index);
+        }
         }
     }
 
@@ -618,13 +678,16 @@ struct Phase7Demo::State final {
         }
         clearMapTransients();
         player.relocate(transition.spawn.position, transition.spawn.facing);
+        resolveRenderLayers();
         rebuildWorldVisuals();
         followPlayer();
         lastEvent = "MAP " + std::string(activeWorld().id().value());
     }
 
     [[nodiscard]] save::SaveValidationCatalogs saveCatalogs() const {
-        return {&itemCatalog, {&roomAData, &roomBData}};
+        std::vector<const maps::MapData*> maps{&roomAData, &roomBData};
+        if (authoredData) { maps.push_back(&*authoredData); }
+        return {&itemCatalog, std::move(maps)};
     }
 
     void saveGame() {
@@ -658,11 +721,13 @@ struct Phase7Demo::State final {
             static_cast<void>(mapSession->restore(previousPlayer.currentMapId, previousWorldState));
             static_cast<void>(save::applyPlayer(
                 previousPlayer, player, playerItems, itemCatalog, error));
+            resolveRenderLayers();
             rebuildWorldVisuals();
             lastEvent = "LOAD ERROR";
             return;
         }
         clearMapTransients();
+        resolveRenderLayers();
         rebuildWorldVisuals();
         followPlayer();
         lastEvent = "LOADED";
@@ -975,11 +1040,17 @@ struct Phase7Demo::State final {
         framebuffer.clear({28, 13, 22, 255});
         render::Renderer2D renderer(framebuffer);
         const auto visible = camera.visibleTiles(activeMap().widthTiles(), activeMap().heightTiles(), activeMap().tileSize());
+        if (groundLayer < activeMap().layerCount()) {
         renderLayer(renderer, activeMap().layer(groundLayer), visible);
-        renderLayer(renderer, activeMap().layer(lowLayer), visible);
+        }
+        for (const auto layer : lowLayers) {
+            renderLayer(renderer, activeMap().layer(layer), visible);
+        }
         renderActors(renderer);
         renderProjectiles(renderer);
+        if (foregroundLayer < activeMap().layerCount()) {
         renderLayer(renderer, activeMap().layer(foregroundLayer), visible);
+        }
         renderEffects(renderer);
         renderDebug(renderer, visible);
         renderHud(renderer);
@@ -1056,6 +1127,7 @@ struct Phase7Demo::State final {
     maps::MapCatalog mapCatalog;
     maps::MapData roomAData;
     maps::MapData roomBData;
+    std::optional<maps::MapData> authoredData;
     save::SessionWorldState sessionWorldState;
     std::unique_ptr<maps::MapSession> mapSession;
     simulation::EventBuffer events;
@@ -1065,8 +1137,8 @@ struct Phase7Demo::State final {
     std::uint32_t lastSequence{};
     gameplay::AttackInstanceId lastAttack{};
     std::size_t groundLayer{};
-    std::size_t lowLayer{};
     std::size_t foregroundLayer{};
+    std::vector<std::size_t> lowLayers;
     bool collisionOverlay{};
     CombatDebugVisibility combatDebug{};
     std::string lastEvent;
@@ -1074,7 +1146,8 @@ struct Phase7Demo::State final {
 
 Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
-                       const std::filesystem::path& executableDirectory) {
+                       const std::filesystem::path& executableDirectory,
+                       const GameLaunchOptions& launchOptions) {
     const GameContentRegistry contentDefinitions;
     const auto& dungeonDefinition = contentDefinitions.tilesets().require(
         simulation::DefinitionId{"tileset.dungeon"});
@@ -1136,7 +1209,8 @@ Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
         soldierIdle, soldierWalk, soldierAttack, soldierDeath,
         skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
         heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney,
-        executableDirectory);
+        executableDirectory, launchOptions);
+    startupSummary_ = state_->startupSummary();
 }
 
 Phase7Demo::~Phase7Demo() = default;

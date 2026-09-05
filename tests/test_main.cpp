@@ -34,6 +34,7 @@
 #include "game/combat_debug.h"
 #include "game/effect_system.h"
 #include "game/enemy_visual.h"
+#include "game/game_launch.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
@@ -44,6 +45,7 @@
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
+#include "game/runtime_visual_sync.h"
 #include "game/training_puppet.h"
 #include "game/maps/dmap.h"
 #include "game/maps/demo_maps.h"
@@ -3077,11 +3079,22 @@ void testEditorPlaygroundAuthoringAsset() {
     const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
         runtimeTilesets);
-    const auto runtime = loaded ? builder.build(loaded.data, loaded.data.playerSpawns.front().id)
+    std::string startupError;
+    const auto startupSpawn = loaded
+        ? game::selectStartupSpawn(loaded.data, std::nullopt, startupError)
+        : std::optional<simulation::SpawnId>{};
+    const auto selectedRuntime = loaded && startupSpawn
+        ? builder.build(loaded.data, *startupSpawn)
                                 : maps::RuntimeWorldBuildResult{};
-    expect(runtime && runtime.world->map().collision().width() == 48 &&
-               runtime.world->map().collision().height() == 32,
+    expect(startupSpawn && *startupSpawn == loaded.data.playerSpawns.front().id,
+           "authored map resolves a deterministic PlayerSpawn for game startup");
+    expect(selectedRuntime && selectedRuntime.world->map().collision().width() == 48 &&
+               selectedRuntime.world->map().collision().height() == 32,
            "editable playground DMAP builds through RuntimeWorldBuilder with runtime-only handles");
+    expect(selectedRuntime && selectedRuntime.world->enemies().size() == loaded.data.enemies.size() &&
+               selectedRuntime.world->objects().size() == loaded.data.objects.size() &&
+               selectedRuntime.world->pickups().size() == loaded.data.pickups.size(),
+           "authored enemy object and pickup placements become runtime instances");
 
     std::string error;
     auto document = playground.empty() ? std::optional<editor::EditorDocument>{}
@@ -3097,6 +3110,173 @@ void testEditorPlaygroundAuthoringAsset() {
                maps::semanticallyEqual(document->data(), reopened->data()),
            "Map Editor opens the playground clean and saves a persistable roundtrip copy");
     std::filesystem::remove(copy, removeError);
+}
+
+void testPhase9StartupAndEditorPerformanceContracts() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    const auto root = std::filesystem::temp_directory_path() /
+                      "underworld_phase9_startup_contract";
+    std::error_code cleanupError;
+    std::filesystem::remove_all(root, cleanupError);
+    std::filesystem::create_directories(root / "maps" / "authoring");
+    const auto canonical = root / "maps" / "authoring" / "editor_playground.dmap";
+    { std::ofstream file(canonical, std::ios::binary); file << "candidate"; }
+
+    const game::GameLaunchOptions defaults;
+    const wchar_t* commandLine[] = {
+        L"game.exe", L"--map", L"maps/authored.dmap", L"--spawn=entry.start"};
+    std::string optionError;
+    const auto parsed = game::parseGameLaunchOptions(4, commandLine, optionError);
+    expect(parsed && parsed->mapPath &&
+               parsed->mapPath->generic_string() == "maps/authored.dmap" &&
+               parsed->spawnId && parsed->spawnId->value() == "entry.start",
+           "game startup options parse authored map and spawn arguments");
+    const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
+    expect(authored.source == game::StartupMapSource::authoredPlayground &&
+               authored.path == canonical,
+           "canonical authored playground is selected when present");
+    game::GameLaunchOptions explicitMap;
+    explicitMap.mapPath = root / "explicit.dmap";
+    const auto explicitSelection = game::selectStartupMap(
+        explicitMap, root / "build" / "bin", root);
+    expect(explicitSelection.source == game::StartupMapSource::explicitPath &&
+               explicitSelection.path == *explicitMap.mapPath,
+           "explicit map path overrides canonical authored startup");
+    std::filesystem::remove(canonical, cleanupError);
+    const auto fallback = game::selectStartupMap(defaults, root / "build" / "bin", root);
+    expect(fallback.source == game::StartupMapSource::demoFallback,
+           "missing canonical authored map selects demo fallback");
+
+    const auto authoredMap = maps::makeEditorSmokeMap();
+    std::string spawnError;
+    const auto canonicalSpawn = game::selectStartupSpawn(authoredMap, std::nullopt, spawnError);
+    expect(canonicalSpawn && *canonicalSpawn == simulation::SpawnId{"entry.start"},
+           "startup spawn selection prefers the canonical entry.start spawn");
+    const auto missingSpawn = game::selectStartupSpawn(
+        authoredMap, simulation::SpawnId{"missing"}, spawnError);
+    expect(!missingSpawn && spawnError == "requested player spawn does not exist",
+           "explicit startup spawn rejects an unknown SpawnId");
+
+    editor::EditorDocument document = editor::EditorDocument::newMap(
+        simulation::MapId{"map.validation.cache"}, 8, 8);
+    const auto initialRevision = document.revision();
+    game::GameContentRegistry content;
+    editor::EditorValidationCache cache;
+    cache.refreshIfNeeded(document, content);
+    cache.refreshIfNeeded(document, content);
+    expect(cache.recomputeCount() == 1 && cache.validatedRevision() == document.revision(),
+           "unchanged editor documents reuse the validation cache");
+    document.viewport().worldX = 12.0;
+    document.viewport().zoomStep = 5;
+    cache.refreshIfNeeded(document, content);
+    expect(cache.recomputeCount() == 1,
+           "pan and zoom do not invalidate semantic validation");
+    std::string error;
+    expect(!document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{99, 99}},
+               maps::MapTileReference{simulation::DefinitionId{"tileset.dungeon"}, 10,
+                                      underworld::world::TileFlags::none}), error) &&
+               document.revision() == initialRevision,
+           "failed editor commands do not create a revision");
+    const auto tile = maps::MapTileReference{simulation::DefinitionId{"tileset.dungeon"}, 10,
+                                             underworld::world::TileFlags::none};
+    expect(document.execute(std::make_unique<editor::PaintTilesCommand>(0,
+               std::vector<editor::TileCoordinate>{{1, 1}}, tile), error) &&
+               document.revision() == initialRevision + 1,
+           "successful authored mutation advances the document revision");
+    cache.refreshIfNeeded(document, content);
+    expect(cache.recomputeCount() == 2,
+           "validation recomputes once after a successful mutation");
+    expect(document.undo() && document.revision() == initialRevision + 2,
+           "undo invalidates the revision-based validation cache");
+    cache.refreshIfNeeded(document, content);
+    expect(cache.recomputeCount() == 3, "undo refreshes validation on the next inspection");
+    expect(document.redo(error) && document.revision() == initialRevision + 3,
+           "redo advances the authored revision");
+
+    maps::MapData large = document.data();
+    large.width = 4096;
+    large.height = 4096;
+    large.layers[0].cells.assign(static_cast<std::size_t>(large.width) * large.height,
+                                 std::nullopt);
+    large.collision.assign(static_cast<std::size_t>(large.width) * large.height, 0);
+    const auto range = editor::visibleTileRange(large, {0, 0, 272, 224}, 0.0, 0.0, 1.0, 0);
+    expect(!range.empty() && range.firstX == 0 && range.firstY == 0 &&
+               range.lastX < 32 && range.lastY < 32 &&
+               range.tileCount() < static_cast<std::size_t>(large.width) * large.height,
+           "editor tile culling visits only the viewport region of a large map");
+    bool zoomRangesValid = true;
+    for (const double zoom : std::array<double, 6>{0.25, 0.5, 1.0, 2.0, 4.0, 8.0}) {
+        const auto zoomed = editor::visibleTileRange(
+            large, {0, 0, 272, 224}, 128.0, 128.0, zoom);
+        zoomRangesValid = zoomRangesValid && !zoomed.empty() && zoomed.firstX >= 0 &&
+            zoomed.lastX < static_cast<int>(large.width) && zoomed.firstY >= 0 &&
+            zoomed.lastY < static_cast<int>(large.height);
+    }
+    expect(zoomRangesValid, "editor visible tile bounds remain clamped at every supported zoom");
+    std::filesystem::remove_all(root, cleanupError);
+}
+
+void testRuntimeVisualSynchronization() {
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace gameplay = underworld::game::gameplay;
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    game::GameContentRegistry content;
+    const auto validation = game::mapValidationCatalogs(content);
+    simulation::EntityHandlePool handles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
+        content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
+                                      runtimeTilesets);
+    const auto authored = maps::makeEditorSmokeMap();
+    const auto runtime = builder.build(authored, authored.playerSpawns.front().id);
+
+    game::EnemyVisualCatalog enemyCatalog;
+    const auto clip = makeTestClip("sync.clip", true);
+    const game::DirectionalAnimationClips directional{clip, clip, clip};
+    enemyCatalog.add({creatures::soldierVisualId(), directional, directional, directional, {}});
+    enemyCatalog.add({creatures::skullVisualId(), directional, directional, directional, {}});
+    game::WorldObjectVisualCatalog objectCatalog;
+    objectCatalog.add({simulation::DefinitionId{"visual.object.chest"}, clip, clip, clip});
+    objectCatalog.add({simulation::DefinitionId{"visual.object.crate"}, clip, clip, clip});
+    std::vector<game::EnemyVisualInstance> enemyVisuals;
+    std::vector<game::WorldObjectVisualInstance> objectVisuals;
+    const auto synchronized = game::synchronizeRuntimeWorldVisuals(
+        *runtime.world, enemyCatalog, enemyVisuals, objectCatalog, objectVisuals);
+    bool enemyIdentityMatches = synchronized && enemyVisuals.size() == runtime.world->enemies().size();
+    for (std::size_t index = 0; enemyIdentityMatches && index < enemyVisuals.size(); ++index) {
+        enemyIdentityMatches = enemyVisuals[index].handle() == runtime.world->enemies()[index].instance.handle() &&
+            enemyVisuals[index].visualSetId() == runtime.world->enemies()[index].instance.definition().visualSetId;
+    }
+    bool objectIdentityMatches = synchronized && objectVisuals.size() == runtime.world->objects().size();
+    for (std::size_t index = 0; objectIdentityMatches && index < objectVisuals.size(); ++index) {
+        objectIdentityMatches = objectVisuals[index].handle() == runtime.world->objects()[index].instance.handle() &&
+            objectVisuals[index].visualSetId() == runtime.world->objects()[index].instance.definition().visualSetId;
+    }
+    expect(synchronized && enemyIdentityMatches && objectIdentityMatches,
+           "runtime world activation creates synchronized enemy and object visual instances");
+
+    game::EnemyVisualCatalog incompleteEnemyCatalog;
+    incompleteEnemyCatalog.add({creatures::soldierVisualId(), directional, directional,
+                                directional, {}});
+    std::vector<game::EnemyVisualInstance> incompleteEnemyVisuals;
+    std::vector<game::WorldObjectVisualInstance> incompleteObjectVisuals;
+    const auto failedSynchronization = game::synchronizeRuntimeWorldVisuals(
+        *runtime.world, incompleteEnemyCatalog, incompleteEnemyVisuals,
+        objectCatalog, incompleteObjectVisuals);
+    expect(!failedSynchronization &&
+               failedSynchronization.error.find("enemy visual set") != std::string::npos,
+           "missing runtime enemy visuals fail synchronization with a clear error");
 }
 
 void testMultiTilesetAuthoringAndRuntime() {
@@ -3128,11 +3308,6 @@ void testMultiTilesetAuthoringAndRuntime() {
     map.layers = {{"ground", true, {0U, 1U}}};
     map.collision = {0, 0};
     game::GameContentRegistry content;
-    expect(content.tilesets().find(simulation::DefinitionId{"tileset.dungeon"}) &&
-               content.tilesets().find(simulation::DefinitionId{"tileset.block"}) &&
-               content.tilesets().find(simulation::DefinitionId{"tileset.block_2"}) &&
-               content.tilesets().find(simulation::DefinitionId{"tileset.block_destroyed"}),
-           "GameContentRegistry exposes every shared authoring tileset definition");
     const maps::MapValidationCatalogs validation{
         &content.enemies(), &content.objects(), &content.items(), &tilesets};
     expect(static_cast<bool>(maps::validateMapData(map, &validation)),
@@ -3214,8 +3389,9 @@ void testSemanticAuthoringFoundation() {
     expect(semantics.tiles().size() == 72, "all 72 visible Dungeon atlas cells have semantic definitions");
     expect(semantics.stamps().size() == 8, "confirmed Dungeon visual stamps are cataloged");
     expect(!content.tilesets().find(simulation::DefinitionId{"tileset.block"}) &&
-               !content.tilesets().find(simulation::DefinitionId{"tileset.block_2"}),
-           "tall block object sprites are not exposed as map tile atlases");
+               !content.tilesets().find(simulation::DefinitionId{"tileset.block_2"}) &&
+               !content.tilesets().find(simulation::DefinitionId{"tileset.block_destroyed"}),
+           "block object and destroyed-state sprites are not exposed as map tile atlases");
     const auto* frameNorthWest = semantics.findTile(simulation::DefinitionId{"tileset.dungeon"}, 2U + 2U * 19U);
     expect(frameNorthWest && frameNorthWest->id == simulation::DefinitionId{"tile.dungeon.frame.nw"} &&
                semantics.findTile(frameNorthWest->id) == frameNorthWest,
@@ -3353,6 +3529,8 @@ int main() {
         testPhase9EditorFoundation();
         testEditorSmokeMapIntegrationFixture();
         testEditorPlaygroundAuthoringAsset();
+        testPhase9StartupAndEditorPerformanceContracts();
+        testRuntimeVisualSynchronization();
         testMultiTilesetAuthoringAndRuntime();
         testSemanticAuthoringFoundation();
         testPresentationRect();

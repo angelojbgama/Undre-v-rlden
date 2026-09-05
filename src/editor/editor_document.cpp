@@ -3,6 +3,7 @@
 #include "game/maps/dmap.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
@@ -149,18 +150,21 @@ bool EditorDocument::saveAs(const std::filesystem::path& path,
 bool EditorDocument::execute(std::unique_ptr<EditorCommand> command, std::string& error) {
     if (!history_.execute(std::move(command), *this, error)) { return false; }
     dirty_ = true;
+    markMutated();
     return true;
 }
 
 bool EditorDocument::undo() {
     if (!history_.undo(*this)) { return false; }
     dirty_ = true;
+    markMutated();
     return true;
 }
 
 bool EditorDocument::redo(std::string& error) {
     if (!history_.redo(*this, error)) { return false; }
     dirty_ = true;
+    markMutated();
     return true;
 }
 
@@ -269,6 +273,38 @@ void EditorDocument::initializeAllocator() noexcept {
     for (const auto& value : data_.pickups) { see(value.id); }
     for (const auto& value : regions_) { see(value.id); }
     nextPersistentId_ = maximum == std::numeric_limits<std::uint64_t>::max() ? 0 : maximum + 1;
+}
+
+void EditorValidationCache::refreshIfNeeded(
+    const EditorDocument& document, const game::GameContentRegistry& content) {
+    if (initialized_ && validatedRevision_ == document.revision()) { return; }
+    structural_ = document.validate(content);
+    game::authoring::MapSemanticValidator validator;
+    semantic_ = validator.validate(document.data(), content.authoringSemantics());
+    validatedRevision_ = document.revision();
+    initialized_ = true;
+    ++recomputeCount_;
+}
+
+VisibleTileRange visibleTileRange(const maps::MapData& data, core::RectI viewport,
+                                  double worldX, double worldY, double zoom,
+                                  int margin) noexcept {
+    if (data.width == 0 || data.height == 0 || data.tileSize == 0 ||
+        viewport.width <= 0 || viewport.height <= 0 || zoom <= 0.0) {
+        return {};
+    }
+    const int safeMargin = std::max(0, margin);
+    const double worldRight = worldX + static_cast<double>(viewport.width) / zoom;
+    const double worldBottom = worldY + static_cast<double>(viewport.height) / zoom;
+    const auto firstX = static_cast<int>(std::floor(worldX / data.tileSize)) - safeMargin;
+    const auto firstY = static_cast<int>(std::floor(worldY / data.tileSize)) - safeMargin;
+    const auto lastX = static_cast<int>(std::ceil(worldRight / data.tileSize)) - 1 + safeMargin;
+    const auto lastY = static_cast<int>(std::ceil(worldBottom / data.tileSize)) - 1 + safeMargin;
+    return {
+        std::clamp(firstX, 0, static_cast<int>(data.width) - 1),
+        std::clamp(lastX, 0, static_cast<int>(data.width) - 1),
+        std::clamp(firstY, 0, static_cast<int>(data.height) - 1),
+        std::clamp(lastY, 0, static_cast<int>(data.height) - 1)};
 }
 
 std::vector<PropertySchema> propertySchemasFor(

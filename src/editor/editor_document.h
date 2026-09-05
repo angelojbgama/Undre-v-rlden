@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/coordinates.h"
+#include "engine/core/geometry.h"
 #include "engine/simulation/persistent_id.h"
 #include "engine/world/collision.h"
 #include "game/game_content.h"
@@ -9,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -157,6 +159,7 @@ public:
         return filePath_;
     }
     [[nodiscard]] bool dirty() const noexcept { return dirty_; }
+    [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
     [[nodiscard]] CommandHistory& history() noexcept { return history_; }
     [[nodiscard]] const CommandHistory& history() const noexcept { return history_; }
     [[nodiscard]] EditorSelection& selection() noexcept { return selection_; }
@@ -179,6 +182,9 @@ public:
     [[nodiscard]] ValidationReport validate(const game::GameContentRegistry& content) const;
 
 private:
+    void markMutated() noexcept {
+        if (revision_ != std::numeric_limits<std::uint64_t>::max()) { ++revision_; }
+    }
     void synchronizeEditorState();
     void initializeAllocator() noexcept;
 
@@ -190,11 +196,48 @@ private:
     std::vector<EditorLayerState> layerStates_;
     CommandHistory history_;
     bool dirty_{};
+    std::uint64_t revision_{1};
     std::optional<std::filesystem::path> filePath_;
     std::uint64_t nextPersistentId_{1};
     std::vector<RegionPlacement> regions_;
     std::unordered_map<std::uint64_t, PropertyOverrideSet> propertyOverrides_;
 };
+
+class EditorValidationCache final {
+public:
+    void invalidate() noexcept { initialized_ = false; }
+    void refreshIfNeeded(const EditorDocument& document,
+                         const game::GameContentRegistry& content);
+    [[nodiscard]] const ValidationReport& structural() const noexcept { return structural_; }
+    [[nodiscard]] const game::authoring::SemanticValidationReport& semantic() const noexcept {
+        return semantic_;
+    }
+    [[nodiscard]] std::uint64_t validatedRevision() const noexcept { return validatedRevision_; }
+    [[nodiscard]] std::size_t recomputeCount() const noexcept { return recomputeCount_; }
+
+private:
+    bool initialized_{};
+    std::uint64_t validatedRevision_{};
+    std::size_t recomputeCount_{};
+    ValidationReport structural_;
+    game::authoring::SemanticValidationReport semantic_;
+};
+
+struct VisibleTileRange final {
+    int firstX{};
+    int lastX{-1};
+    int firstY{};
+    int lastY{-1};
+    [[nodiscard]] bool empty() const noexcept { return firstX > lastX || firstY > lastY; }
+    [[nodiscard]] std::size_t tileCount() const noexcept {
+        return empty() ? 0U : static_cast<std::size_t>(lastX - firstX + 1) *
+            static_cast<std::size_t>(lastY - firstY + 1);
+    }
+};
+
+[[nodiscard]] VisibleTileRange visibleTileRange(const maps::MapData& data,
+    core::RectI viewport, double worldX, double worldY, double zoom,
+    int margin = 1) noexcept;
 
 [[nodiscard]] std::vector<PropertySchema> propertySchemasFor(
     const game::GameContentRegistry& content, const simulation::DefinitionId& definitionId);

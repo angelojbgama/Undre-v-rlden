@@ -6,6 +6,7 @@
 #define _WIN32_WINNT 0x0A00
 #endif
 #include <windows.h>
+#include <shellapi.h>
 
 #include "engine/core/game_metrics.h"
 #include "engine/platform/platform.h"
@@ -491,11 +492,22 @@ private:
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     try {
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (argv == nullptr) { throw std::runtime_error("could not parse game command line"); }
+        std::vector<const wchar_t*> arguments;
+        arguments.reserve(static_cast<std::size_t>(argc));
+        for (int index = 0; index < argc; ++index) { arguments.push_back(argv[index]); }
+        std::string optionError;
+        const auto options = underworld::game::parseGameLaunchOptions(
+            argc, arguments.data(), optionError);
+        LocalFree(argv);
+        if (!options) { throw std::runtime_error(optionError); }
         underworld::platform::win32::Win32Platform platform(instance, showCommand);
         if (!platform.initialize()) {
             return 1;
         }
-        return underworld::game::run(platform);
+        return underworld::game::run(platform, *options);
     } catch (const std::exception& exception) {
         OutputDebugStringA(exception.what());
         MessageBoxA(nullptr, exception.what(), "Underworld fatal error", MB_OK | MB_ICONERROR);

@@ -33,6 +33,10 @@ public:
     WorldObjectVisualInstance(simulation::EntityHandle handle,
                               const WorldObjectVisualSet& set);
     void update(const gameplay::WorldObjectInstance& object, std::uint64_t ticks = 1);
+    [[nodiscard]] simulation::EntityHandle handle() const noexcept { return handle_; }
+    [[nodiscard]] const simulation::DefinitionId& visualSetId() const noexcept {
+        return set_->id;
+    }
     [[nodiscard]] const render::Animator& animator() const noexcept { return animator_; }
     [[nodiscard]] bool finished() const noexcept { return animator_.finished(); }
 

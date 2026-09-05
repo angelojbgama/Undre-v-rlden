@@ -45,6 +45,9 @@ public:
     void update(const gameplay::creatures::EnemyInstance& enemy,
                 std::uint64_t ticks = 1);
     [[nodiscard]] simulation::EntityHandle handle() const noexcept { return handle_; }
+    [[nodiscard]] const simulation::DefinitionId& visualSetId() const noexcept {
+        return visualSet_->id;
+    }
     [[nodiscard]] const render::Animator& animator() const noexcept { return animator_; }
     [[nodiscard]] bool flipX() const noexcept { return flipX_; }
     [[nodiscard]] std::vector<render::AnimationMarkerEvent> consumeMarkerEvents();

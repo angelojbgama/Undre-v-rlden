@@ -1701,6 +1701,36 @@ Atualizar o build apenas para incluir novos `.cpp` e necessidades reais.
 
 Não introduzir CMake como requisito sem autorização.
 
+## Validação portátil em Linux/WSL
+
+É permitido e recomendado executar em Linux/WSL a suíte portátil que não depende
+de Win32, WIC, GDI ou `windows.h`. Essa validação cobre, entre outros:
+
+- `core`, serialização e formatos DMAP/DSAV;
+- mapa/runtime world, gameplay e fábricas;
+- authoring, validação semântica e comandos do Map Maker;
+- testes headless e regressões determinísticas.
+
+Comando de referência:
+
+```bash
+portable_sources=$(find src -name '*.cpp' \
+  ! -path '*/win32/*' \
+  ! -name 'win32_editor.cpp')
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc \
+  tests/test_main.cpp $portable_sources -o /tmp/underworld_tests
+/tmp/underworld_tests
+```
+
+O resultado Linux/WSL pode ser usado para validar regras portáteis e regressões
+semânticas. Ele não substitui a validação específica de Windows para `build.bat`,
+MSVC, `game.exe`, `map_editor.exe`, apresentação Win32, WIC, GDI, foco da janela,
+resize e smoke visual/interativo.
+
+Quando o ambiente Windows não estiver disponível, não declarar aceitação de uma
+fase que possua gates Win32 pendentes. O agente deve registrar separadamente os
+testes portáteis aprovados e os gates Windows ainda não executados.
+
 ---
 
 # 32. Git
@@ -1716,9 +1746,14 @@ Nunca:
 
 Antes de operações destrutivas, pare e preserve o estado.
 
-Commit/push não fazem parte automaticamente de toda tarefa.
+Commits locais são permitidos ao concluir uma implementação solicitada, desde
+que a validação relevante tenha passado. A indisponibilidade do Windows, por si
+só, não bloqueia um commit quando a suíte portátil Linux/WSL passa. Nesse caso,
+o relatório e o commit devem registrar claramente quaisquer gates Win32 ainda
+pendentes, e a fase não pode ser declarada aceita por inferência.
 
-Se uma tarefa explicitamente pedir checkpoint de fase, um commit local de checkpoint é aceitável depois de build/testes passarem.
+Uma instrução explícita da tarefa atual pode exigir gates adicionais antes do
+commit e tem precedência sobre esta regra.
 
 Push exige solicitação explícita.
 

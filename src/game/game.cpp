@@ -21,12 +21,12 @@ constexpr core::FixedStepConfig fixedStepConfig{
 
 } // namespace
 
-int run(platform::Platform& platform) {
+int run(platform::Platform& platform, const GameLaunchOptions& options) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
     const auto executableDirectory = platform.executableDirectory();
     Phase7Demo demo(platform.imageDecoder(),
-                    findLicensedAssetRoot(executableDirectory), executableDirectory);
+                    findLicensedAssetRoot(executableDirectory), executableDirectory, options);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;
@@ -36,6 +36,7 @@ int run(platform::Platform& platform) {
     double lastReport = previous;
 
     platform.log(platform::LogLevel::info, "startup: entering fixed-step loop");
+    platform.log(platform::LogLevel::info, demo.startupSummary());
 
     while (platform.isRunning()) {
         platform.pollEvents();

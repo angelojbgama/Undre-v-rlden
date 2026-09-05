@@ -70,6 +70,7 @@ private:
 
     game::GameContentRegistry content_;
     EditorDocument document_;
+    mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
     game::RuntimeTilesetCatalog runtimeTilesets_{content_.tilesets()};
     game::TilesetVisualCatalog tilesetVisuals_;
