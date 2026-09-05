@@ -1,0 +1,12 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY docker/container_build_linux.sh /usr/local/bin/underworld-build-linux
+RUN chmod +x /usr/local/bin/underworld-build-linux
+
+ENTRYPOINT ["/usr/local/bin/underworld-build-linux"]

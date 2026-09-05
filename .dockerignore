@@ -1,0 +1,12 @@
+.git
+.gitignore
+.vs
+.vscode
+build
+audit
+Dungeon Underworld
+Dungeon Underworld.zip
+*.exe
+*.obj
+*.pdb
+*.sav

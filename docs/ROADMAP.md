@@ -1193,5 +1193,22 @@ assertion fails. The initial scenarios cover startup, movement, collision, comba
 pickups, inventory, objects, map transitions, save/load and NPC dialogue. Quest
 names remain startup smoke entries until a real player-facing quest-start command is
 available. Asset-root selection is supported; a synthetic decoder is used only for
-portable runs without local licensed assets. Windows manual/F12 integration, a
-dedicated Linux build and interactive Linux presentation remain Blocks E–G.
+portable runs without local licensed assets.
+
+## Audit/playtest portability track — Block E and Docker preparation
+
+Block E is implemented in the Win32 game loop: `--audit` enables a manual
+`AuditSession`, and F12 requests a logical-framebuffer capture together with a
+read-only `GameAuditSnapshot`. Important gameplay changes observed at that
+boundary produce structured events, forced state checkpoints and screenshots.
+Windows execution remains a host-dependent validation gate and was not run on the
+current Linux/WSL host.
+
+`docker/build_linux.sh` now provides a reproducible Debian container for the
+portable Linux targets (`tests` and `playtest_runner`). `docker/build_windows.ps1`
+and `docker/Dockerfile.windows` provide the corresponding Windows-container recipe
+for the existing MSVC `build.bat`; it can only run on a Windows Docker daemon.
+This Docker plumbing does not mark the interactive Linux platform complete: Block F
+is only prepared for portable targets, while Block G remains the graphical Linux
+runtime step. Formal replay, state hashing, networking and multiplayer audit remain
+deferred.

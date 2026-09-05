@@ -1457,6 +1457,22 @@ The runner supports independent scenario sessions, `--all`, `--scenario`, `--see
 selection. It uses a small injected synthetic decoder for portable runs without
 local licensed assets, while preserving the production `ImageDecoder` boundary.
 Quest scenario names remain startup smoke entries until the game exposes a real
-player command for quest start; no quest state is fabricated by the harness. Formal
-command replay, state hashing, manual/F12 integration and Linux build remain later
-blocks.
+player command for quest start; no quest state is fabricated by the harness.
+
+## Audit/playtest portability track — Block E
+
+The Win32 game loop now accepts `--audit` through `GameLaunchOptions`. When enabled,
+the loop observes the value-only `GameAuditSnapshot` after presenting the real
+logical framebuffer. `ManualAuditObserver` records startup, map transitions,
+health/death, enemy/object/pickup changes, dialogue and save/load observations in
+the same `AuditSession`; important changes force a state checkpoint and a BMP.
+Win32 maps F12 to a platform-neutral `captureAuditSnapshotPressed` edge, so manual
+captures use the same tick for the event, snapshot and framebuffer image. Gameplay
+systems remain unaware of file I/O.
+
+The repository also contains Docker build helpers. The Linux container compiles
+the portable tests and headless playtest runner without Win32 sources; it is not a
+replacement for the existing MSVC `build.bat`. The Windows Docker recipe requires
+a Windows host with Docker Desktop in Windows-container mode. Interactive Linux
+presentation and a Linux `game` executable remain deferred until Block G provides
+the Linux platform/image-decoder boundary.

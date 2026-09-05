@@ -13,6 +13,7 @@ namespace maps { struct MapData; }
 struct GameLaunchOptions final {
     std::optional<std::filesystem::path> mapPath;
     std::optional<simulation::SpawnId> spawnId;
+    bool auditEnabled{};
 };
 
 enum class StartupMapSource { explicitPath, officialGameplay };

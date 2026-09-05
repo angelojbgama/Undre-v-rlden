@@ -1915,7 +1915,7 @@ escolha **B**.
 
 O objetivo é construir Dungeon Underworld como uma sequência de sistemas pequenos que se encaixam, até que adicionar mapas, criaturas, NPCs, quests e conteúdo deixe de exigir reescrever o jogo.
 
-# Estado atual — audit foundation
+# Estado atual — audit/playtest portability
 
 Foi antecipada uma fatia pequena da futura trilha headless/replay para observabilidade
 dos sistemas reais: `AuditSession`, eventos estruturados JSONL e
@@ -1924,12 +1924,19 @@ As sessões usam `audit/<session-id>/`, não permitem traversal no identificador
 persistem handles runtime ou ponteiros. A saída é artefato de desenvolvimento e está
 ignorada pelo Git.
 
-Esta antecipação não implementa screenshots, `HeadlessAuditPlatform`, playtest runner,
-Linux interactive, replay formal, hash de estado, rede ou multiplayer. Esses blocos
-devem ser implementados incrementalmente, nesta ordem, somente após o fundamento
-atual permanecer verde.
+Os Blocks A–D estão implementados: além da sessão estruturada e do snapshot, há
+captura BMP do framebuffer lógico, `HeadlessAuditPlatform` e `playtest_runner` com
+input lógico por tick. O Block E integra `--audit` no loop Win32 e mapeia F12 para
+captura manual. A execução Windows continua sendo uma validação dependente de host;
+este ambiente Linux/WSL não a executou.
 
-## Estado atual — audit playtest Block D
+O repositório também fornece `docker/build_linux.sh` para compilar os alvos
+portáteis Linux em Debian e uma receita `docker/build_windows.ps1` para Docker
+Desktop em modo Windows containers. O Docker Linux não produz ainda o jogo gráfico:
+isso depende do Block G (plataforma Linux e decoder de imagem). Replay formal, hash
+de estado, rede e multiplayer permanecem fora desta antecipação.
+
+## Estado atual — audit playtest Block D/E
 
 O Block D está implementado: `src/tools/playtest_runner.cpp` compõe o `Phase7Demo`
 real com `HeadlessAuditPlatform`, injeta `InputState` por tick, renderiza o framebuffer
@@ -1937,5 +1944,6 @@ lógico e valida cenários por `GameAuditSnapshot`. Cada cenário cria uma sess�
 auditoria própria, com checkpoints/screenshots e falha não-zero. O runner aceita
 `--asset-root` e `UNDERWORLD_ASSET_ROOT`; sem assets licenciados/decoder portátil,
 usa decoder sintético somente para validar o fluxo real de runtime e renderização.
-Os próximos incrementos são E — auditoria manual Windows/F12 e depois F — build Linux;
-não iniciar F nesta etapa.
+O próximo incremento funcional é F — build portátil Linux; a preparação Docker para
+os alvos portáteis já está disponível, mas não substitui a validação do bloco nem
+inicia a plataforma gráfica Linux.

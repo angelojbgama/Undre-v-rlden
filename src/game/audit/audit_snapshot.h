@@ -86,6 +86,7 @@ struct GameAuditSnapshot final {
     std::vector<AuditQuest> quests;
     std::vector<std::string> dialogueFlags;
     std::size_t activeProjectileCount{};
+    std::string lastEvent;
 };
 
 [[nodiscard]] std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot);

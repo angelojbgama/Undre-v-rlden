@@ -3787,6 +3787,10 @@ void testPhase9StartupAndEditorPerformanceContracts() {
                parsed->mapPath->generic_string() == "maps/authored.dmap" &&
                parsed->spawnId && parsed->spawnId->value() == "entry.start",
            "game startup options parse authored map and spawn arguments");
+    const wchar_t* auditCommandLine[] = {L"game.exe", L"--audit"};
+    const auto audited = game::parseGameLaunchOptions(2, auditCommandLine, optionError);
+    expect(audited && audited->auditEnabled,
+           "game startup options enable manual audit mode");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
@@ -4309,12 +4313,14 @@ void testAuditSessionFoundation() {
     snapshot.dialogue.dialogueId = "dialogue.guard";
     snapshot.dialogue.nodeId = "guard.entry";
     snapshot.quests.push_back({"quest.scholar", "active", {{"objective.talk", 1}}});
+    snapshot.lastEvent = "SAVED\" checkpoint";
     const auto snapshotJson = audit::serializeAuditSnapshot(snapshot);
     expect(snapshotJson.find("\"map\":\"map.dungeon.01\"") != std::string::npos &&
                snapshotJson.find("enemy.evil_soldier") != std::string::npos &&
                snapshotJson.find("dialogue.guard") != std::string::npos &&
-               snapshotJson.find("objective.talk") != std::string::npos,
-           "audit snapshot serialization includes stable gameplay diagnostics");
+               snapshotJson.find("objective.talk") != std::string::npos &&
+               snapshotJson.find("SAVED\\\" checkpoint") != std::string::npos,
+           "audit snapshot serialization includes stable gameplay diagnostics and event context");
 
     audit::AuditSession session;
     audit::AuditSessionConfig config;
@@ -4426,13 +4432,15 @@ void testHeadlessAuditPlatform() {
     headless.setInput(4, attack);
     platform::DebugInputState debug;
     debug.toggleCollisionPressed = true;
+    debug.captureAuditSnapshotPressed = true;
     headless.setDebugInput(4, debug);
     expect(headless.consumeInputState() == moveRight &&
                headless.consumeInputState() == moveRight &&
                headless.consumeInputState() == moveRight,
            "headless platform schedules held logical input by simulation tick");
     expect(headless.consumeInputState() == attack &&
-               headless.consumeDebugInput().toggleCollisionPressed,
+               headless.consumeDebugInput().toggleCollisionPressed &&
+               headless.consumeDebugInput().captureAuditSnapshotPressed,
            "headless platform injects action edges and debug input without physical key codes");
     headless.advanceFixedTicks(4);
     expect(approximately(headless.nowSeconds(), 4.0 / 60.0),

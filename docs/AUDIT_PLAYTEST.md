@@ -54,16 +54,19 @@ A — AuditSession, eventos estruturados e snapshot       DONE
 B — captura do framebuffer lógico em BMP                 DONE
 C — HeadlessAuditPlatform                                DONE
 D — playtest runner/scripted input                       DONE
-E — integração de auditoria manual no Windows/F12       DEFERRED
-F — build portátil Linux                                 DEFERRED
+E — integração de auditoria manual no Windows/F12       DONE (não executado neste host)
+F — build portátil Linux                                 PREPARAÇÃO Docker DONE
 G — plataforma gráfica Linux                             DEFERRED
 H — seeded stress playtest                              DEFERRED
 ```
 
 Esta é uma antecipação pequena da futura trilha headless/replay. Formal replay,
 hash de estado, IDs de rede, determinismo completo e multiplayer continuam fora do
-escopo. Blocks A–D são exercitados no Linux por testes portáveis e pelo runner; a
-integração manual/F12 será adicionada somente no Block E.
+escopo. Blocks A–D são exercitados no Linux por testes portáveis e pelo runner. O
+Block E integra a mesma sessão ao loop Win32: `game.exe --audit` registra o startup,
+mudanças observáveis do snapshot e checkpoints importantes. F12 é mapeado na borda
+Win32 para uma captura do framebuffer lógico e do snapshot no mesmo tick. A execução
+Windows não foi possível neste host Linux/WSL.
 
 ## Block D — cenários automatizados
 
@@ -80,3 +83,22 @@ real de runtime/renderização; a aparência dos assets locais continua sendo um
 manual do Windows. Os nomes de quest permanecem registrados na matriz como smoke de
 startup/update/render, pois ainda não existe um comando de jogador para iniciar uma
 quest sem fabricar estado no harness.
+
+## Block E — auditoria manual
+
+`GameLaunchOptions` aceita `--audit`. Quando habilitado no `game.exe`, um observador
+neutro acompanha o `GameAuditSnapshot` depois da apresentação do framebuffer real.
+Ele registra transições de mapa, dano/cura/morte, derrotas, objetos, pickups,
+diálogo e save/load quando essas mudanças aparecem no snapshot. Eventos e estados
+importantes geram checkpoints e BMPs; a captura manual usa `F12` e o nome
+`manual_tick_<tick>.bmp`. O observador não altera gameplay nem abre arquivos a
+partir dos sistemas de domínio.
+
+## Docker e Linux portátil
+
+`docker/build_linux.sh` constrói uma imagem Debian mínima e executa os alvos
+portáteis `build/linux/tests` e `build/linux/playtest_runner --all`. O container
+não compila Win32, não inclui assets licenciados e não fornece janela gráfica. O
+Dockerfile Windows (`docker/Dockerfile.windows`) é uma receita para Docker Desktop
+em modo Windows containers num host Windows; um daemon Linux não pode executar
+MSVC/Windows containers. A plataforma gráfica Linux permanece Block G.

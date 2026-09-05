@@ -511,6 +511,7 @@ struct Phase7Demo::State final {
             snapshot.dialogueFlags.emplace_back(flag.value());
         }
         snapshot.activeProjectileCount = projectiles.projectiles().size();
+        snapshot.lastEvent = lastEvent;
         return snapshot;
     }
 

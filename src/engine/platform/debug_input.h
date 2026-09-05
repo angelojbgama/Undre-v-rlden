@@ -9,6 +9,7 @@ struct DebugInputState final {
     bool toggleHurtboxPressed{};
     bool toggleHitboxPressed{};
     bool toggleInteractionPressed{};
+    bool captureAuditSnapshotPressed{};
 };
 
 } // namespace underworld::platform

@@ -86,6 +86,10 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             options.spawnId = simulation::SpawnId{narrowId(value.c_str())};
             continue;
         }
+        if (argument == L"--audit") {
+            options.auditEnabled = true;
+            continue;
+        }
         error = "unknown game option: " + narrowId(argv[index]);
         return std::nullopt;
     }

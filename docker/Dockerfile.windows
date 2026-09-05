@@ -1,0 +1,13 @@
+# This image is for Docker Desktop in Windows container mode on a Windows host.
+# Linux Docker daemons cannot execute Windows containers or MSVC.
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+SHELL ["cmd", "/S", "/C"]
+ADD https://aka.ms/vs/17/release/vs_buildtools.exe C:\vs_buildtools.exe
+RUN C:\vs_buildtools.exe --quiet --wait --norestart --nocache --installPath C:\BuildTools ^
+    --add Microsoft.VisualStudio.Workload.VCTools ^
+    --includeRecommended ^
+    && del C:\vs_buildtools.exe
+
+WORKDIR C:\workspace
+ENTRYPOINT ["cmd.exe", "/S", "/C", "call C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat && call C:\workspace\build.bat"]

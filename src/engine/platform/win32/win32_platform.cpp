@@ -431,6 +431,9 @@ private:
         case VK_F4:
             if (down && !wasDown) { debugInput_.toggleInteractionPressed = true; }
             break;
+        case VK_F12:
+            if (down && !wasDown) { debugInput_.captureAuditSnapshotPressed = true; }
+            break;
         case VK_F5:
             if (down && !wasDown) { actionEdges_.pushSaveGame(); }
             break;
