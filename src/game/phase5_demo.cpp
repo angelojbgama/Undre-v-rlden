@@ -730,13 +730,13 @@ struct Phase7Demo::State final {
         std::vector<const maps::MapData*> maps;
         maps.reserve(knownMapData.size());
         for (const auto& map : knownMapData) { maps.push_back(&map); }
-        return {&itemCatalog, std::move(maps)};
+        return {&itemCatalog, std::move(maps), &content.quests()};
     }
 
     void saveGame() {
         captureActiveWorld();
         save::SaveData data{save::capturePlayer(player, playerItems, activeWorld().id()),
-                            sessionWorldState, dialogueFlags};
+                            sessionWorldState, dialogueFlags, questState};
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
             lastEvent = "SAVED";
@@ -770,6 +770,7 @@ struct Phase7Demo::State final {
             return;
         }
         dialogueFlags = loaded.data.dialogueFlags;
+        questState = loaded.data.quests;
         clearMapTransients();
         resolveRenderLayers();
         rebuildWorldVisuals();
@@ -1176,6 +1177,7 @@ struct Phase7Demo::State final {
     gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
     gameplay::dialogue::DialogueFlagSet dialogueFlags;
     gameplay::dialogue::DialogueSession dialogue{content.dialogues(), dialogueFlags};
+    gameplay::quests::QuestStateStore questState;
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;

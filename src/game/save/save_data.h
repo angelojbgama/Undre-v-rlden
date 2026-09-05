@@ -7,6 +7,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/player.h"
+#include "game/gameplay/quests/quest_state.h"
 #include "game/maps/map_data.h"
 #include "game/maps/runtime_world.h"
 
@@ -56,11 +57,13 @@ struct SaveData final {
     SavedPlayer player;
     SessionWorldState world;
     gameplay::dialogue::DialogueFlagSet dialogueFlags;
+    gameplay::quests::QuestStateStore quests;
 };
 
 struct SaveValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
     std::vector<const maps::MapData*> maps;
+    const gameplay::quests::QuestCatalog* quests{};
 };
 
 struct SaveResult final {
@@ -71,8 +74,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 adds the optional FLGS chunk. Readers continue accepting 1.0 saves.
-inline constexpr std::uint16_t saveMinorVersion = 1;
+// Minor 1 added FLGS; minor 2 adds the optional QSTS chunk. Older saves remain readable.
+inline constexpr std::uint16_t saveMinorVersion = 2;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

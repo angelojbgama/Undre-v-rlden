@@ -58,8 +58,9 @@ alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) fo
 no checkpoint Linux atual: o editor possui validação revision-cached, culling de tiles,
 playtest por snapshot via `RuntimeWorldBuilder` e sidecar `.autosave.dmap` sem substituir
 o arquivo authored. A Fase 10 está em andamento; NPC foundation e dialogue data model
-estão concluídos, enquanto sessão/UI, conditions, actions, flags persistentes, quests,
-loot/XP e networking permanecem deferidos.
+estão concluídos, assim como sessão/UI, conditions, actions e flags persistentes. A
+Fase 11 possui definições, estado runtime, progressão por eventos e persistência de
+quests; loot/XP e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
 
@@ -1361,7 +1362,8 @@ operations for dialogue conditions/actions. Choices can require a flag to be set
 unset and can set or clear a flag when selected. The game carries this state in
 `SaveData`; DSAV 1.1 adds the optional bounds-checked `FLGS` chunk while DSAV 1.0 saves
 without flags remain readable. Conditions/actions are intentionally limited to these
-two flag operations; quest state and a broader scripting model remain deferred.
+two flag operations; quest state is described in the following Phase 11 sections and
+a broader scripting model remains deferred.
 
 ## Fase 11A — Quest definitions
 
@@ -1387,8 +1389,8 @@ progress can be advanced or explicitly set, is clamped to the definition's requi
 count, and changes the quest to `completed` only after all definition objectives are
 complete. `reset` removes the record and returns the quest to its inactive state.
 
-This block does not consume domain events and does not serialize state; those concerns
-remain deferred to the later quest progression and persistence blocks.
+This block does not consume domain events or serialize state itself; those concerns are
+provided by the following 11C and 11D blocks.
 
 ## Fase 11C — Event-driven quest progression
 
@@ -1397,5 +1399,15 @@ quest records in `QuestStateStore`. `EntityDefeated`, `PickupCollected`, `NpcTal
 `MapEntered`, `ObjectOpened` and `ItemDelivered` map to the corresponding objective
 kinds by stable IDs and event amounts. Unrelated events are ignored, and no system
 polls enemy lists, inventory or world objects. Defeat and pickup producers attach the
-concrete runtime definition ID needed by quest matching; quest persistence remains
-deferred to Block 11D.
+concrete runtime definition ID needed by quest matching.
+
+## Fase 11D — Persistent quest state
+
+`SaveData` owns a copyable `QuestStateStore` alongside player and world deltas. DSAV
+minor 2 adds the optional bounds-checked `QSTS` chunk; it serializes only quest and
+objective `DefinitionId`s, status and counters, while definitions remain in the
+runtime `QuestCatalog`. The reader validates quest existence, objective order,
+counter limits and active/completed consistency before replacing state. DSAV 1.0 and
+1.1 saves without `QSTS` remain readable, and older versions reject the future chunk.
+The game save/load path passes the quest catalog and carries the state through F5/F9;
+DMAP is unchanged.

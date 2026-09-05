@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +38,9 @@ public:
         const simulation::DefinitionId& questId) const noexcept;
     [[nodiscard]] const QuestProgress& require(
         const simulation::DefinitionId& questId) const;
+    [[nodiscard]] std::vector<QuestProgress> snapshot() const;
+    [[nodiscard]] bool restore(std::span<const QuestProgress> progress,
+                               const QuestCatalog& catalog);
     [[nodiscard]] std::vector<simulation::DefinitionId> activeQuestIds() const;
     [[nodiscard]] std::size_t size() const noexcept { return progress_.size(); }
 

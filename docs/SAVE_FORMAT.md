@@ -1,12 +1,13 @@
 # DSAV V1 — formato de save implementado
 
-`DSAV` é separado de `DMAP`: guarda Player e deltas mutáveis, enquanto tiles,
+`DSAV` é separado de `DMAP`: guarda Player, estado de quests e deltas mutáveis, enquanto tiles,
 collision e placements originais continuam vindo dos mapas.
 
 Todos os inteiros são little-endian. O header é `DSAV:char[4]`, major `u16=1`, minor
-`u16=1`, flags `u16=0`, headerSize `u16=20` e declaredFileSize `u64`. Cada chunk usa
+`u16=2`, flags `u16=0`, headerSize `u16=20` e declaredFileSize `u64`. Cada chunk usa
 `tag:char[4] + payloadSize:u64 + payload`. `STRS`, `PLYR` e `DELT` são obrigatórios e
-singleton; `FLGS` é singleton opcional em DSAV 1.1; chunks desconhecidos size-bounded são ignorados. Major incompatível,
+singleton; `FLGS` é singleton opcional em DSAV 1.1 e `QSTS` é singleton opcional em
+DSAV 1.2; chunks desconhecidos size-bounded são ignorados. Major incompatível,
 minor futuro, flags desconhecidas, duplicatas, truncamento e tamanhos inválidos são
 rejeitados.
 
@@ -73,6 +74,27 @@ Os IDs são únicos e gravados em ordem lexicográfica para manter serializaçã
 determinística. O reader aceita DSAV 1.0 sem `FLGS`; um arquivo 1.0 que contenha esse
 chunk é rejeitado, assim como contagens, índices ou payloads fora dos limites.
 
+## `QSTS` (DSAV 1.2, opcional)
+
+O chunk contém somente o progresso runtime de quests, separado das definições de
+conteúdo:
+
+```text
+questCount u32
+repeat:
+    questDefinitionId stringIndex
+    status u8                 # 1 active, 2 completed
+    objectiveCount u32
+    repeat:
+        objectiveDefinitionId stringIndex
+        currentCount u32
+```
+
+O writer ordena quests por ID e preserva a ordem dos objetivos da definição. O reader
+valida catálogo, IDs, ordem, limites dos contadores e coerência do status antes de
+aceitar o estado. Saves DSAV 1.1 ou 1.0 sem `QSTS` continuam legíveis; um save antigo
+que contenha `QSTS` é rejeitado em vez de descartar progresso silenciosamente.
+
 Chest usa `opened` e conteúdo restante; Crate removida usa `destroyed`; pickup total
 usa `collected` e parcial usa `remainingQuantity`. Enemy death não persiste na v1.
 Chaves são únicas por tipo, IDs zero/references inexistentes e definitions/stacks
@@ -86,7 +108,8 @@ os mesmos deltas. F5 serializa essa estrutura; F9 prepara/valida mapa+deltas ant
 swap e restaura posição/facing exatos e os 30 slots do Player.
 
 Não são salvos `RuntimeMap`, handle, animator, projectile, VFX, `AttackInstance` ou
-timers de IA.
+timers de IA. Quest definitions continuam fora do save; somente IDs e progresso são
+persistidos.
 
 Para `savegame.sav`, o writer grava e faz flush em `.sav.tmp`, remove o backup antigo,
 renomeia o save anterior para `.sav.bak` e então promove o temporário. Falha tenta

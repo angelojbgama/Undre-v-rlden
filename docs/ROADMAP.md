@@ -923,8 +923,8 @@ blocos seguintes.
 quests ativas. Derrotas, coletas, conversas com NPCs, entrada em mapas, abertura de
 objetos e entregas de itens são convertidas em avanço dos objetivos correspondentes
 por `DefinitionId`, sem polling de entidades, inventário ou objetos. Os eventos de
-derrota e coleta carregam seus IDs de definição concretos; a persistência permanece
-deferida para o Block 11D.
+derrota e coleta carregam seus IDs de definição concretos; a persistência é fornecida
+pelo Block 11D.
 
 ## Gate
 
@@ -958,6 +958,14 @@ Quest state é salvo separadamente de definição.
 ## Aceite
 
 Quest multiobjetivo progride por eventos, não por polling acoplado, e sobrevive save/load.
+
+## Block 11D — Quest persistence (DONE)
+
+`SaveData` agora carrega o `QuestStateStore` separadamente das definições. DSAV minor
+2 adiciona o chunk opcional `QSTS`, com IDs estáveis, status e contadores de objetivos;
+o reader valida tudo contra o `QuestCatalog` antes de aceitar o save. Saves DSAV 1.0
+e 1.1 sem esse chunk continuam compatíveis, enquanto um `QSTS` em versão anterior é
+rejeitado explicitamente. DMAP permanece inalterado.
 
 ---
 

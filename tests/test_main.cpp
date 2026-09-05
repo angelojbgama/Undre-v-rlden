@@ -2480,7 +2480,7 @@ void testPhase8PersistentMapsAndSave() {
                loaded.data.world.pickups.size()==2 &&
                loaded.data.dialogueFlags.isSet(simulation::DefinitionId{"dialogue.flag.alpha"}) &&
                loaded.data.dialogueFlags.isSet(simulation::DefinitionId{"dialogue.flag.zeta"}),
-           "DSAV v1.1 roundtrips player state world deltas and persistent dialogue flags");
+           "DSAV v1.2 roundtrips player state world deltas and persistent dialogue flags");
     expect(saveBytes==save::serializeSave(loaded.data), "DSAV output is deterministic for equivalent state");
     gameplay::PlayerItems restoredItems(items);simulation::EntityHandlePool playerHandles;
     gameplay::Player restoredPlayer({7},playerHandles.create(),{1,1});
@@ -2982,6 +2982,77 @@ void testPhase11QuestEvents() {
            "QuestSystem completes a multi-objective quest from event stream input");
     expect(!system.start(simulation::DefinitionId{"quest.missing"}),
            "QuestSystem rejects unknown quest IDs without mutating state");
+}
+
+void testPhase11QuestPersistence() {
+    namespace quests = underworld::game::gameplay::quests;
+    namespace save = underworld::game::save;
+    namespace simulation = underworld::simulation;
+
+    const underworld::game::GameContentRegistry content;
+    const auto& definition = content.quests().require(quests::scholarQuestId());
+    quests::QuestStateStore state;
+    expect(state.start(definition) &&
+               state.advanceObjective(definition, simulation::DefinitionId{"quest.scholar.talk"}) &&
+               state.advanceObjective(definition, simulation::DefinitionId{"quest.scholar.kill"}),
+           "quest progress can be prepared for persistence without copying definitions");
+
+    const auto map = makeSyntheticMap("map.test.quest.save", "map.test.quest.save");
+    save::SaveData data;
+    data.player.currentMapId = map.id;
+    data.player.health = underworld::game::gameplay::Player::maximumHealth;
+    data.quests = state;
+    const save::SaveValidationCatalogs catalogs{&content.items(), {&map}, &content.quests()};
+    expect(save::validateSaveData(data, catalogs).empty(),
+           "save validation accepts active quest progress against the quest catalog");
+    expect(!save::validateSaveData(data, {&content.items(), {&map}}).empty(),
+           "save validation rejects quest progress without a quest catalog");
+
+    const auto encoded = save::serializeSave(data);
+    expect(encoded.size() > 7 && encoded[6] == 2 && encoded[7] == 0,
+           "quest persistence advances DSAV only to minor version 2");
+    const auto loaded = save::deserializeSave(encoded, catalogs);
+    expect(loaded && loaded.data.quests.snapshot() == data.quests.snapshot() &&
+               encoded == save::serializeSave(loaded.data),
+           "DSAV QSTS roundtrips quest status and objective counters deterministically");
+
+    auto legacy = data;
+    static_cast<void>(legacy.quests.reset(definition.id));
+    auto legacyBytes = save::serializeSave(legacy);
+    legacyBytes[6] = 1;
+    legacyBytes[7] = 0;
+    const auto legacyLoaded = save::deserializeSave(legacyBytes, catalogs);
+    expect(legacyLoaded && legacyLoaded.data.quests.size() == 0,
+           "DSAV 1.1 saves without QSTS remain backward compatible");
+
+    auto incompatible = encoded;
+    incompatible[6] = 1;
+    incompatible[7] = 0;
+    expect(!save::deserializeSave(incompatible, catalogs),
+           "DSAV 1.1 rejects a future QSTS chunk instead of silently dropping quest progress");
+
+    auto corrupt = encoded;
+    const std::array<std::uint8_t, 4> qstsTag{'Q', 'S', 'T', 'S'};
+    const auto qstsPosition = std::search(corrupt.begin(), corrupt.end(),
+                                          qstsTag.begin(), qstsTag.end());
+    bool malformedRejected = false;
+    if (qstsPosition != corrupt.end()) {
+        const auto countOffset = static_cast<std::size_t>(qstsPosition - corrupt.begin()) + 12;
+        for (std::size_t index = 0; index < sizeof(std::uint32_t); ++index) {
+            corrupt[countOffset + index] = 0xff;
+        }
+        malformedRejected = !save::deserializeSave(corrupt, catalogs);
+    }
+    expect(malformedRejected, "DSAV rejects an oversized persistent quest state chunk");
+
+    quests::QuestProgress invalid{definition.id, quests::QuestStatus::active,
+                                  {{definition.objectives[0].id, 99},
+                                   {definition.objectives[1].id, 0},
+                                   {definition.objectives[2].id, 0}}};
+    quests::QuestStateStore restored;
+    expect(!restored.restore(std::span<const quests::QuestProgress>{&invalid, 1},
+                             content.quests()),
+           "quest state restore rejects counters above definition requirements");
 }
 
 void testNearestImageRegions() {
@@ -4269,6 +4340,7 @@ int main() {
         testPhase11QuestDefinitions();
         testPhase11QuestState();
         testPhase11QuestEvents();
+        testPhase11QuestPersistence();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace underworld::game::gameplay::quests {
@@ -54,6 +55,47 @@ QuestProgress* QuestStateStore::findMutable(
     const simulation::DefinitionId& questId) noexcept {
     const auto found = progress_.find(questId);
     return found == progress_.end() ? nullptr : &found->second;
+}
+
+std::vector<QuestProgress> QuestStateStore::snapshot() const {
+    std::vector<QuestProgress> result;
+    result.reserve(progress_.size());
+    for (const auto& [id, progress] : progress_) { result.push_back(progress); }
+    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+        return left.questId.value() < right.questId.value();
+    });
+    return result;
+}
+
+bool QuestStateStore::restore(std::span<const QuestProgress> progress,
+                              const QuestCatalog& catalog) {
+    std::unordered_set<simulation::DefinitionId, simulation::DefinitionIdHash> ids;
+    std::unordered_map<simulation::DefinitionId, QuestProgress,
+                       simulation::DefinitionIdHash> restored;
+    restored.reserve(progress.size());
+    for (const auto& candidate : progress) {
+        const auto* definition = catalog.find(candidate.questId);
+        if (definition == nullptr || candidate.status == QuestStatus::inactive ||
+            !ids.emplace(candidate.questId).second ||
+            candidate.objectives.size() != definition->objectives.size()) {
+            return false;
+        }
+        bool allComplete = true;
+        for (std::size_t index = 0; index < definition->objectives.size(); ++index) {
+            const auto& definitionObjective = definition->objectives[index];
+            const auto& progressObjective = candidate.objectives[index];
+            if (progressObjective.objectiveId != definitionObjective.id ||
+                progressObjective.currentCount > definitionObjective.requiredCount) {
+                return false;
+            }
+            allComplete = allComplete &&
+                progressObjective.currentCount >= definitionObjective.requiredCount;
+        }
+        if ((candidate.status == QuestStatus::completed) != allComplete) { return false; }
+        restored.emplace(candidate.questId, candidate);
+    }
+    progress_ = std::move(restored);
+    return true;
 }
 
 const QuestProgress& QuestStateStore::require(
