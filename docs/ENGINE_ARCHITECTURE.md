@@ -54,8 +54,10 @@ smoke visual/interativo passando.
 
 A Fase 8 também está concluída: DMAP/DSAV v1, `MapData`, persistent IDs,
 `RuntimeWorldBuilder`, `MapCatalog`, `MapSession`, transições e deltas de sessão/save
-alimentam o slice jogável com duas salas. A baseline de fechamento usa MSVC 19.44
-x64, C++20, `/W4`, 0 warnings e 403 checks. A Fase 9 (Map Maker) é a próxima;
+alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) está em
+fechamento do Block 1: o editor já possui validação revision-cached, culling de tiles,
+playtest por snapshot via `RuntimeWorldBuilder` e sidecar `.autosave.dmap` sem substituir
+o arquivo authored. O build/smoke MSVC desta execução continua sendo um gate operacional;
 loot/XP, NPCs, quests e networking permanecem deferidos.
 
 ### 1.1 C++ nativo e dependências controladas
@@ -1290,7 +1292,7 @@ sejam principalmente operações de conteúdo e configuração, sem reescrever s
 
 # Current authored map set
 
-The current playable content is the three-map DMAP 1.0 set in `maps/gameplay/`:
+The current playable content is the three-map DMAP 1.1-capable set in `maps/gameplay/`:
 `map.dungeon.01`, `map.dungeon.02`, and `map.dungeon.03`. They are registered together
 through the small official map manifest so `MapCatalog::validateLinks()` resolves the
 bidirectional 01 <-> 02 <-> 03 graph before a session starts. Startup selects Map 01
@@ -1311,10 +1313,22 @@ GameLaunchOptions
 Map Maker authored content follows the same boundary:
 
 ```text
-EditorDocument -> MapData -> DMAP v1.0 -> readDmap/validateMapData
+EditorDocument -> MapData -> DMAP v1.1 -> readDmap/validateMapData
                 -> MapCatalog/MapSession -> RuntimeWorld
 ```
 
 The three reference maps cover the current 72 semantic Dungeon atlas cells and the
 8 registered stamps. Coverage is tested from `AuthoringSemanticRegistry`; the maps do
 not add a second atlas catalog or infer collision from artwork.
+
+## Fase 10A — NPC foundation
+
+`NpcDefinition` is immutable catalog content and `NpcInstance` owns only runtime
+position, facing and `EntityHandle`. Authored `NpcPlacement` is carried by `MapData`
+and the optional DMAP 1.1 `NPCS` chunk. `RuntimeWorldBuilder` creates NPC instances
+through `NpcFactory`; `NpcCatalog` validates definition IDs before construction.
+NPC interaction reuses the shared `InteractionArea` and a deterministic nearest-target
+query. Until the asset audit provides approved NPC sprite sheets, the runtime visual
+catalog uses explicit non-asset marker colors so authored NPCs remain visible without
+inventing PNG semantics. Dialogue, conditions, actions and persistent dialogue flags
+remain deferred to the following Phase 10 blocks.

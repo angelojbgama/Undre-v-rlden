@@ -1,12 +1,12 @@
 # Official authored gameplay maps
 
-This is the current three-map playable set. The files are DMAP 1.0 resources written
+This is the current three-map playable set. The files are DMAP 1.1 resources written
 with the official `writeDmap` boundary; the game only reads them at startup.
 
 | MapId | File | Size | Entry spawns | Links | Gameplay |
 | --- | --- | --- | --- | --- | --- |
-| `map.dungeon.01` | `dungeon_01_entry.dmap` | 24x18 | `entry.start`, `entry.from_02` | east -> Map 02 | Evil Soldier, Chest, Money |
-| `map.dungeon.02` | `dungeon_02_gallery.dmap` | 24x18 | `entry.from_01`, `entry.from_03` | west -> Map 01; east -> Map 03 | Skull, Crate, Heart |
+| `map.dungeon.01` | `dungeon_01_entry.dmap` | 24x18 | `entry.start`, `entry.from_02` | east -> Map 02 | Evil Soldier, Guard, Chest, Money |
+| `map.dungeon.02` | `dungeon_02_gallery.dmap` | 24x18 | `entry.from_01`, `entry.from_03` | west -> Map 01; east -> Map 03 | Skull, Scholar, Crate, Heart |
 | `map.dungeon.03` | `dungeon_03_depths.dmap` | 24x18 | `entry.from_02` | west -> Map 02 | Evil Soldier, Skull, Chest, Crate, Life Potion |
 
 The transition graph is deliberately bidirectional:

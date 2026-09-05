@@ -34,6 +34,7 @@ void addPlacementWarnings(const maps::MapData& data, ValidationReport& report) {
         }
     };
     for (const auto& value : data.enemies) { add(value.id, value.position); }
+    for (const auto& value : data.npcs) { add(value.id, value.position); }
     for (const auto& value : data.objects) { add(value.id, value.position); }
     for (const auto& value : data.pickups) { add(value.id, value.position); }
 }
@@ -205,6 +206,36 @@ bool EditorDocument::saveAs(const std::filesystem::path& path,
     return true;
 }
 
+bool EditorDocument::saveBackup(const std::filesystem::path& path,
+                                const game::GameContentRegistry& content,
+                                std::string& error) const {
+    error.clear();
+    if (path.empty()) { error = "backup path is empty"; return false; }
+    if (filePath_) {
+        std::error_code pathError;
+        const auto authored = std::filesystem::absolute(*filePath_, pathError).lexically_normal();
+        const auto backup = std::filesystem::absolute(path, pathError).lexically_normal();
+        if (!pathError && authored == backup) {
+            error = "backup path must not replace the authored document";
+            return false;
+        }
+    }
+    const ValidationReport report = validate(content);
+    if (report.hasErrors()) { error = "document validation has blocking errors"; return false; }
+    if (hasExperimentalData()) {
+        error = "regions and typed placement overrides are experimental and cannot be backed up in DMAP 1.0";
+        return false;
+    }
+    return maps::writeDmap(path, data_, error);
+}
+
+std::optional<std::filesystem::path> EditorDocument::autosavePath() const {
+    if (!filePath_) { return std::nullopt; }
+    auto result = *filePath_;
+    result += ".autosave.dmap";
+    return result;
+}
+
 bool EditorDocument::execute(std::unique_ptr<EditorCommand> command, std::string& error) {
     if (!history_.execute(std::move(command), *this, error)) { return false; }
     dirty_ = true;
@@ -251,6 +282,7 @@ ValidationReport EditorDocument::validate(const game::GameContentRegistry& conte
     std::unordered_set<std::string> regionIds;
     std::unordered_set<std::uint64_t> allIds;
     for (const auto& value : data_.enemies) { allIds.insert(value.id.value); }
+    for (const auto& value : data_.npcs) { allIds.insert(value.id.value); }
     for (const auto& value : data_.objects) { allIds.insert(value.id.value); }
     for (const auto& value : data_.pickups) { allIds.insert(value.id.value); }
     for (const auto& region : regions_) {

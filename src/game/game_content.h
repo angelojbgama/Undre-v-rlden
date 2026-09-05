@@ -3,6 +3,7 @@
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
@@ -15,7 +16,7 @@ namespace underworld::game::maps { struct MapValidationCatalogs; }
 
 namespace underworld::game {
 
-enum class AuthoringCategory { enemy, object, pickup };
+enum class AuthoringCategory { enemy, object, pickup, npc };
 
 struct AuthoringDescriptor final {
     simulation::DefinitionId definitionId{};
@@ -50,6 +51,12 @@ public:
     [[nodiscard]] const gameplay::WorldObjectCatalog& objects() const noexcept {
         return objects_;
     }
+    [[nodiscard]] gameplay::npcs::NpcCatalog& npcs() noexcept { return npcs_; }
+    [[nodiscard]] const gameplay::npcs::NpcCatalog& npcs() const noexcept { return npcs_; }
+    [[nodiscard]] gameplay::npcs::NpcVisualCatalog& npcVisuals() noexcept { return npcVisuals_; }
+    [[nodiscard]] const gameplay::npcs::NpcVisualCatalog& npcVisuals() const noexcept {
+        return npcVisuals_;
+    }
     [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
     [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
@@ -74,6 +81,8 @@ private:
     gameplay::creatures::EnemyCatalog enemies_;
     gameplay::ItemCatalog items_;
     gameplay::WorldObjectCatalog objects_;
+    gameplay::npcs::NpcCatalog npcs_;
+    gameplay::npcs::NpcVisualCatalog npcVisuals_;
     TilesetCatalog tilesets_;
     authoring::AuthoringSemanticRegistry authoringSemantics_;
     std::vector<gameplay::PickupDefinition> pickups_;

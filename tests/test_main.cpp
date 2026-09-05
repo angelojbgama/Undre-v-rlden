@@ -27,6 +27,7 @@
 #include "engine/world/tile_layer.h"
 #include "editor/editor_commands.h"
 #include "editor/editor_document.h"
+#include "editor/editor_playtest.h"
 #include "game/command_builder.h"
 #include "game/game_content.h"
 #include "game/game_view_model.h"
@@ -39,6 +40,7 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/world_objects.h"
@@ -2562,6 +2564,91 @@ void testPhase8PersistentMapsAndSave() {
     std::filesystem::remove(dmapA, ec); std::filesystem::remove(dmapB, ec);
 }
 
+void testPhase10NpcFoundation() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace npcs = underworld::game::gameplay::npcs;
+    namespace simulation = underworld::simulation;
+
+    game::GameContentRegistry content;
+    expect(content.npcs().find(npcs::guardNpcId()) &&
+               content.npcs().find(npcs::scholarNpcId()) &&
+               content.npcVisuals().find(simulation::DefinitionId{"visual.npc.guard"}) &&
+               content.authoringDescriptors(game::AuthoringCategory::npc).size() == 2,
+           "GameContentRegistry exposes two reusable NPC definitions through the authoring catalog");
+
+    auto map = makeSyntheticMap("map.test.npc", "map.test.npc.target");
+    map.npcs.push_back({{6}, npcs::guardNpcId(), {72, 24}, gameplay::FacingDirection::left});
+    map.npcs.push_back({{7}, npcs::scholarNpcId(), {88, 24}, gameplay::FacingDirection::right});
+    const auto catalogs = game::mapValidationCatalogs(content);
+    expect(static_cast<bool>(maps::validateMapData(map, &catalogs)),
+           "NPC placements validate with definition IDs and the shared persistent ID namespace");
+
+    const auto bytes = maps::serializeDmap(map);
+    const auto decoded = maps::deserializeDmap(bytes, &catalogs);
+    expect(decoded && decoded.data.npcs.size() == 2 &&
+               maps::semanticallyEqual(map, decoded.data) && maps::dmapMinorVersion == 1,
+           "DMAP minor 1 roundtrips authored NPC placements without changing DSAV");
+    auto unknown = map;
+    unknown.npcs[0].definitionId = simulation::DefinitionId{"npc.missing"};
+    expect(!maps::validateMapData(unknown, &catalogs),
+           "unknown NPC definitions fail before runtime construction");
+    npcs::NpcVisualCatalog onlyGuardVisual;
+    onlyGuardVisual.add({simulation::DefinitionId{"visual.npc.guard"}, {70, 150, 240, 255}});
+    auto missingVisualCatalogs = catalogs;
+    missingVisualCatalogs.npcVisuals = &onlyGuardVisual;
+    expect(!maps::validateMapData(map, &missingVisualCatalogs),
+           "NPC definitions with missing visual references fail clearly before rendering");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{gameplay::creatures::soldierVisualId(),
+                             gameplay::creatures::skullVisualId()};
+    gameplay::creatures::EnemyFactory enemies(handles, content.enemies(), content.behaviors(),
+                                              content.attacks(), content.projectiles(), visuals);
+    gameplay::WorldObjectFactory objects(handles, content.objects(), content.items());
+    npcs::NpcFactory npcFactory(handles, content.npcs());
+    game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
+    maps::RuntimeWorldBuilder builder(catalogs, enemies, objects, handles, runtimeTilesets,
+                                      &npcFactory);
+    const auto runtime = builder.build(decoded.data, simulation::SpawnId{"entry.start"});
+    expect(runtime && runtime.world->npcs().size() == 2 &&
+               runtime.world->npcs()[0].persistentId == simulation::PersistentInstanceId{6} &&
+               runtime.world->npcs()[0].instance.definition().id == npcs::guardNpcId() &&
+               runtime.world->npcs()[0].instance.facing() == gameplay::FacingDirection::left,
+           "RuntimeWorldBuilder creates both NPC instances with persistent identity and facing");
+    expect(runtime && runtime.world->npcs()[0].instance.interactionArea().enabled,
+           "runtime NPC exposes the shared InteractionArea contract");
+    const auto interaction = npcs::interactNearest(
+        {72, 24}, {60, 8, 20, 20}, runtime.world->npcs());
+    expect(interaction.npc == runtime.world->npcs()[0].instance.handle(),
+           "player interaction resolves the nearest authored NPC deterministically");
+
+    auto document = editor::EditorDocument::newMap(simulation::MapId{"map.editor.npc"}, 8, 8);
+    std::string error;
+    const auto placement = maps::NpcPlacement{{1}, npcs::guardNpcId(), {40, 40},
+                                               gameplay::FacingDirection::up};
+    expect(document.execute(std::make_unique<editor::PlaceEntityCommand>(placement), error) &&
+               document.data().npcs.size() == 1,
+           "Map Maker places an NPC through the generic EditorCommand pipeline");
+    expect(document.execute(std::make_unique<editor::MoveEntityCommand>(
+               editor::SelectionKind::npc, simulation::PersistentInstanceId{1},
+               underworld::core::WorldPointI{40, 40},
+               underworld::core::WorldPointI{56, 40}), error) &&
+               document.data().npcs[0].position == underworld::core::WorldPointI{56, 40},
+           "Map Maker moves NPC placements while preserving their persistent ID");
+    expect(document.undo() && document.data().npcs[0].position ==
+               underworld::core::WorldPointI{40, 40} && document.redo(error) &&
+               document.data().npcs[0].position == underworld::core::WorldPointI{56, 40},
+           "NPC move participates in editor undo and redo");
+    expect(document.execute(std::make_unique<editor::DeleteEntityCommand>(
+               editor::SelectionKind::npc, simulation::PersistentInstanceId{1}), error) &&
+               document.data().npcs.empty() &&
+               document.undo() && document.data().npcs.size() == 1,
+           "Map Maker deletes and restores NPC placements through undo");
+}
+
 void testNearestImageRegions() {
     using underworld::core::ColorRGBA8;
     constexpr ColorRGBA8 black{0, 0, 0, 255};
@@ -2885,6 +2972,46 @@ void testPhase9EditorFoundation() {
            "DMAP v1 open save reopen preserves semantic MapData equality");
     std::error_code removeError;
     std::filesystem::remove(temporary, removeError);
+
+    auto playtestSource = makeSyntheticMap("map.test.playtest", "map.test.playtest");
+    editor::EditorDocument playtestDocument(playtestSource);
+    const auto beforePlaytest = playtestDocument.data();
+    editor::EditorPlaytestSession playtest;
+    expect(playtest.start(playtestDocument.data(), content, error) && playtest.active() &&
+               playtest.sourceData() && maps::semanticallyEqual(*playtest.sourceData(), beforePlaytest) &&
+               playtest.world() && playtest.world()->spawn().id == simulation::SpawnId{"entry.start"} &&
+               playtest.world()->enemies().size() == playtestSource.enemies.size() &&
+               playtest.world()->objects().size() == playtestSource.objects.size() &&
+               playtest.world()->pickups().size() == playtestSource.pickups.size(),
+           "editor playtest builds a temporary RuntimeWorld through the normal builder pipeline");
+    expect(maps::semanticallyEqual(playtestDocument.data(), beforePlaytest),
+           "editor playtest does not mutate the source EditorDocument");
+    playtest.stop();
+    expect(!playtest.active() && !playtest.sourceData(),
+           "stopping editor playtest releases the temporary world and snapshot");
+
+    editor::EditorDocument backupDocument(playtestSource);
+    const auto authoredPath = std::filesystem::temp_directory_path() /
+                              "underworld_editor_authored.dmap";
+    const auto backupPath = std::filesystem::temp_directory_path() /
+                            "underworld_editor_authored.dmap.autosave.dmap";
+    std::filesystem::remove(authoredPath, removeError);
+    std::filesystem::remove(backupPath, removeError);
+    expect(backupDocument.saveAs(authoredPath, content, error) &&
+               backupDocument.execute(std::make_unique<editor::SetCollisionCommand>(
+                   std::vector<editor::TileCoordinate>{{1, 1}}, true), error) &&
+               backupDocument.dirty() && backupDocument.saveBackup(backupPath, content, error) &&
+               backupDocument.dirty() && backupDocument.filePath() == authoredPath,
+           "editor autosave backup writes a validated sidecar without clearing dirty state or path");
+    const auto backupCatalogs = game::mapValidationCatalogs(content);
+    const auto backupLoaded = maps::readDmap(backupPath, &backupCatalogs);
+    expect(backupLoaded && backupLoaded.data.collision[5] == 1 &&
+               backupDocument.autosavePath() && *backupDocument.autosavePath() == backupPath,
+           "editor autosave sidecar is readable through the official DMAP reader");
+    expect(!backupDocument.saveBackup(authoredPath, content, error),
+           "editor backup rejects replacing the authored document path");
+    std::filesystem::remove(authoredPath, removeError);
+    std::filesystem::remove(backupPath, removeError);
 }
 
 void testSyntheticMapIntegrationFixture() {
@@ -2956,6 +3083,7 @@ void testOfficialGameplayMapAuthoringAsset() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
     namespace creatures = underworld::game::gameplay::creatures;
+    namespace npcs = underworld::game::gameplay::npcs;
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
@@ -2981,15 +3109,25 @@ void testOfficialGameplayMapAuthoringAsset() {
            "official gameplay asset is a readable DMAP v1 map with stable broad invariants");
     expect(loaded && maps::validateMapData(loaded.data, &validation),
            "official gameplay asset validates against shared game content definitions");
+    expect(loaded && std::all_of(loaded.data.npcs.begin(), loaded.data.npcs.end(), [&](const auto& npc) {
+               const auto x = npc.position.x / static_cast<int>(loaded.data.tileSize);
+               const auto y = npc.position.y / static_cast<int>(loaded.data.tileSize);
+               return x >= 0 && y >= 0 && static_cast<std::uint32_t>(x) < loaded.data.width &&
+                      static_cast<std::uint32_t>(y) < loaded.data.height &&
+                      loaded.data.collision[static_cast<std::size_t>(y) * loaded.data.width +
+                                             static_cast<std::size_t>(x)] == 0;
+           }),
+           "official NPC placements are inside the authored map and outside collision");
 
     simulation::EntityHandlePool handles;
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
     creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
                                          content.attacks(), content.projectiles(), visuals);
     gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    npcs::NpcFactory npcFactory(handles, content.npcs());
     const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
-        runtimeTilesets);
+        runtimeTilesets, &npcFactory);
     std::string startupError;
     const auto startupSpawn = loaded
         ? game::selectStartupSpawn(loaded.data, std::nullopt, startupError)
@@ -3004,8 +3142,9 @@ void testOfficialGameplayMapAuthoringAsset() {
            "official gameplay DMAP builds through RuntimeWorldBuilder with runtime-only handles");
     expect(selectedRuntime && selectedRuntime.world->enemies().size() == loaded.data.enemies.size() &&
                selectedRuntime.world->objects().size() == loaded.data.objects.size() &&
-               selectedRuntime.world->pickups().size() == loaded.data.pickups.size(),
-           "official enemy object and pickup placements become runtime instances");
+               selectedRuntime.world->pickups().size() == loaded.data.pickups.size() &&
+               selectedRuntime.world->npcs().size() == loaded.data.npcs.size(),
+           "official enemy object pickup and NPC placements become runtime instances");
 
     std::string error;
     auto document = gameplayMap.empty() ? std::optional<editor::EditorDocument>{}
@@ -3027,6 +3166,7 @@ void testOfficialGameplayMapSet() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
     namespace creatures = underworld::game::gameplay::creatures;
+    namespace npcs = underworld::game::gameplay::npcs;
     namespace maps = underworld::game::maps;
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
@@ -3173,15 +3313,17 @@ void testOfficialGameplayMapSet() {
     creatures::EnemyFactory enemyFactory(handles, content.enemies(), content.behaviors(),
         content.attacks(), content.projectiles(), visuals);
     gameplay::WorldObjectFactory objectFactory(handles, content.objects(), content.items());
+    npcs::NpcFactory npcFactory(handles, content.npcs());
     const game::RuntimeTilesetCatalog runtimeTilesets(content.tilesets());
     maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
-                                      runtimeTilesets);
+                                      runtimeTilesets, &npcFactory);
     for (const auto& map : loadedMaps) {
         const auto spawn = map.playerSpawns.front().id;
         const auto runtime = builder.build(map, spawn);
         expect(runtime && runtime.world->enemies().size() == map.enemies.size() &&
                    runtime.world->objects().size() == map.objects.size() &&
-                   runtime.world->pickups().size() == map.pickups.size(),
+                   runtime.world->pickups().size() == map.pickups.size() &&
+                   runtime.world->npcs().size() == map.npcs.size(),
                "official gameplay placements build through RuntimeWorldBuilder");
     }
     save::SessionWorldState sessionState;
@@ -3412,7 +3554,7 @@ void testMultiTilesetAuthoringAndRuntime() {
            "MapData accepts multiple known tilesets in the same layer");
     const auto bytes = maps::serializeDmap(map);
     const auto decoded = maps::deserializeDmap(bytes, &validation);
-    expect(decoded && maps::dmapMajorVersion == 1 && maps::dmapMinorVersion == 0 &&
+    expect(decoded && maps::dmapMajorVersion == 1 && maps::dmapMinorVersion == 1 &&
                decoded.data.tileReferences[0] == map.tileReferences[0] &&
                decoded.data.tileReferences[1] == map.tileReferences[1],
            "DMAP v1 preserves multi-tileset DefinitionIds source indices and flags");
@@ -3786,6 +3928,7 @@ int main() {
         testPickupsQuickSlotsAndInventoryOverlay();
         testViewModelAndWorldObjects();
         testPhase8PersistentMapsAndSave();
+        testPhase10NpcFoundation();
         testPhase9EditorFoundation();
         testSyntheticMapIntegrationFixture();
         testOfficialGameplayMapAuthoringAsset();

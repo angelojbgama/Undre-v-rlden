@@ -14,17 +14,19 @@ NUL. Nenhuma estrutura C++, ponteiro, `EntityHandle`, animator ou estado transit
 |---:|---|---|
 | 0 | `char[4]` | magic `DMAP` |
 | 4 | `u16` | major = 1 |
-| 6 | `u16` | minor = 0 |
+| 6 | `u16` | minor = 1 |
 | 8 | `u16` | flags = 0 |
 | 10 | `u16` | header size = 20 |
 | 12 | `u64` | tamanho total declarado |
 
-Major diferente de 1 e minor maior que 0 são rejeitados. Extensões de header podem
-ser puladas por `header size`; flags desconhecidas são rejeitadas. Cada chunk usa
-`tag:char[4] + payloadSize:u64 + payload`. Os oito chunks v1 são obrigatórios e
-singleton, nesta ordem canônica no writer: `META`, `STRS`, `TREF`, `LAYR`, `COLL`,
-`SPWN`, `ENTS`, `LINK`. Singleton conhecido duplicado é erro. Chunk desconhecido é
-ignorado se seu tamanho for válido e estiver contido no arquivo.
+Major diferente de 1 e minor maior que 1 são rejeitados. DMAP 1.0 continua legível;
+DMAP 1.1 adiciona o chunk opcional `NPCS` para placements authored de NPC. A extensão
+é necessária porque NPC não pode ser representado corretamente como objeto nem ficar
+apenas em memória. Extensões de header podem ser puladas por `header size`; flags
+desconhecidas são rejeitadas. Cada chunk usa `tag:char[4] + payloadSize:u64 + payload`.
+Os oito chunks v1 originais são obrigatórios e singleton; `NPCS` é singleton opcional.
+Singleton conhecido duplicado é erro. Chunk desconhecido é ignorado se seu tamanho for
+válido e estiver contido no arquivo.
 
 `stringIndex` é `u32` e aponta para `STRS`; não é ID runtime. O writer reúne as
 strings referenciadas, ordena e deduplica, tornando o output determinístico.
@@ -146,6 +148,20 @@ repeat count:
 IDs de link são únicos, AABBs têm dimensão positiva e `MapCatalog` valida mapa e
 spawn de destino. Link guarda `MapId`, nunca path.
 
+### `NPCS` (DMAP 1.1)
+
+```text
+count u32
+repeat count:
+    persistentInstanceId u64
+    npcDefinitionId stringIndex
+    x i32, y i32, facing u8
+```
+
+O reader aceita arquivos DMAP 1.0 sem `NPCS` como mapas sem NPCs. NPCs usam a mesma
+namespace de `PersistentInstanceId` dos demais placements e são validados pelo
+`NpcCatalog` antes de `RuntimeWorldBuilder`.
+
 ## Limites e validação
 
 ```text
@@ -162,10 +178,9 @@ inválidos, dimensões incompatíveis, payloads inválidos e references sem defi
 ## Cadeia runtime
 
 ```text
-MapData demo -> DMAP em build/bin/data -> MapCatalog -> deserialize/validate
-             -> RuntimeWorldBuilder -> RuntimeMap + factories + WorldPickup
+MapData -> DMAP v1.1 -> MapCatalog -> deserialize/validate
+         -> RuntimeWorldBuilder -> RuntimeMap + factories + WorldPickup/NPC
 ```
 
-Handles são sempre novos. Os DMAPs demo são regeneráveis e não versionados. O futuro
-Map Maker poderá produzir o mesmo `MapData` e chamar o mesmo writer sem dependência
-de UI no formato.
+Handles são sempre novos. Map Maker e conteúdo authored versionado produzem o mesmo
+`MapData` e chamam o mesmo writer sem dependência de UI no formato.

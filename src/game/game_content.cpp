@@ -16,6 +16,10 @@ GameContentRegistry::GameContentRegistry() {
     behaviors_.add(gameplay::creatures::makeSkullBehaviorProfile());
     enemies_.add(gameplay::creatures::makeSoldierEnemyDefinition());
     enemies_.add(gameplay::creatures::makeSkullEnemyDefinition());
+    npcs_.add(gameplay::npcs::makeGuardNpcDefinition());
+    npcs_.add(gameplay::npcs::makeScholarNpcDefinition());
+    npcVisuals_.add({simulation::DefinitionId{"visual.npc.guard"}, {70, 150, 240, 255}});
+    npcVisuals_.add({simulation::DefinitionId{"visual.npc.scholar"}, {220, 180, 70, 255}});
 
     items_.add(gameplay::makeLifePotionDefinition());
 
@@ -53,6 +57,10 @@ GameContentRegistry::GameContentRegistry() {
          {"currency"}},
         {simulation::DefinitionId{"pickup.life_potion"}, "Life Potion",
          AuthoringCategory::pickup, {"item", "consumable"}},
+        {gameplay::npcs::guardNpcId(), "Guard", AuthoringCategory::npc,
+         {"npc", "dialogue"}},
+        {gameplay::npcs::scholarNpcId(), "Scholar", AuthoringCategory::npc,
+         {"npc", "dialogue"}},
     };
 }
 
@@ -75,7 +83,8 @@ std::vector<const AuthoringDescriptor*> GameContentRegistry::authoringDescriptor
 
 maps::MapValidationCatalogs mapValidationCatalogs(
     const GameContentRegistry& content) noexcept {
-    return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets()};
+    return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets(),
+            &content.npcs(), &content.npcVisuals()};
 }
 
 } // namespace underworld::game

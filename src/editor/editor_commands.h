@@ -44,8 +44,9 @@ private:
     std::vector<Previous> previous_;
 };
 
-using AuthoredPlacement = std::variant<maps::EnemyPlacement, maps::ObjectPlacement,
-    maps::PickupPlacement, maps::PlayerSpawn, maps::MapLink, RegionPlacement>;
+using AuthoredPlacement = std::variant<maps::EnemyPlacement, maps::NpcPlacement,
+    maps::ObjectPlacement, maps::PickupPlacement, maps::PlayerSpawn, maps::MapLink,
+    RegionPlacement>;
 
 class PlaceEntityCommand final : public EditorCommand {
 public:

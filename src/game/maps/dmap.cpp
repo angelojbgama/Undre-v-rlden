@@ -37,6 +37,7 @@ StringTable collectStrings(const MapData& data) {
     for (const auto& layer : data.layers) { addString(table.values, layer.name); }
     for (const auto& spawn : data.playerSpawns) { addString(table.values, spawn.id.value()); }
     for (const auto& enemy : data.enemies) { addString(table.values, enemy.definitionId.value()); }
+    for (const auto& npc : data.npcs) { addString(table.values, npc.definitionId.value()); }
     for (const auto& object : data.objects) {
         addString(table.values, object.definitionId.value());
         for (const auto& stack : object.initialContents) { addString(table.values, stack.itemId.value()); }
@@ -159,6 +160,12 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
         }
     }
     appendChunk(chunks, {'E','N','T','S'}, std::move(ents));
+    ByteWriter npcs; npcs.writeU32(static_cast<std::uint32_t>(data.npcs.size()));
+    for (const auto& npc : data.npcs) {
+        npcs.writeU64(npc.id.value); npcs.writeU32(strings.index(npc.definitionId.value()));
+        writePoint(npcs, npc.position); npcs.writeU8(facingValue(npc.facing));
+    }
+    appendChunk(chunks, {'N','P','C','S'}, std::move(npcs));
     ByteWriter link; link.writeU32(static_cast<std::uint32_t>(data.links.size()));
     for (const auto& value : data.links) {
         link.writeU32(strings.index(value.id)); writeArea(link, value.trigger);
@@ -194,8 +201,12 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             !header.readBytes(static_cast<std::size_t>(payloadSize), payload)) return fail("truncated or oversized DMAP chunk");
         const std::string tag(reinterpret_cast<const char*>(tagBytes.data()), 4);
         const bool known = tag == "META" || tag == "STRS" || tag == "TREF" || tag == "LAYR" ||
-                           tag == "COLL" || tag == "SPWN" || tag == "ENTS" || tag == "LINK";
+                           tag == "COLL" || tag == "SPWN" || tag == "ENTS" || tag == "NPCS" ||
+                           tag == "LINK";
         if (known && !chunks.emplace(tag, payload).second) return fail("duplicate singleton DMAP chunk");
+    }
+    if (minor == 0 && chunks.contains("NPCS")) {
+        return fail("NPCS chunk requires DMAP minor version 1");
     }
     for (const char* required : {"META","STRS","TREF","LAYR","COLL","SPWN","ENTS","LINK"}) {
         if (!chunks.contains(required)) return fail(std::string("missing required DMAP chunk ") + required);
@@ -264,6 +275,19 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             else if(kind==2){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity))return fail("invalid item pickup");payload=gameplay::ItemPickup{std::move(item),quantity};}
             else return fail("unknown pickup payload kind");data.pickups.push_back({{id},std::move(def),std::move(visual),point,area,std::move(payload)});}
         if(in.remaining()!=0)return fail("trailing ENTS data");
+    }
+    if (const auto found = chunks.find("NPCS"); found != chunks.end()) {
+        ByteReader in(found->second); std::uint32_t count{};
+        if (!readCount(in, MapLimits::maximumPlacements, count)) return fail("invalid NPC count");
+        data.npcs.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            std::uint64_t id{}; simulation::DefinitionId definition; core::WorldPointI point;
+            gameplay::FacingDirection facing{};
+            if (!in.readU64(id) || !readId(in, strings, definition) || !readPoint(in, point) ||
+                !readFacing(in, facing)) return fail("invalid NPC record");
+            data.npcs.push_back({{id}, std::move(definition), point, facing});
+        }
+        if (in.remaining() != 0) return fail("trailing NPCS data");
     }
     {
         ByteReader in(chunks["LINK"]);std::uint32_t count{};if(!readCount(in,MapLimits::maximumPlacements,count))return fail("invalid LINK count");data.links.reserve(count);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/editor_commands.h"
+#include "editor/editor_playtest.h"
 #include "editor/editor_ui.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
@@ -14,7 +15,7 @@ namespace underworld::render { class BitmapFont; class Image; }
 
 namespace underworld::editor {
 
-enum class EditorShellCommand { newMap, undo, redo, toggleGrid, frameMap };
+enum class EditorShellCommand { newMap, undo, redo, toggleGrid, frameMap, playtest };
 
 class EditorApp final {
 public:
@@ -28,6 +29,8 @@ public:
     [[nodiscard]] bool open(const std::filesystem::path& path, std::string& error);
     [[nodiscard]] bool save(std::string& error);
     [[nodiscard]] bool saveAs(const std::filesystem::path& path, std::string& error);
+    [[nodiscard]] bool autosave(std::string& error);
+    [[nodiscard]] bool playtestActive() const noexcept { return playtest_.active(); }
 
     [[nodiscard]] const render::Framebuffer& framebuffer() const noexcept { return *framebuffer_; }
     [[nodiscard]] EditorDocument& document() noexcept { return document_; }
@@ -67,9 +70,11 @@ private:
     void placeSelected(core::WorldPointI world);
     void execute(std::unique_ptr<EditorCommand> command);
     void updateStatus(core::RectI viewport, const EditorInputState& input);
+    void togglePlaytest();
 
     game::GameContentRegistry content_;
     EditorDocument document_;
+    EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
     game::RuntimeTilesetCatalog runtimeTilesets_{content_.tilesets()};

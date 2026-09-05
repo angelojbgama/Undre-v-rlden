@@ -8,6 +8,7 @@
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/facing_direction.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
@@ -59,6 +60,14 @@ struct EnemyPlacement final {
     [[nodiscard]] bool operator==(const EnemyPlacement&) const noexcept = default;
 };
 
+struct NpcPlacement final {
+    simulation::PersistentInstanceId id{};
+    simulation::DefinitionId definitionId{};
+    core::WorldPointI position{};
+    gameplay::FacingDirection facing{gameplay::FacingDirection::down};
+    [[nodiscard]] bool operator==(const NpcPlacement&) const noexcept = default;
+};
+
 struct ObjectPlacement final {
     simulation::PersistentInstanceId id{};
     simulation::DefinitionId definitionId{};
@@ -93,6 +102,7 @@ struct MapData final {
     std::vector<std::uint8_t> collision;
     std::vector<PlayerSpawn> playerSpawns;
     std::vector<EnemyPlacement> enemies;
+    std::vector<NpcPlacement> npcs;
     std::vector<ObjectPlacement> objects;
     std::vector<PickupPlacement> pickups;
     std::vector<MapLink> links;
@@ -103,6 +113,8 @@ struct MapValidationCatalogs final {
     const gameplay::WorldObjectCatalog* objects{};
     const gameplay::ItemCatalog* items{};
     const TilesetCatalog* tilesets{};
+    const gameplay::npcs::NpcCatalog* npcs{};
+    const gameplay::npcs::NpcVisualCatalog* npcVisuals{};
 };
 
 struct MapValidationResult final {

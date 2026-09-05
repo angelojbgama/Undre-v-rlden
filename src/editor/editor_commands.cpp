@@ -26,6 +26,7 @@ auto findPersistent(const std::vector<Placement>& values, simulation::Persistent
 bool persistentIdExists(const EditorDocument& document, simulation::PersistentInstanceId id) {
     if (!id) { return true; }
     return findPersistent(document.data().enemies, id) != document.data().enemies.end() ||
+           findPersistent(document.data().npcs, id) != document.data().npcs.end() ||
            findPersistent(document.data().objects, id) != document.data().objects.end() ||
            findPersistent(document.data().pickups, id) != document.data().pickups.end() ||
            findPersistent(document.regions(), id) != document.regions().end();
@@ -161,6 +162,7 @@ bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
     const bool placed = std::visit([&](auto& placement) -> bool {
         using Type = std::decay_t<decltype(placement)>;
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
+                      std::is_same_v<Type, maps::NpcPlacement> ||
                       std::is_same_v<Type, maps::ObjectPlacement> ||
                       std::is_same_v<Type, maps::PickupPlacement> ||
                       std::is_same_v<Type, RegionPlacement>) {
@@ -169,6 +171,7 @@ bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
             }
         }
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement>) document.commandData().enemies.push_back(placement);
+        else if constexpr (std::is_same_v<Type, maps::NpcPlacement>) document.commandData().npcs.push_back(placement);
         else if constexpr (std::is_same_v<Type, maps::ObjectPlacement>) document.commandData().objects.push_back(placement);
         else if constexpr (std::is_same_v<Type, maps::PickupPlacement>) document.commandData().pickups.push_back(placement);
         else if constexpr (std::is_same_v<Type, maps::PlayerSpawn>) {
@@ -190,6 +193,7 @@ bool PlaceEntityCommand::apply(EditorDocument& document, std::string& error) {
     std::visit([&](const auto& placement) {
         using Type = std::decay_t<decltype(placement)>;
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
+                      std::is_same_v<Type, maps::NpcPlacement> ||
                       std::is_same_v<Type, maps::ObjectPlacement> ||
                       std::is_same_v<Type, maps::PickupPlacement> ||
                       std::is_same_v<Type, RegionPlacement>) {
@@ -204,6 +208,8 @@ void PlaceEntityCommand::revert(EditorDocument& document) noexcept {
         using Type = std::decay_t<decltype(placement)>;
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement>) {
             auto& values=document.commandData().enemies; values.erase(findPersistent(values,placement.id));
+        } else if constexpr (std::is_same_v<Type, maps::NpcPlacement>) {
+            auto& values=document.commandData().npcs; values.erase(findPersistent(values,placement.id));
         } else if constexpr (std::is_same_v<Type, maps::ObjectPlacement>) {
             auto& values=document.commandData().objects; values.erase(findPersistent(values,placement.id));
         } else if constexpr (std::is_same_v<Type, maps::PickupPlacement>) {
@@ -218,6 +224,7 @@ void PlaceEntityCommand::revert(EditorDocument& document) noexcept {
             auto& values=document.commandRegions(); values.erase(findPersistent(values,placement.id));
         }
         if constexpr (std::is_same_v<Type, maps::EnemyPlacement> ||
+                      std::is_same_v<Type, maps::NpcPlacement> ||
                       std::is_same_v<Type, maps::ObjectPlacement> ||
                       std::is_same_v<Type, maps::PickupPlacement> ||
                       std::is_same_v<Type, RegionPlacement>) {
@@ -233,6 +240,7 @@ MoveEntityCommand::MoveEntityCommand(SelectionKind kind, simulation::PersistentI
 
 bool MoveEntityCommand::set(EditorDocument& document, core::WorldPointI value) noexcept {
     if (kind_ == SelectionKind::enemy) { auto it=findPersistent(document.commandData().enemies,id_); if(it!=document.commandData().enemies.end()){it->position=value;return true;} }
+    if (kind_ == SelectionKind::npc) { auto it=findPersistent(document.commandData().npcs,id_); if(it!=document.commandData().npcs.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::object) { auto it=findPersistent(document.commandData().objects,id_); if(it!=document.commandData().objects.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::pickup) { auto it=findPersistent(document.commandData().pickups,id_); if(it!=document.commandData().pickups.end()){it->position=value;return true;} }
     if (kind_ == SelectionKind::region) { auto it=findPersistent(document.commandRegions(),id_); if(it!=document.commandRegions().end()){it->bounds.x=value.x;it->bounds.y=value.y;return true;} }
@@ -254,6 +262,7 @@ bool DeleteEntityCommand::apply(EditorDocument& document, std::string& error) {
     };
     bool removed=false;
     if(kind_==SelectionKind::enemy)removed=removePersistent(document.commandData().enemies);
+    else if(kind_==SelectionKind::npc)removed=removePersistent(document.commandData().npcs);
     else if(kind_==SelectionKind::object)removed=removePersistent(document.commandData().objects);
     else if(kind_==SelectionKind::pickup)removed=removePersistent(document.commandData().pickups);
     else if(kind_==SelectionKind::region)removed=removePersistent(document.commandRegions());
@@ -268,6 +277,7 @@ void DeleteEntityCommand::revert(EditorDocument& document) noexcept {
     if(!removed_)return;
     std::visit([&](auto value){using Type=std::decay_t<decltype(value)>;
         if constexpr(std::is_same_v<Type,maps::EnemyPlacement>)insertAt(document.commandData().enemies,index_,std::move(value));
+        else if constexpr(std::is_same_v<Type,maps::NpcPlacement>)insertAt(document.commandData().npcs,index_,std::move(value));
         else if constexpr(std::is_same_v<Type,maps::ObjectPlacement>)insertAt(document.commandData().objects,index_,std::move(value));
         else if constexpr(std::is_same_v<Type,maps::PickupPlacement>)insertAt(document.commandData().pickups,index_,std::move(value));
         else if constexpr(std::is_same_v<Type,maps::PlayerSpawn>)insertAt(document.commandData().playerSpawns,index_,std::move(value));
@@ -334,6 +344,7 @@ std::vector<TileCoordinate> collisionFloodCells(const maps::MapData& data,std::u
 std::optional<AuthoredPlacement> duplicatePlacement(const EditorDocument& document,SelectionKind kind,simulation::PersistentInstanceId id,simulation::PersistentInstanceId newId,int offset){
     if(!newId)return std::nullopt;
     if(kind==SelectionKind::enemy){auto it=findPersistent(document.data().enemies,id);if(it!=document.data().enemies.end()){auto v=*it;v.id=newId;v.position.x+=offset;v.position.y+=offset;return v;}}
+    if(kind==SelectionKind::npc){auto it=findPersistent(document.data().npcs,id);if(it!=document.data().npcs.end()){auto v=*it;v.id=newId;v.position.x+=offset;v.position.y+=offset;return v;}}
     if(kind==SelectionKind::object){auto it=findPersistent(document.data().objects,id);if(it!=document.data().objects.end()){auto v=*it;v.id=newId;v.position.x+=offset;v.position.y+=offset;return v;}}
     if(kind==SelectionKind::pickup){auto it=findPersistent(document.data().pickups,id);if(it!=document.data().pickups.end()){auto v=*it;v.id=newId;v.position.x+=offset;v.position.y+=offset;return v;}}
     if(kind==SelectionKind::region){auto it=findPersistent(document.regions(),id);if(it!=document.regions().end()){auto v=*it;v.id=newId;v.regionId+="_copy";v.bounds.x+=offset;v.bounds.y+=offset;return v;}}

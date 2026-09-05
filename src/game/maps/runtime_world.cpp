@@ -9,6 +9,9 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
     const MapData& data, const simulation::SpawnId& spawnId) const {
     const auto validation = validateMapData(data, &catalogs_);
     if (!validation) { return {nullptr, validation.error}; }
+    if (!data.npcs.empty() && !npcFactory_) {
+        return {nullptr, "map contains NPC placements but no NPC factory is configured"};
+    }
     const auto spawn = std::find_if(data.playerSpawns.begin(), data.playerSpawns.end(),
         [&](const PlayerSpawn& candidate) { return candidate.id == spawnId; });
     if (spawn == data.playerSpawns.end()) { return {nullptr, "requested player spawn does not exist"}; }
@@ -45,6 +48,11 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
             result->enemies_.push_back({placement.id, enemyFactory_.create(
                 placement.definitionId, placement.position, placement.facing)});
         }
+        result->npcs_.reserve(data.npcs.size());
+        for (const auto& placement : data.npcs) {
+            result->npcs_.push_back({placement.id, npcFactory_->create(
+                placement.definitionId, placement.position, placement.facing)});
+        }
         result->objects_.reserve(data.objects.size());
         for (const auto& placement : data.objects) {
             result->objects_.push_back({placement.id, objectFactory_.create(
@@ -65,6 +73,9 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         if (result) {
             for (auto& enemy : result->enemies_) {
                 static_cast<void>(handles_.destroy(enemy.instance.handle()));
+            }
+            for (auto& npc : result->npcs_) {
+                static_cast<void>(handles_.destroy(npc.instance.handle()));
             }
             for (auto& object : result->objects_) {
                 static_cast<void>(handles_.destroy(object.instance.handle()));

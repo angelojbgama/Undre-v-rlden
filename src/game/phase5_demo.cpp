@@ -282,10 +282,11 @@ struct Phase7Demo::State final {
             availableVisuals);
         objectFactory = std::make_unique<gameplay::WorldObjectFactory>(
             handles, objectCatalog, itemCatalog);
+        npcFactory = std::make_unique<gameplay::npcs::NpcFactory>(handles, npcCatalog);
         validationCatalogs = mapValidationCatalogs(content);
         runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
             validationCatalogs, *enemyFactory, *objectFactory, handles,
-            runtimeTilesets);
+            runtimeTilesets, npcFactory.get());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -604,6 +605,12 @@ struct Phase7Demo::State final {
         std::int64_t selectedDistance{};
         const auto playerFeet = player.feetPosition();
         const auto playerArea = player.interactionArea().bounds;
+        const auto npcInteraction = gameplay::npcs::interactNearest(
+            playerFeet, playerArea, activeWorld().npcs());
+        if (npcInteraction.npc) {
+            lastEvent = "NPC INTERACTION";
+            return;
+        }
         for (auto& persistent : activeWorld().objects()) {
             auto& object = persistent.instance;
             const auto area = object.interactionArea();
@@ -793,7 +800,7 @@ struct Phase7Demo::State final {
     }
 
     void renderActors(render::Renderer2D& renderer) const {
-        enum class ActorKind { player, enemy, object, pickup };
+        enum class ActorKind { player, enemy, npc, object, pickup };
         struct Actor {
             int sortY;
             simulation::EntityHandle handle;
@@ -803,14 +810,19 @@ struct Phase7Demo::State final {
         };
         std::vector<Actor> actors;
         const auto& enemies = activeWorld().enemies();
+        const auto& npcs = activeWorld().npcs();
         const auto& objects = activeWorld().objects();
         const auto& pickups = activeWorld().pickups();
-        actors.reserve(enemies.size() + objects.size() + pickups.size() + 1);
+        actors.reserve(enemies.size() + npcs.size() + objects.size() + pickups.size() + 1);
         actors.push_back({player.feetPosition().y, player.entityHandle(), ActorKind::player});
         for (std::size_t index = 0; index < enemies.size(); ++index) {
             actors.push_back({enemies[index].instance.feetPosition().y,
                               enemies[index].instance.handle(),
                               ActorKind::enemy, index});
+        }
+        for (std::size_t index = 0; index < npcs.size(); ++index) {
+            actors.push_back({npcs[index].instance.position().y,
+                              npcs[index].instance.handle(), ActorKind::npc, 0, index});
         }
         for (std::size_t index = 0; index < objects.size(); ++index) {
             actors.push_back({objects[index].instance.position().y,
@@ -836,6 +848,12 @@ struct Phase7Demo::State final {
                 render::drawAnimator(renderer, enemyVisuals[actor.enemyIndex].animator(),
                                      {logical.x, logical.y},
                                      enemyVisuals[actor.enemyIndex].flipX());
+            } else if (actor.kind == ActorKind::npc) {
+                const auto& npc = npcs[actor.contentIndex].instance;
+                const auto& visualSet = npcCatalogVisuals.require(npc.definition().visualSetId);
+                const auto logical = camera.worldToLogical(npc.position());
+                renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20},
+                                  visualSet.markerColor);
             } else if (actor.kind == ActorKind::object) {
                 const auto logical = camera.worldToLogical(
                     objects[actor.contentIndex].instance.position());
@@ -1064,6 +1082,8 @@ struct Phase7Demo::State final {
     gameplay::creatures::EnemyCatalog& enemyCatalog{content.enemies()};
     gameplay::ItemCatalog& itemCatalog{content.items()};
     gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
+    gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
+    gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;
@@ -1085,6 +1105,7 @@ struct Phase7Demo::State final {
     std::vector<WorldObjectVisualInstance> objectVisuals;
     std::unique_ptr<gameplay::creatures::EnemyFactory> enemyFactory;
     std::unique_ptr<gameplay::WorldObjectFactory> objectFactory;
+    std::unique_ptr<gameplay::npcs::NpcFactory> npcFactory;
     maps::MapValidationCatalogs validationCatalogs{};
     std::unique_ptr<maps::RuntimeWorldBuilder> runtimeBuilder;
     maps::MapCatalog mapCatalog;

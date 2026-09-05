@@ -707,13 +707,21 @@ Vertical slice com duas salas, transição e pelo menos um delta persistente.
 
 ## Status
 
-**IN PROGRESS — Block 1.** O editor e runtime compartilham `TilesetCatalog` no
+**IN PROGRESS — Block 1 / 9F.** O editor e runtime compartilham `TilesetCatalog` no
 `GameContentRegistry`. Multi-tileset authoring está implementado: `MapTileReference`
 persiste `DefinitionId`, o runtime resolve `world::TilesetId` local e o Map Maker oferece
 selector, palette dinâmica, painting/rectangle/fill e eyedropper por pack. A validação
 rejeita tileset desconhecido, source index fora do atlas e tile size incompatível. DMAP e
 DSAV permanecem v1.0. O smoke interativo geral ainda é gate separado para declarar Block 1
 como concluído.
+
+O fechamento 9F adiciona uma sessão mínima de playtest em memória: ela copia o `MapData`,
+resolve o spawn pela política oficial e passa o snapshot pelo `RuntimeWorldBuilder` e
+pelas factories de conteúdo; parar o playtest libera os handles temporários e deixa o
+`EditorDocument` intacto. Após o documento ter um caminho authored, o shell Win32 agenda
+um backup periódico em `<arquivo>.autosave.dmap`; esse sidecar é validado e nunca altera
+o caminho, a revisão ou o estado dirty do documento. A validação continua orientada por
+mutação/revisão, e o desenho de tiles continua limitado à faixa visível.
 
 O checkpoint semântico adiciona `AuthoringSemanticRegistry` para as 72 células visíveis
 do atlas Dungeon, oito stamps visuais, paleta/inspector semânticos e validação advisory
@@ -821,6 +829,15 @@ Não criar Scene Graph universal nem usar Scene como `GameObject` global.
 ---
 
 # Fase 10 — NPC e diálogo
+
+## Block 10A — NPC Foundation (IN PROGRESS)
+
+Implemented in this increment: reusable `NpcDefinition`/`NpcCatalog`, runtime
+`NpcInstance`/`NpcFactory`, shared `InteractionArea` detection, editor placement
+commands, and authored persistence through DMAP 1.1's optional `NPCS` chunk. Two
+content definitions (`npc.guard` and `npc.scholar`) exercise the same runtime system.
+Dialogue data, sessions, choices, conditions and actions are deliberately deferred to
+Blocks 10B–10D.
 
 ## Dependências
 

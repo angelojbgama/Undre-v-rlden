@@ -22,7 +22,7 @@ namespace underworld::editor {
 
 namespace maps = underworld::game::maps;
 
-enum class SelectionKind { none, enemy, object, pickup, playerSpawn, mapLink, region };
+enum class SelectionKind { none, enemy, object, pickup, npc, playerSpawn, mapLink, region };
 
 struct EditorSelection final {
     SelectionKind kind{SelectionKind::none};
@@ -154,6 +154,11 @@ public:
     bool save(const game::GameContentRegistry& content, std::string& error);
     bool saveAs(const std::filesystem::path& path,
                 const game::GameContentRegistry& content, std::string& error);
+    // Writes a validated DMAP sidecar without changing the document path or
+    // dirty state. The sidecar must not be the authored document path.
+    bool saveBackup(const std::filesystem::path& path,
+                    const game::GameContentRegistry& content, std::string& error) const;
+    [[nodiscard]] std::optional<std::filesystem::path> autosavePath() const;
 
     bool execute(std::unique_ptr<EditorCommand> command, std::string& error);
     bool undo();

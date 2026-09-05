@@ -87,7 +87,7 @@ MapValidationResult validateMapData(const MapData& data,
             }
         }
     }
-    if (data.enemies.size() + data.objects.size() + data.pickups.size() >
+    if (data.enemies.size() + data.npcs.size() + data.objects.size() + data.pickups.size() >
         MapLimits::maximumPlacements) { return failure("placement count exceeds safety limit"); }
 
     std::unordered_set<std::uint64_t> persistentIds;
@@ -101,6 +101,19 @@ MapValidationResult validateMapData(const MapData& data,
         }
         if (catalogs && catalogs->enemies && !catalogs->enemies->find(enemy.definitionId)) {
             return failure("enemy placement references an unknown definition");
+        }
+    }
+    for (const auto& npc : data.npcs) {
+        if (!acceptId(npc.id)) { return failure("persistent instance id is zero or duplicate"); }
+        if (npc.definitionId.empty() || !validFacing(npc.facing)) {
+            return failure("NPC placement is invalid");
+        }
+        if (catalogs && catalogs->npcs) {
+            const auto* definition = catalogs->npcs->find(npc.definitionId);
+            if (!definition) { return failure("NPC placement references an unknown definition"); }
+            if (catalogs->npcVisuals && !catalogs->npcVisuals->find(definition->visualSetId)) {
+                return failure("NPC definition references an unknown visual definition");
+            }
         }
     }
     for (const auto& object : data.objects) {
@@ -165,7 +178,8 @@ bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {
     if (!(a.id == b.id) || a.width != b.width || a.height != b.height ||
         a.tileSize != b.tileSize || a.tileReferences != b.tileReferences ||
         a.layers != b.layers || a.collision != b.collision ||
-        a.playerSpawns != b.playerSpawns || a.enemies != b.enemies || a.links != b.links ||
+        a.playerSpawns != b.playerSpawns || a.enemies != b.enemies || a.npcs != b.npcs ||
+        a.links != b.links ||
         a.objects.size() != b.objects.size() || a.pickups.size() != b.pickups.size()) { return false; }
     for (std::size_t i = 0; i < a.objects.size(); ++i) {
         const auto& x = a.objects[i]; const auto& y = b.objects[i];

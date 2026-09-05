@@ -20,6 +20,7 @@ namespace underworld::editor {
 namespace {
 constexpr wchar_t className[]=L"DungeonUnderworldMapMakerWindow";
 enum MenuId : UINT { fileNew=1001,fileOpen,fileSave,fileSaveAs,fileExit,editUndo,editRedo,viewGrid,viewFrame };
+constexpr UINT_PTR autosaveTimerId = 1;
 
 std::filesystem::path executableDirectory(){std::wstring path(260,L'\0');for(;;){const DWORD length=GetModuleFileNameW(nullptr,path.data(),static_cast<DWORD>(path.size()));if(length==0)throw std::runtime_error("cannot determine executable directory");if(length<path.size()){path.resize(length);return std::filesystem::path(path).parent_path();}path.resize(path.size()*2);}}
 std::filesystem::path findAssetRoot(){for(auto start:{std::filesystem::current_path(),executableDirectory()})for(int depth=0;depth<6&&!start.empty();++depth){const auto candidate=start/"Dungeon Underworld";std::error_code error;if(std::filesystem::is_directory(candidate,error))return candidate;const auto parent=start.parent_path();if(parent==start)break;start=parent;}return{};}
@@ -32,10 +33,10 @@ public:
         WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=&procedure;wc.hInstance=instance_;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=className;
         if(!RegisterClassExW(&wc))return 1;registered_=true;
         window_=CreateWindowExW(0,className,L"Dungeon Underworld - Map Maker",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1200,800,nullptr,createMenu(),instance_,this);
-        if(!window_)return 1;ShowWindow(window_,show_);UpdateWindow(window_);
+        if(!window_)return 1;ShowWindow(window_,show_);UpdateWindow(window_);SetTimer(window_,autosaveTimerId,5000,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){TranslateMessage(&message);DispatchMessageW(&message);}return static_cast<int>(message.wParam);
     }
-    ~EditorWindow(){if(window_&&IsWindow(window_))DestroyWindow(window_);if(registered_)UnregisterClassW(className,instance_);}
+    ~EditorWindow(){if(window_&&IsWindow(window_)){KillTimer(window_,autosaveTimerId);DestroyWindow(window_);}if(registered_)UnregisterClassW(className,instance_);}
 private:
     HMENU createMenu(){HMENU bar=CreateMenu(),file=CreatePopupMenu(),edit=CreatePopupMenu(),view=CreatePopupMenu();AppendMenuW(file,MF_STRING,fileNew,L"&New\tCtrl+N");AppendMenuW(file,MF_STRING,fileOpen,L"&Open...\tCtrl+O");AppendMenuW(file,MF_STRING,fileSave,L"&Save\tCtrl+S");AppendMenuW(file,MF_STRING,fileSaveAs,L"Save &As...");AppendMenuW(file,MF_SEPARATOR,0,nullptr);AppendMenuW(file,MF_STRING,fileExit,L"E&xit");AppendMenuW(edit,MF_STRING,editUndo,L"&Undo\tCtrl+Z");AppendMenuW(edit,MF_STRING,editRedo,L"&Redo\tCtrl+Y");AppendMenuW(view,MF_STRING,viewGrid,L"&Grid");AppendMenuW(view,MF_STRING,viewFrame,L"&Frame Map\tHome");AppendMenuW(bar,MF_POPUP,reinterpret_cast<UINT_PTR>(file),L"&File");AppendMenuW(bar,MF_POPUP,reinterpret_cast<UINT_PTR>(edit),L"&Edit");AppendMenuW(bar,MF_POPUP,reinterpret_cast<UINT_PTR>(view),L"&View");return bar;}
     static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp){EditorWindow* self=reinterpret_cast<EditorWindow*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));if(message==WM_NCCREATE){self=static_cast<EditorWindow*>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams);SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));self->window_=hwnd;}return self?self->handle(message,wp,lp):DefWindowProcW(hwnd,message,wp,lp);}
@@ -55,6 +56,7 @@ private:
         case WM_KEYUP:if(wp==VK_SPACE)input_.space=false;modifiers();return 0;
         case WM_KILLFOCUS:if(GetCapture()==window_)ReleaseCapture();input_.pointer.leftDown=false;input_.pointer.middleDown=false;input_.space=false;input_.focusLost=true;InvalidateRect(window_,nullptr,FALSE);return 0;
         case WM_COMMAND:menuCommand(LOWORD(wp));InvalidateRect(window_,nullptr,FALSE);return 0;
+        case WM_TIMER:if(wp==autosaveTimerId){std::string error;app_.autosave(error);InvalidateRect(window_,nullptr,FALSE);}return 0;
         case WM_CLOSE:if(confirmUnsaved())DestroyWindow(window_);return 0;
         case WM_DESTROY:window_=nullptr;PostQuitMessage(0);return 0;
         default:return DefWindowProcW(window_,message,wp,lp);}
