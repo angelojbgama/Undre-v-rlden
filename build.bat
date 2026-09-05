@@ -279,6 +279,10 @@ echo Compiling BMP writer...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\bmp_writer.obj" "src\game\audit\bmp_writer.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling headless audit platform...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\headless_audit_platform.obj" "src\engine\platform\headless\headless_audit_platform.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [35/40] Compiling game loop...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\game.obj" "src\game\game.cpp"
 if errorlevel 1 goto :build_failed
@@ -298,7 +302,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
     "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\creature_engine.obj" ^
-    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" ^
+    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" ^
     "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
     "build\obj\editor_app.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
@@ -324,7 +328,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
-    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" ^
+    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
@@ -359,7 +363,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\runtime_visual_sync.obj" ^
-    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" ^
+    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^

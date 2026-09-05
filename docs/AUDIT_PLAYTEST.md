@@ -29,6 +29,13 @@ arquivo é BMP 32-bit bottom-up, com dimensões e pixels do framebuffer lógico;
 captura da janela ou do desktop. `AuditSession::captureScreenshot` restringe o nome
 ao diretório `screenshots/` da sessão e atualiza o contador do resumo.
 
+O Block C adiciona `HeadlessAuditPlatform`, uma implementação do contrato real de
+`Platform` sem janela, Win32, X11 ou outro backend gráfico. Ela oferece relógio
+controlável, input lógico agendado por tick, `DebugInputState`, recepção e cópia do
+último framebuffer apresentado, decoder injetado e logs operacionais observáveis.
+O tempo só avança quando o chamador solicita; não há `sleep` nem agendamento de wall
+clock dentro da plataforma.
+
 Uma sessão habilitada usa um identificador explícito seguro ou gera um timestamp UTC.
 O diretório padrão é `audit/<session-id>/`, que é somente artefato de desenvolvimento
 e está no `.gitignore`. A sessão cria `screenshots/` desde já para manter o contrato
@@ -45,7 +52,7 @@ projéteis ativos.
 ```text
 A — AuditSession, eventos estruturados e snapshot       DONE
 B — captura do framebuffer lógico em BMP                 DONE
-C — HeadlessAuditPlatform                                DEFERRED
+C — HeadlessAuditPlatform                                DONE
 D — playtest runner/scripted input                       DEFERRED
 E — integração de auditoria manual no Windows/F12       DEFERRED
 F — build portátil Linux                                 DEFERRED

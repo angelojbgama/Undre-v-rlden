@@ -1434,3 +1434,11 @@ the renderer's read-only `PixelBufferView` in RGBA8 and writes a 32-bit bottom-u
 without capturing a desktop window. Screenshot names are confined to the audit
 session's `screenshots` directory. This adapter is still passive; automatic capture,
 F12 wiring and headless presentation belong to later blocks.
+
+`HeadlessAuditPlatform` implements the same `Platform` contract without creating a
+window or depending on Win32/X11. It receives an injected `ImageDecoder`, advances a
+controlled monotonic clock only when requested, schedules platform-neutral
+`InputState`/`DebugInputState` values by simulation tick, stores operational logs and
+copies the real `PixelBufferView` passed to `present`. It is a platform adapter, not a
+second gameplay implementation; scenario orchestration remains the responsibility of
+the later playtest runner.

@@ -1176,3 +1176,9 @@ The logical framebuffer screenshot increment is also complete: `writeBmp32` pres
 the framebuffer dimensions and RGBA8 pixels in a development-only 32-bit BMP, and
 `AuditSession` can place named captures inside its session directory. Desktop capture,
 automatic checkpoints, headless presentation and the playtest runner remain deferred.
+
+The headless platform increment is now complete. `HeadlessAuditPlatform` exercises
+the existing `Platform` boundary with deterministic caller-controlled time, scripted
+logical input, debug input, injected image decoding, operational logs and real
+framebuffer reception. It intentionally does not run a game loop or define scenario
+assertions; those belong to Blocks D and later.

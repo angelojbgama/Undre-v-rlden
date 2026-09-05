@@ -7,6 +7,7 @@
 #include "engine/platform/image_decoder.h"
 #include "engine/platform/action_edge_buffer.h"
 #include "engine/platform/input_state.h"
+#include "engine/platform/headless/headless_audit_platform.h"
 #include "engine/platform/presentation.h"
 #include "engine/render/animation.h"
 #include "engine/render/bitmap_font.h"
@@ -4403,6 +4404,58 @@ void testAuditFramebufferScreenshots() {
     std::filesystem::remove_all(root, cleanupError);
 }
 
+void testHeadlessAuditPlatform() {
+    using namespace underworld;
+
+    class NullImageDecoder final : public platform::ImageDecoder {
+    public:
+        [[nodiscard]] core::ImageData decode(const std::filesystem::path&) override {
+            return {};
+        }
+    } decoder;
+
+    platform::HeadlessAuditPlatform headless(decoder, std::filesystem::path{"test/bin"});
+    expect(headless.isRunning() && !headless.isMinimized() && headless.nowSeconds() == 0.0,
+           "headless platform starts running with a deterministic zero clock");
+    platform::InputState moveRight;
+    moveRight.moveRight = true;
+    headless.setInput(1, moveRight);
+    headless.holdInput(2, 3, moveRight);
+    platform::InputState attack;
+    attack.primaryAttackPressed = true;
+    headless.setInput(4, attack);
+    platform::DebugInputState debug;
+    debug.toggleCollisionPressed = true;
+    headless.setDebugInput(4, debug);
+    expect(headless.consumeInputState() == moveRight &&
+               headless.consumeInputState() == moveRight &&
+               headless.consumeInputState() == moveRight,
+           "headless platform schedules held logical input by simulation tick");
+    expect(headless.consumeInputState() == attack &&
+               headless.consumeDebugInput().toggleCollisionPressed,
+           "headless platform injects action edges and debug input without physical key codes");
+    headless.advanceFixedTicks(4);
+    expect(approximately(headless.nowSeconds(), 4.0 / 60.0),
+           "headless clock advances by an exact fixed-tick duration");
+
+    render::Framebuffer framebuffer(2, 1);
+    framebuffer.pixels()[0] = {10, 20, 30, 40};
+    framebuffer.pixels()[1] = {50, 60, 70, 80};
+    expect(headless.present(framebuffer.view()), "headless platform receives the real framebuffer");
+    const auto presented = headless.lastPresentedFrame();
+    const auto* pixels = reinterpret_cast<const std::uint8_t*>(presented.pixels);
+    expect(presented.width == 2 && presented.height == 1 && presented.strideBytes == 8U &&
+               pixels != nullptr && pixels[0] == 10U && pixels[3] == 40U && pixels[4] == 50U,
+           "headless platform retains a tightly packed logical frame for audit consumers");
+    expect(!headless.present({nullptr, 2, 1, 8, core::PixelFormat::rgba8}),
+           "headless platform rejects an invalid presented surface");
+    headless.log(platform::LogLevel::info, "headless checkpoint");
+    expect(headless.logs().size() == 1U && headless.logs()[0].message == "headless checkpoint",
+           "headless platform retains operational log messages");
+    headless.stop();
+    expect(!headless.isRunning(), "headless platform has a controlled lifetime");
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -4497,6 +4550,7 @@ int main() {
         testMapCompositionFoundation();
         testAuditSessionFoundation();
         testAuditFramebufferScreenshots();
+        testHeadlessAuditPlatform();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
