@@ -1076,6 +1076,14 @@ void testPlayerVisualAndCameraFollow() {
            "left sword attack mirrors the authored right-facing attack sheet");
     expect(combatVisual.consumeMarkerEvents().size() == 1,
            "PlayerVisual forwards attack animation markers exactly once");
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right,
+                        gameplay::PlayerActionState::bowAttack, 0);
+    expect(combatVisual.animator().clip().id() == "bow.side" && combatVisual.flipX(),
+           "right bow attack mirrors the authored left-facing attack sheet");
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::left,
+                        gameplay::PlayerActionState::bowAttack, 0);
+    expect(combatVisual.animator().clip().id() == "bow.side" && !combatVisual.flipX(),
+           "left bow attack preserves the authored bow sheet orientation");
     combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::up,
                         gameplay::PlayerActionState::bowAttack, 0);
     expect(combatVisual.animator().clip().id() == "bow.up" &&

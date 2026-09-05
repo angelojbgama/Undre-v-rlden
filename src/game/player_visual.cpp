@@ -73,8 +73,7 @@ void PlayerVisual::update(gameplay::PlayerMotionState motion,
     // Idle/walk sheets contain the left-facing side view.  The authored attack
     // sheets use the opposite side orientation, so their horizontal transform
     // is intentionally inverted without changing gameplay-facing direction.
-    if (action == gameplay::PlayerActionState::swordAttack ||
-        action == gameplay::PlayerActionState::bowAttack) {
+    if (action == gameplay::PlayerActionState::swordAttack) {
         flipX_ = facing == gameplay::FacingDirection::left;
     } else {
         flipX_ = facing == gameplay::FacingDirection::right;
