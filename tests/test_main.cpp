@@ -1060,12 +1060,15 @@ void testPlayerVisualAndCameraFollow() {
     underworld::game::PlayerVisual::DirectionalClips bow{
         makeTestClip("bow.down", false), makeTestClip("bow.up", false),
         makeTestClip("bow.side", false)};
+    underworld::game::PlayerVisual::DirectionalClips hurt{
+        makeTestClip("hurt.down", false), makeTestClip("hurt.up", false),
+        makeTestClip("hurt.side", false)};
     underworld::game::PlayerVisual combatVisual(
         {makeTestClip("idle2.down", true), makeTestClip("idle2.up", true),
          makeTestClip("idle2.side", true)},
         {makeTestClip("walk2.down", true), makeTestClip("walk2.up", true),
          makeTestClip("walk2.side", true)},
-        std::move(sword), std::move(bow));
+        std::move(sword), std::move(bow), std::move(hurt));
     combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right,
                         gameplay::PlayerActionState::swordAttack, 2);
     expect(combatVisual.animator().clip().id() == "sword.side" && !combatVisual.flipX(),
@@ -1089,6 +1092,10 @@ void testPlayerVisualAndCameraFollow() {
     expect(combatVisual.animator().clip().id() == "bow.up" &&
                combatVisual.animator().frameIndex() == 0,
            "changing attack action starts the selected bow clip once at frame zero");
+    combatVisual.update(gameplay::PlayerMotionState::idle, gameplay::FacingDirection::right,
+                        gameplay::PlayerActionState::hurt, 0);
+    expect(combatVisual.animator().clip().id() == "hurt.side" && combatVisual.flipX(),
+           "Player damage selects the directional hurt visual and mirrors its side view");
 
     underworld::render::Camera2D camera(272, 224);
     camera.centerOn({500, 400});
@@ -1177,6 +1184,12 @@ void testActionCommandsAndPlayerAttackState() {
     expect(player.actionState() == gameplay::PlayerActionState::bowAttack &&
                player.attackInstance() != firstAttack,
            "secondary command starts a distinct bow attack instance");
+    player.beginHurt();
+    const auto hurtPosition = player.subpixelPosition();
+    player.update(actionCommand(5, false, false, 1, 0), grid, 16);
+    expect(player.actionState() == gameplay::PlayerActionState::hurt &&
+               player.subpixelPosition() == hurtPosition,
+           "damaged Player enters hurt state and cannot move while hurt animation plays");
     expect(player.hurtbox().bounds == underworld::world::AabbI{94, 78, 14, 22} &&
                player.collisionBody() == underworld::world::AabbI{96, 92, 10, 8},
            "Player Hurtbox and CollisionBody have independent dimensions and offsets");
@@ -1828,10 +1841,67 @@ void testCreatureCombatIntegration() {
                                   gameplay::FacingDirection::left);
     auto skull = factory.create(creatures::skullEnemyId(), {260, 200},
                                 gameplay::FacingDirection::left);
+    auto rearSoldier = factory.create(creatures::soldierEnemyId(), {194, 200},
+                                      gameplay::FacingDirection::right);
     creatures::EnemyBehaviorSystem behavior;
     underworld::world::CollisionGrid grid(64, 64);
     simulation::EventBuffer events;
     gameplay::CombatSystem combat;
+
+    const auto& playerSword = attacks.require(gameplay::playerSwordAttackId());
+    const gameplay::Hitbox forwardSword{
+        playerSword.meleeHitboxes->forFacing(gameplay::FacingDirection::right).at(
+            player.feetPosition()),
+        {playerHandle, 1}, gameplay::Faction::player, playerSword.damage,
+        playerSword.damage.knockbackPixels, 0, true};
+    const auto rearResolution = combat.resolve(
+        forwardSword, rearSoldier.combatTarget(), events);
+    expect(gameplay::overlaps(player.collisionBody(), rearSoldier.hurtbox().bounds) &&
+               !rearResolution.damaged && rearSoldier.combatant().health.current ==
+                   rearSoldier.combatant().health.maximum,
+           "Player body overlap behind an enemy does not deal damage; only sword hitbox does");
+
+    auto swordTarget = factory.create(creatures::soldierEnemyId(), {220, 200},
+                                      gameplay::FacingDirection::left);
+    const auto swordStart = swordTarget.feetPosition();
+    const gameplay::Hitbox swordHit{
+        playerSword.meleeHitboxes->forFacing(gameplay::FacingDirection::right).at(
+            player.feetPosition()),
+        {playerHandle, 2}, gameplay::Faction::player, playerSword.damage,
+        playerSword.damage.knockbackPixels, 0, true};
+    const auto swordResolution = combat.resolve(
+        swordHit, swordTarget.combatTarget(), events);
+    swordTarget.applyKnockback(swordResolution.requestedKnockbackX,
+                               swordResolution.requestedKnockbackY, grid, 16);
+    expect(swordResolution.damaged && swordResolution.requestedKnockbackX == 32 &&
+               swordTarget.feetPosition().x == swordStart.x + 32,
+           "Player sword damage applies the configured knockback to the enemy");
+
+    const auto contactPlayerHandle = handles.create();
+    gameplay::Player contactPlayer({1}, contactPlayerHandle, {500, 500});
+    auto contactEnemy = factory.create(creatures::soldierEnemyId(), {494, 500},
+                                       gameplay::FacingDirection::right);
+    const gameplay::Hitbox contactHit{
+        contactEnemy.collisionBody(),
+        {contactEnemy.handle(), 2}, gameplay::Faction::enemy, {1, 32}, 32, 0, true};
+    const auto contactResolution = combat.resolve(
+        contactHit, contactPlayer.combatTarget(), events);
+    contactPlayer.applyDamageKnockback(contactResolution.requestedKnockbackX,
+                                       contactResolution.requestedKnockbackY,
+                                       grid, 16);
+    const auto contactStart = contactPlayer.feetPosition();
+    contactPlayer.update(movementCommand(1, 0, 0, {1}), grid, 16);
+    const auto contactMidpoint = contactPlayer.feetPosition();
+    for (std::uint64_t tick = 2; tick <= 8; ++tick) {
+        contactPlayer.update(movementCommand(tick, 0, 0, {1}), grid, 16);
+    }
+    expect(contactResolution.damaged && contactPlayer.health().current ==
+               contactPlayer.health().maximum - 1 &&
+               contactResolution.requestedKnockbackX == 32 &&
+               contactResolution.requestedKnockbackY == 0 &&
+               contactMidpoint.x > contactStart.x &&
+               contactPlayer.feetPosition().x == contactStart.x + 32,
+           "All Player damage uses a shared smooth 32-pixel knockback rule");
 
     const auto& soldierProfile = behaviors.require(creatures::soldierBehaviorId());
     static_cast<void>(behavior.update(soldier, playerHandle, player.feetPosition(), true,
@@ -2741,7 +2811,7 @@ void testPhase10DialogueDataModel() {
     bool rejectedAmbiguousTransition = false;
     try {
         auto invalid = dialogue::makeGuardDialogueDefinition();
-        invalid.nodes[0].choices.push_back({"Continue", invalid.nodes[1].id});
+        invalid.nodes[0].choices.push_back({"Continue", invalid.nodes[1].id, {}, {}});
         dialogue::DialogueCatalog catalog;
         catalog.add(std::move(invalid));
     } catch (const std::invalid_argument&) {

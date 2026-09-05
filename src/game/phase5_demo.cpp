@@ -225,6 +225,7 @@ struct Phase7Demo::State final {
           std::shared_ptr<const render::Image> walkImage,
           std::shared_ptr<const render::Image> swordImage,
           std::shared_ptr<const render::Image> bowImage,
+          std::shared_ptr<const render::Image> hurtImage,
           std::shared_ptr<const render::Image> arrowImage,
           std::shared_ptr<const render::Image> impactImage,
           std::shared_ptr<const render::Image> soldierIdleImage,
@@ -253,6 +254,7 @@ struct Phase7Demo::State final {
           walkSheet(std::make_shared<const render::SpriteSheet>(std::move(walkImage))),
           swordSheet(std::make_shared<const render::SpriteSheet>(std::move(swordImage))),
           bowSheet(std::make_shared<const render::SpriteSheet>(std::move(bowImage))),
+          hurtSheet(std::make_shared<const render::SpriteSheet>(std::move(hurtImage))),
           arrowSheet(std::make_shared<const render::SpriteSheet>(std::move(arrowImage))),
           impactSheet(std::make_shared<const render::SpriteSheet>(std::move(impactImage))),
           soldierIdleSheet(std::make_shared<const render::SpriteSheet>(
@@ -337,7 +339,8 @@ struct Phase7Demo::State final {
                       {{}, {"attack_on"}, {}, {"attack_off"}}),
             makeClips("player.bow", bowSheet, 32, 2,
                       bowDefinition.totalTicks / 2, {16, 31}, false,
-                      {{}, {"spawn_projectile"}}));
+                      {{}, {"spawn_projectile"}}),
+            makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         const auto availableVisuals = enemyVisualCatalog.ids();
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
@@ -582,9 +585,14 @@ struct Phase7Demo::State final {
     void applyResolution(const gameplay::CombatResolution& resolution) {
         if (!resolution.damaged) { return; }
         if (resolution.target == player.entityHandle()) {
-            player.applyKnockback(resolution.requestedKnockbackX,
-                                  resolution.requestedKnockbackY,
-                                  activeMap().collision(), activeMap().tileSize());
+            activeSword.enabled = false;
+            player.beginHurt();
+            playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
+            player.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
+                player.combatant().invulnerabilityTicks, playerDamageInvulnerabilityTicks);
+            player.applyDamageKnockback(resolution.requestedKnockbackX,
+                                        resolution.requestedKnockbackY,
+                                        activeMap().collision(), activeMap().tileSize());
             return;
         }
         auto& enemies = activeWorld().enemies();
@@ -608,6 +616,69 @@ struct Phase7Demo::State final {
         for (auto& object : activeWorld().objects()) {
             if (object.instance.combatant()) {
                 applyResolution(combat.resolve(activeSword, object.instance.combatTarget(), events));
+            }
+        }
+    }
+
+    void resolveEnemyContacts() {
+        constexpr int contactDamage = 1;
+        constexpr int contactKnockback = gameplay::Player::damageKnockbackPixels;
+        auto playerBody = player.collisionBody();
+        for (auto& persistentEnemy : activeWorld().enemies()) {
+            auto& enemy = persistentEnemy.instance;
+            if (enemy.state() == gameplay::creatures::BehaviorState::dead) { continue; }
+            const auto enemyBody = enemy.collisionBody();
+            if (!gameplay::overlaps(playerBody, enemyBody)) { continue; }
+
+            const int playerCenterX = playerBody.x + playerBody.width / 2;
+            const int playerCenterY = playerBody.y + playerBody.height / 2;
+            const int enemyCenterX = enemyBody.x + enemyBody.width / 2;
+            const int enemyCenterY = enemyBody.y + enemyBody.height / 2;
+            const int distanceX = playerCenterX - enemyCenterX;
+            const int distanceY = playerCenterY - enemyCenterY;
+            int knockbackX = 0;
+            int knockbackY = 0;
+            if (distanceX == 0 && distanceY == 0) {
+                switch (player.facing()) {
+                case gameplay::FacingDirection::left: knockbackX = contactKnockback; break;
+                case gameplay::FacingDirection::right: knockbackX = -contactKnockback; break;
+                case gameplay::FacingDirection::up: knockbackY = contactKnockback; break;
+                case gameplay::FacingDirection::down: knockbackY = -contactKnockback; break;
+                }
+            } else if (std::abs(distanceX) >= std::abs(distanceY)) {
+                knockbackX = distanceX > 0 ? contactKnockback : -contactKnockback;
+            } else {
+                knockbackY = distanceY > 0 ? contactKnockback : -contactKnockback;
+            }
+
+            const gameplay::Hitbox contact{
+                enemyBody,
+                {enemy.handle(), nextContactAttackInstance_++},
+                gameplay::Faction::enemy,
+                {contactDamage, contactKnockback},
+                knockbackX,
+                knockbackY,
+                true};
+            const auto resolution = combat.resolve(contact, player.combatTarget(), events);
+            combat.finishAttack(contact.attack);
+            player.applyDamageKnockback(knockbackX, knockbackY,
+                                        activeMap().collision(), activeMap().tileSize());
+            // Separate both bodies.  Pushing only the Player would allow a
+            // chasing enemy to remain embedded and repeatedly reapply contact
+            // damage against a wall or map edge.
+            enemy.applyKnockback(-knockbackX, -knockbackY,
+                                 activeMap().collision(), activeMap().tileSize());
+            playerBody = player.collisionBody();
+            if (resolution.damaged) {
+                player.beginHurt();
+                playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
+                // Contact has its own short cadence in addition to the
+                // combat system's hit invulnerability.  This keeps touching
+                // an enemy from becoming a rapid-damage loop while retaining
+                // the normal damage/invulnerability contract.
+                player.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
+                    player.combatant().invulnerabilityTicks, 30U);
+                captureActiveWorld();
             }
         }
     }
@@ -900,6 +971,9 @@ struct Phase7Demo::State final {
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
         events.clear();
+        if (playerDamageBlinkTicksRemaining_ > 0) {
+            --playerDamageBlinkTicksRemaining_;
+        }
         gameplay::tickInvulnerability(player.combatant());
         const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
@@ -927,8 +1001,12 @@ struct Phase7Demo::State final {
         }
         visual->update(player.motionState(), player.facing(), player.actionState());
         consumeAnimationMarkers();
-        resolvePlayerSword();
         updateEnemies();
+        // Resolve the Player's melee hit after enemy behavior has moved the
+        // actors for this tick. Otherwise Chase can immediately overwrite the
+        // knockback and make a valid hit appear not to move the enemy.
+        resolvePlayerSword();
+        resolveEnemyContacts();
         auto targets = combatTargets();
         std::vector<gameplay::CombatResolution> projectileResolutions;
         projectiles.update(activeMap().collision(), activeMap().tileSize(), targets, combat, events,
@@ -936,6 +1014,10 @@ struct Phase7Demo::State final {
         for (const gameplay::CombatResolution& resolution : projectileResolutions) {
             applyResolution(resolution);
         }
+        // Enemy attacks and contact damage are resolved after the first visual
+        // update. Refresh here so the hurt clip and the knockback position are
+        // visible in the same rendered frame as the hit.
+        visual->update(player.motionState(), player.facing(), player.actionState());
         collectNearbyPickups();
         updateObjects();
         consumeSimulationEvents();
@@ -1023,6 +1105,10 @@ struct Phase7Demo::State final {
         });
         for (const Actor& actor : actors) {
             if (actor.kind == ActorKind::player) {
+                // Damage invulnerability is communicated only by the Player's
+                // visual blink.  Enemies keep their normal rendering while
+                // they are invulnerable, so this remains a Player-only effect.
+                if (!playerSpriteVisibleDuringInvulnerability()) { continue; }
                 const auto logical = camera.worldToLogical(player.feetPosition());
                 render::drawAnimator(renderer, visual->animator(), {logical.x, logical.y},
                                      visual->flipX());
@@ -1053,6 +1139,14 @@ struct Phase7Demo::State final {
                 renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
             }
         }
+    }
+
+    [[nodiscard]] bool playerSpriteVisibleDuringInvulnerability() const noexcept {
+        constexpr std::uint32_t blinkCadenceTicks = 4;
+        if (playerDamageBlinkTicksRemaining_ == 0) { return true; }
+        const auto elapsed = playerDamageBlinkDurationTicks -
+                             playerDamageBlinkTicksRemaining_;
+        return (elapsed / blinkCadenceTicks) % 2 == 0;
     }
 
     void renderProjectiles(render::Renderer2D& renderer) const {
@@ -1256,6 +1350,7 @@ struct Phase7Demo::State final {
     std::shared_ptr<const render::SpriteSheet> walkSheet;
     std::shared_ptr<const render::SpriteSheet> swordSheet;
     std::shared_ptr<const render::SpriteSheet> bowSheet;
+    std::shared_ptr<const render::SpriteSheet> hurtSheet;
     std::shared_ptr<const render::SpriteSheet> arrowSheet;
     std::shared_ptr<const render::SpriteSheet> impactSheet;
     std::shared_ptr<const render::SpriteSheet> soldierIdleSheet;
@@ -1327,6 +1422,10 @@ struct Phase7Demo::State final {
     std::unique_ptr<maps::MapSession> mapSession;
     simulation::EventBuffer events;
     gameplay::Hitbox activeSword{};
+    gameplay::AttackInstanceId nextContactAttackInstance_{1};
+    static constexpr std::uint32_t playerDamageBlinkDurationTicks = 12;
+    static constexpr std::uint32_t playerDamageInvulnerabilityTicks = 30;
+    std::uint32_t playerDamageBlinkTicksRemaining_{};
     CommandBuilder commandBuilder;
     simulation::Tick lastTick{};
     std::uint32_t lastSequence{};
@@ -1353,6 +1452,7 @@ Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
     const auto walk = assets_.loadImage("player.walk", assetRoot / "Characters/Player/walking/player_walking.png", decoder);
     const auto sword = assets_.loadImage("player.sword", assetRoot / "Characters/Player/attacking/player_attacking.png", decoder);
     const auto bow = assets_.loadImage("player.bow", assetRoot / "Characters/Player/attacking/player_attacking_bow.png", decoder);
+    const auto hurt = assets_.loadImage("player.hurt", assetRoot / "Characters/Player/death/player_death.png", decoder);
     const auto arrow = assets_.loadImage("player.arrow", assetRoot / "Characters/Player/attacking/arrow.png", decoder);
     const auto impact = assets_.loadImage("effect.arrow_impact", assetRoot / "Explosion/arrow_hits_dust.png", decoder);
     const auto soldierIdle = assets_.loadImage(
@@ -1399,7 +1499,7 @@ Phase7Demo::Phase7Demo(platform::ImageDecoder& decoder,
     const auto hudMoney = assets_.loadImage(
         "hud.money", assetRoot / "Icons/money.png", decoder);
     state_ = std::make_unique<State>(
-        tileset, font, idle, walk, sword, bow, arrow, impact,
+        tileset, font, idle, walk, sword, bow, hurt, arrow, impact,
         soldierIdle, soldierWalk, soldierAttack, soldierDeath,
         skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
         heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney,

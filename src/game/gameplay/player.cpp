@@ -3,6 +3,8 @@
 #include "engine/core/coordinates.h"
 #include "engine/world/collision_grid.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
@@ -69,10 +71,26 @@ void Player::update(const simulation::PlayerCommand& command,
         throw std::invalid_argument("player movement intent must be in the range -1 through 1");
     }
     if (combatant_.health.depleted()) {
+        damageKnockbackRemainingX_ = 0;
+        damageKnockbackRemainingY_ = 0;
         actionState_ = PlayerActionState::none;
         motionState_ = PlayerMotionState::idle;
         lastMovement_ = {};
         return;
+    }
+
+    if (damageKnockbackRemainingX_ != 0 || damageKnockbackRemainingY_ != 0) {
+        const auto step = [](int remaining) noexcept {
+            if (remaining == 0) { return 0; }
+            const int direction = remaining > 0 ? 1 : -1;
+            constexpr int stepPixels = damageKnockbackPixels / damageKnockbackDurationTicks;
+            return direction * std::min(stepPixels, std::abs(remaining));
+        };
+        const int stepX = step(damageKnockbackRemainingX_);
+        const int stepY = step(damageKnockbackRemainingY_);
+        applyKnockback(stepX, stepY, collision, tileSize);
+        damageKnockbackRemainingX_ -= stepX;
+        damageKnockbackRemainingY_ -= stepY;
     }
 
     if (actionState_ == PlayerActionState::none) {
@@ -152,6 +170,22 @@ void Player::applyKnockback(int deltaX, int deltaY,
     position_.y = checkedSubpixelCoordinate(resolvedFeet.y);
 }
 
+void Player::applyDamageKnockback(int requestedX, int requestedY,
+                                  const world::CollisionGrid& collision, int tileSize) {
+    const int knockbackX = requestedX == 0
+                               ? 0
+                               : (requestedX > 0 ? damageKnockbackPixels
+                                                  : -damageKnockbackPixels);
+    const int knockbackY = requestedY == 0
+                               ? 0
+                               : (requestedY > 0 ? damageKnockbackPixels
+                                                  : -damageKnockbackPixels);
+    static_cast<void>(collision);
+    static_cast<void>(tileSize);
+    damageKnockbackRemainingX_ = knockbackX;
+    damageKnockbackRemainingY_ = knockbackY;
+}
+
 void Player::relocate(core::WorldPointI feetPosition, FacingDirection facing) {
     position_ = {checkedSubpixelCoordinate(feetPosition.x),
                  checkedSubpixelCoordinate(feetPosition.y)};
@@ -159,6 +193,8 @@ void Player::relocate(core::WorldPointI feetPosition, FacingDirection facing) {
     motionState_ = PlayerMotionState::idle;
     actionState_ = PlayerActionState::none;
     lastMovement_ = {};
+    damageKnockbackRemainingX_ = 0;
+    damageKnockbackRemainingY_ = 0;
 }
 
 InteractionArea Player::interactionArea() const noexcept {
@@ -185,6 +221,7 @@ const char* actionStateName(PlayerActionState state) noexcept {
     case PlayerActionState::none: return "NONE";
     case PlayerActionState::swordAttack: return "SWORD";
     case PlayerActionState::bowAttack: return "BOW";
+    case PlayerActionState::hurt: return "HURT";
     }
     return "UNKNOWN";
 }

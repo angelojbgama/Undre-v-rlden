@@ -21,6 +21,7 @@ enum class PlayerActionState {
     none,
     swordAttack,
     bowAttack,
+    hurt,
 };
 
 struct PlayerMovementConfig final {
@@ -44,6 +45,8 @@ struct SubpixelPosition final {
 class Player final {
 public:
     static constexpr int maximumHealth = 5;
+    static constexpr int damageKnockbackPixels = 32;
+    static constexpr int damageKnockbackDurationTicks = 8;
     static constexpr int hurtboxWidth = 14;
     static constexpr int hurtboxHeight = 22;
     static constexpr int hurtboxOffsetX = -7;
@@ -80,7 +83,17 @@ public:
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
                         int tileSize);
+    // All damage sources use this entry point so the Player's hit reaction
+    // remains consistent even when an attack definition requests another
+    // knockback distance.
+    void applyDamageKnockback(int requestedX, int requestedY,
+                              const world::CollisionGrid& collision, int tileSize);
     void relocate(core::WorldPointI feetPosition, FacingDirection facing);
+    void beginHurt() noexcept {
+        actionState_ = PlayerActionState::hurt;
+        motionState_ = PlayerMotionState::idle;
+        lastMovement_ = {};
+    }
     void finishAttack() noexcept { actionState_ = PlayerActionState::none; }
 
 private:
@@ -94,6 +107,8 @@ private:
     PlayerActionState actionState_{PlayerActionState::none};
     AttackInstanceId attackInstance_{};
     AttackInstanceId nextAttackInstance_{1};
+    int damageKnockbackRemainingX_{};
+    int damageKnockbackRemainingY_{};
 };
 
 [[nodiscard]] const char* facingName(FacingDirection facing) noexcept;

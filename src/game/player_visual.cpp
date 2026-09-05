@@ -20,9 +20,11 @@ std::size_t directionIndex(gameplay::FacingDirection facing) noexcept {
 } // namespace
 
 PlayerVisual::PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClips,
-                           DirectionalClips swordClips, DirectionalClips bowClips)
+                           DirectionalClips swordClips, DirectionalClips bowClips,
+                           DirectionalClips hurtClips)
     : idleClips_(std::move(idleClips)), walkClips_(std::move(walkClips)),
-      swordClips_(std::move(swordClips)), bowClips_(std::move(bowClips)) {
+      swordClips_(std::move(swordClips)), bowClips_(std::move(bowClips)),
+      hurtClips_(std::move(hurtClips)) {
     for (const auto& clip : idleClips_) {
         if (!clip) {
             throw std::invalid_argument("player visual requires every idle direction clip");
@@ -45,6 +47,12 @@ PlayerVisual::PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClip
             throw std::invalid_argument("player visual bow clips must be all present or absent");
         }
     }
+    const bool hasHurt = hurtClips_[0] != nullptr;
+    for (const auto& clip : hurtClips_) {
+        if ((clip != nullptr) != hasHurt) {
+            throw std::invalid_argument("player visual hurt clips must be all present or absent");
+        }
+    }
 }
 
 const std::shared_ptr<const render::AnimationClip>& PlayerVisual::selectedClip(
@@ -55,6 +63,9 @@ const std::shared_ptr<const render::AnimationClip>& PlayerVisual::selectedClip(
     }
     if (action == gameplay::PlayerActionState::bowAttack && bowClips_[0]) {
         return bowClips_[directionIndex(facing)];
+    }
+    if (action == gameplay::PlayerActionState::hurt && hurtClips_[0]) {
+        return hurtClips_[directionIndex(facing)];
     }
     const auto& clips = motion == gameplay::PlayerMotionState::walk ? walkClips_ : idleClips_;
     return clips[directionIndex(facing)];

@@ -118,12 +118,12 @@ AttackDefinition makePlayerSwordAttackDefinition() {
         {-27, -18, 21, 18},
         {6, -18, 21, 18},
     }}};
-    return {playerSwordAttackId(), AttackKind::meleeHitbox, {1, 8}, 24, 0, 0, 27,
+    return {playerSwordAttackId(), AttackKind::meleeHitbox, {1, 32}, 24, 0, 0, 27,
             simulation::DefinitionId{"visual.player.sword"}, boxes, std::nullopt};
 }
 
 AttackDefinition makePlayerBowAttackDefinition() {
-    return {playerBowAttackId(), AttackKind::projectile, {1, 6}, 16, 0, 0, 512,
+    return {playerBowAttackId(), AttackKind::projectile, {1, 32}, 16, 0, 0, 512,
             simulation::DefinitionId{"visual.player.bow"}, std::nullopt,
             playerArrowProjectileId()};
 }

@@ -14,7 +14,8 @@ public:
         std::array<std::shared_ptr<const render::AnimationClip>, 3>; // down, up, side-left
 
     PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClips,
-                 DirectionalClips swordClips = {}, DirectionalClips bowClips = {});
+                 DirectionalClips swordClips = {}, DirectionalClips bowClips = {},
+                 DirectionalClips hurtClips = {});
 
     void update(gameplay::PlayerMotionState motion, gameplay::FacingDirection facing,
                 gameplay::PlayerActionState action,
@@ -40,6 +41,7 @@ private:
     DirectionalClips walkClips_{};
     DirectionalClips swordClips_{};
     DirectionalClips bowClips_{};
+    DirectionalClips hurtClips_{};
     render::Animator animator_{};
     gameplay::FacingDirection facing_{gameplay::FacingDirection::down};
     gameplay::PlayerMotionState motion_{gameplay::PlayerMotionState::idle};
