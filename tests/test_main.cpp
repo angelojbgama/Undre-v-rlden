@@ -50,6 +50,8 @@
 #include "game/maps/dmap.h"
 #include "game/maps/demo_maps.h"
 #include "game/maps/map_catalog.h"
+#include "game/maps/map_composition.h"
+#include "game/maps/reachability.h"
 #include "game/maps/runtime_world.h"
 #include "game/save/save_data.h"
 
@@ -3450,6 +3452,168 @@ void testSemanticAuthoringFoundation() {
     }), "unclassified but structurally valid tile is an informational semantic issue");
 }
 
+void testMapCompositionFoundation() {
+    namespace authoring = underworld::game::authoring;
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    game::GameContentRegistry content;
+    maps::MapBlueprint blueprint;
+    blueprint.id = simulation::MapId{"map.composition.basic"};
+    blueprint.room.width = 10;
+    blueprint.room.height = 8;
+    maps::MapComposer composer;
+
+    const auto basic = composer.compose(blueprint, content.authoringSemantics());
+    bool basicInterior = basic && basic.map && basic.grid.width() == 10 &&
+        basic.grid.height() == 8;
+    bool basicBoundary = true;
+    bool basicCollision = true;
+    if (basic) {
+        for (std::uint32_t y = 0; y < blueprint.room.height; ++y) {
+            for (std::uint32_t x = 0; x < blueprint.room.width; ++x) {
+                const bool boundary = x == 0 || y == 0 || x + 1U == blueprint.room.width ||
+                    y + 1U == blueprint.room.height;
+                const auto tile = underworld::core::TileCoord{
+                    static_cast<int>(x), static_cast<int>(y)};
+                basicBoundary = basicBoundary &&
+                    basic.grid.cell(tile) == (boundary ? maps::RoomCellKind::boundary :
+                                               maps::RoomCellKind::walkable);
+                basicCollision = basicCollision &&
+                    basic.map->collision[static_cast<std::size_t>(y) * blueprint.room.width + x] ==
+                    static_cast<std::uint8_t>(boundary ? 1 : 0);
+                basicInterior = basicInterior && (!boundary || basic.map->layers[0].cells[
+                    static_cast<std::size_t>(y) * blueprint.room.width + x].has_value());
+            }
+        }
+    }
+    const auto* basicTile = basic && basic.map && !basic.map->tileReferences.empty()
+        ? content.authoringSemantics().findTile(basic.map->tileReferences[0].tilesetId,
+                                                basic.map->tileReferences[0].sourceIndex)
+        : nullptr;
+    const auto basicSemantic = basic ? authoring::MapSemanticValidator{}.validate(
+        *basic.map, content.authoringSemantics()) : authoring::SemanticValidationReport{};
+    expect(basic && basic.map->width == 10 && basic.map->height == 8 &&
+               basic.map->layers.size() == 1 && basic.map->collision.size() == 80,
+           "MapComposer creates a bounded rectangular MapData from a minimal room blueprint");
+    expect(basicBoundary && basicCollision && basicInterior,
+           "room composition distinguishes boundary and walkable cells and derives collision from intent");
+    expect(basicTile && basicTile->role == authoring::TileRole::wall && basicSemantic.issues.empty(),
+           "room composition resolves its boundary through AuthoringSemanticRegistry without atlas hardcoding");
+
+    const auto repeated = composer.compose(blueprint, content.authoringSemantics());
+    expect(repeated && maps::semanticallyEqual(*basic.map, *repeated.map),
+           "identical MapBlueprint input produces deterministic semantic MapData");
+
+    blueprint.room.openings = {
+        {maps::RoomSide::north, 4, 1}, {maps::RoomSide::east, 3, 1},
+        {maps::RoomSide::south, 4, 1}, {maps::RoomSide::west, 3, 1}};
+    const auto fourOpenings = composer.compose(blueprint, content.authoringSemantics());
+    const auto openingTiles = maps::openingCells(blueprint.room);
+    bool openingsPass = fourOpenings && openingTiles.size() == 4;
+    if (openingsPass) {
+        for (const auto tile : openingTiles) {
+            const auto index = static_cast<std::size_t>(tile.y) * blueprint.room.width +
+                                 static_cast<std::size_t>(tile.x);
+            openingsPass = openingsPass && fourOpenings.grid.cell(tile) == maps::RoomCellKind::opening &&
+                !fourOpenings.map->layers[0].cells[index] && fourOpenings.map->collision[index] == 0;
+        }
+        openingsPass = openingsPass && fourOpenings.grid.cell({0, 0}) == maps::RoomCellKind::boundary &&
+            fourOpenings.map->collision[0] == 1;
+    }
+    expect(openingsPass, "north east south and west openings interrupt only their boundary passages");
+
+    const auto invalidOffset = [&] {
+        auto value = blueprint;
+        value.room.openings = {{maps::RoomSide::north, 0, 1}};
+        return composer.compose(value, content.authoringSemantics());
+    }();
+    const auto zeroWidth = [&] {
+        auto value = blueprint;
+        value.room.openings = {{maps::RoomSide::south, 4, 0}};
+        return composer.compose(value, content.authoringSemantics());
+    }();
+    const auto overlong = [&] {
+        auto value = blueprint;
+        value.room.openings = {{maps::RoomSide::east, 1, 7}};
+        return composer.compose(value, content.authoringSemantics());
+    }();
+    const auto overlap = [&] {
+        auto value = blueprint;
+        value.room.openings = {{maps::RoomSide::north, 4, 2}, {maps::RoomSide::north, 5, 1}};
+        return composer.compose(value, content.authoringSemantics());
+    }();
+    const auto hasIssue = [](const maps::MapCompositionResult& result, std::string_view code) {
+        return std::any_of(result.report.issues.begin(), result.report.issues.end(),
+                           [&](const auto& issue) { return issue.code == code; });
+    };
+    expect(!invalidOffset && hasIssue(invalidOffset, "invalid_opening") &&
+               !zeroWidth && hasIssue(zeroWidth, "invalid_opening") &&
+               !overlong && hasIssue(overlong, "invalid_opening") &&
+               !overlap && hasIssue(overlap, "opening_overlap"),
+           "invalid and overlapping openings fail with structured deterministic diagnostics");
+
+    blueprint.room.openings = {{maps::RoomSide::south, 4, 1}, {maps::RoomSide::east, 3, 1}};
+    blueprint.room.playerSpawn = maps::PlayerSpawnBlueprint{
+        simulation::SpawnId{"entry.start"}, {4, 3},
+        underworld::game::gameplay::FacingDirection::down};
+    const auto withSpawn = composer.compose(blueprint, content.authoringSemantics());
+    const auto structural = withSpawn && withSpawn.map
+        ? maps::validateMapData(*withSpawn.map) : maps::MapValidationResult{};
+    expect(withSpawn && withSpawn.map->playerSpawns.size() == 1 && structural,
+           "optional blueprint player spawn becomes a structurally valid authored spawn");
+    expect(withSpawn && withSpawn.map->collision[static_cast<std::size_t>(3) * 10U + 4U] == 0 &&
+               withSpawn.map->playerSpawns[0].position == underworld::core::WorldPointI{72, 56},
+           "composed player spawn resolves to the center of a walkable authored tile");
+    const auto composedBytes = withSpawn ? maps::serializeDmap(*withSpawn.map)
+                                         : std::vector<std::uint8_t>{};
+    const auto composedRoundtrip = withSpawn
+        ? maps::deserializeDmap(composedBytes) : maps::DmapLoadResult{};
+    expect(composedRoundtrip && maps::semanticallyEqual(*withSpawn.map, composedRoundtrip.data),
+           "composed MapData remains compatible with the existing deterministic DMAP v1 pipeline");
+
+    const auto reachability = maps::ReachabilityValidator{}.validateRoomOpenings(
+        *withSpawn.map, blueprint.room, {4, 3});
+    expect(reachability.valid(), "spawn reachability reaches every composed opening through collision data");
+
+    auto isolated = *withSpawn.map;
+    const auto isolatedOpening = maps::openingCells(blueprint.room).front();
+    const auto isolationCell = isolatedOpening.y == 0
+        ? underworld::core::TileCoord{isolatedOpening.x, isolatedOpening.y + 1}
+        : isolatedOpening.y + 1 == static_cast<int>(isolated.height)
+            ? underworld::core::TileCoord{isolatedOpening.x, isolatedOpening.y - 1}
+            : isolatedOpening.x == 0
+                ? underworld::core::TileCoord{isolatedOpening.x + 1, isolatedOpening.y}
+                : underworld::core::TileCoord{isolatedOpening.x - 1, isolatedOpening.y};
+    isolated.collision[static_cast<std::size_t>(isolationCell.y) * isolated.width +
+                       static_cast<std::size_t>(isolationCell.x)] = 1;
+    const auto isolatedReport = maps::ReachabilityValidator{}.validateRoomOpenings(
+        isolated, blueprint.room, {4, 3});
+    expect(!isolatedReport.valid() && std::any_of(
+               isolatedReport.issues.begin(), isolatedReport.issues.end(), [](const auto& issue) {
+                   return issue.code == "unreachable_opening";
+               }),
+           "reachability reports an opening isolated by authored collision");
+
+    auto invalidSpawnBlueprint = blueprint;
+    invalidSpawnBlueprint.room.playerSpawn->tile = {0, 0};
+    const auto invalidSpawn = composer.compose(invalidSpawnBlueprint, content.authoringSemantics());
+    expect(!invalidSpawn && hasIssue(invalidSpawn, "spawn_not_walkable"),
+           "spawn on a composed boundary is rejected instead of silently falling back");
+
+    maps::MapCompositionProfile missingProfile;
+    missingProfile.boundaryTileId = simulation::DefinitionId{"tile.missing"};
+    maps::MapBlueprint validBlueprint;
+    validBlueprint.id = simulation::MapId{"map.composition.missing_semantic"};
+    validBlueprint.room.width = 4;
+    validBlueprint.room.height = 4;
+    const auto missingSemantic = maps::MapComposer{missingProfile}.compose(
+        validBlueprint, content.authoringSemantics());
+    expect(!missingSemantic && hasIssue(missingSemantic, "composition_missing_semantic"),
+           "missing composition semantics fail clearly without inventing an atlas tile");
+}
+
 void testFixedStepAccumulator() {
     using underworld::core::FixedStepAccumulator;
     using underworld::core::FixedStepConfig;
@@ -3533,6 +3697,7 @@ int main() {
         testRuntimeVisualSynchronization();
         testMultiTilesetAuthoringAndRuntime();
         testSemanticAuthoringFoundation();
+        testMapCompositionFoundation();
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();

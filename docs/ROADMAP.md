@@ -722,6 +722,16 @@ layer bloqueada ou placement fora dos limites antes de escrever. A aceitação f
 requer rebuild MSVC `/W4`, testes e smokes Windows; não avançar formatos nem os itens
 deferred antes desse gate.
 
+O primeiro slice de Map Composition também está implementado sem alterar DMAP/DSAV:
+`MapBlueprint`/`RoomBlueprint` descrevem uma sala retangular in-memory, até quatro
+openings semânticos e um spawn opcional; `MapComposer` produz uma `RoomCompositionGrid`
+e `MapData` determinísticos usando `AuthoringSemanticRegistry`. Boundary vira collision
+solid, openings permanecem passáveis e `ReachabilityValidator` valida a conectividade do
+spawn aos openings por BFS sobre o grid de collision. `validateMapData`, `MapSemanticValidator`
+e a validação de playability permanecem passagens independentes. O catálogo ainda não
+comprova um semantic ID de floor, portanto o compositor inicial produz apenas a visual
+de boundary comprovada e não inventa atlas/floor data.
+
 ## Gate
 
 Não iniciar antes de runtime map + `.dmap` + transições estarem utilizáveis.

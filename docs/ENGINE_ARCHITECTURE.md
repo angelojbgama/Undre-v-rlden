@@ -1031,6 +1031,41 @@ transitions ou gameplay a partir de pixels. Os contratos de detalhe estão em
 `TILE_CATALOG.md`, `STAMP_CATALOG.md`, `MAP_COMPOSITION_SPEC.md` e
 `ENTITY_PLACEMENT_SPEC.md`.
 
+### Composição semântica inicial
+
+O primeiro slice da composição de mapas mantém a intenção separada dos dados concretos:
+
+```text
+MapBlueprint / RoomBlueprint
+        ↓
+RoomCompositionGrid
+        ↓
+MapComposer + AuthoringSemanticRegistry
+        ↓
+MapData
+```
+
+`RoomBlueprint` descreve uma sala retangular, até quatro openings (`north`, `east`,
+`south`, `west`) e um `PlayerSpawn` opcional em coordenadas de tile. O compositor gera
+boundary, área walkable e collision a partir de `RoomCellKind`; não deduz collision de
+PNG e não transforma opening em `MapLink`. O modelo é in-memory e o resultado segue o
+writer DMAP v1 existente.
+
+`MapSemanticValidator` continua sendo advisory. `ReachabilityValidator` é uma passagem
+independente de playability: um BFS no `MapData.collision` valida que o spawn alcance os
+openings. Assim, as três responsabilidades permanecem separadas:
+
+```text
+validateMapData       # structural/runtime/serialization
+MapSemanticValidator  # semantic visual authoring
+ReachabilityValidator # playability/connectivity
+```
+
+O catálogo atual não comprova um semantic ID de piso. A composição inicial usa somente
+uma definição semântica de parede comprovada/provável para a boundary e deixa o interior
+sem tile visual até que a auditoria forneça evidência de piso; nenhum source index é
+hardcoded e nenhum comportamento futuro de LLM é implementado.
+
 ---
 
 ## 17. Multiplayer futuro
