@@ -53,9 +53,13 @@ std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot) {
         << "\",\"player\":{\"x\":" << snapshot.playerX
         << ",\"y\":" << snapshot.playerY
         << ",\"facing\":\"" << escapeJsonString(snapshot.playerFacing)
+        << "\",\"motion\":\"" << escapeJsonString(snapshot.playerMotion)
+        << "\",\"action\":\"" << escapeJsonString(snapshot.playerAction)
         << "\",\"health\":" << snapshot.playerHealth
         << ",\"maximumHealth\":" << snapshot.playerMaximumHealth << "}"
-        << ",\"gold\":" << snapshot.gold << ",\"inventory\":[";
+        << ",\"gold\":" << snapshot.gold
+        << ",\"inventoryOpen\":" << (snapshot.inventoryOpen ? "true" : "false")
+        << ",\"inventory\":[";
     for (std::size_t index = 0; index < snapshot.inventory.size(); ++index) {
         if (index != 0) { out << ','; }
         const auto& slot = snapshot.inventory[index];

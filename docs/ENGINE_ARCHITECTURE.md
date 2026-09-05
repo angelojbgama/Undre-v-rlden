@@ -1442,3 +1442,21 @@ controlled monotonic clock only when requested, schedules platform-neutral
 copies the real `PixelBufferView` passed to `present`. It is a platform adapter, not a
 second gameplay implementation; scenario orchestration remains the responsibility of
 the later playtest runner.
+
+## Audit/playtest portability track — Block D
+
+`playtest_runner` is a separate harness, not a second game. It composes the real
+`Phase7Demo` with `HeadlessAuditPlatform`, injects logical `InputState` values on
+controlled ticks, calls the real fixed-tick/update boundary and presents the real
+272x224 framebuffer. Assertions read the value-only `GameAuditSnapshot`; failures
+write an audit event, forced state checkpoint and framebuffer screenshot before the
+session closes with a non-zero process result.
+
+The runner supports independent scenario sessions, `--all`, `--scenario`, `--seed`,
+`--ticks`, `--audit-root` and explicit `--asset-root`/`UNDERWORLD_ASSET_ROOT`
+selection. It uses a small injected synthetic decoder for portable runs without
+local licensed assets, while preserving the production `ImageDecoder` boundary.
+Quest scenario names remain startup smoke entries until the game exposes a real
+player command for quest start; no quest state is fabricated by the harness. Formal
+command replay, state hashing, manual/F12 integration and Linux build remain later
+blocks.

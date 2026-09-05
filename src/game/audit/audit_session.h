@@ -72,7 +72,8 @@ public:
                                          core::PixelBufferView surface,
                                          std::string& error);
     [[nodiscard]] bool writeSummary(std::string_view result, std::string_view failure = {});
-    [[nodiscard]] bool close(std::string_view result = "PASS");
+    [[nodiscard]] bool close(std::string_view result = "PASS",
+                             std::string_view failure = {});
     [[nodiscard]] const std::filesystem::path& sessionDirectory() const noexcept {
         return sessionDirectory_;
     }

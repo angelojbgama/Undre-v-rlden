@@ -241,7 +241,7 @@ bool AuditSession::writeSummary(std::string_view result, std::string_view failur
     return static_cast<bool>(file);
 }
 
-bool AuditSession::close(std::string_view result) {
+bool AuditSession::close(std::string_view result, std::string_view failure) {
     if (closed_) { return !enabled_; }
     if (!enabled_) {
         closed_ = true;
@@ -249,7 +249,7 @@ bool AuditSession::close(std::string_view result) {
     }
     eventsFile_.flush();
     stateFile_.flush();
-    const bool summary = writeSummary(result);
+    const bool summary = writeSummary(result, failure);
     eventsFile_.close();
     stateFile_.close();
     closed_ = true;

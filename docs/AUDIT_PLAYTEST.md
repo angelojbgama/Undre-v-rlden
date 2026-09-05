@@ -53,7 +53,7 @@ projéteis ativos.
 A — AuditSession, eventos estruturados e snapshot       DONE
 B — captura do framebuffer lógico em BMP                 DONE
 C — HeadlessAuditPlatform                                DONE
-D — playtest runner/scripted input                       DEFERRED
+D — playtest runner/scripted input                       DONE
 E — integração de auditoria manual no Windows/F12       DEFERRED
 F — build portátil Linux                                 DEFERRED
 G — plataforma gráfica Linux                             DEFERRED
@@ -62,5 +62,21 @@ H — seeded stress playtest                              DEFERRED
 
 Esta é uma antecipação pequena da futura trilha headless/replay. Formal replay,
 hash de estado, IDs de rede, determinismo completo e multiplayer continuam fora do
-escopo. O Block A é exercitado por testes portáveis; a integração no loop de execução
-e a captura manual serão adicionadas somente nos blocos correspondentes.
+escopo. Blocks A–D são exercitados no Linux por testes portáveis e pelo runner; a
+integração manual/F12 será adicionada somente no Block E.
+
+## Block D — cenários automatizados
+
+O `playtest_runner` instancia o `Phase7Demo` real com `HeadlessAuditPlatform`, injeta
+somente `InputState` por tick e valida o resultado por `GameAuditSnapshot`. Cada
+cenário escreve uma sessão independente, com screenshots de startup, checkpoints
+relevantes e conclusão/falha. O runner retorna código diferente de zero para qualquer
+assertion ou erro e captura estado/framebuffer da falha.
+
+Ele aceita `--all`, `--scenario`, `--seed`, `--ticks`, `--audit-root` e
+`--asset-root`/`UNDERWORLD_ASSET_ROOT`. Sem assets licenciados e decoder portátil,
+os testes Linux usam um decoder sintético injetado apenas para exercitar o pipeline
+real de runtime/renderização; a aparência dos assets locais continua sendo um gate
+manual do Windows. Os nomes de quest permanecem registrados na matriz como smoke de
+startup/update/render, pois ainda não existe um comando de jogador para iniciar uma
+quest sem fabricar estado no harness.

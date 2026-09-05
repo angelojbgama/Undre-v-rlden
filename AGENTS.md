@@ -1722,7 +1722,8 @@ Comando de referência:
 ```bash
 portable_sources=$(find src -name '*.cpp' \
   ! -path '*/win32/*' \
-  ! -name 'win32_editor.cpp')
+  ! -name 'win32_editor.cpp' \
+  ! -path 'src/tools/*')
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc \
   tests/test_main.cpp $portable_sources -o /tmp/underworld_tests
 /tmp/underworld_tests
@@ -1927,3 +1928,14 @@ Esta antecipação não implementa screenshots, `HeadlessAuditPlatform`, playtes
 Linux interactive, replay formal, hash de estado, rede ou multiplayer. Esses blocos
 devem ser implementados incrementalmente, nesta ordem, somente após o fundamento
 atual permanecer verde.
+
+## Estado atual — audit playtest Block D
+
+O Block D está implementado: `src/tools/playtest_runner.cpp` compõe o `Phase7Demo`
+real com `HeadlessAuditPlatform`, injeta `InputState` por tick, renderiza o framebuffer
+lógico e valida cenários por `GameAuditSnapshot`. Cada cenário cria uma sessão de
+auditoria própria, com checkpoints/screenshots e falha não-zero. O runner aceita
+`--asset-root` e `UNDERWORLD_ASSET_ROOT`; sem assets licenciados/decoder portátil,
+usa decoder sintético somente para validar o fluxo real de runtime e renderização.
+Os próximos incrementos são E — auditoria manual Windows/F12 e depois F — build Linux;
+não iniciar F nesta etapa.

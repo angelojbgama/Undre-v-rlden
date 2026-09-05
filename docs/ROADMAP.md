@@ -1182,3 +1182,16 @@ the existing `Platform` boundary with deterministic caller-controlled time, scri
 logical input, debug input, injected image decoding, operational logs and real
 framebuffer reception. It intentionally does not run a game loop or define scenario
 assertions; those belong to Blocks D and later.
+
+## Audit/playtest portability track — Block D
+
+`playtest_runner` now runs the real `Phase7Demo` through
+`HeadlessAuditPlatform`, injects `InputState` by tick, renders the real logical
+framebuffer and checks gameplay through `GameAuditSnapshot`. It creates independent
+audit sessions, checkpoints and failure screenshots, and returns non-zero when an
+assertion fails. The initial scenarios cover startup, movement, collision, combat,
+pickups, inventory, objects, map transitions, save/load and NPC dialogue. Quest
+names remain startup smoke entries until a real player-facing quest-start command is
+available. Asset-root selection is supported; a synthetic decoder is used only for
+portable runs without local licensed assets. Windows manual/F12 integration, a
+dedicated Linux build and interactive Linux presentation remain Blocks E–G.

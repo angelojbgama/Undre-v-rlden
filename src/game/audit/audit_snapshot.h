@@ -69,10 +69,13 @@ struct GameAuditSnapshot final {
     int playerX{};
     int playerY{};
     std::string playerFacing;
+    std::string playerMotion;
+    std::string playerAction;
     int playerHealth{};
     int playerMaximumHealth{};
 
     std::uint64_t gold{};
+    bool inventoryOpen{};
     std::vector<AuditInventorySlot> inventory;
     std::vector<AuditQuickSlot> quickSlots;
     std::vector<AuditActor> enemies;

@@ -426,9 +426,12 @@ struct Phase7Demo::State final {
         snapshot.playerX = player.feetPosition().x;
         snapshot.playerY = player.feetPosition().y;
         snapshot.playerFacing = gameplay::facingName(player.facing());
+        snapshot.playerMotion = gameplay::motionStateName(player.motionState());
+        snapshot.playerAction = gameplay::actionStateName(player.actionState());
         snapshot.playerHealth = player.health().current;
         snapshot.playerMaximumHealth = player.health().maximum;
         snapshot.gold = playerItems.wallet().gold();
+        snapshot.inventoryOpen = inventoryOverlay.open();
 
         for (std::size_t index = 0; index < playerItems.inventory().items().capacity(); ++index) {
             const auto& slot = playerItems.inventory().items().slot(index);
