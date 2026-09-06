@@ -5513,6 +5513,71 @@ void testPhase13AJsonFoundation() {
            "invalid schema version type emits one numeric diagnostic");
 }
 
+void testPhase13A2JsonDecoders() {
+    using underworld::game::content::decodeAuthoredContentJson;
+    using namespace underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+    const auto document = [](std::string_view category, std::string_view entries) {
+        return decodeAuthoredContentJson(std::string{"{\"format\":\"dungeon-underworld-content\",\"version\":1,\""} +
+                                          std::string{category} + "\":[" + std::string{entries} + "]}");
+    };
+    const auto projectile = document("projectiles", R"({"id":"projectile.test","visualId":"visual.arrow","canonicalFacing":"left","speedPixelsPerTick":-2,"lifetimeTicks":12,"hitboxWidth":3,"hitboxHeight":4,"spawnOffsets":{"down":{"x":1,"y":2},"up":{"x":3,"y":4},"left":{"x":-5,"y":6},"right":{"x":7,"y":-8}}})");
+    expect(projectile.content && projectile.content->projectiles.size() == 1 && projectile.content->projectiles[0].canonicalFacing == gameplay::FacingDirection::left &&
+               projectile.content->projectiles[0].lifetimeTicks == 12 && projectile.content->projectiles[0].spawnOffsets.values[2].x == -5,
+           "13A2 projectile decoder preserves facing, lifetime and directional offsets");
+    const auto melee = document("attacks", R"({"id":"attack.melee.test","kind":"meleeHitbox","damage":{"amount":3,"knockbackPixels":2},"totalTicks":8,"cooldownTicks":10,"minimumRangePixels":0,"maximumRangePixels":16,"visualActionId":"visual.swing","meleeHitboxes":{"down":{"offsetX":1,"offsetY":2,"width":3,"height":4},"up":{"offsetX":-1,"offsetY":-2,"width":3,"height":4},"left":{"offsetX":1,"offsetY":0,"width":5,"height":6},"right":{"offsetX":1,"offsetY":0,"width":5,"height":6}},"timeline":[{"tick":2,"kind":"activateHitbox"},{"tick":5,"kind":"deactivateHitbox"}]})");
+    const auto ranged = document("attacks", R"({"id":"attack.projectile.test","kind":"projectile","damage":{"amount":4,"knockbackPixels":1},"totalTicks":6,"cooldownTicks":9,"minimumRangePixels":2,"maximumRangePixels":30,"visualActionId":"visual.cast","projectileDefinitionId":"projectile.test","timeline":[{"tick":3,"kind":"spawnProjectile"}]})");
+    expect(melee.content && melee.content->attacks[0].kind == gameplay::AttackKind::meleeHitbox && melee.content->attacks[0].damage.amount == 3 &&
+               melee.content->attacks[0].meleeHitboxes && melee.content->attacks[0].meleeHitboxes->values[1].offsetX == -1 && melee.content->attacks[0].timeline.size() == 2 &&
+               ranged.content && ranged.content->attacks[0].projectileDefinitionId && ranged.content->attacks[0].timeline[0].kind == gameplay::AttackTimelineEventKind::spawnProjectile,
+           "13A2 melee and projectile attack decoders preserve complex fields");
+    const auto enemy = document("enemies", R"({"id":"enemy.test","visualSetId":"visual.enemy","behaviorProfileId":"behavior.test","faction":"neutral","maximumHealth":20,"movementSpeedSubpixelsPerTick":-9223372036854775807,"collisionBody":{"offsetX":-2,"offsetY":-3,"width":8,"height":9},"hurtbox":{"offsetX":-1,"offsetY":-4,"width":10,"height":11},"attackIds":["attack.melee.test","attack.projectile.test"],"rewardProfileId":"reward.test"})");
+    expect(enemy.content && enemy.content->enemies.size() == 1 && enemy.content->enemies[0].faction == gameplay::Faction::neutral &&
+               enemy.content->enemies[0].movementSpeedSubpixelsPerTick == -9223372036854775807LL && enemy.content->enemies[0].collisionBody.offsetX == -2 &&
+               enemy.content->enemies[0].attackIds.size() == 2 && enemy.content->enemies[0].rewardProfileId,
+           "13A2 enemy decoder preserves faction, int64 speed, boxes and references");
+    const auto object = document("objects", R"({"id":"object.test","visualSetId":"visual.chest","interactable":{"x":-1,"y":2,"width":16,"height":17},"container":{"capacity":50},"destructible":{"maximumHealth":8,"hurtbox":{"x":0,"y":1,"width":12,"height":13},"destructionDurationTicks":28},"bankAccess":{}})");
+    expect(object.content && object.content->objects.size() == 1 && object.content->objects[0].interactable && object.content->objects[0].container->capacity == 50 &&
+               object.content->objects[0].destructible->hurtbox.height == 13 && object.content->objects[0].bankAccess,
+           "13A2 world object decoder preserves independent capabilities");
+    const auto pickups = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"pickups":[{"id":"pickup.health.test","visualId":"visual.heart","collectionBounds":{"x":0,"y":0,"width":8,"height":8},"payload":{"kind":"health","amount":2}},{"id":"pickup.gold.test","visualId":"visual.gold","collectionBounds":{"x":1,"y":2,"width":8,"height":8},"payload":{"kind":"currency","amount":18446744073709551615}},{"id":"pickup.item.test","visualId":"visual.potion","collectionBounds":{"x":2,"y":3,"width":8,"height":8},"payload":{"kind":"item","itemId":"item.life_potion","quantity":3}}]})");
+    expect(pickups.content && std::get<AuthoredHealthPickup>(pickups.content->pickups[0].payload).amount == 2 &&
+               std::get<AuthoredCurrencyPickup>(pickups.content->pickups[1].payload).amount == UINT64_MAX && std::get<AuthoredItemPickup>(pickups.content->pickups[2].payload).quantity == 3,
+           "13A2 pickup decoder preserves all tagged payload variants and uint64 currency");
+    const auto npc = document("npcs", R"({"id":"npc.test","visualSetId":"visual.npc","interaction":{"x":-4,"y":-5,"width":12,"height":13},"interactionEnabled":false,"defaultDialogueId":"dialogue.test","tags":["test","friendly"]})");
+    expect(npc.content && npc.content->npcs.size() == 1 && !npc.content->npcs[0].interaction.enabled && npc.content->npcs[0].interaction.bounds.x == -4 &&
+               npc.content->npcs[0].defaultDialogueId.value() == "dialogue.test" && npc.content->npcs[0].tags.size() == 2,
+           "13A2 NPC decoder preserves interaction, dialogue reference and tags");
+    expect(!document("projectiles", R"({"id":"p","visualId":"v","canonicalFacing":"diagonal","speedPixelsPerTick":1,"lifetimeTicks":1,"hitboxWidth":1,"hitboxHeight":1,"spawnOffsets":{"down":{"x":0,"y":0},"up":{"x":0,"y":0},"left":{"x":0,"y":0},"right":{"x":0,"y":0}}})").content &&
+               !document("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"amount":1,"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[{"tick":0,"kind":"unknown"}]})").content &&
+               !document("enemies", R"({"id":"e","visualSetId":"v","behaviorProfileId":"b","faction":"enemy","maximumHealth":1,"movementSpeedSubpixelsPerTick":0,"collisionBody":{"offsetX":0,"offsetY":0,"width":1,"height":1},"hurtbox":{"offsetX":0,"offsetY":0,"width":1,"height":1},"attackIds":{}})").content,
+           "13A2 strict enum, timeline and enemy array validation rejects malformed input");
+    expect(!document("objects", R"({"id":"o","visualSetId":"v","container":{"capacity":"50"}})").content &&
+               !document("objects", R"({"id":"o","visualSetId":"v","bankAccess":{"unexpected":true}})").content &&
+               !document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"health","amount":1,"itemId":"wrong"}})").content &&
+               !document("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1,"height":1},"interactionEnabled":1,"defaultDialogueId":"d","tags":[]})").content,
+           "13A2 capability, pickup variant and strict boolean validation rejects malformed input");
+    const auto malformed = [&document](std::string_view category, std::string_view entry) {
+        const auto result = document(category, entry);
+        return !result.content && !result.diagnostics.empty();
+    };
+    expect(malformed("projectiles", R"({"id":"p","visualId":"v","canonicalFacing":"down","speedPixelsPerTick":1,"lifetimeTicks":1,"hitboxWidth":1,"hitboxHeight":1,"spawnOffsets":{"down":{"x":0,"y":0},"up":{"x":0,"y":0},"left":{"x":0,"y":0}}})") &&
+               malformed("attacks", R"({"id":"a","kind":"meleeHitbox","totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[]})") &&
+               malformed("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"amount":1,"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v"})") &&
+               malformed("enemies", R"({"id":"e","visualSetId":"v","behaviorProfileId":"b","faction":"enemy","maximumHealth":1,"movementSpeedSubpixelsPerTick":0,"collisionBody":{"offsetX":0,"offsetY":0,"width":1},"hurtbox":{"offsetX":0,"offsetY":0,"width":1,"height":1},"attackIds":[]})"),
+           "13A2 required projectile, attack and enemy fields reject invalid documents");
+    expect(malformed("objects", R"({"id":"o","visualSetId":"v","interactable":{"x":0,"y":0,"width":1}})") &&
+               malformed("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{}})") &&
+               malformed("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"item","quantity":1}})") &&
+               malformed("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1,"height":1},"interactionEnabled":true,"defaultDialogueId":"d","tags":[1]})"),
+           "13A2 malformed world object, pickup and NPC nested fields reject invalid documents");
+    const auto unsupported = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"dialogues":[{"id":"not-decoded"}]})");
+    const auto wrongCategoryType = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"attacks":{}})");
+    expect(!unsupported.content && unsupported.diagnostics.size() == 1 && unsupported.diagnostics[0].path == "dialogues" &&
+               !wrongCategoryType.content && wrongCategoryType.diagnostics.size() == 1 && wrongCategoryType.diagnostics[0].path == "attacks",
+           "13A2 unsupported non-empty and wrong-type categories fail explicitly");
+}
+
 int main() {
     try {
         testMetrics();
@@ -5582,6 +5647,7 @@ int main() {
         testPhase12E2Shops();
         testPhase12E3ShopInterface();
         testPhase13AJsonFoundation();
+        testPhase13A2JsonDecoders();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';
