@@ -35,6 +35,7 @@
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
 #include "game/gameplay/rpg/rewards.h"
+#include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/bank_overlay.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
@@ -3248,8 +3249,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 5 && encoded[7] == 0,
-           "bank persistence advances DSAV to minor version 5");
+    expect(encoded.size() > 7 && encoded[6] == 6 && encoded[7] == 0,
+           "quest reward claims advance DSAV to minor version 6");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
@@ -5267,6 +5268,53 @@ void testPhase12DBank() {
 
 } // namespace
 
+void testPhase12E1RewardGrants() {
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    static_assert(!std::is_same_v<underworld::game::content::AuthoredRewardGrant, underworld::game::gameplay::rpg::RewardGrantDefinition>);
+    const auto& grant = content.rewardGrants().require({"reward.quest.scholar.path"});
+    expect(grant.experience == 40 && grant.gold == 25 && grant.items.size() == 2,
+           "builtin quest reward grant contains provisional XP, gold and items");
+    const auto& quest = content.quests().require({"quest.scholar.path"});
+    expect(quest.rewardGrantId && *quest.rewardGrantId == grant.id,
+           "scholar quest references its guaranteed reward grant");
+
+    underworld::game::gameplay::PlayerItems items(content.items());
+    underworld::game::gameplay::rpg::PlayerProgressionState progression(content.progressions().require({"progression.player.default"}));
+    underworld::game::gameplay::rpg::RewardGrantService service;
+    const auto applied = service.grant(grant, progression, items);
+    expect(applied.applied && applied.experience.granted == 40 && items.wallet().gold() == 25 &&
+               items.inventory().items().count({"item.life_potion"}) == 2 &&
+               items.inventory().items().count({"item.training_armor"}) == 1 &&
+               !items.equipment().item(underworld::game::gameplay::rpg::EquipmentSlot::armor),
+           "guaranteed quest reward applies XP, gold and inventory items without auto-equipping");
+
+    underworld::game::gameplay::quests::QuestStateStore quests;
+    expect(quests.start(quest), "rewarded quest starts with pending claim state");
+    const auto* progress = quests.find(quest.id);
+    expect(progress && !progress->rewardClaimed, "active rewarded quest starts unclaimed");
+    for (const auto& objective : quest.objectives) static_cast<void>(quests.setObjectiveProgress(quest, objective.id, objective.requiredCount));
+    progress = quests.find(quest.id);
+    expect(progress && progress->status == underworld::game::gameplay::quests::QuestStatus::completed && !progress->rewardClaimed,
+           "quest completion is distinct from guaranteed reward delivery");
+    expect(quests.pendingRewardQuestIds(content.quests()).size() == 1 && quests.markRewardClaimed(quest) &&
+               !quests.markRewardClaimed(quest), "pending reward claim is deterministic and exactly once");
+
+    underworld::game::gameplay::PlayerItems full(content.items());
+    const auto filler = underworld::game::gameplay::lifePotionItemId();
+    static_cast<void>(full.inventory().items().add(filler, 66));
+    for (std::size_t i = 1; i < full.inventory().items().capacity(); ++i)
+        static_cast<void>(full.inventory().items().add({"item.training_armor"}, 1));
+    for (std::size_t i = 0; i < full.bank().items().capacity(); ++i)
+        static_cast<void>(full.bank().items().add({"item.training_armor"}, 1));
+    underworld::game::gameplay::rpg::RewardGrantDefinition blocked{{"reward.test.blocked"}, 40, 25,
+                                                  {{{"item.life_potion"}, 2}, {{"item.training_armor"}, 1}}};
+    underworld::game::gameplay::rpg::PlayerProgressionState blockedProgression(content.progressions().require({"progression.player.default"}));
+    const auto blockedResult = service.grant(blocked, blockedProgression, full);
+    expect(!blockedResult.applied && blockedResult.blockedByStorage && blockedProgression.totalExperience() == 0 &&
+               full.wallet().gold() == 0 && full.bank().gold() == 0,
+           "guaranteed reward is atomic when inventory and bank cannot store all items");
+}
+
 int main() {
     try {
         testMetrics();
@@ -5332,6 +5380,7 @@ int main() {
         testPhase12C1EquipmentTransactions();
         testPhase12DBank();
         testPhase12D2BankInterface();
+        testPhase12E1RewardGrants();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

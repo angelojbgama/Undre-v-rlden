@@ -89,6 +89,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.rewardProfiles = {
         {{"reward.enemy.evil_soldier"}, 60, {{{"pickup.money"}, 10000, 1, 2}, {{"pickup.life_potion"}, 2000, 1, 1}}},
         {{"reward.enemy.skull"}, 40, {{{"pickup.money"}, 10000, 1, 1}, {{"pickup.heart"}, 2500, 1, 1}}}};
+    pack.rewardGrants = {{{"reward.quest.scholar.path"}, 40, 25, {{{"item.life_potion"}, 2}, {{"item.training_armor"}, 1}}}};
     pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}}};
     pack.npcs = {
         {{"npc.guard"}, {"visual.npc.guard"}, {{-14, -28, 28, 22}, true}, {"dialogue.guard.greeting"}, {"npc", "guard"}},
@@ -115,6 +116,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     scholarQuest.objectives.push_back({{"quest.scholar.kill"}, gameplay::quests::QuestObjectiveKind::kill, {"enemy.evil_soldier"}, 1, "Defeat an evil soldier."});
     scholarQuest.objectives.push_back({{"quest.scholar.pickup"}, gameplay::quests::QuestObjectiveKind::pickup, {"pickup.heart"}, 1, "Find a heart pickup."});
     scholarQuest.tags = {"story", "scholar"};
+    scholarQuest.rewardGrantId = {"reward.quest.scholar.path"};
     pack.quests.push_back(std::move(scholarQuest));
     pack.authoringDescriptors = {
         {{"enemy.evil_soldier"}, "Evil Soldier", AuthoringCategory::enemy, {"melee", "hostile"}}, {{"enemy.skull"}, "Skull", AuthoringCategory::enemy, {"ranged", "hostile"}},
@@ -123,6 +125,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}},
         {{"reward.enemy.evil_soldier"}, "Evil Soldier Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
         {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
+        {{"reward.quest.scholar.path"}, "Scholar Quest Reward", AuthoringCategory::rewardGrant, {"reward", "quest"}},
         {{"item.life_potion"}, "Life Potion", AuthoringCategory::item, {"item", "consumable"}},
         {{"item.training_armor"}, "Training Armor", AuthoringCategory::item, {"item", "equipment"}},
         {{"item.power_charm"}, "Power Charm", AuthoringCategory::item, {"item", "equipment"}},

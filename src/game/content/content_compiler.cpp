@@ -57,12 +57,13 @@ gameplay::dialogue::DialogueDefinition compileDialogue(const AuthoredDialogue& v
     return result;
 }
 gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
-    gameplay::quests::QuestDefinition result{v.id, v.title, {}, v.tags};
+    gameplay::quests::QuestDefinition result{v.id, v.title, {}, v.tags, v.rewardGrantId};
     for (const auto& objective : v.objectives) result.objectives.push_back({objective.id, objective.kind, objective.targetId, objective.requiredCount, objective.description});
     return result;
 }
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
 gameplay::rpg::RewardProfileDefinition compileReward(const AuthoredRewardProfile& v) { gameplay::rpg::RewardProfileDefinition result{v.id, v.experience, {}}; for (const auto& entry : v.loot) result.loot.push_back({entry.pickupDefinitionId, entry.chanceBasisPoints, entry.minimumCount, entry.maximumCount}); return result; }
+gameplay::rpg::RewardGrantDefinition compileGrant(const AuthoredRewardGrant& v) { gameplay::rpg::RewardGrantDefinition result{v.id, v.experience, v.gold, {}}; for (const auto& item : v.items) result.items.push_back({item.itemId, item.quantity}); return result; }
 authoring::TileSemanticDefinition compileTileSemantic(const AuthoredTileSemantic& v) { return {v.id, v.tilesetId, v.sourceIndex, v.family, v.role, v.topology, v.north, v.east, v.south, v.west, v.preferredLayer, v.flipXAllowed, v.visualConfidence, v.semanticConfidence, v.gameplayConfidence}; }
 authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
     authoring::StampDefinition result{v.id, v.displayName, v.width, v.height, {}, v.anchor, v.flipXAllowed, v.atomic, v.confidence};
@@ -84,6 +85,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.behaviors) registry.behaviors_.add(compileBehavior(value));
         for (const auto& value : authored.enemies) registry.enemies_.add(compileEnemy(value));
         for (const auto& value : authored.rewardProfiles) registry.rewards_.add(compileReward(value));
+        for (const auto& value : authored.rewardGrants) registry.rewardGrants_.add(compileGrant(value));
         for (const auto& value : authored.items) registry.items_.add(compileItem(value));
         for (const auto& value : authored.objects) registry.objects_.add(compileObject(value));
         for (const auto& value : authored.npcs) registry.npcs_.add(compileNpc(value));

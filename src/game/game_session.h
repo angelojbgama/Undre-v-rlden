@@ -18,6 +18,7 @@
 #include "game/save/save_data.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
+#include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/equipment.h"
 
 #include <memory>
@@ -58,6 +59,7 @@ public:
         rewardCatalog_ = &rewards;
         pickupDefinitions_ = &pickups;
     }
+    void configureRewardGrants(const gameplay::rpg::RewardGrantCatalog& grants) noexcept { rewardGrantCatalog_ = &grants; }
     [[nodiscard]] save::SaveData captureSaveData() const;
     [[nodiscard]] bool restoreSaveData(const save::SaveData& data, std::string& error);
 
@@ -120,6 +122,7 @@ private:
     [[nodiscard]] bool handleDialogueCommand(const simulation::PlayerCommand& command);
     void applyDialogueActions();
     void consumeQuestEvents();
+    void resolvePendingQuestRewards();
     void refreshDerivedPlayerStats();
     [[nodiscard]] gameplay::DamageSpec effectivePlayerDamage(
         const gameplay::DamageSpec& base) const noexcept;
@@ -149,8 +152,10 @@ private:
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
     const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};
+    const gameplay::rpg::RewardGrantCatalog* rewardGrantCatalog_{};
     const std::vector<gameplay::PickupDefinition>* pickupDefinitions_{};
     gameplay::rpg::RewardResolver rewardResolver_;
+    gameplay::rpg::RewardGrantService rewardGrantService_;
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;

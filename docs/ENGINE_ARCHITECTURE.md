@@ -1441,7 +1441,7 @@ typed base stats currently used by the Player, including maximum health. The
 derives level, next threshold and current-level progress from the compiled curve.
 Accumulation saturates at the integer maximum. The current builtin curve is
 provisional development content, not final balance. Creatures do not grant XP
-directly; reward resolution remains a future domain system consuming defeat events.
+directly; defeat rewards and guaranteed quest grants remain separate domain systems.
 
 ## Fase 11C — Event-driven quest progression
 
@@ -1576,3 +1576,16 @@ open as a container or emit `ObjectOpened`. `BankOverlayState` contains only tra
 navigation state. `GameSession` owns modal lifetime and routes selected-slot transfers
 and Deposit All/Withdraw All operations; the ViewModel copies Bank data for presentation,
 which never mutates it. Official placement and final art remain content/level-design work.
+## Guaranteed rewards and quest delivery
+
+`RewardProfileDefinition` remains probabilistic defeat reward data. `RewardGrantDefinition`
+is guaranteed, atomic reward data referenced by `QuestDefinition`. Quest completion and
+reward delivery are separate persistent states: claims are exactly once and legacy
+completed quests are migrated as already claimed. Item grants target Inventory first
+and Bank second; if storage cannot fit the complete grant, nothing is applied and the
+reward remains pending for a later tick. Equipment rewards are normal non-stackable
+items and are never auto-equipped. Gold targets Wallet then Bank, XP uses
+`PlayerProgressionState`, and grant items do not emit `PickupCollected`.
+
+The QSTS claim flag is persisted in DSAV 1.6. Shops are planned for 12E2/12E3 before
+the external authored-content phase.

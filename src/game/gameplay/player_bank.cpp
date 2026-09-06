@@ -5,6 +5,13 @@
 
 namespace underworld::game::gameplay {
 
+std::uint64_t PlayerBank::addGold(std::uint64_t amount) noexcept {
+    const auto space = std::numeric_limits<std::uint64_t>::max() - gold_;
+    const auto accepted = std::min(amount, space);
+    gold_ += accepted;
+    return amount - accepted;
+}
+
 std::uint32_t PlayerBank::depositItem(ItemContainer& inventory,
                                       const simulation::DefinitionId& itemId,
                                       std::uint32_t quantity) {

@@ -498,6 +498,21 @@ void GameSession::consumeQuestEvents() {
     if (questSystem_) { questSystem_->consume(events_); }
 }
 
+void GameSession::resolvePendingQuestRewards() {
+    if (!questCatalog_ || !rewardGrantCatalog_ || !playerItems_) return;
+    for (const auto& questId : questState_.pendingRewardQuestIds(*questCatalog_)) {
+        const auto& quest = questCatalog_->require(questId);
+        if (!quest.rewardGrantId) continue;
+        const auto result = rewardGrantService_.grant(rewardGrantCatalog_->require(*quest.rewardGrantId), progression_, *playerItems_);
+        if (!result.applied) continue;
+        if (result.experience.granted != 0) events_.emit(simulation::ExperienceGranted{
+            player_.entityHandle(), quest.id, result.experience.granted,
+            progression_.totalExperience(), result.experience.previousLevel,
+            result.experience.newLevel});
+        static_cast<void>(questState_.markRewardClaimed(quest));
+    }
+}
+
 void GameSession::captureWorldState() {
     if (mapSession_ && mapSession_->world() && mapSession_->data()) {
         save::captureWorldState(*mapSession_->data(), *mapSession_->world(), worldState_);
@@ -524,12 +539,13 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     gameplay::tickInvulnerability(player_.combatant());
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
     if (handleDialogueCommand(command)) {
-        consumeQuestEvents();
+        consumeQuestEvents(); resolvePendingQuestRewards();
         return;
     }
     if (bankOverlay_.open()) {
         if (command.actions.toggleInventoryPressed) { bankOverlay_.toggle(); }
         else { static_cast<void>(gameplay::routeBankCommand(bankOverlay_, command, *playerItems_)); }
+        resolvePendingQuestRewards();
         return;
     }
     if (playerItems_) {
@@ -537,7 +553,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health());
         if (inventoryResult.equipmentChanged) { refreshDerivedPlayerStats(); }
         if (inventoryResult.consumedTick) {
-            consumeQuestEvents();
+            consumeQuestEvents(); resolvePendingQuestRewards();
             return;
         }
     }
@@ -584,6 +600,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     collectNearbyPickups();
     updateObjects();
     consumeQuestEvents();
+    resolvePendingQuestRewards();
 }
 
 void GameSession::resolveDefeatRewards() {

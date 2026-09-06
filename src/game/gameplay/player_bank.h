@@ -15,6 +15,7 @@ public:
     [[nodiscard]] ItemContainer& items() noexcept { return items_; }
     [[nodiscard]] const ItemContainer& items() const noexcept { return items_; }
     [[nodiscard]] std::uint64_t gold() const noexcept { return gold_; }
+    [[nodiscard]] std::uint64_t addGold(std::uint64_t amount) noexcept;
     [[nodiscard]] std::uint32_t depositItem(ItemContainer& inventory,
                                              const simulation::DefinitionId& itemId,
                                              std::uint32_t quantity);

@@ -263,6 +263,8 @@ if errorlevel 1 goto :build_failed
 echo Compiling reward resolution...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\rewards.obj" "src\game\gameplay\rpg\rewards.cpp"
 if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\reward_grants.obj" "src\game\gameplay\rpg\reward_grants.cpp"
+if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\player_bank.obj" "src\game\gameplay\player_bank.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\bank_overlay.obj" "src\game\gameplay\bank_overlay.cpp"
@@ -331,7 +333,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\runtime_map.obj" ^
     "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" ^
     "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
     "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\creature_engine.obj" ^
@@ -356,7 +358,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
@@ -391,7 +393,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\editor_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_playtest.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
@@ -424,7 +426,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" ^

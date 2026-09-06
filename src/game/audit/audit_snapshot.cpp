@@ -30,7 +30,8 @@ void writeQuestArray(std::ostringstream& out, const std::vector<AuditQuest>& que
         const auto& quest = quests[index];
         out << "{\"id\":\"" << escapeJsonString(quest.questId)
             << "\",\"status\":\"" << escapeJsonString(quest.status)
-            << "\",\"objectives\":[";
+            << "\",\"rewardClaimed\":" << (quest.rewardClaimed ? "true" : "false")
+            << ",\"objectives\":[";
         for (std::size_t objectiveIndex = 0; objectiveIndex < quest.objectives.size();
              ++objectiveIndex) {
             if (objectiveIndex != 0) { out << ','; }

@@ -26,7 +26,7 @@ bool QuestStateStore::start(const QuestDefinition& definition) {
         return false;
     }
 
-    QuestProgress progress{definition.id, QuestStatus::active, {}};
+    QuestProgress progress{definition.id, QuestStatus::active, {}, false};
     progress.objectives.reserve(definition.objectives.size());
     for (const auto& objective : definition.objectives) {
         progress.objectives.push_back({objective.id, 0});
@@ -77,7 +77,9 @@ bool QuestStateStore::restore(std::span<const QuestProgress> progress,
         const auto* definition = catalog.find(candidate.questId);
         if (definition == nullptr || candidate.status == QuestStatus::inactive ||
             !ids.emplace(candidate.questId).second ||
-            candidate.objectives.size() != definition->objectives.size()) {
+            candidate.objectives.size() != definition->objectives.size() ||
+            (candidate.status == QuestStatus::active && candidate.rewardClaimed) ||
+            (candidate.status == QuestStatus::completed && !definition->rewardGrantId && !candidate.rewardClaimed)) {
             return false;
         }
         bool allComplete = true;
@@ -96,6 +98,22 @@ bool QuestStateStore::restore(std::span<const QuestProgress> progress,
     }
     progress_ = std::move(restored);
     return true;
+}
+
+std::vector<simulation::DefinitionId> QuestStateStore::pendingRewardQuestIds(const QuestCatalog& catalog) const {
+    std::vector<simulation::DefinitionId> result;
+    for (const auto& [id, value] : progress_) {
+        const auto* definition = catalog.find(id);
+        if (definition && value.status == QuestStatus::completed && definition->rewardGrantId && !value.rewardClaimed) result.push_back(id);
+    }
+    std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.value() < b.value(); });
+    return result;
+}
+
+bool QuestStateStore::markRewardClaimed(const QuestDefinition& definition) noexcept {
+    auto* value = findMutable(definition.id);
+    if (!value || value->status != QuestStatus::completed || !definition.rewardGrantId || value->rewardClaimed) return false;
+    value->rewardClaimed = true; return true;
 }
 
 const QuestProgress& QuestStateStore::require(
@@ -144,6 +162,7 @@ void QuestStateStore::refreshStatus(const QuestDefinition& definition,
                    progressObjective->currentCount >= definitionObjective.requiredCount;
         });
     progress.status = allComplete ? QuestStatus::completed : QuestStatus::active;
+    if (progress.status == QuestStatus::completed && !definition.rewardGrantId) progress.rewardClaimed = true;
 }
 
 bool QuestStateStore::setObjectiveProgress(const QuestDefinition& definition,

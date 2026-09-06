@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,6 +27,7 @@ struct QuestDefinition final {
     std::string title;
     std::vector<QuestObjectiveDefinition> objectives;
     std::vector<std::string> tags;
+    std::optional<simulation::DefinitionId> rewardGrantId{};
     [[nodiscard]] bool operator==(const QuestDefinition&) const noexcept = default;
 };
 

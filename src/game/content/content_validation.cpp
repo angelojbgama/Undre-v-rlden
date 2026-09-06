@@ -97,6 +97,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                                   [](const auto& value) { return value.id; });
     const auto rewards = ids(pack.rewardProfiles, report, ContentKind::rewardProfile,
                              [](const auto& value) { return value.id; });
+    const auto grants = ids(pack.rewardGrants, report, ContentKind::rewardGrant,
+                            [](const auto& value) { return value.id; });
 
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||
@@ -138,6 +140,16 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (entry.chanceBasisPoints > 10000 || entry.minimumCount == 0 ||
                 entry.minimumCount > entry.maximumCount || entry.maximumCount > gameplay::rpg::maximumDropCountPerEntry)
                 error(report, ContentKind::rewardProfile, value.id, "invalid_range", "loot chance or count is invalid", "loot");
+        }
+    }
+    for (const auto& value : pack.rewardGrants) {
+        if (value.experience == 0 && value.gold == 0 && value.items.empty()) error(report, ContentKind::rewardGrant, value.id, "empty_grant", "reward grant must contain a reward", "definition");
+        if (value.items.size() > gameplay::rpg::maximumRewardItems) error(report, ContentKind::rewardGrant, value.id, "invalid_range", "reward grant has too many item entries", "items");
+        std::unordered_set<std::string> grantItems;
+        for (const auto& item : value.items) {
+            if (item.itemId.empty() || !contains(items, item.itemId)) error(report, ContentKind::rewardGrant, value.id, "unknown_reference", "reward item does not exist", "items");
+            if (item.quantity == 0) error(report, ContentKind::rewardGrant, value.id, "invalid_quantity", "reward item quantity must be positive", "items");
+            if (!grantItems.emplace(std::string(item.itemId.value())).second) error(report, ContentKind::rewardGrant, value.id, "duplicate_item", "reward grant item is duplicated", "items");
         }
     }
     for (const auto& value : pack.items) {
@@ -210,6 +222,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 (objective.kind == gameplay::quests::QuestObjectiveKind::pickup && (contains(pickups, objective.targetId) || contains(items, objective.targetId)));
             if (objective.kind != gameplay::quests::QuestObjectiveKind::enter && !known) error(report, ContentKind::quest, value.id, "unknown_reference", "quest objective target does not exist", "targetId");
         }
+        if (value.rewardGrantId && !contains(grants, *value.rewardGrantId)) error(report, ContentKind::quest, value.id, "unknown_reference", "quest reward grant does not exist", "rewardGrantId");
     }
     for (const auto& value : pack.tileSemantics) {
         const auto tileset = std::find_if(pack.tilesets.begin(), pack.tilesets.end(), [&](const auto& other) { return other.id == value.tilesetId; });
@@ -232,7 +245,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

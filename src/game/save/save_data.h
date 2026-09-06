@@ -92,8 +92,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP; minor 5 adds BANK.
-inline constexpr std::uint16_t saveMinorVersion = 5;
+// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP; minor 5 added BANK; minor 6 added quest reward claims.
+inline constexpr std::uint16_t saveMinorVersion = 6;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

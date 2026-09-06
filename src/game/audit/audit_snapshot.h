@@ -59,6 +59,7 @@ struct AuditQuest final {
     std::string questId;
     std::string status;
     std::vector<AuditQuestObjective> objectives;
+    bool rewardClaimed{};
 };
 
 // A value-only diagnostic view. It deliberately contains no EntityHandle, pointers,

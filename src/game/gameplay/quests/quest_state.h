@@ -22,6 +22,7 @@ struct QuestProgress final {
     simulation::DefinitionId questId{};
     QuestStatus status{QuestStatus::inactive};
     std::vector<QuestObjectiveProgress> objectives;
+    bool rewardClaimed{};
     [[nodiscard]] bool operator==(const QuestProgress&) const noexcept = default;
 };
 
@@ -42,6 +43,8 @@ public:
     [[nodiscard]] bool restore(std::span<const QuestProgress> progress,
                                const QuestCatalog& catalog);
     [[nodiscard]] std::vector<simulation::DefinitionId> activeQuestIds() const;
+    [[nodiscard]] std::vector<simulation::DefinitionId> pendingRewardQuestIds(const QuestCatalog& catalog) const;
+    [[nodiscard]] bool markRewardClaimed(const QuestDefinition& definition) noexcept;
     [[nodiscard]] std::size_t size() const noexcept { return progress_.size(); }
 
     // Progress is deliberately explicit about the definition it belongs to. This

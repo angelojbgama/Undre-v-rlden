@@ -100,7 +100,7 @@ FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
-FASE 12 — RPG (12A progression DONE; rewards, loot, equipment e bank futuros)
+FASE 12 — RPG (12A–12D2 DONE; 12E1 DONE; 12E2/12E3 FUTURE; phase extended)
 FASE 13 — Headless + replay + auditoria determinística
 ```
 
@@ -1303,7 +1303,16 @@ a dedicated inventory/storage/gold overlay backed by the global `PlayerBank`. Tr
 operate on selected slots, gold uses Deposit All/Withdraw All, and the modal pauses
 gameplay. Official placement and final art remain level-design/content tasks.
 
-### Phase 12 — RPG / XP / Equipment / Loot / Bank — COMPLETE
+### 12E1 — Guaranteed reward grants + quest rewards — DONE
 
-The planned RPG domain slices are complete. No Bank placement or new art is added to
-the official DMAP in this increment; that remains a content/level-design decision.
+Guaranteed `RewardGrantDefinition` data is separate from probabilistic defeat rewards.
+Quest completion persists an exactly-once reward claim state; item rewards use Inventory
+then Bank atomically, while XP and Gold are applied directly. Values are provisional
+development balance. Shop definitions/transactions (12E2) and shop access/UI (12E3)
+remain future work.
+
+### Phase 12 — RPG / XP / Equipment / Loot / Bank — EXTENDED / IN PROGRESS
+
+The previous RPG scope was extended with 12E1 before external authored content work.
+No shops are implemented yet; no Bank placement or new art is added to the official
+DMAP in this increment.

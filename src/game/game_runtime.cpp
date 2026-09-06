@@ -293,7 +293,8 @@ struct GameRuntime::State final {
                                 attackCatalog.require(gameplay::playerBowAttackId()));
         session.configureItems(itemCatalog);
         session.configureNarrative(content.dialogues(), content.quests());
-        session.configureRewards(content.rewards(), content.pickups());
+        session.configureRewards(content.rewardProfiles(), content.pickups());
+        session.configureRewardGrants(content.rewardGrants());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -454,7 +455,7 @@ struct GameRuntime::State final {
         snapshot.dialogue.selectedChoice = session.dialogue().selectedChoice();
         for (const auto& progress : session.questState().snapshot()) {
             audit::AuditQuest quest{std::string(progress.questId.value()),
-                                    questStatusName(progress.status), {}};
+                                    questStatusName(progress.status), {}, progress.rewardClaimed};
             for (const auto& objective : progress.objectives) {
                 quest.objectives.push_back({std::string(objective.objectiveId.value()),
                                             objective.currentCount});

@@ -71,7 +71,7 @@ QuestDefinition makeScholarQuestDefinition() {
               simulation::DefinitionId{"enemy.evil_soldier"}, 1, "Defeat an evil soldier."},
              {simulation::DefinitionId{"quest.scholar.pickup"}, QuestObjectiveKind::pickup,
               simulation::DefinitionId{"pickup.heart"}, 1, "Find a heart pickup."}},
-            {"story", "scholar"}};
+            {"story", "scholar"}, simulation::DefinitionId{"reward.quest.scholar.path"}};
 }
 
 } // namespace underworld::game::gameplay::quests
