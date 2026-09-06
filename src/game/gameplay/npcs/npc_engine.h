@@ -81,16 +81,21 @@ private:
 
 class NpcFactory final {
 public:
+    explicit NpcFactory(const NpcCatalog& npcs) : npcs_(npcs) {}
     NpcFactory(simulation::EntityHandlePool& handles, const NpcCatalog& npcs)
-        : handles_(handles), npcs_(npcs) {}
+        : npcs_(npcs), legacyHandles_(&handles) {}
 
+    [[nodiscard]] NpcInstance create(simulation::EntityHandlePool& handles,
+                                     const simulation::DefinitionId& definitionId,
+                                     core::WorldPointI position,
+                                     FacingDirection facing = FacingDirection::down) const;
     [[nodiscard]] NpcInstance create(const simulation::DefinitionId& definitionId,
                                      core::WorldPointI position,
                                      FacingDirection facing = FacingDirection::down) const;
 
 private:
-    simulation::EntityHandlePool& handles_;
     const NpcCatalog& npcs_;
+    simulation::EntityHandlePool* legacyHandles_{};
 };
 
 struct NpcInteractionResult final {

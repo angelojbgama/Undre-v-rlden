@@ -92,17 +92,23 @@ private:
 
 class WorldObjectFactory final {
 public:
+    WorldObjectFactory(const WorldObjectCatalog& objects, const ItemCatalog& items)
+        : objects_(objects), items_(items) {}
     WorldObjectFactory(simulation::EntityHandlePool& handles,
                        const WorldObjectCatalog& objects, const ItemCatalog& items)
-        : handles_(handles), objects_(objects), items_(items) {}
+        : objects_(objects), items_(items), legacyHandles_(&handles) {}
+    [[nodiscard]] WorldObjectInstance create(
+        simulation::EntityHandlePool& handles,
+        const simulation::DefinitionId& definitionId, core::WorldPointI position,
+        std::span<const ItemStack> initialContents = {}) const;
     [[nodiscard]] WorldObjectInstance create(
         const simulation::DefinitionId& definitionId, core::WorldPointI position,
         std::span<const ItemStack> initialContents = {}) const;
 
 private:
-    simulation::EntityHandlePool& handles_;
     const WorldObjectCatalog& objects_;
     const ItemCatalog& items_;
+    simulation::EntityHandlePool* legacyHandles_{};
 };
 
 struct ObjectInteractionResult final {

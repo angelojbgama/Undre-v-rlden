@@ -70,18 +70,28 @@ public:
     RuntimeWorldBuilder(const MapValidationCatalogs& catalogs,
                         const gameplay::creatures::EnemyFactory& enemies,
                         const gameplay::WorldObjectFactory& objects,
+                        const RuntimeTilesetCatalog& tilesets,
+                        const gameplay::npcs::NpcFactory* npcs = nullptr)
+        : catalogs_(catalogs), enemyFactory_(enemies), objectFactory_(objects),
+          tilesets_(tilesets), npcFactory_(npcs) {}
+    RuntimeWorldBuilder(const MapValidationCatalogs& catalogs,
+                        const gameplay::creatures::EnemyFactory& enemies,
+                        const gameplay::WorldObjectFactory& objects,
                         simulation::EntityHandlePool& handles,
                         const RuntimeTilesetCatalog& tilesets,
                         const gameplay::npcs::NpcFactory* npcs = nullptr)
         : catalogs_(catalogs), enemyFactory_(enemies), objectFactory_(objects),
-          handles_(handles), tilesets_(tilesets), npcFactory_(npcs) {}
+          legacyHandles_(&handles), tilesets_(tilesets), npcFactory_(npcs) {}
+    [[nodiscard]] RuntimeWorldBuildResult build(const MapData& data,
+                                                simulation::EntityHandlePool& handles,
+                                                const simulation::SpawnId& spawnId) const;
     [[nodiscard]] RuntimeWorldBuildResult build(const MapData& data,
                                                 const simulation::SpawnId& spawnId) const;
 private:
     MapValidationCatalogs catalogs_;
     const gameplay::creatures::EnemyFactory& enemyFactory_;
     const gameplay::WorldObjectFactory& objectFactory_;
-    simulation::EntityHandlePool& handles_;
+    simulation::EntityHandlePool* legacyHandles_{};
     RuntimeTilesetCatalog tilesets_;
     const gameplay::npcs::NpcFactory* npcFactory_{};
 };

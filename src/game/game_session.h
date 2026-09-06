@@ -14,6 +14,7 @@
 #include "game/gameplay/dialogue/dialogue_session.h"
 #include "game/gameplay/quests/quest_system.h"
 #include "game/maps/map_catalog.h"
+#include "game/save/save_data.h"
 
 #include <memory>
 #include <span>
@@ -25,17 +26,19 @@ namespace underworld::game {
 // rendering, platform input, assets or presentation state.
 class GameSession final {
 public:
-    GameSession(simulation::EntityHandlePool& handles, simulation::PlayerId playerId,
+    GameSession(simulation::PlayerId playerId,
                 core::WorldPointI initialPosition = {});
 
     [[nodiscard]] bool initializeMap(const maps::MapCatalog& maps,
                                       const maps::MapValidationCatalogs& catalogs,
                                       const maps::RuntimeWorldBuilder& builder,
-                                      simulation::EntityHandlePool& handles,
                                       const simulation::MapId& mapId,
                                       const simulation::SpawnId& spawnId,
                                       std::string& error);
     void tick(const simulation::PlayerCommand& command);
+    // Used by deterministic setup/teleport callers; normal gameplay movement
+    // still enters through PlayerCommand and tick().
+    void relocatePlayer(core::WorldPointI position, gameplay::FacingDirection facing) noexcept;
 
     void configureCombat(const gameplay::AttackCatalog& attacks,
                          const gameplay::ProjectileCatalog& projectiles,
@@ -45,26 +48,18 @@ public:
     void configureItems(const gameplay::ItemCatalog& items);
     void configureNarrative(const gameplay::dialogue::DialogueCatalog& dialogues,
                             const gameplay::quests::QuestCatalog& quests);
-    void clearCombatTransients() noexcept;
-    void closeDialogue() noexcept;
+    [[nodiscard]] save::SaveData captureSaveData() const;
+    [[nodiscard]] bool restoreSaveData(const save::SaveData& data, std::string& error);
 
     [[nodiscard]] const gameplay::Player& player() const noexcept { return player_; }
-    [[nodiscard]] gameplay::Player& playerForRuntime() noexcept { return player_; }
     [[nodiscard]] const gameplay::PlayerItems& playerItems() const noexcept { return *playerItems_; }
-    [[nodiscard]] gameplay::PlayerItems& playerItemsForRuntime() noexcept { return *playerItems_; }
     [[nodiscard]] const gameplay::InventoryOverlayState& inventoryOverlay() const noexcept {
         return inventoryOverlay_;
     }
-    [[nodiscard]] gameplay::InventoryOverlayState& inventoryOverlayForRuntime() noexcept {
-        return inventoryOverlay_;
-    }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
-    [[nodiscard]] simulation::EventBuffer& eventsForRuntime() noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
-    [[nodiscard]] maps::RuntimeWorld& worldForRuntime() noexcept;
     [[nodiscard]] const maps::MapData& mapData() const;
     [[nodiscard]] const save::SessionWorldState& worldState() const noexcept { return worldState_; }
-    [[nodiscard]] save::SessionWorldState& worldStateForRuntime() noexcept { return worldState_; }
     [[nodiscard]] const gameplay::ProjectileSystem& projectiles() const noexcept {
         return *projectiles_;
     }
@@ -72,8 +67,6 @@ public:
     [[nodiscard]] const gameplay::AttackExecution* playerAttack() const noexcept {
         return playerAttack_ ? &*playerAttack_ : nullptr;
     }
-    [[nodiscard]] bool restoreMap(const simulation::MapId& mapId,
-                                  const save::SessionWorldState& state, std::string& error);
     [[nodiscard]] const gameplay::dialogue::DialogueFlagSet& dialogueFlags() const noexcept {
         return dialogueFlags_;
     }
@@ -100,12 +93,16 @@ private:
     void updateObjects();
     void interactWithWorld();
     void captureWorldState();
+    void clearCombatTransients() noexcept;
+    void closeDialogue() noexcept;
+    [[nodiscard]] bool restoreMap(const simulation::MapId& mapId,
+                                  const save::SessionWorldState& state, std::string& error);
     [[nodiscard]] bool handleDialogueCommand(const simulation::PlayerCommand& command);
     void applyDialogueActions();
     void consumeQuestEvents();
     [[nodiscard]] std::vector<gameplay::CombatTargetRef> combatTargets();
 
-    simulation::EntityHandlePool& handles_;
+    simulation::EntityHandlePool handles_;
     gameplay::Player player_;
     simulation::EventBuffer events_;
     save::SessionWorldState worldState_;

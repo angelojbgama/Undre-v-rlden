@@ -198,25 +198,35 @@ void EnemyInstance::applyKnockback(int deltaX, int deltaY,
     positionY_ = subpixelCoordinate(body.y - definition_->collisionBody.offsetY);
 }
 
-EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles,
-                           const EnemyCatalog& enemies,
+EnemyFactory::EnemyFactory(const EnemyCatalog& enemies,
                            const BehaviorCatalog& behaviors,
                            const AttackCatalog& attacks,
                            const ProjectileCatalog& projectiles)
-    : handles_(handles), enemies_(enemies), behaviors_(behaviors), attacks_(attacks),
-      projectiles_(projectiles) {}
+    : enemies_(enemies), behaviors_(behaviors), attacks_(attacks), projectiles_(projectiles) {}
 
-EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles,
-                           const EnemyCatalog& enemies,
+EnemyFactory::EnemyFactory(const EnemyCatalog& enemies,
                            const BehaviorCatalog& behaviors,
                            const AttackCatalog& attacks,
                            const ProjectileCatalog& projectiles,
                            std::span<const simulation::DefinitionId> availableVisualSets)
-    : handles_(handles), enemies_(enemies), behaviors_(behaviors), attacks_(attacks),
-      projectiles_(projectiles),
+    : enemies_(enemies), behaviors_(behaviors), attacks_(attacks), projectiles_(projectiles),
       availableVisualSets_(availableVisualSets.begin(), availableVisualSets.end()) {}
 
-EnemyInstance EnemyFactory::create(const simulation::DefinitionId& definitionId,
+EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
+                           const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
+                           const ProjectileCatalog& projectiles)
+    : EnemyFactory(enemies, behaviors, attacks, projectiles) { legacyHandles_ = &handles; }
+
+EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
+                           const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
+                           const ProjectileCatalog& projectiles,
+                           std::span<const simulation::DefinitionId> availableVisualSets)
+    : EnemyFactory(enemies, behaviors, attacks, projectiles, availableVisualSets) {
+    legacyHandles_ = &handles;
+}
+
+EnemyInstance EnemyFactory::create(simulation::EntityHandlePool& handles,
+                                   const simulation::DefinitionId& definitionId,
                                    core::WorldPointI feet, FacingDirection facing) const {
     const EnemyDefinition& definition = enemies_.require(definitionId);
     const BehaviorProfile& profile = behaviors_.require(definition.behaviorProfileId);
@@ -233,7 +243,13 @@ EnemyInstance EnemyFactory::create(const simulation::DefinitionId& definitionId,
             throw std::invalid_argument("enemy attack references an unavailable projectile");
         }
     }
-    return EnemyInstance(handles_.create(), definition, feet, facing, profile);
+    return EnemyInstance(handles.create(), definition, feet, facing, profile);
+}
+
+EnemyInstance EnemyFactory::create(const simulation::DefinitionId& definitionId,
+                                   core::WorldPointI feet, FacingDirection facing) const {
+    if (legacyHandles_ == nullptr) { throw std::logic_error("EnemyFactory requires a handle pool"); }
+    return create(*legacyHandles_, definitionId, feet, facing);
 }
 
 const AttackDefinition* EnemyBehaviorSystem::selectAttack(

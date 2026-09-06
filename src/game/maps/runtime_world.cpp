@@ -6,7 +6,8 @@
 namespace underworld::game::maps {
 
 RuntimeWorldBuildResult RuntimeWorldBuilder::build(
-    const MapData& data, const simulation::SpawnId& spawnId) const {
+    const MapData& data, simulation::EntityHandlePool& handles,
+    const simulation::SpawnId& spawnId) const {
     const auto validation = validateMapData(data, &catalogs_);
     if (!validation) { return {nullptr, validation.error}; }
     if (!data.npcs.empty() && !npcFactory_) {
@@ -45,17 +46,17 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         result = std::make_unique<RuntimeWorld>(data.id, std::move(runtime), *spawn);
         result->enemies_.reserve(data.enemies.size());
         for (const auto& placement : data.enemies) {
-            result->enemies_.push_back({placement.id, enemyFactory_.create(
+            result->enemies_.push_back({placement.id, enemyFactory_.create(handles,
                 placement.definitionId, placement.position, placement.facing)});
         }
         result->npcs_.reserve(data.npcs.size());
         for (const auto& placement : data.npcs) {
-            result->npcs_.push_back({placement.id, npcFactory_->create(
+            result->npcs_.push_back({placement.id, npcFactory_->create(handles,
                 placement.definitionId, placement.position, placement.facing)});
         }
         result->objects_.reserve(data.objects.size());
         for (const auto& placement : data.objects) {
-            result->objects_.push_back({placement.id, objectFactory_.create(
+            result->objects_.push_back({placement.id, objectFactory_.create(handles,
                 placement.definitionId, placement.position, placement.initialContents)});
         }
         result->pickupDefinitions_.reserve(data.pickups.size());
@@ -66,26 +67,34 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         result->pickups_.reserve(data.pickups.size());
         for (std::size_t index = 0; index < data.pickups.size(); ++index) {
             result->pickups_.push_back({data.pickups[index].id, gameplay::WorldPickup{
-                handles_.create(), result->pickupDefinitions_[index], data.pickups[index].position}});
+                handles.create(), result->pickupDefinitions_[index], data.pickups[index].position}});
         }
         return {std::move(result), {}};
     } catch (const std::exception& exception) {
         if (result) {
             for (auto& enemy : result->enemies_) {
-                static_cast<void>(handles_.destroy(enemy.instance.handle()));
+                static_cast<void>(handles.destroy(enemy.instance.handle()));
             }
             for (auto& npc : result->npcs_) {
-                static_cast<void>(handles_.destroy(npc.instance.handle()));
+                static_cast<void>(handles.destroy(npc.instance.handle()));
             }
             for (auto& object : result->objects_) {
-                static_cast<void>(handles_.destroy(object.instance.handle()));
+                static_cast<void>(handles.destroy(object.instance.handle()));
             }
             for (auto& pickup : result->pickups_) {
-                static_cast<void>(handles_.destroy(pickup.instance.handle()));
+                static_cast<void>(handles.destroy(pickup.instance.handle()));
             }
         }
         return {nullptr, exception.what()};
     }
+}
+
+RuntimeWorldBuildResult RuntimeWorldBuilder::build(
+    const MapData& data, const simulation::SpawnId& spawnId) const {
+    if (legacyHandles_ == nullptr) {
+        return {nullptr, "RuntimeWorldBuilder requires a handle pool"};
+    }
+    return build(data, *legacyHandles_, spawnId);
 }
 
 } // namespace underworld::game::maps

@@ -78,10 +78,17 @@ InteractionArea NpcInstance::interactionArea() const noexcept {
             definition_->interaction.enabled};
 }
 
-NpcInstance NpcFactory::create(const simulation::DefinitionId& definitionId,
+NpcInstance NpcFactory::create(simulation::EntityHandlePool& handles,
+                               const simulation::DefinitionId& definitionId,
                                core::WorldPointI position, FacingDirection facing) const {
     const auto& definition = npcs_.require(definitionId);
-    return NpcInstance{handles_.create(), definition, position, facing};
+    return NpcInstance{handles.create(), definition, position, facing};
+}
+
+NpcInstance NpcFactory::create(const simulation::DefinitionId& definitionId,
+                               core::WorldPointI position, FacingDirection facing) const {
+    if (legacyHandles_ == nullptr) { throw std::logic_error("NpcFactory requires a handle pool"); }
+    return create(*legacyHandles_, definitionId, position, facing);
 }
 
 NpcInteractionResult interactNearest(core::WorldPointI playerFeet,

@@ -200,16 +200,17 @@ Input físico não chama diretamente uma função de movimento do Player. O rend
 
 ### 3.1 Composição transitória do runtime
 
-O executável ativo usa `GameRuntime` como composition root do jogo. Ele ainda coordena
-estado de gameplay, mundo, save/load, diálogo, quests e auditoria, mas delega a
-apresentação para `GamePresentation`.
+O executável ativo usa `GameRuntime` como composition root da aplicação. Ele coordena
+bootstrap, input, filesystem, auditoria e apresentação, mas delega o estado
+autoritativo de gameplay para `GameSession` e a composição visual para
+`GamePresentation`.
 
 `GamePresentation` possui a câmera e os passes visuais do mundo, atores, projéteis,
 efeitos, HUD, diálogo, inventário e debug. Ele recebe uma view somente-leitura do
 estado necessário para desenhar; não possui acesso mutável irrestrito ao runtime nem
 autoridade sobre gameplay.
 
-Esta é uma etapa intermediária intencional:
+Historicamente esta foi uma etapa intermediária intencional:
 
 ```text
 GameRuntime
@@ -217,11 +218,10 @@ GameRuntime
     └── GamePresentation
 ```
 
-Os próximos incrementos continuarão extraindo a simulação autoritativa para
-`GameSession` dirigida por `PlayerCommand`. A separação atual não altera DMAP/DSAV e
-não conclui headless/replay.
+O fechamento descrito abaixo concluiu a extração da simulação autoritativa para
+`GameSession` dirigida por `PlayerCommand`. Isso não conclui headless/replay.
 
-### GameSession — fundação em progresso
+### GameSession — fronteira autoritativa concluída
 
 `GameSession` já fornece uma fronteira de simulação sem dependências de renderer,
 plataforma, decoder ou assets gráficos. Ela possui o Player, o `EventBuffer` e a
@@ -235,9 +235,13 @@ de objetos; a conclusão de destruição nunca depende de `Animator::finished()`
 possui `DialogueSession`, flags, `QuestStateStore` e `QuestSystem`: diálogo é roteado
 antes da simulação normal, escolhas produzem ações concretas e a progressão consome
 o `EventBuffer` uma vez por tick. `GameRuntime` continua compondo filesystem e
-apresentação, enquanto bridges mutáveis restantes serão removidas no fechamento.
-Player combat invulnerability também é avançada pela Session antes dos modais,
-preservando a pausa estabelecida. A API de filesystem para save/load permanece no runtime.
+apresentação, mas não possui aliases mutáveis para o estado da Session. `GameSession`
+é dona do `EntityHandlePool`, aloca a identidade runtime das entidades e expõe apenas
+views constantes para presentation/audit. Captura e restauração lógica de save são
+operações específicas da Session; filesystem e escrita atômica continuam sendo
+responsabilidade da aplicação. Restauração faz rollback internamente, fecha diálogo
+e limpa transientes antes de devolver o controle ao Runtime. Nenhum renderer, asset
+ou dependência de plataforma pode entrar em `GameSession`.
 
 ---
 

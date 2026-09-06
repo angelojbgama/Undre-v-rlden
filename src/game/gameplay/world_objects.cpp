@@ -144,10 +144,18 @@ bool WorldObjectInstance::completeDestruction(simulation::EntityHandlePool& hand
 }
 
 WorldObjectInstance WorldObjectFactory::create(
+    simulation::EntityHandlePool& handles, const simulation::DefinitionId& definitionId,
+    core::WorldPointI position,
+    std::span<const ItemStack> initialContents) const {
+    return WorldObjectInstance(handles.create(), objects_.require(definitionId), position,
+                               items_, initialContents);
+}
+
+WorldObjectInstance WorldObjectFactory::create(
     const simulation::DefinitionId& definitionId, core::WorldPointI position,
     std::span<const ItemStack> initialContents) const {
-    return WorldObjectInstance(handles_.create(), objects_.require(definitionId), position,
-                               items_, initialContents);
+    if (legacyHandles_ == nullptr) { throw std::logic_error("WorldObjectFactory requires a handle pool"); }
+    return create(*legacyHandles_, definitionId, position, initialContents);
 }
 
 ObjectInteractionResult interactNearest(

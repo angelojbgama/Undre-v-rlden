@@ -227,7 +227,7 @@ struct GameRuntime::State final {
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
-          session(handles, localPlayerId, {}),
+          session(localPlayerId, {}),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()) {
@@ -281,14 +281,13 @@ struct GameRuntime::State final {
             makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
-            handles, enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog);
+            enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog);
         objectFactory = std::make_unique<gameplay::WorldObjectFactory>(
-            handles, objectCatalog, itemCatalog);
-        npcFactory = std::make_unique<gameplay::npcs::NpcFactory>(handles, npcCatalog);
+            objectCatalog, itemCatalog);
+        npcFactory = std::make_unique<gameplay::npcs::NpcFactory>(npcCatalog);
         validationCatalogs = mapValidationCatalogs(content);
         runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
-            validationCatalogs, *enemyFactory, *objectFactory, handles,
-            runtimeTilesets, npcFactory.get());
+            validationCatalogs, *enemyFactory, *objectFactory, runtimeTilesets, npcFactory.get());
         session.configureCombat(attackCatalog, projectileCatalog, behaviorCatalog,
                                 swordDefinition, bowDefinition);
         session.configureItems(itemCatalog);
@@ -339,7 +338,7 @@ struct GameRuntime::State final {
             throw std::runtime_error("could not select startup spawn: " + spawnError);
         }
         std::string sessionError;
-        if (!session.initializeMap(mapCatalog, validationCatalogs, *runtimeBuilder, handles,
+        if (!session.initializeMap(mapCatalog, validationCatalogs, *runtimeBuilder,
                                     startMap, *selectedSpawn, sessionError)) {
             throw std::runtime_error("could not activate startup DMAP: " + sessionError);
         }
@@ -455,9 +454,7 @@ struct GameRuntime::State final {
         return snapshot;
     }
 
-    [[nodiscard]] maps::RuntimeWorld& activeWorld() { return session.worldForRuntime(); }
     [[nodiscard]] const maps::RuntimeWorld& activeWorld() const { return session.world(); }
-    [[nodiscard]] world::RuntimeMap& activeMap() { return activeWorld().map(); }
     [[nodiscard]] const world::RuntimeMap& activeMap() const { return activeWorld().map(); }
 
     void rebuildWorldVisuals() {
@@ -500,13 +497,7 @@ struct GameRuntime::State final {
         }
     }
 
-    void captureActiveWorld() {
-        save::captureWorldState(session.mapData(), session.world(), session.worldStateForRuntime());
-    }
-
     void clearMapTransients() {
-        session.closeDialogue();
-        session.clearCombatTransients();
         effects->clear();
     }
 
@@ -530,9 +521,7 @@ struct GameRuntime::State final {
     }
 
     void saveGame() {
-        captureActiveWorld();
-        save::SaveData data{save::capturePlayer(player, session.playerItems(), activeWorld().id()),
-                            session.worldState(), session.dialogueFlags(), session.questState()};
+        const save::SaveData data = session.captureSaveData();
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
             lastEvent = "SAVED";
@@ -547,29 +536,8 @@ struct GameRuntime::State final {
             lastEvent = "LOAD ERROR";
             return;
         }
-        const auto previousPlayer = save::capturePlayer(
-            player, session.playerItems(), activeWorld().id());
-        const auto previousWorldState = session.worldState();
-        std::string restoreError;
-        if (!session.restoreMap(loaded.data.player.currentMapId, loaded.data.world,
-                                restoreError)) {
-            lastEvent = "LOAD ERROR";
-            return;
-        }
         std::string error;
-        if (!save::applyPlayer(loaded.data.player, player, session.playerItemsForRuntime(),
-                               itemCatalog, error)) {
-            static_cast<void>(session.restoreMap(previousPlayer.currentMapId,
-                                                  previousWorldState, restoreError));
-            static_cast<void>(save::applyPlayer(
-                previousPlayer, player, session.playerItemsForRuntime(), itemCatalog, error));
-            rebuildWorldVisuals();
-            lastEvent = "LOAD ERROR";
-            return;
-        }
-        const auto questProgress = loaded.data.quests.snapshot();
-        if (!session.restoreNarrativeState(loaded.data.dialogueFlags,
-                                           questProgress, error)) {
+        if (!session.restoreSaveData(loaded.data, error)) {
             lastEvent = "LOAD ERROR";
             return;
         }
@@ -669,9 +637,8 @@ struct GameRuntime::State final {
     std::filesystem::path executableDirectory;
     std::filesystem::path savePath;
     GamePresentation presentation;
-    simulation::EntityHandlePool handles;
     GameSession session;
-    gameplay::Player& player{session.playerForRuntime()};
+    const gameplay::Player& player{session.player()};
     GameContentRegistry content;
     RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
     TilesetVisualCatalog tilesetVisuals;
@@ -704,7 +671,7 @@ struct GameRuntime::State final {
     std::unique_ptr<maps::RuntimeWorldBuilder> runtimeBuilder;
     maps::MapCatalog mapCatalog;
     std::vector<maps::MapData> knownMapData;
-    simulation::EventBuffer& events{session.eventsForRuntime()};
+    const simulation::EventBuffer& events{session.events()};
     static constexpr std::uint32_t playerDamageBlinkDurationTicks = 12;
     std::uint32_t playerDamageBlinkTicksRemaining_{};
     CommandBuilder commandBuilder;

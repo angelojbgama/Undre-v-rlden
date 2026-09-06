@@ -969,10 +969,8 @@ void testPlayerMovementAndFacing() {
 
 void testGameSessionCommandBoundary() {
     using underworld::game::GameSession;
-    underworld::simulation::EntityHandlePool firstHandles;
-    underworld::simulation::EntityHandlePool secondHandles;
-    GameSession first(firstHandles, {0}, {1000, 1000});
-    GameSession second(secondHandles, {0}, {1000, 1000});
+    GameSession first({0}, {1000, 1000});
+    GameSession second({0}, {1000, 1000});
     const auto initial = first.player().subpixelPosition();
     const auto firstCommand = movementCommand(1, 1, 0);
     const auto secondCommand = movementCommand(2, 0, 0);
@@ -3962,9 +3960,9 @@ void testOfficialGameplayMapSet() {
     expect(back01.changed && session.world()->id() == simulation::MapId{"map.dungeon.01"},
            "official map transition returns from Map 02 to Map 01");
 
-    game::GameSession gameSession(handles, {0});
+    game::GameSession gameSession({0});
     std::string sessionError;
-    expect(gameSession.initializeMap(catalog, validation, builder, handles,
+    expect(gameSession.initializeMap(catalog, validation, builder,
                                      simulation::MapId{"map.dungeon.01"},
                                      simulation::SpawnId{"entry.start"}, sessionError) &&
                gameSession.world().id() == simulation::MapId{"map.dungeon.01"},
@@ -3973,7 +3971,7 @@ void testOfficialGameplayMapSet() {
     gameSession.tick(movementCommand(1, 1, 0));
     expect(gameSession.player().subpixelPosition().x > sessionInitial.x,
            "GameSession resolves movement against active map collision");
-    gameSession.playerForRuntime().relocate({23 * 16, 8 * 16 + 8},
+    gameSession.relocatePlayer({23 * 16, 8 * 16 + 8},
                                             gameplay::FacingDirection::right);
     gameSession.tick(movementCommand(2, 0, 0));
     const bool enteredMap02 = std::any_of(
@@ -3994,21 +3992,21 @@ void testOfficialGameplayMapSet() {
         sessionAttacks, sessionProjectiles);
     maps::RuntimeWorldBuilder logicalBuilder(validation, logicalEnemyFactory, objectFactory,
         handles, runtimeTilesets, &npcFactory);
-    game::GameSession combatSession(handles, {0});
+    game::GameSession combatSession({0});
     combatSession.configureCombat(sessionAttacks, sessionProjectiles, content.behaviors(),
         sessionAttacks.require(gameplay::playerSwordAttackId()),
         sessionAttacks.require(gameplay::playerBowAttackId()));
     std::string combatError;
-    expect(combatSession.initializeMap(catalog, validation, logicalBuilder, handles,
+    expect(combatSession.initializeMap(catalog, validation, logicalBuilder,
         simulation::MapId{"map.dungeon.01"}, simulation::SpawnId{"entry.start"}, combatError),
         "GameSession combat fixture initializes without visual catalogs or presentation");
     if (combatSession.world().enemies().empty()) {
         expect(false, "GameSession combat fixture contains a logical enemy");
     } else {
-        auto& enemy = combatSession.worldForRuntime().enemies().front().instance;
+        auto& enemy = const_cast<game::maps::RuntimeWorld&>(combatSession.world()).enemies().front().instance;
         enemy.combatant().health.current = 1;
         const auto enemyFeet = enemy.feetPosition();
-        combatSession.playerForRuntime().relocate(
+        combatSession.relocatePlayer(
             {enemyFeet.x - 12, enemyFeet.y}, gameplay::FacingDirection::right);
         combatSession.tick(actionCommand(3, true, false));
         for (std::uint32_t tick = 4; tick <= 8; ++tick) {
@@ -4024,11 +4022,11 @@ void testOfficialGameplayMapSet() {
                "headless GameSession advances Player sword combat without presentation");
     }
 
-    game::GameSession narrativeSession(handles, {0});
+    game::GameSession narrativeSession({0});
     narrativeSession.configureItems(content.items());
     narrativeSession.configureNarrative(content.dialogues(), content.quests());
     std::string narrativeError;
-    expect(narrativeSession.initializeMap(catalog, validation, logicalBuilder, handles,
+    expect(narrativeSession.initializeMap(catalog, validation, logicalBuilder,
         simulation::MapId{"map.dungeon.02"}, simulation::SpawnId{"entry.from_01"},
         narrativeError), "headless GameSession narrative fixture initializes logically");
     const auto scholar = std::find_if(narrativeSession.world().npcs().begin(),
@@ -4036,7 +4034,7 @@ void testOfficialGameplayMapSet() {
             return npc.instance.definition().id == npcs::scholarNpcId();
         });
     if (scholar != narrativeSession.world().npcs().end()) {
-        narrativeSession.playerForRuntime().relocate(
+        narrativeSession.relocatePlayer(
             scholar->instance.position(), gameplay::FacingDirection::down);
         auto interact = actionCommand(1, false, false);
         interact.actions.interactPressed = true;
@@ -4061,10 +4059,11 @@ void testOfficialGameplayMapSet() {
         expect(false, "headless GameSession narrative fixture contains the Scholar");
     }
 
-    game::GameSession itemSession(handles, {0});
+    game::GameSession itemSession({0});
     itemSession.configureItems(content.items());
+    itemSession.configureNarrative(content.dialogues(), content.quests());
     std::string itemError;
-    expect(itemSession.initializeMap(catalog, validation, builder, handles,
+    expect(itemSession.initializeMap(catalog, validation, builder,
         simulation::MapId{"map.dungeon.01"}, simulation::SpawnId{"entry.start"}, itemError),
         "GameSession item fixture initializes without presentation assets");
     const auto moneyPickup = std::find_if(
@@ -4076,7 +4075,7 @@ void testOfficialGameplayMapSet() {
     if (moneyPickup != itemSession.world().pickups().end()) {
         const auto pickupPosition = moneyPickup->instance.position();
         const auto pickupCount = itemSession.world().pickups().size();
-        itemSession.playerForRuntime().relocate(pickupPosition, gameplay::FacingDirection::down);
+        itemSession.relocatePlayer(pickupPosition, gameplay::FacingDirection::down);
         itemSession.tick(movementCommand(1, 0, 0));
         const bool collected = std::any_of(
             itemSession.events().events().begin(), itemSession.events().events().end(),
@@ -4086,6 +4085,15 @@ void testOfficialGameplayMapSet() {
         expect(collected && itemSession.playerItems().wallet().gold() > 0 &&
                    itemSession.world().pickups().size() + 1 == pickupCount,
                "GameSession routes logical pickup collection without presentation");
+        const auto saved = itemSession.captureSaveData();
+        const auto savedPosition = itemSession.player().feetPosition();
+        auto invalidSave = saved;
+        invalidSave.player.quickSlots[0] = simulation::DefinitionId{"item.unknown"};
+        std::string restoreError;
+        expect(!itemSession.restoreSaveData(invalidSave, restoreError) &&
+                   itemSession.player().feetPosition() == savedPosition &&
+                   itemSession.playerItems().wallet().gold() == saved.player.gold,
+               "GameSession rejects invalid save without partially restoring state");
     } else {
         expect(false, "GameSession item fixture contains a logical pickup");
     }

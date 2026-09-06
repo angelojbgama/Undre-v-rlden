@@ -141,24 +141,33 @@ private:
 
 class EnemyFactory final {
 public:
+    EnemyFactory(const EnemyCatalog& enemies, const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
+                 const ProjectileCatalog& projectiles);
     EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
                  const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
                  const ProjectileCatalog& projectiles);
+    EnemyFactory(const EnemyCatalog& enemies, const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
+                 const ProjectileCatalog& projectiles,
+                 std::span<const simulation::DefinitionId> availableVisualSets);
     EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
                  const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
                  const ProjectileCatalog& projectiles,
                  std::span<const simulation::DefinitionId> availableVisualSets);
 
+    [[nodiscard]] EnemyInstance create(simulation::EntityHandlePool& handles,
+                                       const simulation::DefinitionId& definitionId,
+                                       core::WorldPointI feet,
+                                       FacingDirection facing = FacingDirection::down) const;
     [[nodiscard]] EnemyInstance create(const simulation::DefinitionId& definitionId,
                                        core::WorldPointI feet,
                                        FacingDirection facing = FacingDirection::down) const;
 
 private:
-    simulation::EntityHandlePool& handles_;
     const EnemyCatalog& enemies_;
     const BehaviorCatalog& behaviors_;
     const AttackCatalog& attacks_;
     const ProjectileCatalog& projectiles_;
+    simulation::EntityHandlePool* legacyHandles_{};
     std::vector<simulation::DefinitionId> availableVisualSets_;
 };
 

@@ -47,15 +47,14 @@ uma view somente-leitura do runtime. `GameRuntime` continua sendo uma composiç�
 transitória que contém a simulação; a extração de `GameSession` permanece como o
 próximo incremento e não deve ser considerada concluída por esta mudança.
 
-### GameSession — em progresso
+### GameSession — cortes históricos
 
 O segundo corte de `GameSession` moveu para essa unidade o `MapSession`, `RuntimeWorld`
 e `SessionWorldState`. `GameSession::tick` recebe somente `PlayerCommand`, resolve a
 colisão/tile size do mapa ativo e emite `MapEntered` para transições. A migração dos
 demais sistemas autoritativos de gameplay ainda não foi concluída. Não marcar a
-separação `GameSession`/Presentation
-como pronta até que mapa, combate, criaturas, objetos, pickups, inventário, diálogo e
-quests sejam coordenados pela Session.
+separação `GameSession`/Presentation como pronta até que mapa, combate, criaturas,
+objetos, pickups, inventário, diálogo e quests fossem coordenados pela Session.
 
 O corte seguinte moveu `CombatSystem`, `ProjectileSystem`, `EnemyBehaviorSystem`,
 `AttackExecution`, contato, dano, knockback e derrota para a Session. Objetos,
@@ -64,15 +63,23 @@ interação e ciclo lógico de destruição avançam por ticks fixos. NPC/diálo
 ainda permanecem como bridges transitórias no `GameRuntime`, assim como algumas
 operações de persistência.
 
-O corte atual conclui os blocos `Objects`, `Pickups`, `Inventory / Wallet` e
-`Quick Slots` da extração. A extração global de `GameSession` continua em progresso
-até a migração de NPC/diálogo/quests e o cleanup das bridges mutáveis restantes.
+O corte seguinte concluiu os blocos `Objects`, `Pickups`, `Inventory / Wallet` e
+`Quick Slots`; a closure abaixo conclui ownership, bridges e persistência.
 
-O corte narrativo agora moveu `DialogueFlagSet`, `DialogueSession`, `QuestStateStore`
-e `QuestSystem` para a Session. O diálogo roteia comandos modais, choices emitem
-ações concretas (incluindo ativação de quest) e quests consomem eventos de domínio
-uma vez por tick. A extração global segue em progresso apenas para o fechamento das
-bridges mutáveis e a revisão final de ownership.
+O corte narrativo moveu `DialogueFlagSet`, `DialogueSession`, `QuestStateStore` e
+`QuestSystem` para a Session. O diálogo roteia comandos modais, choices emitem ações
+concretas (incluindo ativação de quest) e quests consomem eventos de domínio uma vez
+por tick. O fechamento de ownership e persistência da Session está registrado abaixo.
+
+### GameSession — extração autoritativa concluída
+
+O fechamento removeu as bridges `*ForRuntime()`, transferiu o `EntityHandlePool` para
+a Session e concentrou capture/restore lógico de save em operações específicas da
+Session. `GameRuntime` permanece como application shell para input, filesystem,
+assets e presentation; ele observa estado constante e não muta internals de gameplay.
+Os cortes concluídos abrangem Player, mapa, combate, criaturas, projéteis, objetos,
+pickups, inventário, NPC/diálogo/quests e ownership/persistence closure. Replay,
+state hashing, networking e o Content Definition Boundary continuam planejados.
 
 ---
 
@@ -90,8 +97,8 @@ FASE 6 — Creature Engine reutilizável                    DONE
 FASE 7 — Objetos + pickup + HUD + inventário            DONE
 FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
-FASE 10 — NPC + diálogo                               IN PROGRESS
-FASE 11 — Quests                                      IN PROGRESS
+FASE 10 — NPC + diálogo                               DONE
+FASE 11 — Quests                                      DONE
 FASE 12 — RPG + XP + equipment + loot
 FASE 13 — Headless + replay + auditoria multiplayer
 FASE 14 — Networking

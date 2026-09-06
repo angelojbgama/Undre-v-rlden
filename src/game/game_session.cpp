@@ -9,9 +9,14 @@
 
 namespace underworld::game {
 
-GameSession::GameSession(simulation::EntityHandlePool& handles, simulation::PlayerId playerId,
+GameSession::GameSession(simulation::PlayerId playerId,
                          core::WorldPointI initialPosition)
-    : handles_(handles), player_(playerId, handles.create(), initialPosition) {}
+    : player_(playerId, handles_.create(), initialPosition) {}
+
+void GameSession::relocatePlayer(core::WorldPointI position,
+                                 gameplay::FacingDirection facing) noexcept {
+    player_.relocate(position, facing);
+}
 
 void GameSession::configureCombat(const gameplay::AttackCatalog& attacks,
                                   const gameplay::ProjectileCatalog& projectiles,
@@ -39,6 +44,35 @@ void GameSession::configureNarrative(
     dialogue_ = std::make_unique<gameplay::dialogue::DialogueSession>(
         dialogues, dialogueFlags_);
     questSystem_ = std::make_unique<gameplay::quests::QuestSystem>(quests, questState_);
+}
+
+save::SaveData GameSession::captureSaveData() const {
+    return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
+            worldState_, dialogueFlags_, questState_};
+}
+
+bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error) {
+    if (!mapSession_ || !playerItems_ || !itemCatalog_ || !dialogue_ || !questSystem_) {
+        error = "GameSession is not fully configured";
+        return false;
+    }
+    const save::SaveData previous = captureSaveData();
+    if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
+    if (!save::applyPlayer(data.player, player_, *playerItems_, *itemCatalog_, error) ||
+        !restoreNarrativeState(data.dialogueFlags, data.quests.snapshot(), error)) {
+        std::string rollbackError;
+        static_cast<void>(restoreMap(previous.player.currentMapId, previous.world,
+                                     rollbackError));
+        static_cast<void>(save::applyPlayer(previous.player, player_, *playerItems_,
+                                            *itemCatalog_, rollbackError));
+        static_cast<void>(restoreNarrativeState(previous.dialogueFlags,
+                                                previous.quests.snapshot(), rollbackError));
+        return false;
+    }
+    clearCombatTransients();
+    closeDialogue();
+    error.clear();
+    return true;
 }
 
 void GameSession::closeDialogue() noexcept {
@@ -398,11 +432,10 @@ void GameSession::captureWorldState() {
 bool GameSession::initializeMap(const maps::MapCatalog& maps,
                                 const maps::MapValidationCatalogs& catalogs,
                                 const maps::RuntimeWorldBuilder& builder,
-                                simulation::EntityHandlePool& handles,
                                 const simulation::MapId& mapId,
                                 const simulation::SpawnId& spawnId,
                                 std::string& error) {
-    auto candidate = std::make_unique<maps::MapSession>(maps, catalogs, builder, handles,
+    auto candidate = std::make_unique<maps::MapSession>(maps, catalogs, builder, handles_,
                                                          worldState_);
     const auto activated = candidate->activate(mapId, spawnId);
     if (!activated.changed) { error = activated.error; return false; }
@@ -456,6 +489,8 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (mapSession_->pending()) {
         const auto transition = mapSession_->commitPending();
         if (transition.changed) {
+            clearCombatTransients();
+            closeDialogue();
             player_.relocate(transition.spawn.position, transition.spawn.facing);
             events_.emit(simulation::MapEntered{mapSession_->world()->id()});
         }
@@ -480,8 +515,6 @@ void GameSession::removeDefeatedEnemies() {
 
 const maps::RuntimeWorld& GameSession::world() const noexcept { return *mapSession_->world(); }
 
-maps::RuntimeWorld& GameSession::worldForRuntime() noexcept { return *mapSession_->world(); }
-
 const maps::MapData& GameSession::mapData() const {
     if (!mapSession_ || !mapSession_->data()) {
         throw std::logic_error("GameSession has no active map data");
@@ -494,6 +527,8 @@ bool GameSession::restoreMap(const simulation::MapId& mapId,
     if (!mapSession_) { error = "GameSession has no map session"; return false; }
     const auto restored = mapSession_->restore(mapId, state);
     if (!restored.changed) { error = restored.error; return false; }
+    clearCombatTransients();
+    closeDialogue();
     player_.relocate(restored.spawn.position, restored.spawn.facing);
     return true;
 }
