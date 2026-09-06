@@ -5644,6 +5644,37 @@ void testPhase13A3JsonDecoders() {
                !document("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":4294967296,"family":"f","role":"bad","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":false,"visualConfidence":"confirmed","semanticConfidence":"unverified","gameplayConfidence":"unverified"})").content &&
                !document("stamps", R"({"id":"s","displayName":"s","width":4294967296,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"bad"})").content,
            "13A3 invalid enum, range and shape documents return no content");
+    const auto invalidPath = [&document](std::string_view category, std::string_view entry,
+                                         std::string_view path) {
+        const auto result = document(category, entry);
+        return !result.content && std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+            [path](const auto& diagnostic) { return diagnostic.path == path; });
+    };
+    expect(invalidPath("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":{},"nextNodeId":"n","choices":[]}]})", "dialogues[0].nodes[0].pages") &&
+               invalidPath("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":[1],"nextNodeId":"n","choices":[]}]})", "dialogues[0].nodes[0].pages[0]") &&
+               invalidPath("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":[],"nextNodeId":"n","choices":{}}]})", "dialogues[0].nodes[0].choices"),
+           "13A3 dialogue nested page and choice shapes are strict");
+    expect(invalidPath("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":[],"nextNodeId":"n","choices":[{"label":"x","targetNodeId":"n","conditions":[{"kind":"flagSet"}],"actions":[]}] }]})", "dialogues[0].nodes[0].choices[0].conditions[0].flagId") &&
+               invalidPath("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":[],"nextNodeId":"n","choices":[{"label":"x","targetNodeId":"n","conditions":[],"actions":[{"kind":"openShop"}]}] }]})", "dialogues[0].nodes[0].choices[0].actions[0].targetId"),
+           "13A3 dialogue condition and action fields are required");
+    expect(invalidPath("quests", R"({"id":"q","title":"q","objectives":[{"id":"o","kind":"kill","targetId":"e","description":"d"}],"tags":[]})", "quests[0].objectives[0].requiredCount") &&
+               invalidPath("quests", R"({"id":"q","title":"q","objectives":[],"tags":{}})", "quests[0].tags") &&
+               invalidPath("quests", R"({"id":"q","title":"q","objectives":[],"tags":[1]})", "quests[0].tags[0]") &&
+               invalidPath("quests", R"({"id":"q","title":"q","objectives":[],"tags":[],"rewardGrantId":1})", "quests[0].rewardGrantId") &&
+               invalidPath("quests", R"({"id":"q","title":"q","objectives":[{"id":"o","kind":"kill","targetId":"e","requiredCount":4294967296,"description":"d"}],"tags":[]})", "quests[0].objectives[0].requiredCount"),
+           "13A3 quest nested fields and uint32 range are strict");
+    expect(invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":4294967296,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].sourceIndex") &&
+               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"bad","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].topology") &&
+               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"bad","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].north") &&
+               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":1,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].flipXAllowed"),
+           "13A3 tile semantic nested enums, range and bool are strict");
+    expect(invalidPath("stamps", R"({"id":"s","displayName":"s","width":4294967296,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].width") &&
+               invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":{},"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].cells") &&
+               invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[{"x":0,"tileId":"t"}],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].cells[0].y") &&
+               invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[],"anchor":{"x":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].anchor.y") &&
+               invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":1,"atomic":false,"confidence":"unverified"})", "stamps[0].flipXAllowed") &&
+               invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":1,"confidence":"unverified"})", "stamps[0].atomic"),
+           "13A3 stamp dimensions, nested shapes and flags are strict");
     const auto builtin = makeBuiltinAuthoredContent();
     const auto json1 = encodeAuthoredContentJson(builtin);
     const auto decoded = decodeAuthoredContentJson(json1);
@@ -5652,15 +5683,64 @@ void testPhase13A3JsonDecoders() {
         const auto json2 = encodeAuthoredContentJson(*decoded.content);
         expect(json1 == json2, "full builtin JSON roundtrip is byte-identical");
         const auto validation = ContentValidator{}.validate(*decoded.content);
-        const auto compiled = compileContent(*decoded.content);
-        expect(!validation.hasErrors() && compiled.registry.has_value() && compiled.report.valid(),
-               "decoded builtin validates and compiles");
-        if (compiled.registry) {
-            expect(compiled.registry->attacks().find({"attack.player.sword"}) != nullptr &&
-                       compiled.registry->dialogues().find({"dialogue.scholar.greeting"}) != nullptr &&
-                       compiled.registry->quests().find({"quest.scholar.path"}) != nullptr &&
-                       compiled.registry->authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"}) != nullptr,
-                   "compiled registry preserves representative narrative and semantic definitions");
+        const auto directCompiled = compileContent(builtin);
+        const auto decodedCompiled = compileContent(*decoded.content);
+        expect(!validation.hasErrors() && directCompiled.registry.has_value() && directCompiled.report.valid() &&
+                   decodedCompiled.registry.has_value() && decodedCompiled.report.valid(),
+               "decoded builtin validates and both source paths compile");
+        if (directCompiled.registry && decodedCompiled.registry) {
+            const auto& a = *directCompiled.registry;
+            const auto& b = *decodedCompiled.registry;
+            const auto same = [](bool condition, std::string_view message) { expect(condition, message); };
+            const auto* at = a.tilesets().find({"tileset.dungeon"}); const auto* bt = b.tilesets().find({"tileset.dungeon"});
+            same(at && bt && at->displayName == bt->displayName && at->tileSize == bt->tileSize && at->columns == bt->columns && at->rows == bt->rows, "registry equivalence preserves tileset");
+            const auto* ap = a.projectiles().find({"projectile.player.arrow"}); const auto* bp = b.projectiles().find({"projectile.player.arrow"});
+            same(ap && bp && ap->canonicalFacing == bp->canonicalFacing && ap->lifetimeTicks == bp->lifetimeTicks && ap->spawnOffsets.values == bp->spawnOffsets.values, "registry equivalence preserves projectile");
+            const auto* aa = a.attacks().find({"attack.player.sword"}); const auto* ba = b.attacks().find({"attack.player.sword"});
+            same(aa && ba && aa->kind == ba->kind && aa->damage.amount == ba->damage.amount && aa->totalTicks == ba->totalTicks && aa->timeline == ba->timeline, "registry equivalence preserves attack");
+            const auto* ab = a.behaviors().find({"behavior.soldier.melee"}); const auto* bb = b.behaviors().find({"behavior.soldier.melee"});
+            same(ab && bb && ab->detectionRangePixels == bb->detectionRangePixels && ab->idleDurationTicks == bb->idleDurationTicks, "registry equivalence preserves behavior");
+            const auto* ae = a.enemies().find({"enemy.evil_soldier"}); const auto* be = b.enemies().find({"enemy.evil_soldier"});
+            same(ae && be && ae->maximumHealth == be->maximumHealth && ae->movementSpeedSubpixelsPerTick == be->movementSpeedSubpixelsPerTick && ae->attackIds == be->attackIds, "registry equivalence preserves enemy");
+            const auto* ai = a.items().find({"item.training_armor"}); const auto* bi = b.items().find({"item.training_armor"});
+            same(ai && bi && ai->category == bi->category && ai->stackLimit == bi->stackLimit && ai->equipment && bi->equipment && ai->equipment->modifiers.maximumHealthBonus == bi->equipment->modifiers.maximumHealthBonus, "registry equivalence preserves item");
+            const auto* ao = a.objects().find({"object.bank_access"}); const auto* bo = b.objects().find({"object.bank_access"});
+            same(ao && bo && ao->visualSetId == bo->visualSetId && ao->bankAccess.has_value() == bo->bankAccess.has_value(), "registry equivalence preserves world object");
+            const auto* ax = a.pickup({"pickup.life_potion"}); const auto* bx = b.pickup({"pickup.life_potion"});
+            same(ax && bx && ax->collectionBounds == bx->collectionBounds && ax->payload.index() == bx->payload.index() &&
+                     std::get<gameplay::ItemPickup>(ax->payload).itemId == std::get<gameplay::ItemPickup>(bx->payload).itemId &&
+                     std::get<gameplay::ItemPickup>(ax->payload).quantity == std::get<gameplay::ItemPickup>(bx->payload).quantity,
+                 "registry equivalence preserves pickup");
+            const auto* av = a.npcVisuals().find({"visual.npc.merchant"}); const auto* bv = b.npcVisuals().find({"visual.npc.merchant"});
+            same(av && bv && av->markerColor.r == bv->markerColor.r && av->markerColor.g == bv->markerColor.g && av->markerColor.b == bv->markerColor.b && av->markerColor.a == bv->markerColor.a, "registry equivalence preserves NPC visual");
+            const auto* an = a.npcs().find({"npc.merchant"}); const auto* bn = b.npcs().find({"npc.merchant"});
+            same(an && bn && an->interaction.bounds == bn->interaction.bounds && an->defaultDialogueId == bn->defaultDialogueId && an->tags == bn->tags, "registry equivalence preserves NPC");
+            const auto* ad = a.dialogues().find({"dialogue.merchant.greeting"}); const auto* bd = b.dialogues().find({"dialogue.merchant.greeting"});
+            same(ad && bd && ad->entryNodeId == bd->entryNodeId && ad->nodes.size() == bd->nodes.size() &&
+                     ad->nodes[0].pages == bd->nodes[0].pages && ad->nodes[0].choices.size() == bd->nodes[0].choices.size() &&
+                     ad->nodes[0].choices[0].label == bd->nodes[0].choices[0].label &&
+                     ad->nodes[0].choices[0].targetNodeId == bd->nodes[0].choices[0].targetNodeId &&
+                     ad->nodes[0].choices[0].actions.size() == bd->nodes[0].choices[0].actions.size() &&
+                     ad->nodes[0].choices[0].actions[0].kind == bd->nodes[0].choices[0].actions[0].kind &&
+                     ad->nodes[0].choices[0].actions[0].targetId == bd->nodes[0].choices[0].actions[0].targetId,
+                 "registry equivalence preserves dialogue");
+            const auto* aq = a.quests().find({"quest.scholar.path"}); const auto* bq = b.quests().find({"quest.scholar.path"});
+            same(aq && bq && aq->objectives == bq->objectives && aq->tags == bq->tags && aq->rewardGrantId == bq->rewardGrantId, "registry equivalence preserves quest");
+            const auto* apr = a.progressions().find({"progression.player.default"}); const auto* bpr = b.progressions().find({"progression.player.default"});
+            same(apr && bpr && apr->baseStats.maximumHealth == bpr->baseStats.maximumHealth && apr->cumulativeExperienceThresholds == bpr->cumulativeExperienceThresholds, "registry equivalence preserves progression");
+            const auto* arp = a.rewardProfiles().find({"reward.enemy.evil_soldier"}); const auto* brp = b.rewardProfiles().find({"reward.enemy.evil_soldier"});
+            same(arp && brp && arp->experience == brp->experience && arp->loot.size() == brp->loot.size() && arp->loot[0].chanceBasisPoints == brp->loot[0].chanceBasisPoints, "registry equivalence preserves reward profile");
+            const auto* arg = a.rewardGrants().find({"reward.quest.scholar.path"}); const auto* brg = b.rewardGrants().find({"reward.quest.scholar.path"});
+            same(arg && brg && arg->experience == brg->experience && arg->gold == brg->gold && arg->items.size() == brg->items.size() && arg->items[0].quantity == brg->items[0].quantity, "registry equivalence preserves reward grant");
+            const auto* ash = a.shops().find({"shop.development.general"}); const auto* bsh = b.shops().find({"shop.development.general"});
+            same(ash && bsh && ash->offers.size() == bsh->offers.size() && ash->offers[0].playerBuyPrice == bsh->offers[0].playerBuyPrice && ash->offers[0].playerSellPrice == bsh->offers[0].playerSellPrice, "registry equivalence preserves shop");
+            const auto descriptor = [](const auto& registry) { return std::find_if(registry.authoringDescriptors().begin(), registry.authoringDescriptors().end(), [](const auto& value) { return value.definitionId.value() == "npc.merchant"; }); };
+            const auto da = descriptor(a); const auto db = descriptor(b);
+            same(da != a.authoringDescriptors().end() && db != b.authoringDescriptors().end() && da->displayName == db->displayName && da->tags == db->tags, "registry equivalence preserves authoring descriptor");
+            const auto* ats = a.authoringSemantics().findTile({"tile.dungeon.masonry.16"}); const auto* bts = b.authoringSemantics().findTile({"tile.dungeon.masonry.16"});
+            same(ats && bts && ats->sourceIndex == bts->sourceIndex && ats->role == bts->role && ats->topology == bts->topology && ats->north == bts->north, "registry equivalence preserves tile semantic");
+            const auto* ast = a.authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"}); const auto* bst = b.authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"});
+            same(ast && bst && ast->width == bst->width && ast->height == bst->height && ast->cells.size() == bst->cells.size() && ast->anchor == bst->anchor && ast->confidence == bst->confidence, "registry equivalence preserves stamp");
         }
     }
 }
