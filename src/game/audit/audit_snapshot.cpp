@@ -58,7 +58,9 @@ std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot) {
         << "\",\"health\":" << snapshot.playerHealth
         << ",\"maximumHealth\":" << snapshot.playerMaximumHealth
         << ",\"experience\":" << snapshot.playerExperience
-        << ",\"level\":" << snapshot.playerLevel << "}"
+        << ",\"level\":" << snapshot.playerLevel
+        << ",\"derivedMaximumHealth\":" << snapshot.playerDerivedMaximumHealth
+        << ",\"attackDamageBonus\":" << snapshot.playerAttackDamageBonus << "}"
         << ",\"gold\":" << snapshot.gold
         << ",\"inventoryOpen\":" << (snapshot.inventoryOpen ? "true" : "false")
         << ",\"inventory\":[";

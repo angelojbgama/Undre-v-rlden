@@ -10,6 +10,7 @@ Health::Health(int maximumHealth) : current(maximumHealth), maximum(maximumHealt
         throw std::invalid_argument("health maximum must be positive");
     }
 }
+void Health::setMaximum(int maximumHealth) noexcept { maximum = maximumHealth; current = std::min(current, maximum); }
 
 bool Health::applyDamage(int amount) {
     if (amount < 0) {

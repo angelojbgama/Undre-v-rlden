@@ -1280,3 +1280,7 @@ O conteúdo authored é representado por DTOs tipados dentro de `AuthoredContent
 diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
 em C++ é a fonte authored temporária; JSON, arquivos externos, Content Studio, LLM
 authoring e serialização persistente de conteúdo continuam deferidos.
+### 12C1 — Equipment domain + derived stats — DONE
+
+Armor and accessory equipment, typed modifiers, derived health/attack stats and
+DSAV persistence are implemented. Equipment UI and weapon replacement remain future work.

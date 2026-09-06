@@ -61,7 +61,13 @@ bool routeInventoryCommand(InventoryOverlayState& overlay,
     overlay.moveSelection(command.movement.x, command.movement.y);
     const auto& selected = items.inventory().items().slot(overlay.selection());
     if (command.actions.primaryAttackPressed && selected) {
-        static_cast<void>(useItem(selected->itemId, items.inventory().items(), catalog, health));
+        const auto& definition = catalog.require(selected->itemId);
+        if (definition.category == ItemCategory::equipment && definition.equipment) {
+            static_cast<void>(items.equipment().equipFromInventory(
+                definition.equipment->slot, selected->itemId, items.inventory().items(), catalog));
+        } else {
+            static_cast<void>(useItem(selected->itemId, items.inventory().items(), catalog, health));
+        }
     }
     if (command.actions.quickSlotPressed >= 0 && selected) {
         const auto& definition = catalog.require(selected->itemId);

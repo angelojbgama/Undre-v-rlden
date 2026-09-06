@@ -17,6 +17,14 @@ void validate(const ItemDefinition& definition) {
     if (definition.category == ItemCategory::equipment && definition.stackLimit != 1) {
         throw std::invalid_argument("equipment item definitions must use stack limit one");
     }
+    if (definition.category == ItemCategory::equipment &&
+        (!definition.equipment || definition.use || definition.equipment->modifiers.maximumHealthBonus < 0 ||
+         definition.equipment->modifiers.playerAttackDamageBonus < 0)) {
+        throw std::invalid_argument("equipment item definition metadata is invalid");
+    }
+    if (definition.category != ItemCategory::equipment && definition.equipment) {
+        throw std::invalid_argument("non-equipment item cannot have equipment metadata");
+    }
     if (definition.use && definition.use->amount <= 0) {
         throw std::invalid_argument("item use amount must be positive");
     }

@@ -21,14 +21,17 @@
 
 namespace underworld::game::content {
 
-enum class AuthoringCategory { enemy, object, pickup, npc, rewardProfile };
+enum class AuthoringCategory { enemy, object, pickup, npc, item, rewardProfile };
 
 struct AuthoredTileset final { simulation::DefinitionId id{}; std::string displayName; std::string relativeAssetPath; std::uint16_t tileSize{}; std::uint32_t columns{}; std::uint32_t rows{}; };
 struct AuthoredProjectile final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::FacingDirection canonicalFacing{gameplay::FacingDirection::up}; int speedPixelsPerTick{}; std::uint32_t lifetimeTicks{}; int hitboxWidth{}; int hitboxHeight{}; gameplay::DirectionalOffsets spawnOffsets{}; };
 struct AuthoredAttack final { simulation::DefinitionId id{}; gameplay::AttackKind kind{gameplay::AttackKind::meleeHitbox}; gameplay::DamageSpec damage{}; std::uint32_t totalTicks{}; std::uint32_t cooldownTicks{}; int minimumRangePixels{}; int maximumRangePixels{}; simulation::DefinitionId visualActionId{}; std::optional<gameplay::DirectionalBoxes> meleeHitboxes{}; std::optional<simulation::DefinitionId> projectileDefinitionId{}; std::vector<gameplay::AttackTimelineEvent> timeline{}; };
 struct AuthoredBehaviorProfile final { simulation::DefinitionId id{}; int detectionRangePixels{}; int disengageRangePixels{}; std::uint32_t idleDurationTicks{}; std::uint32_t wanderDurationTicks{}; };
 struct AuthoredEnemy final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; simulation::DefinitionId behaviorProfileId{}; gameplay::Faction faction{gameplay::Faction::enemy}; int maximumHealth{}; std::int64_t movementSpeedSubpixelsPerTick{}; gameplay::creatures::ActorBoxDefinition collisionBody{}; gameplay::creatures::ActorBoxDefinition hurtbox{}; std::vector<simulation::DefinitionId> attackIds{}; std::optional<simulation::DefinitionId> rewardProfileId{}; };
-struct AuthoredItem final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::ItemCategory category{gameplay::ItemCategory::misc}; std::uint32_t stackLimit{}; std::optional<gameplay::ItemUseDefinition> use{}; };
+enum class AuthoredEquipmentSlot { armor, accessory };
+struct AuthoredEquipmentModifiers final { int maximumHealthBonus{}; int playerAttackDamageBonus{}; };
+struct AuthoredEquipment final { AuthoredEquipmentSlot slot{AuthoredEquipmentSlot::armor}; AuthoredEquipmentModifiers modifiers{}; };
+struct AuthoredItem final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::ItemCategory category{gameplay::ItemCategory::misc}; std::uint32_t stackLimit{}; std::optional<gameplay::ItemUseDefinition> use{}; std::optional<AuthoredEquipment> equipment{}; };
 struct AuthoredWorldObject final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; std::optional<gameplay::ObjectInteractionDefinition> interactable{}; std::optional<gameplay::ObjectContainerDefinition> container{}; std::optional<gameplay::ObjectDestructibleDefinition> destructible{}; };
 struct AuthoredHealthPickup final { int amount{}; };
 struct AuthoredCurrencyPickup final { std::uint64_t amount{}; };

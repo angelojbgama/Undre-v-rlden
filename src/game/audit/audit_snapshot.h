@@ -1,9 +1,11 @@
 #pragma once
 
+#include "engine/simulation/definition_id.h"
 #include "engine/simulation/player_command.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +77,10 @@ struct GameAuditSnapshot final {
     int playerMaximumHealth{};
     std::uint64_t playerExperience{};
     std::uint32_t playerLevel{};
+    int playerDerivedMaximumHealth{};
+    int playerAttackDamageBonus{};
+    std::optional<simulation::DefinitionId> equippedArmor{};
+    std::optional<simulation::DefinitionId> equippedAccessory{};
 
     std::uint64_t gold{};
     bool inventoryOpen{};

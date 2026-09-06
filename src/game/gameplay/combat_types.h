@@ -41,6 +41,7 @@ struct Health final {
     int maximum{};
 
     explicit Health(int maximumHealth);
+    void setMaximum(int maximumHealth) noexcept;
     [[nodiscard]] bool applyDamage(int amount);
     [[nodiscard]] int restore(int amount);
     [[nodiscard]] bool depleted() const noexcept { return current == 0; }

@@ -74,13 +74,17 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"enemy.evil_soldier"}, {"visual.enemy.evil_soldier"}, {"behavior.soldier.melee"}, gameplay::Faction::enemy, 3, 256, {-5, -8, 10, 8}, {-7, -22, 14, 22}, {{"attack.soldier.sword"}}, {{"reward.enemy.evil_soldier"}}},
         {{"enemy.skull"}, {"visual.enemy.skull"}, {"behavior.skull.ranged"}, gameplay::Faction::enemy, 3, 192, {-5, -8, 10, 8}, {-7, -22, 14, 22}, {{"attack.skull.arrow"}}, {{"reward.enemy.skull"}}}};
     pack.items = {{{"item.life_potion"}, {"visual.item.life_potion"}, gameplay::ItemCategory::consumable, 66, gameplay::ItemUseDefinition{gameplay::ItemUseKind::restoreHealth, 2}}};
+    pack.items.push_back({{"item.training_armor"}, {"visual.item.training_armor"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::armor, {2, 0}}});
+    pack.items.push_back({{"item.power_charm"}, {"visual.item.power_charm"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::accessory, {0, 1}}});
     pack.objects = {
         {{"object.chest"}, {"visual.object.chest"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, gameplay::ObjectContainerDefinition{5}, std::nullopt},
         {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28}}};
     pack.pickups = {
         {{"pickup.heart"}, {"visual.pickup.heart"}, {-5, -5, 10, 10}, AuthoredHealthPickup{2}},
         {{"pickup.money"}, {"visual.pickup.money"}, {-5, -5, 10, 10}, AuthoredCurrencyPickup{1}},
-        {{"pickup.life_potion"}, {"visual.item.life_potion"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.life_potion"}, 1}}};
+        {{"pickup.life_potion"}, {"visual.item.life_potion"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.life_potion"}, 1}},
+        {{"pickup.training_armor"}, {"visual.item.training_armor"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.training_armor"}, 1}},
+        {{"pickup.power_charm"}, {"visual.item.power_charm"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.power_charm"}, 1}}};
     pack.rewardProfiles = {
         {{"reward.enemy.evil_soldier"}, 60, {{{"pickup.money"}, 10000, 1, 2}, {{"pickup.life_potion"}, 2000, 1, 1}}},
         {{"reward.enemy.skull"}, 40, {{{"pickup.money"}, 10000, 1, 1}, {{"pickup.heart"}, 2500, 1, 1}}}};
@@ -117,7 +121,10 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"pickup.heart"}, "Heart", AuthoringCategory::pickup, {"health"}}, {{"pickup.money"}, "Money", AuthoringCategory::pickup, {"currency"}}, {{"pickup.life_potion"}, "Life Potion", AuthoringCategory::pickup, {"item", "consumable"}},
         {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}},
         {{"reward.enemy.evil_soldier"}, "Evil Soldier Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
-        {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}}};
+        {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
+        {{"item.life_potion"}, "Life Potion", AuthoringCategory::item, {"item", "consumable"}},
+        {{"item.training_armor"}, "Training Armor", AuthoringCategory::item, {"item", "equipment"}},
+        {{"item.power_charm"}, "Power Charm", AuthoringCategory::item, {"item", "equipment"}}};
     addBuiltinDungeonSemantics(pack);
     return pack;
 }

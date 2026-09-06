@@ -12,7 +12,18 @@ gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { 
 gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) { return {v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks, v.minimumRangePixels, v.maximumRangePixels, v.visualActionId, v.meleeHitboxes, v.projectileDefinitionId, v.timeline}; }
 gameplay::creatures::BehaviorProfile compileBehavior(const AuthoredBehaviorProfile& v) { return {v.id, v.detectionRangePixels, v.disengageRangePixels, v.idleDurationTicks, v.wanderDurationTicks}; }
 gameplay::creatures::EnemyDefinition compileEnemy(const AuthoredEnemy& v) { return {v.id, v.visualSetId, v.behaviorProfileId, v.faction, v.maximumHealth, v.movementSpeedSubpixelsPerTick, v.collisionBody, v.hurtbox, v.attackIds, v.rewardProfileId}; }
-gameplay::ItemDefinition compileItem(const AuthoredItem& v) { return {v.id, v.visualId, v.category, v.stackLimit, v.use}; }
+gameplay::ItemDefinition compileItem(const AuthoredItem& v) {
+    std::optional<gameplay::rpg::EquipmentDefinition> equipment;
+    if (v.equipment) {
+        const auto slot = v.equipment->slot == AuthoredEquipmentSlot::armor
+                              ? gameplay::rpg::EquipmentSlot::armor
+                              : gameplay::rpg::EquipmentSlot::accessory;
+        equipment = gameplay::rpg::EquipmentDefinition{
+            slot, {v.equipment->modifiers.maximumHealthBonus,
+                   v.equipment->modifiers.playerAttackDamageBonus}};
+    }
+    return {v.id, v.visualId, v.category, v.stackLimit, v.use, equipment};
+}
 gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) { return {v.id, v.visualSetId, v.interactable, v.container, v.destructible}; }
 gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor}; }
 gameplay::npcs::NpcDefinition compileNpc(const AuthoredNpc& v) { return {v.id, v.visualSetId, v.interaction, v.defaultDialogueId, v.tags}; }

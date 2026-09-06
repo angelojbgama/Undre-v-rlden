@@ -2,6 +2,7 @@
 
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/rpg/equipment.h"
 #include "engine/simulation/player_command.h"
 
 #include <array>
@@ -37,6 +38,8 @@ public:
     [[nodiscard]] const Wallet& wallet() const noexcept { return wallet_; }
     [[nodiscard]] QuickSlotBindings& quickSlots() noexcept { return quickSlots_; }
     [[nodiscard]] const QuickSlotBindings& quickSlots() const noexcept { return quickSlots_; }
+    [[nodiscard]] rpg::PlayerEquipment& equipment() noexcept { return equipment_; }
+    [[nodiscard]] const rpg::PlayerEquipment& equipment() const noexcept { return equipment_; }
     [[nodiscard]] ItemUseResult useQuickSlot(std::size_t index, const ItemCatalog& catalog,
                                              Health& health);
 
@@ -44,6 +47,7 @@ private:
     PlayerInventory inventory_;
     Wallet wallet_;
     QuickSlotBindings quickSlots_;
+    rpg::PlayerEquipment equipment_;
 };
 
 class InventoryOverlayState final {

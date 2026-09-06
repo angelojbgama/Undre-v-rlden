@@ -36,6 +36,10 @@ struct SavedPlayerProgression final {
     simulation::DefinitionId definitionId{};
     std::uint64_t totalExperience{};
 };
+struct SavedPlayerEquipment final {
+    std::optional<simulation::DefinitionId> armor;
+    std::optional<simulation::DefinitionId> accessory;
+};
 
 struct ObjectDelta final {
     simulation::PersistentEntityKey key{};
@@ -65,6 +69,7 @@ struct SaveData final {
     SessionWorldState world;
     gameplay::dialogue::DialogueFlagSet dialogueFlags;
     gameplay::quests::QuestStateStore quests;
+    SavedPlayerEquipment equipment;
 };
 
 struct SaveValidationCatalogs final {
@@ -82,8 +87,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 added FLGS; minor 2 added QSTS; minor 3 adds PROG. Older saves remain readable.
-inline constexpr std::uint16_t saveMinorVersion = 3;
+// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 adds EQIP.
+inline constexpr std::uint16_t saveMinorVersion = 4;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

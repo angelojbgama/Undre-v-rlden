@@ -373,6 +373,10 @@ struct GameRuntime::State final {
         snapshot.playerMaximumHealth = player.health().maximum;
         snapshot.playerExperience = session.progression().totalExperience();
         snapshot.playerLevel = session.progression().level();
+        snapshot.playerDerivedMaximumHealth = session.derivedPlayerStats().maximumHealth;
+        snapshot.playerAttackDamageBonus = session.derivedPlayerStats().playerAttackDamageBonus;
+        snapshot.equippedArmor = session.playerItems().equipment().item(gameplay::rpg::EquipmentSlot::armor);
+        snapshot.equippedAccessory = session.playerItems().equipment().item(gameplay::rpg::EquipmentSlot::accessory);
         snapshot.gold = session.playerItems().wallet().gold();
         snapshot.inventoryOpen = session.inventoryOverlay().open();
 

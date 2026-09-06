@@ -2209,7 +2209,8 @@ void testItemsInventoryAndWallet() {
     catalog.add(makeLifePotionDefinition());
     const simulation::DefinitionId equipmentId{"item.test_sword"};
     catalog.add({equipmentId, simulation::DefinitionId{"visual.test_sword"},
-                 ItemCategory::equipment, 1, std::nullopt});
+                 ItemCategory::equipment, 1, std::nullopt,
+                 rpg::EquipmentDefinition{rpg::EquipmentSlot::armor, {}}});
     expect(catalog.require(lifePotionItemId()).stackLimit == 66 &&
                catalog.find(equipmentId) != nullptr,
            "item catalog finds immutable definitions by stable id");
@@ -2736,6 +2737,7 @@ void testPhase8PersistentMapsAndSave() {
     legacySave.dialogueFlags.clearAll();
     auto legacyBytes = save::serializeSave(legacySave);
     removeSaveChunk(legacyBytes, "PROG");
+    removeSaveChunk(legacyBytes, "EQIP");
     legacyBytes[6] = 0;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, saveCatalogs);
@@ -3239,8 +3241,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 3 && encoded[7] == 0,
-           "progression persistence advances DSAV to minor version 3");
+    expect(encoded.size() > 7 && encoded[6] == 4 && encoded[7] == 0,
+           "equipment persistence advances DSAV to minor version 4");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.quests.snapshot() == data.quests.snapshot() &&
@@ -3251,6 +3253,7 @@ void testPhase11QuestPersistence() {
     static_cast<void>(legacy.quests.reset(definition.id));
     auto legacyBytes = save::serializeSave(legacy);
     removeSaveChunk(legacyBytes, "PROG");
+    removeSaveChunk(legacyBytes, "EQIP");
     legacyBytes[6] = 1;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, catalogs);
@@ -5043,6 +5046,50 @@ void testPhase12BRewardEventSnapshot() {
            "reward processing snapshots multiple defeat events before emitting results");
 }
 
+void testPhase12C1Equipment() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    using namespace game::content;
+    using namespace game::gameplay::rpg;
+    static_assert(!std::is_same_v<AuthoredEquipment, EquipmentDefinition>);
+    const auto content = compileBuiltinContentOrThrow();
+    const auto& armor = content.items().require(simulation::DefinitionId{"item.training_armor"});
+    const auto& charm = content.items().require(simulation::DefinitionId{"item.power_charm"});
+    expect(armor.equipment && armor.equipment->modifiers.maximumHealthBonus == 2 &&
+               armor.stackLimit == 1 && charm.equipment &&
+               charm.equipment->modifiers.playerAttackDamageBonus == 1,
+           "builtin equipment compiles with typed slots and modifiers");
+    expect(content.items().require(lifePotionItemId()).stackLimit == 66,
+           "equipment boundary preserves life potion stack limit");
+    PlayerItems items(content.items());
+    static_cast<void>(items.inventory().items().add(armor.id, 1));
+    static_cast<void>(items.inventory().items().add(charm.id, 1));
+    expect(items.equipment().equipFromInventory(EquipmentSlot::armor, armor.id,
+                                                items.inventory().items(), content.items()) &&
+               items.inventory().items().count(armor.id) == 0 &&
+               items.equipment().item(EquipmentSlot::armor) == armor.id,
+           "equipping moves armor out of inventory");
+    const auto derived = derivePlayerStats({5}, items.equipment(), content.items());
+    expect(derived.maximumHealth == 7 && derived.playerAttackDamageBonus == 0,
+           "training armor derives maximum health without attack bonus");
+    expect(items.equipment().equipFromInventory(EquipmentSlot::accessory, charm.id,
+                                                items.inventory().items(), content.items()) &&
+               derivePlayerStats({5}, items.equipment(), content.items()).playerAttackDamageBonus == 1,
+           "power charm derives player attack damage bonus");
+    expect(items.equipment().unequipToInventory(EquipmentSlot::armor, items.inventory().items(),
+                                                content.items()) &&
+               !items.equipment().item(EquipmentSlot::armor) &&
+               items.inventory().items().count(armor.id) == 1,
+           "unequipping returns armor to inventory");
+    Health health(5);
+    health.setMaximum(7);
+    expect(health.current == 5 && health.maximum == 7,
+           "increasing derived maximum health does not heal");
+    health.current = 7;
+    health.setMaximum(5);
+    expect(health.current == 5, "decreasing maximum health clamps current health");
+}
+
 } // namespace
 
 int main() {
@@ -5106,6 +5153,7 @@ int main() {
         testPhase12AProgressionFoundation();
         testPhase12BRewards();
         testPhase12BRewardEventSnapshot();
+        testPhase12C1Equipment();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

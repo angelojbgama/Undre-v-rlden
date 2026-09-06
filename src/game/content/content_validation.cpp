@@ -144,6 +144,15 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.visualId.empty() || value.stackLimit == 0 ||
             (value.category == gameplay::ItemCategory::equipment && value.stackLimit != 1))
             error(report, ContentKind::item, value.id, "invalid_stack_limit", "item stack limit is invalid", "stackLimit");
+        if (value.category == gameplay::ItemCategory::equipment) {
+            if (!value.equipment || value.use || value.equipment->modifiers.maximumHealthBonus < 0 ||
+                value.equipment->modifiers.playerAttackDamageBonus < 0 ||
+                value.equipment->modifiers.maximumHealthBonus > 1000 ||
+                value.equipment->modifiers.playerAttackDamageBonus > 1000)
+                error(report, ContentKind::item, value.id, "invalid_equipment", "equipment metadata or modifiers are invalid", "equipment");
+        } else if (value.equipment) {
+            error(report, ContentKind::item, value.id, "invalid_equipment", "non-equipment item has equipment metadata", "equipment");
+        }
     }
     for (const auto& value : pack.objects) {
         if (value.id.empty() || value.visualSetId.empty() ||
@@ -221,7 +230,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -36,6 +37,26 @@ void GameSession::configureCombat(const gameplay::AttackCatalog& attacks,
 void GameSession::configureItems(const gameplay::ItemCatalog& items) {
     itemCatalog_ = &items;
     playerItems_ = std::make_unique<gameplay::PlayerItems>(items);
+    refreshDerivedPlayerStats();
+}
+
+void GameSession::refreshDerivedPlayerStats() {
+    if (!itemCatalog_ || !playerItems_) { return; }
+    derivedPlayerStats_ = gameplay::rpg::derivePlayerStats(
+        progression_.definition().baseStats, playerItems_->equipment(), *itemCatalog_);
+    player_.health().setMaximum(derivedPlayerStats_.maximumHealth);
+}
+
+gameplay::DamageSpec GameSession::effectivePlayerDamage(
+    const gameplay::DamageSpec& base) const noexcept {
+    gameplay::DamageSpec result = base;
+    if (result.amount > std::numeric_limits<int>::max() -
+                            derivedPlayerStats_.playerAttackDamageBonus) {
+        result.amount = std::numeric_limits<int>::max();
+    } else {
+        result.amount += derivedPlayerStats_.playerAttackDamageBonus;
+    }
+    return result;
 }
 
 void GameSession::configureNarrative(
@@ -51,7 +72,9 @@ void GameSession::configureNarrative(
 save::SaveData GameSession::captureSaveData() const {
     return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
             {progression_.definition().id, progression_.totalExperience()}, worldState_,
-            dialogueFlags_, questState_};
+            dialogueFlags_, questState_,
+            {playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor),
+             playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)}};
 }
 
 bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error) {
@@ -63,8 +86,23 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         error = "save references a different player progression";
         return false;
     }
+    const auto validEquipment = [&](const std::optional<simulation::DefinitionId>& item,
+                                    gameplay::rpg::EquipmentSlot slot) {
+        if (!item) { return true; }
+        const auto* definition = itemCatalog_->find(*item);
+        return definition && definition->category == gameplay::ItemCategory::equipment &&
+               definition->equipment && definition->equipment->slot == slot &&
+               definition->stackLimit == 1;
+    };
+    if (!validEquipment(data.equipment.armor, gameplay::rpg::EquipmentSlot::armor) ||
+        !validEquipment(data.equipment.accessory, gameplay::rpg::EquipmentSlot::accessory)) {
+        error = "save references invalid equipment";
+        return false;
+    }
     const save::SaveData previous = captureSaveData();
     if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
+    playerItems_->equipment().restore(data.equipment.armor, data.equipment.accessory);
+    refreshDerivedPlayerStats();
     if (!save::applyPlayer(data.player, player_, *playerItems_, *itemCatalog_, error) ||
         !restoreNarrativeState(data.dialogueFlags, data.quests.snapshot(), error) ||
         !progression_.restoreExperience(data.progression.totalExperience)) {
@@ -73,6 +111,8 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
                                      rollbackError));
         static_cast<void>(save::applyPlayer(previous.player, player_, *playerItems_,
                                             *itemCatalog_, rollbackError));
+        playerItems_->equipment().restore(previous.equipment.armor, previous.equipment.accessory);
+        refreshDerivedPlayerStats();
         static_cast<void>(restoreNarrativeState(previous.dialogueFlags,
                                                 previous.quests.snapshot(), rollbackError));
         static_cast<void>(progression_.restoreExperience(previous.progression.totalExperience));
@@ -135,13 +175,14 @@ void GameSession::advancePlayerAttack() {
     for (const auto& event : eventsAtTick) {
         if (event.kind == gameplay::AttackTimelineEventKind::activateHitbox) {
             const auto direction = gameplay::directionVector(playerAttack_->lockedFacing);
+            const auto damage = effectivePlayerDamage(playerAttack_->definition->damage);
             activeSword_ = {
                 playerAttack_->definition->meleeHitboxes->forFacing(
                     playerAttack_->lockedFacing).at(player_.feetPosition()),
                 playerAttack_->key, gameplay::Faction::player,
-                playerAttack_->definition->damage,
-                direction.x * playerAttack_->definition->damage.knockbackPixels,
-                direction.y * playerAttack_->definition->damage.knockbackPixels, true};
+                damage,
+                direction.x * damage.knockbackPixels,
+                direction.y * damage.knockbackPixels, true};
         } else if (event.kind == gameplay::AttackTimelineEventKind::deactivateHitbox) {
             activeSword_.enabled = false;
         } else if (event.kind == gameplay::AttackTimelineEventKind::spawnProjectile) {
@@ -151,7 +192,8 @@ void GameSession::advancePlayerAttack() {
             static_cast<void>(projectiles_->spawn(
                 playerAttack_->key, gameplay::Faction::player, definition.id,
                 gameplay::addOffset(player_.feetPosition(), offset),
-                playerAttack_->lockedFacing, playerAttack_->definition->damage));
+                playerAttack_->lockedFacing,
+                effectivePlayerDamage(playerAttack_->definition->damage)));
         }
     }
     if (playerAttack_->finished) {
@@ -461,8 +503,16 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         consumeQuestEvents();
         return;
     }
+    const auto armorBefore = playerItems_ ? playerItems_->equipment().item(
+        gameplay::rpg::EquipmentSlot::armor) : std::optional<simulation::DefinitionId>{};
+    const auto accessoryBefore = playerItems_ ? playerItems_->equipment().item(
+        gameplay::rpg::EquipmentSlot::accessory) : std::optional<simulation::DefinitionId>{};
     if (playerItems_ && gameplay::routeInventoryCommand(
             inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health())) {
+        if (armorBefore != playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor) ||
+            accessoryBefore != playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)) {
+            refreshDerivedPlayerStats();
+        }
         consumeQuestEvents();
         return;
     }

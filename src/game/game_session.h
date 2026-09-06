@@ -17,6 +17,7 @@
 #include "game/save/save_data.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
+#include "game/gameplay/rpg/equipment.h"
 
 #include <memory>
 #include <span>
@@ -87,6 +88,9 @@ public:
     [[nodiscard]] const gameplay::rpg::PlayerProgressionState& progression() const noexcept {
         return progression_;
     }
+    [[nodiscard]] const gameplay::rpg::PlayerDerivedStats& derivedPlayerStats() const noexcept {
+        return derivedPlayerStats_;
+    }
     [[nodiscard]] bool restoreNarrativeState(
         const gameplay::dialogue::DialogueFlagSet& flags,
         std::span<const gameplay::quests::QuestProgress> progress,
@@ -112,11 +116,15 @@ private:
     [[nodiscard]] bool handleDialogueCommand(const simulation::PlayerCommand& command);
     void applyDialogueActions();
     void consumeQuestEvents();
+    void refreshDerivedPlayerStats();
+    [[nodiscard]] gameplay::DamageSpec effectivePlayerDamage(
+        const gameplay::DamageSpec& base) const noexcept;
     [[nodiscard]] std::vector<gameplay::CombatTargetRef> combatTargets();
 
     simulation::EntityHandlePool handles_;
     gameplay::Player player_;
     gameplay::rpg::PlayerProgressionState progression_;
+    gameplay::rpg::PlayerDerivedStats derivedPlayerStats_{};
     simulation::EventBuffer events_;
     save::SessionWorldState worldState_;
     std::unique_ptr<maps::MapSession> mapSession_;

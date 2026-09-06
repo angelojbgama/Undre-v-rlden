@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/simulation/definition_id.h"
+#include "game/gameplay/rpg/equipment.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +26,7 @@ struct ItemDefinition final {
     ItemCategory category{ItemCategory::misc};
     std::uint32_t stackLimit{};
     std::optional<ItemUseDefinition> use{};
+    std::optional<rpg::EquipmentDefinition> equipment{};
 };
 
 class ItemCatalog final {

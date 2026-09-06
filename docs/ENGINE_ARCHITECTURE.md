@@ -1550,3 +1550,11 @@ tipados, em memória e independentes de runtime state, renderer e assets carrega
 Validação produz diagnósticos estruturados, estáveis e determinísticos; IDs visuais
 são metadata e sua disponibilidade pertence ao bootstrap/presentation. O registry
 publicado não oferece mutação aos consumidores e não semeia conteúdo no construtor.
+## Equipment and derived player stats
+
+Equipment is Player-owned gameplay state. Equipment items remain normal
+`ItemDefinition` values with typed armor/accessory metadata. In this slice,
+modifiers affect only maximum health and Player attack damage. Derived stats are
+calculated from authored base stats plus equipped items and are not persisted.
+`AttackDefinition` remains immutable; Player damage bonuses are applied when an
+effective `DamageSpec` is produced. Inventory/equipment transfers are transactional.
