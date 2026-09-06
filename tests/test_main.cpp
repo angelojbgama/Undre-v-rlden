@@ -5046,6 +5046,46 @@ void testPhase12BRewardEventSnapshot() {
            "reward processing snapshots multiple defeat events before emitting results");
 }
 
+void testPhase12C1EquipmentTransactions() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    using namespace game::gameplay::rpg;
+    ItemCatalog catalog;
+    const auto potion = makeLifePotionDefinition();
+    catalog.add(potion);
+    const simulation::DefinitionId armorA{"item.test.armor_a"};
+    const simulation::DefinitionId armorB{"item.test.armor_b"};
+    catalog.add({armorA, {"visual.test.armor_a"}, ItemCategory::equipment, 1,
+                 std::nullopt, EquipmentDefinition{EquipmentSlot::armor, {1, 0}}});
+    catalog.add({armorB, {"visual.test.armor_b"}, ItemCategory::equipment, 1,
+                 std::nullopt, EquipmentDefinition{EquipmentSlot::armor, {2, 0}}});
+    std::vector<simulation::DefinitionId> filler;
+    for (int index = 0; index < 29; ++index) {
+        filler.emplace_back("item.test.filler." + std::to_string(index));
+        catalog.add({filler.back(), {"visual.test.filler"}, ItemCategory::misc, 1,
+                     std::nullopt});
+    }
+    PlayerItems items(catalog);
+    items.equipment().restore(armorA, std::nullopt);
+    static_cast<void>(items.inventory().items().add(armorB, 1));
+    for (const auto& item : filler) static_cast<void>(items.inventory().items().add(item, 1));
+    expect(items.inventory().items().count(armorB) == 1 &&
+               items.inventory().items().capacity() == 30,
+           "equipment replacement fixture starts with a full inventory");
+    expect(items.equipment().equipFromInventory(EquipmentSlot::armor, armorB,
+                                                 items.inventory().items(), catalog) &&
+               items.equipment().item(EquipmentSlot::armor) == armorB &&
+               items.inventory().items().count(armorA) == 1 &&
+               items.inventory().items().count(armorB) == 0,
+           "full inventory equipment replacement frees the incoming slot first");
+    expect(items.inventory().items().count(armorA) + items.inventory().items().count(armorB) == 1,
+           "equipment replacement does not duplicate or lose either armor");
+    expect(!items.equipment().unequipToInventory(EquipmentSlot::armor,
+                                                  items.inventory().items(), catalog) &&
+               items.equipment().item(EquipmentSlot::armor) == armorB,
+           "plain unequip still fails when inventory is full");
+}
+
 void testPhase12C1Equipment() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -5154,6 +5194,7 @@ int main() {
         testPhase12BRewards();
         testPhase12BRewardEventSnapshot();
         testPhase12C1Equipment();
+        testPhase12C1EquipmentTransactions();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

@@ -109,10 +109,10 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         std::string rollbackError;
         static_cast<void>(restoreMap(previous.player.currentMapId, previous.world,
                                      rollbackError));
-        static_cast<void>(save::applyPlayer(previous.player, player_, *playerItems_,
-                                            *itemCatalog_, rollbackError));
         playerItems_->equipment().restore(previous.equipment.armor, previous.equipment.accessory);
         refreshDerivedPlayerStats();
+        static_cast<void>(save::applyPlayer(previous.player, player_, *playerItems_,
+                                            *itemCatalog_, rollbackError));
         static_cast<void>(restoreNarrativeState(previous.dialogueFlags,
                                                 previous.quests.snapshot(), rollbackError));
         static_cast<void>(progression_.restoreExperience(previous.progression.totalExperience));

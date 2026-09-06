@@ -20,10 +20,15 @@ bool PlayerEquipment::equipFromInventory(EquipmentSlot slot, const simulation::D
     if (definition == nullptr || definition->category != gameplay::ItemCategory::equipment ||
         !definition->equipment || definition->equipment->slot != slot || inventory.count(itemId) == 0) return false;
     auto& current = itemRef(slot);
-    if (current && inventory.canAdd(*current, 1).remainder != 0) return false;
     if (inventory.remove(itemId, 1) != 1) return false;
     if (current) {
-        if (inventory.add(*current, 1).remainder != 0) { static_cast<void>(inventory.add(itemId, 1)); return false; }
+        const auto oldItem = *current;
+        const auto returned = inventory.add(oldItem, 1);
+        if (returned.remainder != 0) {
+            static_cast<void>(inventory.remove(oldItem, returned.accepted));
+            static_cast<void>(inventory.add(itemId, 1));
+            return false;
+        }
     }
     current = itemId;
     return true;
