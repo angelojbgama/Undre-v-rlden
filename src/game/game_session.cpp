@@ -139,6 +139,7 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
     clearCombatTransients();
     closeDialogue();
     bankOverlay_.close();
+    shopOverlay_.close();
     error.clear();
     return true;
 }
@@ -483,13 +484,18 @@ bool GameSession::handleDialogueCommand(const simulation::PlayerCommand& command
 
 void GameSession::applyDialogueActions() {
     if (!dialogue_) { return; }
-    for (const auto& action : dialogue_->takeActions()) {
+    const auto actions = dialogue_->takeActions();
+    for (const auto& action : actions) {
         if (action.kind == gameplay::dialogue::DialogueActionKind::setFlag) {
             static_cast<void>(dialogueFlags_.set(action.targetId));
         } else if (action.kind == gameplay::dialogue::DialogueActionKind::clearFlag) {
             static_cast<void>(dialogueFlags_.clear(action.targetId));
-        } else if (questSystem_) {
+        } else if (action.kind == gameplay::dialogue::DialogueActionKind::startQuest && questSystem_) {
             static_cast<void>(questSystem_->start(action.targetId));
+        } else if (action.kind == gameplay::dialogue::DialogueActionKind::openShop && shopCatalog_) {
+            if (const auto* shop = shopCatalog_->find(action.targetId)) {
+                closeDialogue(); inventoryOverlay_.close(); bankOverlay_.close(); shopOverlay_.open(*shop);
+            }
         }
     }
 }
@@ -540,6 +546,17 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
     if (handleDialogueCommand(command)) {
         consumeQuestEvents(); resolvePendingQuestRewards();
+        return;
+    }
+    if (shopOverlay_.open()) {
+        if (command.actions.toggleInventoryPressed) { shopOverlay_.close(); }
+        else if (shopCatalog_ && playerItems_) {
+            if (const auto* shop = shopCatalog_->find(shopOverlay_.activeShopId())) {
+                static_cast<void>(gameplay::routeShopCommand(shopOverlay_, command, *shop,
+                                                              *playerItems_, shopTransactionService_));
+            } else { shopOverlay_.close(); }
+        }
+        resolvePendingQuestRewards();
         return;
     }
     if (bankOverlay_.open()) {

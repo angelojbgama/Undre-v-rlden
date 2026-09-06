@@ -38,6 +38,7 @@
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/bank_overlay.h"
+#include "game/gameplay/shop_overlay.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
@@ -2590,6 +2591,7 @@ underworld::game::maps::MapData makeSyntheticMap(
 void testPhase8PersistentMapsAndSave() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
     namespace creatures = underworld::game::gameplay::creatures;
     namespace maps = underworld::game::maps;
     namespace save = underworld::game::save;
@@ -2851,8 +2853,8 @@ void testPhase10NpcFoundation() {
     expect(content.npcs().find(npcs::guardNpcId()) &&
                content.npcs().find(npcs::scholarNpcId()) &&
                content.npcVisuals().find(simulation::DefinitionId{"visual.npc.guard"}) &&
-               content.authoringDescriptors(game::AuthoringCategory::npc).size() == 2,
-           "GameContentRegistry exposes two reusable NPC definitions through the authoring catalog");
+               content.authoringDescriptors(game::AuthoringCategory::npc).size() == 3,
+           "GameContentRegistry exposes reusable NPC definitions through the authoring catalog");
 
     auto map = makeSyntheticMap("map.test.npc", "map.test.npc.target");
     map.npcs.push_back({{6}, npcs::guardNpcId(), {72, 24}, gameplay::FacingDirection::left});
@@ -2927,12 +2929,12 @@ void testPhase10DialogueDataModel() {
     const auto content = game::content::compileBuiltinContentOrThrow();
     const auto& guard = content.dialogues().require(dialogue::guardDialogueId());
     const auto& scholar = content.dialogues().require(dialogue::scholarDialogueId());
-    expect(content.dialogues().size() == 2 &&
+    expect(content.dialogues().size() == 3 &&
                content.npcs().require(underworld::game::gameplay::npcs::guardNpcId())
                        .defaultDialogueId == dialogue::guardDialogueId() &&
                content.npcs().require(underworld::game::gameplay::npcs::scholarNpcId())
                        .defaultDialogueId == dialogue::scholarDialogueId(),
-           "GameContentRegistry connects both reusable NPCs to data-driven dialogues");
+           "GameContentRegistry connects reusable NPCs to data-driven dialogues");
 
     const auto& guardEntry = dialogue::requireNode(guard, guard.entryNodeId);
     const auto& guardResponse = dialogue::requireNode(guard, guardEntry.nextNodeId);
@@ -5366,6 +5368,42 @@ void testPhase12E2Shops() {
     expect(!invalidResult, "shop offer without an operation is rejected by content validation");
 }
 
+void testPhase12E3ShopInterface() {
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+    const auto content = game::content::compileBuiltinContentOrThrow();
+    const auto& shop = content.shops().require({"shop.development.general"});
+    const auto& merchant = content.npcs().require({"npc.merchant"});
+    const auto& dialogue = content.dialogues().require({"dialogue.merchant.greeting"});
+    expect(merchant.defaultDialogueId == dialogue.id && dialogue.nodes.front().choices.front().actions.front().kind == gameplay::dialogue::DialogueActionKind::openShop &&
+               dialogue.nodes.front().choices.front().actions.front().targetId == shop.id,
+           "merchant dialogue opens the authored development shop by definition ID");
+    gameplay::ShopOverlayState overlay;
+    overlay.open(shop);
+    expect(overlay.open() && overlay.mode() == gameplay::ShopOverlayMode::buy && overlay.buySelection() == 0,
+           "shop overlay opens in buy mode on the first purchasable offer");
+    simulation::PlayerCommand command;
+    command.movement.y = 1;
+    gameplay::PlayerItems navigationItems(content.items());
+    static_cast<void>(gameplay::routeShopCommand(overlay, command, shop, navigationItems, gameplay::rpg::ShopTransactionService{}));
+    expect(overlay.buySelection() == 1, "shop buy navigation advances through purchasable offers");
+    gameplay::PlayerItems items(content.items());
+    items.wallet().restoreGold(100);
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    const auto buy = gameplay::routeShopCommand(overlay, command, shop, items, gameplay::rpg::ShopTransactionService{});
+    expect(buy.transaction && buy.transaction->status == gameplay::rpg::ShopTransactionStatus::insufficientGold && items.wallet().gold() == 100,
+           "shop command routing preserves typed atomic buy failure feedback");
+    command = {};
+    command.actions.secondaryAttackPressed = true;
+    static_cast<void>(gameplay::routeShopCommand(overlay, command, shop, items, gameplay::rpg::ShopTransactionService{}));
+    expect(overlay.mode() == gameplay::ShopOverlayMode::sell && !overlay.feedback(),
+           "secondary switches shop mode and clears transaction feedback");
+    overlay.close();
+    expect(!overlay.open() && overlay.activeShopId().empty(), "closing shop clears transient active state");
+}
+
 int main() {
     try {
         testMetrics();
@@ -5433,6 +5471,7 @@ int main() {
         testPhase12D2BankInterface();
         testPhase12E1RewardGrants();
         testPhase12E2Shops();
+        testPhase12E3ShopInterface();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

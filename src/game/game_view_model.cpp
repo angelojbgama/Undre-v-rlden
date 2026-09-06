@@ -13,12 +13,25 @@ ItemSlotView makeSlot(const gameplay::ItemStack& stack,
 
 } // namespace
 
+GameViewModel buildGameViewModel(const gameplay::Player& player, const gameplay::PlayerItems& items,
+                                 const gameplay::ItemCatalog& catalog,
+                                 const gameplay::InventoryOverlayState& overlay,
+                                 const gameplay::BankOverlayState& bankOverlay,
+                                 const gameplay::rpg::PlayerDerivedStats& derivedStats) {
+    static const gameplay::rpg::ShopCatalog noShops;
+    static const gameplay::ShopOverlayState noShopOverlay;
+    return buildGameViewModel(player, items, catalog, overlay, bankOverlay, derivedStats,
+                              noShopOverlay, noShops);
+}
+
 GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::PlayerItems& items,
                                  const gameplay::ItemCatalog& catalog,
                                  const gameplay::InventoryOverlayState& overlay,
                                  const gameplay::BankOverlayState& bankOverlay,
-                                 const gameplay::rpg::PlayerDerivedStats& derivedStats) {
+                                 const gameplay::rpg::PlayerDerivedStats& derivedStats,
+                                 const gameplay::ShopOverlayState& shopOverlay,
+                                 const gameplay::rpg::ShopCatalog& shops) {
     GameViewModel result;
     result.playerHealth = player.health().current;
     result.playerMaximumHealth = player.health().maximum;
@@ -35,6 +48,20 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     result.bankSelection = bankOverlay.bankSelection();
     result.bankGoldSelection = bankOverlay.goldSelection();
     result.bankGold = items.bank().gold();
+    result.shopOpen = shopOverlay.open();
+    result.shopMode = shopOverlay.mode();
+    result.shopBuySelection = shopOverlay.buySelection();
+    result.shopInventorySelection = shopOverlay.inventorySelection();
+    result.shopFeedback = shopOverlay.feedback();
+    if (shopOverlay.open()) {
+        result.activeShopId = shopOverlay.activeShopId();
+        if (const auto* shop = shops.find(result.activeShopId)) {
+            for (const auto& offer : shop->offers) {
+                const auto& item = catalog.require(offer.itemId);
+                result.shopOffers.push_back({offer.itemId, item.visualId, offer.playerBuyPrice, offer.playerSellPrice});
+            }
+        }
+    }
     const auto makeEquipment = [&](gameplay::rpg::EquipmentSlot slot) {
         const auto& item = items.equipment().item(slot);
         if (!item) { return ItemSlotView{}; }

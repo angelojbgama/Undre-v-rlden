@@ -297,6 +297,7 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         } else { render::drawText(renderer, frame.font, "E NEXT  X CLOSE", 14, 181); }
         return;
     }
+    if (view.shopOpen) { renderShopOverlay(renderer, frame); return; }
     if (view.bankOpen) {
         renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
         render::drawText(renderer, frame.font, "BANK", 8, 27);
@@ -370,6 +371,39 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
     render::drawText(renderer, frame.font, "MAX HP " + std::to_string(view.derivedMaximumHealth) +
                      "  ATK +" + std::to_string(view.playerAttackDamageBonus), 10, 164);
     render::drawText(renderer, frame.font, "Z USE/EQUIP  1-4 BIND  I CLOSE", 10, 181);
+}
+
+void GamePresentation::renderShopOverlay(render::Renderer2D& renderer,
+                                         const GamePresentationFrame& frame) const {
+    const auto& view = frame.view;
+    renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
+    render::drawText(renderer, frame.font, "SHOP " + std::string(view.shopMode == gameplay::ShopOverlayMode::buy ? "BUY" : "SELL"), 8, 27);
+    render::drawText(renderer, frame.font, "CARRIED GOLD " + std::to_string(view.gold), 8, 39);
+    if (view.shopMode == gameplay::ShopOverlayMode::buy) {
+        std::size_t selected = 0;
+        for (const auto& offer : view.shopOffers) {
+            if (!offer.playerBuyPrice) continue;
+            if (selected == view.shopBuySelection) renderer.fillRect({8, 49 + static_cast<int>(selected) * 12, 250, 11}, {96, 62, 54, 255});
+            const auto label = std::string(offer.itemId.value());
+            render::drawText(renderer, frame.font, label.substr(0, 22) + " " + std::to_string(*offer.playerBuyPrice) + "G", 11, 50 + static_cast<int>(selected) * 12);
+            ++selected;
+            if (selected == 10) break;
+        }
+    } else {
+        for (std::size_t index = 0; index < view.inventory.size(); ++index) {
+            const int x = 8 + static_cast<int>(index % 10) * 25, y = 51 + static_cast<int>(index / 10) * 20;
+            renderer.fillRect({x, y, 22, 18}, index == view.shopInventorySelection ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
+            if (view.inventory[index].visualId) {
+                const auto found = frame.itemVisuals.find(*view.inventory[index].visualId);
+                if (found != frame.itemVisuals.end()) renderer.drawImage(*found->second, x + 3, y + 1);
+            }
+        }
+        const auto& selected = view.inventory[view.shopInventorySelection];
+        render::drawText(renderer, frame.font, selected.itemId ? std::string(selected.itemId->value()).substr(0, 24) : "EMPTY SLOT", 8, 116);
+        render::drawText(renderer, frame.font, "SELL: see offer", 8, 128);
+    }
+    if (view.shopFeedback) render::drawText(renderer, frame.font, "STATUS " + std::to_string(static_cast<int>(*view.shopFeedback)), 8, 177);
+    render::drawText(renderer, frame.font, "PRIMARY TRADE  SECONDARY SWITCH  I CLOSE", 8, 188);
 }
 
 void GamePresentation::render(render::Framebuffer& framebuffer,

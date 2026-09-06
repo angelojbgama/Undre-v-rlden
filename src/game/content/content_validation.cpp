@@ -215,7 +215,9 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 for (const auto& condition : choice.conditions) if (condition.flagId.empty()) error(report, ContentKind::dialogue, value.id, "invalid_value", "dialogue condition flag is empty", "conditions");
                 for (const auto& action : choice.actions) {
                     if (action.targetId.empty()) error(report, ContentKind::dialogue, value.id, "invalid_value", "dialogue action target is empty", "actions");
-                    if (action.kind == gameplay::dialogue::DialogueActionKind::startQuest && !contains(quests, action.targetId)) error(report, ContentKind::dialogue, value.id, "unknown_reference", "quest action target does not exist", "actions");
+                    if ((action.kind == gameplay::dialogue::DialogueActionKind::startQuest && !contains(quests, action.targetId)) ||
+                        (action.kind == gameplay::dialogue::DialogueActionKind::openShop && !contains(shops, action.targetId)))
+                        error(report, ContentKind::dialogue, value.id, "unknown_reference", "dialogue action target does not exist", "actions");
                 }
             }
         }

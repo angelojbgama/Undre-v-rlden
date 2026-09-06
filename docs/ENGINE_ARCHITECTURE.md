@@ -1587,8 +1587,13 @@ reward remains pending for a later tick. Equipment rewards are normal non-stacka
 items and are never auto-equipped. Gold targets Wallet then Bank, XP uses
 `PlayerProgressionState`, and grant items do not emit `PickupCollected`.
 
-The QSTS claim flag is persisted in DSAV 1.6. Shops are planned for 12E3 before the
-external authored-content phase.
+The QSTS claim flag is persisted in DSAV 1.6. Shops are immutable authored content
+and are exposed by `DialogueAction::openShop`; NPCs do not own prices or stock.
+`ShopOverlayState` is transient navigation/feedback state owned by `GameSession`.
+Shop transactions use carried Wallet Gold and Inventory only, never the Bank, and
+the dialogue command that opens a shop cannot also buy in the same tick. The
+ViewModel copies offers and transaction feedback for presentation; no shop runtime
+stock or persistence exists.
 
 ## Shops
 

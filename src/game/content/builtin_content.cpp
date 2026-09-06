@@ -91,10 +91,11 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"reward.enemy.skull"}, 40, {{{"pickup.money"}, 10000, 1, 1}, {{"pickup.heart"}, 2500, 1, 1}}}};
     pack.rewardGrants = {{{"reward.quest.scholar.path"}, 40, 25, {{{"item.life_potion"}, 2}, {{"item.training_armor"}, 1}}}};
     pack.shops = {{{"shop.development.general"}, {{{"item.life_potion"}, 25, 10}, {{"item.training_armor"}, 150, 60}, {{"item.power_charm"}, 200, 80}}}};
-    pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}}};
+    pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}}, {{"visual.npc.merchant"}, {120, 210, 120, 255}}};
     pack.npcs = {
         {{"npc.guard"}, {"visual.npc.guard"}, {{-14, -28, 28, 22}, true}, {"dialogue.guard.greeting"}, {"npc", "guard"}},
-        {{"npc.scholar"}, {"visual.npc.scholar"}, {{-14, -28, 28, 22}, true}, {"dialogue.scholar.greeting"}, {"npc", "scholar"}}};
+        {{"npc.scholar"}, {"visual.npc.scholar"}, {{-14, -28, 28, 22}, true}, {"dialogue.scholar.greeting"}, {"npc", "scholar"}},
+        {{"npc.merchant"}, {"visual.npc.merchant"}, {{-14, -28, 28, 22}, true}, {"dialogue.merchant.greeting"}, {"npc", "merchant", "shop"}}};
     AuthoredDialogue guardDialogue;
     guardDialogue.id = {"dialogue.guard.greeting"}; guardDialogue.entryNodeId = {"guard.entry"};
     guardDialogue.nodes.push_back({{"guard.entry"}, "Guard", {"Halt, traveler.", "The gallery lies beyond the eastern gate."}, {"guard.response"}, {}});
@@ -112,6 +113,14 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     scholarDialogue.nodes.push_back({{"scholar.left"}, "Scholar", {"Study the walls, but trust the path beneath your feet."}, {}, {}});
     scholarDialogue.nodes.push_back({{"scholar.right"}, "Scholar", {"Then walk carefully, friend."}, {}, {}});
     pack.dialogues.push_back(std::move(scholarDialogue));
+    AuthoredDialogue merchantDialogue;
+    merchantDialogue.id = {"dialogue.merchant.greeting"}; merchantDialogue.entryNodeId = {"merchant.entry"};
+    AuthoredDialogueChoice trade{"Trade", {"merchant.trade"}, {}, {{gameplay::dialogue::DialogueActionKind::openShop, {"shop.development.general"}}}};
+    AuthoredDialogueChoice leave{"Leave", {"merchant.leave"}, {}, {}};
+    merchantDialogue.nodes.push_back({{"merchant.entry"}, "Merchant", {"Looking for supplies?"}, {}, {std::move(trade), std::move(leave)}});
+    merchantDialogue.nodes.push_back({{"merchant.trade"}, "Merchant", {"Take a look."}, {}, {}});
+    merchantDialogue.nodes.push_back({{"merchant.leave"}, "Merchant", {"Safe travels."}, {}, {}});
+    pack.dialogues.push_back(std::move(merchantDialogue));
     AuthoredQuest scholarQuest;
     scholarQuest.id = {"quest.scholar.path"}; scholarQuest.title = "The Scholar's Path";
     scholarQuest.objectives.push_back({{"quest.scholar.kill"}, gameplay::quests::QuestObjectiveKind::kill, {"enemy.evil_soldier"}, 1, "Defeat an evil soldier."});
@@ -123,7 +132,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"enemy.evil_soldier"}, "Evil Soldier", AuthoringCategory::enemy, {"melee", "hostile"}}, {{"enemy.skull"}, "Skull", AuthoringCategory::enemy, {"ranged", "hostile"}},
         {{"object.chest"}, "Chest", AuthoringCategory::object, {"container", "interactable"}}, {{"object.crate"}, "Crate", AuthoringCategory::object, {"destructible"}},
         {{"pickup.heart"}, "Heart", AuthoringCategory::pickup, {"health"}}, {{"pickup.money"}, "Money", AuthoringCategory::pickup, {"currency"}}, {{"pickup.life_potion"}, "Life Potion", AuthoringCategory::pickup, {"item", "consumable"}},
-        {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}},
+        {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.merchant"}, "Merchant", AuthoringCategory::npc, {"npc", "merchant", "shop"}},
         {{"reward.enemy.evil_soldier"}, "Evil Soldier Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
         {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
         {{"reward.quest.scholar.path"}, "Scholar Quest Reward", AuthoringCategory::rewardGrant, {"reward", "quest"}},

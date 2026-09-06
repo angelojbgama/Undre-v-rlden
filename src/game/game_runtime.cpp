@@ -295,6 +295,7 @@ struct GameRuntime::State final {
         session.configureNarrative(content.dialogues(), content.quests());
         session.configureRewards(content.rewardProfiles(), content.pickups());
         session.configureRewardGrants(content.rewardGrants());
+        session.configureShops(content.shops());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -604,7 +605,7 @@ struct GameRuntime::State final {
     void render(render::Framebuffer& framebuffer) const {
         const auto view = buildGameViewModel(
             player, session.playerItems(), itemCatalog, session.inventoryOverlay(), session.bankOverlay(),
-            session.derivedPlayerStats());
+            session.derivedPlayerStats(), session.shopOverlay(), content.shops());
         presentation.render(framebuffer, {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
             session.projectiles(),

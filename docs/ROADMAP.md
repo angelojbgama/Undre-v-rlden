@@ -100,8 +100,8 @@ FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
-FASE 12 — RPG (12A–12D2 DONE; 12E1/12E2 DONE; 12E3 FUTURE; phase extended)
-FASE 13 — Headless + replay + auditoria determinística
+FASE 12 — RPG (12A–12E3 DONE)                         COMPLETE
+PRÓXIMO FOCO — External Authored Content Format       NEXT
 ```
 
 Baseline validada da Fase 6:
@@ -1075,11 +1075,13 @@ Novo item/monstro entra principalmente por definitions e dados, sem alterar engi
 
 ---
 
-# Fase 13 — headless, replay e auditoria determinística
+# Tooling opcional — headless, replay e auditoria determinística
 
-## Gate
+## Status
 
-Networking e multiplayer estão fora do escopo; esta fase trata apenas de testes e auditoria.
+Networking e multiplayer estão fora do escopo. A fronteira headless já é usada pelos
+testes/playtests; replay e state hashing são tooling opcional para testes, auditoria
+e reprodução de bugs, sem gate obrigatório para o próximo foco.
 
 ## Objetivo
 
@@ -1219,7 +1221,7 @@ procedural generation, MapLogic, and LLM blueprint production remain deferred.
 The first, deliberately partial, anticipation of the later headless/replay work is
 complete: `AuditSession` writes structured audit metadata/events/state checkpoints,
 and `GameRuntime::auditSnapshot()` exposes a value-only diagnostic view. Output is
-development-only and ignored by Git. This does not mark Phase 13 complete.
+development-only and ignored by Git; replay and hashing remain optional tooling.
 
 Still deferred, in order, are logical-framebuffer BMP capture, the real headless
 platform, deterministic scripted playtest runner, Windows manual/F12 integration,
@@ -1322,4 +1324,21 @@ DMAP in this increment.
 Shops are immutable authored content with independently optional Player buy/sell
 prices. Transactions are headless, one item at a time, atomic, use carried Wallet
 Gold only, and place purchases in Inventory only. There is no stock, buyback or shop
-persistence; access and UI remain 12E3.
+persistence; access and UI are provided by 12E3.
+
+### 12E3 — Shop access + UI — DONE
+
+Dialogue choices can open a shared authored ShopDefinition through GameSession.
+The transient BUY/SELL overlay routes one-item transactions and displays carried
+Gold, prices and typed feedback. Official Merchant placement and final art remain
+content tasks.
+
+### Phase 12 — RPG / XP / Equipment / Loot / Bank — COMPLETE
+
+The planned RPG block through quest rewards, bank access and shop access is complete.
+The authoritative GameSession boundary is already implemented; replay and state
+hashing remain optional deterministic-testing/debug tooling, not a required phase
+gate. The next development focus is External Authored Content Format:
+content files -> loader -> AuthoredContentPack -> validator -> compiler -> registry,
+followed later by Content Studio foundation and document editors. Phase 12E2 and
+12E3 are DONE; networking remains out of scope.

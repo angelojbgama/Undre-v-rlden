@@ -20,6 +20,7 @@
 #include "game/gameplay/rpg/rewards.h"
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/equipment.h"
+#include "game/gameplay/shop_overlay.h"
 
 #include <memory>
 #include <span>
@@ -60,6 +61,7 @@ public:
         pickupDefinitions_ = &pickups;
     }
     void configureRewardGrants(const gameplay::rpg::RewardGrantCatalog& grants) noexcept { rewardGrantCatalog_ = &grants; }
+    void configureShops(const gameplay::rpg::ShopCatalog& shops) noexcept { shopCatalog_ = &shops; }
     [[nodiscard]] save::SaveData captureSaveData() const;
     [[nodiscard]] bool restoreSaveData(const save::SaveData& data, std::string& error);
 
@@ -71,6 +73,7 @@ public:
     [[nodiscard]] const gameplay::BankOverlayState& bankOverlay() const noexcept {
         return bankOverlay_;
     }
+    [[nodiscard]] const gameplay::ShopOverlayState& shopOverlay() const noexcept { return shopOverlay_; }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
     [[nodiscard]] const maps::MapData& mapData() const;
@@ -149,13 +152,16 @@ private:
     std::unique_ptr<gameplay::PlayerItems> playerItems_;
     gameplay::InventoryOverlayState inventoryOverlay_;
     gameplay::BankOverlayState bankOverlay_;
+    gameplay::ShopOverlayState shopOverlay_;
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
     const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};
     const gameplay::rpg::RewardGrantCatalog* rewardGrantCatalog_{};
+    const gameplay::rpg::ShopCatalog* shopCatalog_{};
     const std::vector<gameplay::PickupDefinition>* pickupDefinitions_{};
     gameplay::rpg::RewardResolver rewardResolver_;
     gameplay::rpg::RewardGrantService rewardGrantService_;
+    gameplay::rpg::ShopTransactionService shopTransactionService_;
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;

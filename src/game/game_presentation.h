@@ -81,6 +81,7 @@ private:
     void renderDebug(render::Renderer2D& renderer, const GamePresentationFrame& frame,
                      render::VisibleTileRange visible) const;
     void renderHud(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
+    void renderShopOverlay(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
 
     render::Camera2D camera_;
 };
