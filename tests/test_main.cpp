@@ -5477,9 +5477,20 @@ void testPhase13AJsonFoundation() {
     expect(!minimal("items", R"({"id":"i","visualId":"v","category":"equipment","stackLimit":1,"equipment":{"slot":"armor"}})").content &&
                hasDiagnostic(minimal("items", R"({"id":"i","visualId":"v","category":"equipment","stackLimit":1,"equipment":{"slot":"armor"}})"), "items[0].equipment.modifiers", "missing required field"),
            "equipment modifiers are required");
-    const auto multilineMissing = decodeAuthoredContentJson("{\n  \"format\": \"dungeon-underworld-content\",\n  \"version\": 1,\n  \"shops\": [{\n    \"id\": \"shop.test\"\n  }]\n}");
-    expect(!multilineMissing.content && hasDiagnostic(multilineMissing, "shops[0].offers", "missing required field") &&
-               multilineMissing.diagnostics.front().line > 1,
+    const auto multilineMissing = decodeAuthoredContentJson(R"({
+  "format": "dungeon-underworld-content",
+  "version": 1,
+  "shops": [{
+    "id": "shop.test"
+  }]
+})");
+    const auto missingOffers = std::find_if(multilineMissing.diagnostics.begin(), multilineMissing.diagnostics.end(),
+                                            [](const auto& diagnostic) {
+                                                return diagnostic.path == "shops[0].offers" &&
+                                                       diagnostic.message == "missing required field";
+                                            });
+    expect(!multilineMissing.content && missingOffers != multilineMissing.diagnostics.end() &&
+               missingOffers->line == 4 && missingOffers->column == 13,
            "missing required field uses the parent object source span");
     expect(!minimal("playerProgressions", R"({"id":"p","cumulativeExperienceThresholds":[]})").content &&
                !minimal("rewardProfiles", R"({"id":"r","experience":0})").content &&
