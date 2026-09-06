@@ -5573,9 +5573,11 @@ void testPhase13A2JsonDecoders() {
            "13A2 malformed world object, pickup and NPC nested fields reject invalid documents");
     const auto unsupported = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"dialogues":[{"id":"not-decoded"}]})");
     const auto wrongCategoryType = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"attacks":{}})");
-    expect(!unsupported.content && unsupported.diagnostics.size() == 1 && unsupported.diagnostics[0].path == "dialogues" &&
+    expect(!unsupported.content && std::any_of(unsupported.diagnostics.begin(), unsupported.diagnostics.end(), [](const auto& diagnostic) {
+                   return diagnostic.path == "dialogues[0].nodes";
+               }) &&
                !wrongCategoryType.content && wrongCategoryType.diagnostics.size() == 1 && wrongCategoryType.diagnostics[0].path == "attacks",
-           "13A2 unsupported non-empty and wrong-type categories fail explicitly");
+           "narrative malformed and wrong-type categories fail explicitly");
     const auto hasDiagnostic = [](const auto& result, std::string_view path) {
         return !result.content && std::any_of(result.diagnostics.begin(), result.diagnostics.end(), [path](const auto& diagnostic) {
             return diagnostic.path == path;
@@ -5609,6 +5611,58 @@ void testPhase13A2JsonDecoders() {
     expect(hasDiagnostic(document("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1},"interactionEnabled":true,"defaultDialogueId":"d","tags":[]})"), "npcs[0].interaction.height") &&
                hasDiagnostic(document("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1,"height":1},"interactionEnabled":true,"defaultDialogueId":"d","tags":{}})"), "npcs[0].tags"),
            "13A2 NPC interaction and tags shapes are strict");
+}
+
+void testPhase13A3JsonDecoders() {
+    using namespace underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+    const auto document = [](std::string_view category, std::string_view entries) {
+        return decodeAuthoredContentJson(std::string{"{\"format\":\"dungeon-underworld-content\",\"version\":1,\""} +
+                                          std::string{category} + "\":[" + std::string{entries} + "]}");
+    };
+    const auto dialogue = document("dialogues", R"({"id":"dialogue.test","entryNodeId":"node.start","nodes":[{"id":"node.start","speaker":"Olá, viajante.","pages":["Poção","Você encontrou a saída?"],"nextNodeId":"node.end","choices":[{"label":"Trade","targetNodeId":"node.end","conditions":[{"kind":"flagNotSet","flagId":"flag.test"}],"actions":[{"kind":"openShop","targetId":"shop.test"}]}]},{"id":"node.end","speaker":"Merchant","pages":["Até logo."],"nextNodeId":"node.end","choices":[]}]})");
+    expect(dialogue.content && dialogue.content->dialogues[0].nodes[0].choices[0].conditions[0].kind == gameplay::dialogue::DialogueConditionKind::flagNotSet &&
+               dialogue.content->dialogues[0].nodes[0].choices[0].actions[0].kind == gameplay::dialogue::DialogueActionKind::openShop &&
+               dialogue.content->dialogues[0].nodes[0].pages[1] == "Você encontrou a saída?",
+           "13A3 dialogue decoder preserves UTF-8 graph, condition and action");
+    const auto quest = document("quests", R"({"id":"quest.test","title":"A small quest","objectives":[{"id":"objective.test","kind":"deliver","targetId":"item.test","requiredCount":2,"description":"Deliver two items"}],"tags":["test","story"],"rewardGrantId":"grant.test"})");
+    expect(quest.content && quest.content->quests[0].objectives[0].kind == gameplay::quests::QuestObjectiveKind::deliver &&
+               quest.content->quests[0].objectives[0].requiredCount == 2 && quest.content->quests[0].rewardGrantId,
+           "13A3 quest decoder preserves objective, tags and reward reference");
+    const auto semantic = document("tileSemantics", R"({"id":"tile.semantic.test","tilesetId":"tileset.test","sourceIndex":7,"family":"masonry","role":"corner","topology":"innerCorner","north":"masonry","east":"floor","south":"voidEdge","west":"terminal","preferredLayer":"walls","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})");
+    expect(semantic.content && semantic.content->tileSemantics[0].role == underworld::game::authoring::TileRole::corner &&
+               semantic.content->tileSemantics[0].topology == underworld::game::authoring::TileTopology::innerCorner &&
+               semantic.content->tileSemantics[0].east == underworld::game::authoring::EdgeProfile::floor && semantic.content->tileSemantics[0].flipXAllowed,
+           "13A3 tile semantic decoder preserves enums, edges and bool");
+    const auto stamp = document("stamps", R"({"id":"stamp.test","displayName":"Test Stamp","width":2,"height":3,"cells":[{"x":-1,"y":2,"tileId":"tile.semantic.test"}],"anchor":{"x":-2,"y":1},"flipXAllowed":true,"atomic":false,"confidence":"probable"})");
+    expect(stamp.content && stamp.content->stamps[0].width == 2 && stamp.content->stamps[0].cells[0].x == -1 &&
+               stamp.content->stamps[0].anchor.x == -2 && stamp.content->stamps[0].atomic == false &&
+               stamp.content->stamps[0].confidence == underworld::game::authoring::SemanticConfidence::probable,
+           "13A3 stamp decoder preserves cells, signed anchor and flags");
+    expect(!document("dialogues", R"({"id":"d","entryNodeId":"n","nodes":[{"id":"n","speaker":"s","pages":[],"nextNodeId":"n","choices":[{"label":"x","targetNodeId":"n","conditions":[{"kind":"bad","flagId":"f"}],"actions":[]}]}]})").content &&
+               !document("quests", R"({"id":"q","title":"q","objectives":[{"id":"o","kind":"bad","targetId":"t","requiredCount":1,"description":"d"}],"tags":[]})").content &&
+               !document("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":4294967296,"family":"f","role":"bad","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":false,"visualConfidence":"confirmed","semanticConfidence":"unverified","gameplayConfidence":"unverified"})").content &&
+               !document("stamps", R"({"id":"s","displayName":"s","width":4294967296,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"bad"})").content,
+           "13A3 invalid enum, range and shape documents return no content");
+    const auto builtin = makeBuiltinAuthoredContent();
+    const auto json1 = encodeAuthoredContentJson(builtin);
+    const auto decoded = decodeAuthoredContentJson(json1);
+    expect(decoded.content.has_value() && decoded.diagnostics.empty(), "full builtin JSON decodes through the public decoder");
+    if (decoded.content) {
+        const auto json2 = encodeAuthoredContentJson(*decoded.content);
+        expect(json1 == json2, "full builtin JSON roundtrip is byte-identical");
+        const auto validation = ContentValidator{}.validate(*decoded.content);
+        const auto compiled = compileContent(*decoded.content);
+        expect(!validation.hasErrors() && compiled.registry.has_value() && compiled.report.valid(),
+               "decoded builtin validates and compiles");
+        if (compiled.registry) {
+            expect(compiled.registry->attacks().find({"attack.player.sword"}) != nullptr &&
+                       compiled.registry->dialogues().find({"dialogue.scholar.greeting"}) != nullptr &&
+                       compiled.registry->quests().find({"quest.scholar.path"}) != nullptr &&
+                       compiled.registry->authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"}) != nullptr,
+                   "compiled registry preserves representative narrative and semantic definitions");
+        }
+    }
 }
 
 int main() {
@@ -5681,6 +5735,7 @@ int main() {
         testPhase12E3ShopInterface();
         testPhase13AJsonFoundation();
         testPhase13A2JsonDecoders();
+        testPhase13A3JsonDecoders();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

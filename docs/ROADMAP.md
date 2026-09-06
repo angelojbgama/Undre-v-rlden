@@ -1285,9 +1285,9 @@ authoring e serialização persistente de conteúdo continuam deferidos.
 
 ### FASE 13 — External Authored Content
 
-13A — Strict JSON Codec + Authored Content Schema v1 — IN PROGRESS.
-13A1 — Decoder Foundation + Core DTOs — DONE. 13A2 — Combat + World DTOs — FUTURE.
-13A3 — Narrative + Semantic DTOs + Full Roundtrip — FUTURE. The strict UTF-8 JSON
+13A — Strict JSON Codec + Authored Content Schema v1 — DONE.
+13A1 — Decoder Foundation + Core DTOs — DONE. 13A2 — Combat + World DTOs — DONE.
+13A3 — Narrative + Semantic DTOs + Full Roundtrip — DONE. The strict UTF-8 JSON
 codec remains separate from runtime source. 13B — Workspace Loader + Multi-file Merge — FUTURE. FASE 14 — Content Studio
 Foundation — FUTURE. Replay/state hashing are optional testing/debug tooling;
 networking and multiplayer remain permanently out of scope.

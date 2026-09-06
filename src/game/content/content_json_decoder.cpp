@@ -59,7 +59,8 @@ template<class T> bool signedField(const JsonValue& p, const JsonObject& o, std:
     if (x < std::numeric_limits<T>::min() || x > std::numeric_limits<T>::max()) { c.error(*v, pathOf(path, n), "outside field range"); return false; } out = static_cast<T>(x); return true;
 }
 bool idField(const JsonValue& p, const JsonObject& o, std::string_view n, std::string_view path, Context& c, simulation::DefinitionId& out) {
-    const auto* v = required(p, o, n, path, c); if (!v) return false; std::string s; if (!stringValue(*v, pathOf(path, n), c, s)) return false; out = simulation::DefinitionId{std::move(s)}; return true;
+    const auto* v = required(p, o, n, path, c); if (!v) return false; std::string s; if (!stringValue(*v, pathOf(path, n), c, s)) return false;
+    out = s.empty() ? simulation::DefinitionId{} : simulation::DefinitionId{std::move(s)}; return true;
 }
 bool itemCategory(const JsonValue& v, std::string_view p, Context& c, gameplay::ItemCategory& out) {
     std::string s; if (!stringValue(v, p, c, s)) return false;
@@ -188,10 +189,139 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
 }
 bool pickup(const JsonValue&v,std::string_view p,Context&c,AuthoredPickup&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"id","visualId","collectionBounds","payload"},p,c);AuthoredPickup d{};bool ok=idField(v,*o,"id",p,c,d.id);ok=idField(v,*o,"visualId",p,c,d.visualId)&&ok;const auto*b=required(v,*o,"collectionBounds",p,c);const auto*pl=required(v,*o,"payload",p,c);ok=b&&aabb(*b,pathOf(p,"collectionBounds"),c,d.collectionBounds)&&ok;const JsonObject*q=nullptr;if(!pl||!object(*pl,pathOf(p,"payload"),c,q))ok=false;else{auto pp=pathOf(p,"payload");const auto*k=required(*pl,*q,"kind",pp,c);std::string kind;if(k&&stringValue(*k,pathOf(pp,"kind"),c,kind)){if(kind=="health"){allowed(*q,{"kind","amount"},pp,c);AuthoredHealthPickup x{};ok=signedField(*pl,*q,"amount",pp,c,x.amount)&&ok;if(ok)d.payload=x;}else if(kind=="currency"){allowed(*q,{"kind","amount"},pp,c);AuthoredCurrencyPickup x{};ok=unsignedField(*pl,*q,"amount",pp,c,x.amount)&&ok;if(ok)d.payload=x;}else if(kind=="item"){allowed(*q,{"kind","itemId","quantity"},pp,c);AuthoredItemPickup x{};ok=idField(*pl,*q,"itemId",pp,c,x.itemId)&&ok;ok=unsignedField(*pl,*q,"quantity",pp,c,x.quantity)&&ok;if(ok)d.payload=x;}else{c.error(*k,pathOf(pp,"kind"),"unknown pickup payload kind");ok=false;}}else ok=false;}if(ok)out=std::move(d);return ok;}
 bool npc(const JsonValue&v,std::string_view p,Context&c,AuthoredNpc&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"id","visualSetId","interaction","interactionEnabled","defaultDialogueId","tags"},p,c);AuthoredNpc d{};bool ok=idField(v,*o,"id",p,c,d.id);ok=idField(v,*o,"visualSetId",p,c,d.visualSetId)&&ok;const auto*i=required(v,*o,"interaction",p,c);const auto*e=required(v,*o,"interactionEnabled",p,c);const auto*dialogue=required(v,*o,"defaultDialogueId",p,c);const auto*t=required(v,*o,"tags",p,c);ok=i&&aabb(*i,pathOf(p,"interaction"),c,d.interaction.bounds)&&ok;if(e)ok=boolValue(*e,pathOf(p,"interactionEnabled"),c,d.interaction.enabled)&&ok;else ok=false;ok=dialogue&&idField(v,*o,"defaultDialogueId",p,c,d.defaultDialogueId)&&ok;const JsonArray*a=nullptr;if(!t||!array(*t,pathOf(p,"tags"),c,a))ok=false;else for(size_t n=0;n<a->size();++n){std::string s;if(stringValue((*a)[n],pathOf(p,"tags")+"["+std::to_string(n)+"]",c,s))d.tags.push_back(std::move(s));else ok=false;}if(ok)out=std::move(d);return ok;}
+bool stringArray(const JsonValue& v, std::string_view p, Context& c, std::vector<std::string>& out) {
+    const JsonArray* a = nullptr;
+    if (!array(v, p, c, a)) return false;
+    bool ok = true;
+    for (std::size_t i = 0; i < a->size(); ++i) {
+        std::string value;
+        if (stringValue((*a)[i], std::string(p) + "[" + std::to_string(i) + "]", c, value)) out.push_back(std::move(value));
+        else ok = false;
+    }
+    return ok;
+}
+bool conditionKind(const JsonValue& v, std::string_view p, Context& c, gameplay::dialogue::DialogueConditionKind& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "flagSet") out = gameplay::dialogue::DialogueConditionKind::flagSet;
+    else if (s == "flagNotSet") out = gameplay::dialogue::DialogueConditionKind::flagNotSet;
+    else { c.error(v, std::string(p), "unknown DialogueConditionKind"); return false; }
+    return true;
+}
+bool actionKind(const JsonValue& v, std::string_view p, Context& c, gameplay::dialogue::DialogueActionKind& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "setFlag") out = gameplay::dialogue::DialogueActionKind::setFlag;
+    else if (s == "clearFlag") out = gameplay::dialogue::DialogueActionKind::clearFlag;
+    else if (s == "startQuest") out = gameplay::dialogue::DialogueActionKind::startQuest;
+    else if (s == "openShop") out = gameplay::dialogue::DialogueActionKind::openShop;
+    else { c.error(v, std::string(p), "unknown DialogueActionKind"); return false; }
+    return true;
+}
+bool objectiveKind(const JsonValue& v, std::string_view p, Context& c, gameplay::quests::QuestObjectiveKind& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "talk") out = gameplay::quests::QuestObjectiveKind::talk;
+    else if (s == "kill") out = gameplay::quests::QuestObjectiveKind::kill;
+    else if (s == "pickup") out = gameplay::quests::QuestObjectiveKind::pickup;
+    else if (s == "enter") out = gameplay::quests::QuestObjectiveKind::enter;
+    else if (s == "open") out = gameplay::quests::QuestObjectiveKind::open;
+    else if (s == "deliver") out = gameplay::quests::QuestObjectiveKind::deliver;
+    else { c.error(v, std::string(p), "unknown QuestObjectiveKind"); return false; }
+    return true;
+}
+bool semanticConfidence(const JsonValue& v, std::string_view p, Context& c, authoring::SemanticConfidence& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "confirmed") out = authoring::SemanticConfidence::confirmed;
+    else if (s == "probable") out = authoring::SemanticConfidence::probable;
+    else if (s == "unverified") out = authoring::SemanticConfidence::unverified;
+    else { c.error(v, std::string(p), "unknown SemanticConfidence"); return false; }
+    return true;
+}
+bool tileRole(const JsonValue& v, std::string_view p, Context& c, authoring::TileRole& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "floor") out = authoring::TileRole::floor; else if (s == "wall") out = authoring::TileRole::wall;
+    else if (s == "corner") out = authoring::TileRole::corner; else if (s == "ledge") out = authoring::TileRole::ledge;
+    else if (s == "opening") out = authoring::TileRole::opening; else if (s == "detail") out = authoring::TileRole::detail;
+    else if (s == "unknown") out = authoring::TileRole::unknown;
+    else { c.error(v, std::string(p), "unknown TileRole"); return false; }
+    return true;
+}
+bool tileTopology(const JsonValue& v, std::string_view p, Context& c, authoring::TileTopology& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "unknown") out = authoring::TileTopology::unknown; else if (s == "interior") out = authoring::TileTopology::interior;
+    else if (s == "straightHorizontal") out = authoring::TileTopology::straightHorizontal; else if (s == "straightVertical") out = authoring::TileTopology::straightVertical;
+    else if (s == "outerCorner") out = authoring::TileTopology::outerCorner; else if (s == "innerCorner") out = authoring::TileTopology::innerCorner;
+    else if (s == "cap") out = authoring::TileTopology::cap; else if (s == "junction") out = authoring::TileTopology::junction;
+    else if (s == "architecturalDetail") out = authoring::TileTopology::architecturalDetail;
+    else { c.error(v, std::string(p), "unknown TileTopology"); return false; }
+    return true;
+}
+bool edgeProfile(const JsonValue& v, std::string_view p, Context& c, authoring::EdgeProfile& out) {
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "unknown") out = authoring::EdgeProfile::unknown; else if (s == "floor") out = authoring::EdgeProfile::floor;
+    else if (s == "masonry") out = authoring::EdgeProfile::masonry; else if (s == "voidEdge") out = authoring::EdgeProfile::voidEdge;
+    else if (s == "terminal") out = authoring::EdgeProfile::terminal;
+    else { c.error(v, std::string(p), "unknown EdgeProfile"); return false; }
+    return true;
+}
+bool pointI(const JsonValue& v, std::string_view p, Context& c, core::PointI& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"x", "y"}, p, c);
+    bool ok = signedField(v, *o, "x", p, c, out.x); ok = signedField(v, *o, "y", p, c, out.y) && ok; return ok;
+}
+bool dialogueCondition(const JsonValue& v, std::string_view p, Context& c, AuthoredDialogueCondition& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"kind", "flagId"}, p, c);
+    AuthoredDialogueCondition d{}; const auto* k = required(v, *o, "kind", p, c); bool ok = k && conditionKind(*k, pathOf(p, "kind"), c, d.kind);
+    ok = idField(v, *o, "flagId", p, c, d.flagId) && ok; if (ok) out = std::move(d); return ok;
+}
+bool dialogueAction(const JsonValue& v, std::string_view p, Context& c, AuthoredDialogueAction& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"kind", "targetId"}, p, c);
+    AuthoredDialogueAction d{}; const auto* k = required(v, *o, "kind", p, c); bool ok = k && actionKind(*k, pathOf(p, "kind"), c, d.kind);
+    ok = idField(v, *o, "targetId", p, c, d.targetId) && ok; if (ok) out = std::move(d); return ok;
+}
+bool dialogueChoice(const JsonValue& v, std::string_view p, Context& c, AuthoredDialogueChoice& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"label", "targetNodeId", "conditions", "actions"}, p, c);
+    AuthoredDialogueChoice d{}; bool ok = true; const auto* label = required(v, *o, "label", p, c); const auto* target = required(v, *o, "targetNodeId", p, c);
+    const auto* conditions = required(v, *o, "conditions", p, c); const auto* actions = required(v, *o, "actions", p, c);
+    ok = label && stringValue(*label, pathOf(p, "label"), c, d.label) && ok; ok = target && idField(v, *o, "targetNodeId", p, c, d.targetNodeId) && ok;
+    const JsonArray* ca = nullptr; if (!conditions || !array(*conditions, pathOf(p, "conditions"), c, ca)) ok = false; else for (std::size_t i = 0; i < ca->size(); ++i) { AuthoredDialogueCondition x{}; if (dialogueCondition((*ca)[i], pathOf(p, "conditions") + "[" + std::to_string(i) + "]", c, x)) d.conditions.push_back(std::move(x)); else ok = false; }
+    const JsonArray* aa = nullptr; if (!actions || !array(*actions, pathOf(p, "actions"), c, aa)) ok = false; else for (std::size_t i = 0; i < aa->size(); ++i) { AuthoredDialogueAction x{}; if (dialogueAction((*aa)[i], pathOf(p, "actions") + "[" + std::to_string(i) + "]", c, x)) d.actions.push_back(std::move(x)); else ok = false; }
+    if (ok) out = std::move(d);
+    return ok;
+}
+bool dialogueNode(const JsonValue& v, std::string_view p, Context& c, AuthoredDialogueNode& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"id", "speaker", "pages", "nextNodeId", "choices"}, p, c);
+    AuthoredDialogueNode d{}; bool ok = true; ok = idField(v, *o, "id", p, c, d.id) && ok; const auto* speaker = required(v, *o, "speaker", p, c); ok = speaker && stringValue(*speaker, pathOf(p, "speaker"), c, d.speaker) && ok;
+    const auto* pages = required(v, *o, "pages", p, c); ok = pages && stringArray(*pages, pathOf(p, "pages"), c, d.pages) && ok; ok = idField(v, *o, "nextNodeId", p, c, d.nextNodeId) && ok;
+    const auto* choices = required(v, *o, "choices", p, c); const JsonArray* a = nullptr; if (!choices || !array(*choices, pathOf(p, "choices"), c, a)) ok = false; else for (std::size_t i = 0; i < a->size(); ++i) { AuthoredDialogueChoice x{}; if (dialogueChoice((*a)[i], pathOf(p, "choices") + "[" + std::to_string(i) + "]", c, x)) d.choices.push_back(std::move(x)); else ok = false; }
+    if (ok) out = std::move(d);
+    return ok;
+}
+bool dialogue(const JsonValue& v, std::string_view p, Context& c, AuthoredDialogue& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"id", "entryNodeId", "nodes"}, p, c); AuthoredDialogue d{}; bool ok = idField(v, *o, "id", p, c, d.id); ok = idField(v, *o, "entryNodeId", p, c, d.entryNodeId) && ok;
+    const auto* nodes = required(v, *o, "nodes", p, c); const JsonArray* a = nullptr; if (!nodes || !array(*nodes, pathOf(p, "nodes"), c, a)) ok = false; else for (std::size_t i = 0; i < a->size(); ++i) { AuthoredDialogueNode x{}; if (dialogueNode((*a)[i], pathOf(p, "nodes") + "[" + std::to_string(i) + "]", c, x)) d.nodes.push_back(std::move(x)); else ok = false; }
+    if (ok) out = std::move(d);
+    return ok;
+}
+bool questObjective(const JsonValue& v, std::string_view p, Context& c, AuthoredQuestObjective& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"id", "kind", "targetId", "requiredCount", "description"}, p, c); AuthoredQuestObjective d{}; bool ok = idField(v, *o, "id", p, c, d.id); const auto* k = required(v, *o, "kind", p, c); ok = k && objectiveKind(*k, pathOf(p, "kind"), c, d.kind) && ok; ok = idField(v, *o, "targetId", p, c, d.targetId) && ok; ok = unsignedField(v, *o, "requiredCount", p, c, d.requiredCount) && ok; const auto* desc = required(v, *o, "description", p, c); ok = desc && stringValue(*desc, pathOf(p, "description"), c, d.description) && ok; if (ok) out = std::move(d); return ok;
+}
+bool quest(const JsonValue& v, std::string_view p, Context& c, AuthoredQuest& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"id", "title", "objectives", "tags", "rewardGrantId"}, p, c); AuthoredQuest d{}; bool ok = idField(v, *o, "id", p, c, d.id); const auto* title = required(v, *o, "title", p, c); ok = title && stringValue(*title, pathOf(p, "title"), c, d.title) && ok;
+    const auto* objectives = required(v, *o, "objectives", p, c); const JsonArray* a = nullptr; if (!objectives || !array(*objectives, pathOf(p, "objectives"), c, a)) ok = false; else for (std::size_t i = 0; i < a->size(); ++i) { AuthoredQuestObjective x{}; if (questObjective((*a)[i], pathOf(p, "objectives") + "[" + std::to_string(i) + "]", c, x)) d.objectives.push_back(std::move(x)); else ok = false; }
+    const auto* tags = required(v, *o, "tags", p, c); ok = tags && stringArray(*tags, pathOf(p, "tags"), c, d.tags) && ok; if (const auto* reward = findField(*o, "rewardGrantId")) { if (!std::holds_alternative<std::nullptr_t>(reward->value)) { std::string s; if (stringValue(*reward, pathOf(p, "rewardGrantId"), c, s)) d.rewardGrantId = simulation::DefinitionId{std::move(s)}; else ok = false; } }
+    if (ok) out = std::move(d);
+    return ok;
+}
+bool tileSemantic(const JsonValue& v, std::string_view p, Context& c, AuthoredTileSemantic& out) {
+    const JsonObject* o = nullptr; if (!object(v, p, c, o)) return false; allowed(*o, {"id","tilesetId","sourceIndex","family","role","topology","north","east","south","west","preferredLayer","flipXAllowed","visualConfidence","semanticConfidence","gameplayConfidence"}, p, c); AuthoredTileSemantic d{}; bool ok = idField(v,*o,"id",p,c,d.id); ok = idField(v,*o,"tilesetId",p,c,d.tilesetId) && ok; ok = unsignedField(v,*o,"sourceIndex",p,c,d.sourceIndex) && ok; const auto* family=required(v,*o,"family",p,c); ok=family&&stringValue(*family,pathOf(p,"family"),c,d.family)&&ok; const auto* roleV=required(v,*o,"role",p,c); ok=roleV&&tileRole(*roleV,pathOf(p,"role"),c,d.role)&&ok; const auto* topologyV=required(v,*o,"topology",p,c); ok=topologyV&&tileTopology(*topologyV,pathOf(p,"topology"),c,d.topology)&&ok;
+    const char* edgeNames[] = {"north","east","south","west"}; authoring::EdgeProfile* edgeValues[] = {&d.north,&d.east,&d.south,&d.west}; for (int i=0;i<4;++i) { const auto* e=required(v,*o,edgeNames[i],p,c); if (!e || !edgeProfile(*e,pathOf(p,edgeNames[i]),c,*edgeValues[i])) ok=false; }
+    const auto* layer=required(v,*o,"preferredLayer",p,c); ok=layer&&stringValue(*layer,pathOf(p,"preferredLayer"),c,d.preferredLayer)&&ok; const auto* flip=required(v,*o,"flipXAllowed",p,c); ok=flip&&boolValue(*flip,pathOf(p,"flipXAllowed"),c,d.flipXAllowed)&&ok;
+    const char* confNames[] = {"visualConfidence","semanticConfidence","gameplayConfidence"}; authoring::SemanticConfidence* confValues[] = {&d.visualConfidence,&d.semanticConfidence,&d.gameplayConfidence}; for (int i=0;i<3;++i) { const auto* q=required(v,*o,confNames[i],p,c); if (!q || !semanticConfidence(*q,pathOf(p,confNames[i]),c,*confValues[i])) ok=false; } if (ok) out=std::move(d); return ok;
+}
+bool stampCell(const JsonValue& v, std::string_view p, Context& c, AuthoredStampCell& out) { const JsonObject* o=nullptr; if(!object(v,p,c,o))return false; allowed(*o,{"x","y","tileId"},p,c); AuthoredStampCell d{}; bool ok=signedField(v,*o,"x",p,c,d.x); ok=signedField(v,*o,"y",p,c,d.y)&&ok; ok=idField(v,*o,"tileId",p,c,d.tileId)&&ok; if(ok)out=std::move(d); return ok; }
+bool stamp(const JsonValue& v, std::string_view p, Context& c, AuthoredStamp& out) { const JsonObject* o=nullptr; if(!object(v,p,c,o))return false; allowed(*o,{"id","displayName","width","height","cells","anchor","flipXAllowed","atomic","confidence"},p,c); AuthoredStamp d{}; bool ok=idField(v,*o,"id",p,c,d.id); const auto* name=required(v,*o,"displayName",p,c); ok=name&&stringValue(*name,pathOf(p,"displayName"),c,d.displayName)&&ok; ok=unsignedField(v,*o,"width",p,c,d.width)&&ok; ok=unsignedField(v,*o,"height",p,c,d.height)&&ok; const auto* cells=required(v,*o,"cells",p,c); const JsonArray* a=nullptr; if(!cells||!array(*cells,pathOf(p,"cells"),c,a))ok=false; else for(size_t i=0;i<a->size();++i){AuthoredStampCell x{};if(stampCell((*a)[i],pathOf(p,"cells")+"["+std::to_string(i)+"]",c,x))d.cells.push_back(std::move(x));else ok=false;} const auto* anchor=required(v,*o,"anchor",p,c); ok=anchor&&pointI(*anchor,pathOf(p,"anchor"),c,d.anchor)&&ok; const auto* flip=required(v,*o,"flipXAllowed",p,c); ok=flip&&boolValue(*flip,pathOf(p,"flipXAllowed"),c,d.flipXAllowed)&&ok; const auto* atomic=required(v,*o,"atomic",p,c); ok=atomic&&boolValue(*atomic,pathOf(p,"atomic"),c,d.atomic)&&ok; const auto* confidence=required(v,*o,"confidence",p,c); ok=confidence&&semanticConfidence(*confidence,pathOf(p,"confidence"),c,d.confidence)&&ok; if(ok)out=std::move(d); return ok; }
 template<class T> using Decoder=bool(*)(const JsonValue&,std::string_view,Context&,T&);
 template<class T> void category(const JsonObject&r,std::string_view n,Decoder<T> d,std::vector<T>&out,Context&c){const auto*v=findField(r,n);if(!v)return;const JsonArray*a=nullptr;if(!array(*v,n,c,a))return;for(size_t i=0;i<a->size();++i){T x{};if(d((*a)[i],std::string(n)+"["+std::to_string(i)+"]",c,x))out.push_back(std::move(x));}}
 }}
 
 namespace underworld::game::content {
-ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)&&x!=1)c.error(*v,"version","unsupported schema version");}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);for(auto n:{"dialogues","quests","tileSemantics","stamps"}){const auto*x=findField(*root,n);if(!x)continue;const JsonArray*a=nullptr;if(!array(*x,n,c,a))continue;if(!a->empty())c.error(*x,n,"category decoding is not implemented in 13A2");}r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());if(r.diagnostics.empty())r.content=std::move(out);return r;}
+ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)&&x!=1)c.error(*v,"version","unsupported schema version");}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"dialogues",dialogue,out.dialogues,c);category(*root,"quests",quest,out.quests,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);category(*root,"tileSemantics",tileSemantic,out.tileSemantics,c);category(*root,"stamps",stamp,out.stamps,c);r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());if(r.diagnostics.empty())r.content=std::move(out);return r;}
 }
