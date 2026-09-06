@@ -69,7 +69,6 @@ public:
 
 private:
     friend class content::ContentCompiler;
-    void addCompiled(content::AuthoredContentPack pack);
     gameplay::AttackCatalog attacks_;
     gameplay::ProjectileCatalog projectiles_;
     gameplay::creatures::BehaviorCatalog behaviors_;

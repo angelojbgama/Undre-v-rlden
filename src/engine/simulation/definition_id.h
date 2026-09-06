@@ -13,6 +13,7 @@ namespace underworld::simulation {
 class DefinitionId final {
 public:
     DefinitionId() = default;
+    DefinitionId(const char* value) : DefinitionId(std::string(value)) {}
     explicit DefinitionId(std::string value) : value_(std::move(value)) {
         if (value_.empty()) {
             throw std::invalid_argument("definition id cannot be empty");

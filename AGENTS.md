@@ -26,7 +26,7 @@ O agente NÃO é autorizado a:
 - misturar plataforma, renderização e gameplay;
 - criar sistemas paralelos quando já existe uma engine ou abstração adequada;
 - transformar uma fase pequena em uma refatoração geral;
-- antecipar multiplayer, scripting, ECS, editor ou RPG antes de suas dependências reais.
+- antecipar scripting, ECS, editor ou RPG antes de suas dependências reais.
 
 Ao receber uma nova ideia ou tarefa, primeiro determine:
 
@@ -63,7 +63,7 @@ O objetivo não é somente terminar uma pequena demo. O objetivo é construir um
 - Map Maker próprio;
 - criação de conteúdo orientada a dados;
 - eventualmente uma simulação headless;
-- posteriormente multiplayer com servidor autoritativo.
+- eventualmente ferramentas headless e replay para testes determinísticos.
 
 A expansão futura deve ser consequência da arquitetura construída aos poucos, não de uma mega-engine criada antecipadamente.
 
@@ -1459,64 +1459,12 @@ Não alterar engine base toda vez que surgir um novo item ou monstro.
 
 ---
 
-# 24. Multiplayer — Fases 13 e 14
+# 24. Networking e multiplayer fora de escopo
 
-Não implementar rede cedo.
-
-A preparação correta já começa pelas fronteiras:
-
-```text
-PlayerCommand
-tick
-player identity
-sequence
-simulation state
-stable IDs
-```
-
-Mas NÃO criar agora:
-
-```text
-Winsock layer
-lobby
-prediction
-reconciliation
-rollback
-network ECS
-```
-
-## Fase 13 primeiro
-
-Antes da rede real:
-
-- auditar autoridade;
-- separar state ownership;
-- permitir simulação sem janela/render;
-- gravar/reproduzir command streams;
-- numerar snapshots;
-- definir network entity IDs;
-- medir nondeterminismo relevante.
-
-Aceite:
-
-> simulação headless executa cenário gravado e alcança estado esperado.
-
-## Fase 14 depois
-
-Somente então:
-
-- adapter Winsock;
-- framing;
-- handshake;
-- protocol versioning;
-- server authoritative;
-- command upload;
-- snapshots/deltas;
-- prediction/reconciliation quando necessário;
-- interpolation;
-- timeout;
-- rate limits;
-- testes com latency/loss.
+Dungeon Underworld não terá networking ou multiplayer. Não introduzir Winsock,
+replication, network authority, rollback-netcode, network identity ou adapters de
+rede. `PlayerCommand`, execução headless, replay e state hashing existem apenas
+para testes determinísticos, reprodução de bugs e auditoria de conteúdo.
 
 ---
 
@@ -1534,8 +1482,7 @@ antes de event stream + IDs persistentes
 não iniciar RPG completo
 antes do vertical slice estar estável e jogável
 
-não iniciar networking
-antes de simulação headless + replay/command stream
+replay e state hashing são ferramentas de teste opcionais, não preparação para rede
 
 não criar ECS genérico
 antes de múltiplas entidades reais justificarem
@@ -1562,11 +1509,11 @@ enquanto definições + sistemas C++ resolverem os casos reais
 
 Exemplo aceitável:
 
-> criar uma pequena fronteira de `PlayerCommand` antes de multiplayer porque Player já precisa dela para input, testes e replay futuro.
+> criar uma pequena fronteira de `PlayerCommand` porque Player já precisa dela para input, testes e replay futuro.
 
 Exemplo não aceitável:
 
-> criar protocolo de rede, serializer de snapshots e prediction porque multiplayer será desejado algum dia.
+> criar protocolo de rede e serializer de snapshots sem um uso presente.
 
 ---
 
@@ -1589,8 +1536,7 @@ Ordem de desenvolvimento de referência:
 10 NPC + diálogo
 11 Quests
 12 RPG + XP + equipment + loot
-13 Auditoria multiplayer/headless/replay
-14 Networking
+13 Headless + replay + auditoria determinística
 ```
 
 A ordem pode ser refinada, mas não deve ser ignorada sem análise de dependências.
@@ -1938,7 +1884,7 @@ O repositório também fornece `docker/build_linux.sh` para compilar os alvos Li
 em Debian e uma receita `docker/build_windows.ps1` para Docker Desktop em modo
 Windows containers. O Docker Linux agora produz `build/linux/game` usando X11 e
 libpng; a execução gráfica exige X11/WSLg e assets licenciados locais. Replay
-formal, hash de estado, rede e multiplayer permanecem fora desta antecipação.
+formal networking, multiplayer e abstrações de identidade de rede permanecem fora do projeto.
 
 ## Estado atual — audit playtest Block D/E
 

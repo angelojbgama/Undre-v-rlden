@@ -42,7 +42,7 @@ Evil Soldier melee + Skull ranged
 
 <!-- Registro anterior ao fechamento: a Fase 7 foi implementada nos commits `30b413d`, `ccbaf4a`, `7873e32` e `0721b12`,
 com 340 checks portáveis, mas ainda aguarda build MSVC `/W4` e smoke Win32 para ser
-declarada concluída. `.dmap`, editor, save, loot/XP, NPCs, quests e networking
+declarada concluída. `.dmap`, editor, save, loot/XP, NPCs e quests
 permanecem deferidos. -->
 
 A Fase 7 está concluída. O código-base está em
@@ -60,7 +60,7 @@ playtest por snapshot via `RuntimeWorldBuilder` e sidecar `.autosave.dmap` sem s
 o arquivo authored. A Fase 10 está em andamento; NPC foundation e dialogue data model
 estão concluídos, assim como sessão/UI, conditions, actions e flags persistentes. A
 Fase 11 possui definições, estado runtime, progressão por eventos e persistência de
-quests; loot/XP e networking permanecem deferidos.
+quests; loot/XP permanecem deferidos. Networking e multiplayer estão fora de escopo.
 
 ### 1.1 C++ nativo e dependências controladas
 
@@ -157,7 +157,7 @@ Exemplos:
 scripting
 pathfinding avançado
 hot reload
-rollback/prediction
+ferramentas adicionais de diagnóstico determinístico
 multithreading do renderer
 formato final de diálogo/quest
 ```
@@ -485,7 +485,7 @@ Left + Right = 0
 Up + Down    = 0
 ```
 
-Não se promete determinismo bit a bit entre máquinas. Inteiros/subpixels são preferidos para estabilidade do gameplay atual; networking futuro poderá trabalhar com snapshots e correções.
+Não se promete determinismo bit a bit entre máquinas. Inteiros/subpixels são preferidos para estabilidade do gameplay atual; replay e state hashing podem ser usados para testes e auditoria.
 
 ---
 
@@ -1123,43 +1123,12 @@ hardcoded e nenhum comportamento futuro de LLM é implementado.
 
 ---
 
-## 17. Multiplayer futuro
+## 17. Networking e multiplayer fora de escopo
 
-Preparação saudável já existente ou permitida:
-
-```text
-PlayerCommand
-tick
-player identity
-sequence
-stable IDs
-domain events
-separação de estado e render
-```
-
-Isso não autoriza implementar rede agora.
-
-Antes de Winsock real:
-
-- separar simulação de janela/render;
-- permitir execução headless;
-- gravar/reproduzir command streams;
-- numerar snapshots;
-- definir identidade replicável;
-- medir nondeterminismo relevante.
-
-Só depois:
-
-```text
-handshake
-protocol version
-server authoritative
-command upload
-snapshots/deltas
-prediction/reconciliation quando necessário
-interpolation
-timeouts/rate limits
-```
+Dungeon Underworld não terá networking ou multiplayer. A arquitetura não deve
+introduzir replication, network authority, rollback-netcode, network identity ou
+protocolos de rede. PlayerCommand, execução headless, replay e state hashing são
+fronteiras úteis somente para testes determinísticos, reprodução de bugs e auditoria.
 
 ---
 
@@ -1540,7 +1509,8 @@ licensed assets.
 
 ## Content Definition Boundary
 
-Conteúdo authored não popula catálogos de runtime diretamente. O conteúdo oficial
+Conteúdo authored não popula catálogos de runtime diretamente. Cada categoria
+principal possui um DTO authored distinto da definição runtime correspondente. O conteúdo oficial
 temporariamente construído em C++ passa pela fronteira `AuthoredContentPack` ->
 `ContentValidator` -> `ContentCompiler` -> `GameContentRegistry`. Os DTOs são
 tipados, em memória e independentes de runtime state, renderer e assets carregados.

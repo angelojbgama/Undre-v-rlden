@@ -1,29 +1,88 @@
 #include "game/content/content_compiler.h"
 
-#include <exception>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 namespace underworld::game::content {
+namespace {
+
+TilesetDefinition compileTileset(const AuthoredTileset& v) { return {v.id, v.displayName, v.relativeAssetPath, v.tileSize, v.columns, v.rows}; }
+gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets}; }
+gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) { return {v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks, v.minimumRangePixels, v.maximumRangePixels, v.visualActionId, v.meleeHitboxes, v.projectileDefinitionId, v.timeline}; }
+gameplay::creatures::BehaviorProfile compileBehavior(const AuthoredBehaviorProfile& v) { return {v.id, v.detectionRangePixels, v.disengageRangePixels, v.idleDurationTicks, v.wanderDurationTicks}; }
+gameplay::creatures::EnemyDefinition compileEnemy(const AuthoredEnemy& v) { return {v.id, v.visualSetId, v.behaviorProfileId, v.faction, v.maximumHealth, v.movementSpeedSubpixelsPerTick, v.collisionBody, v.hurtbox, v.attackIds}; }
+gameplay::ItemDefinition compileItem(const AuthoredItem& v) { return {v.id, v.visualId, v.category, v.stackLimit, v.use}; }
+gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) { return {v.id, v.visualSetId, v.interactable, v.container, v.destructible}; }
+gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor}; }
+gameplay::npcs::NpcDefinition compileNpc(const AuthoredNpc& v) { return {v.id, v.visualSetId, v.interaction, v.defaultDialogueId, v.tags}; }
+
+gameplay::PickupPayload compilePayload(const AuthoredPickupPayload& payload) {
+    return std::visit([](const auto& value) -> gameplay::PickupPayload {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, AuthoredHealthPickup>) return gameplay::HealthPickup{value.amount};
+        else if constexpr (std::is_same_v<T, AuthoredCurrencyPickup>) return gameplay::CurrencyPickup{value.amount};
+        else return gameplay::ItemPickup{value.itemId, value.quantity};
+    }, payload);
+}
+gameplay::PickupDefinition compilePickup(const AuthoredPickup& v) { return {v.id, v.visualId, v.collectionBounds, compilePayload(v.payload)}; }
+
+gameplay::dialogue::DialogueDefinition compileDialogue(const AuthoredDialogue& v) {
+    gameplay::dialogue::DialogueDefinition result{v.id, v.entryNodeId, {}};
+    for (const auto& node : v.nodes) {
+        gameplay::dialogue::DialogueNode compiled{node.id, node.speaker, node.pages, node.nextNodeId, {}};
+        for (const auto& choice : node.choices) {
+            gameplay::dialogue::DialogueChoice compiledChoice{choice.label, choice.targetNodeId, {}, {}};
+            for (const auto& condition : choice.conditions) compiledChoice.conditions.push_back({condition.kind, condition.flagId});
+            for (const auto& action : choice.actions) compiledChoice.actions.push_back({action.kind, action.targetId});
+            compiled.choices.push_back(std::move(compiledChoice));
+        }
+        result.nodes.push_back(std::move(compiled));
+    }
+    return result;
+}
+gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
+    gameplay::quests::QuestDefinition result{v.id, v.title, {}, v.tags};
+    for (const auto& objective : v.objectives) result.objectives.push_back({objective.id, objective.kind, objective.targetId, objective.requiredCount, objective.description});
+    return result;
+}
+authoring::TileSemanticDefinition compileTileSemantic(const AuthoredTileSemantic& v) { return {v.id, v.tilesetId, v.sourceIndex, v.family, v.role, v.topology, v.north, v.east, v.south, v.west, v.preferredLayer, v.flipXAllowed, v.visualConfidence, v.semanticConfidence, v.gameplayConfidence}; }
+authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
+    authoring::StampDefinition result{v.id, v.displayName, v.width, v.height, {}, v.anchor, v.flipXAllowed, v.atomic, v.confidence};
+    for (const auto& cell : v.cells) result.cells.push_back({cell.x, cell.y, cell.tileId});
+    return result;
+}
+
+} // namespace
 
 ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authored) const {
     ContentCompileResult result;
     result.report = ContentValidator{}.validate(authored);
     if (result.report.hasErrors()) return result;
-
     try {
-        AuthoredContentPack copy = authored;
         GameContentRegistry registry;
-        registry.addCompiled(std::move(copy));
+        for (const auto& value : authored.tilesets) registry.tilesets_.add(compileTileset(value));
+        for (const auto& value : authored.projectiles) registry.projectiles_.add(compileProjectile(value));
+        for (const auto& value : authored.attacks) registry.attacks_.add(compileAttack(value));
+        for (const auto& value : authored.behaviors) registry.behaviors_.add(compileBehavior(value));
+        for (const auto& value : authored.enemies) registry.enemies_.add(compileEnemy(value));
+        for (const auto& value : authored.items) registry.items_.add(compileItem(value));
+        for (const auto& value : authored.objects) registry.objects_.add(compileObject(value));
+        for (const auto& value : authored.npcs) registry.npcs_.add(compileNpc(value));
+        for (const auto& value : authored.npcVisuals) registry.npcVisuals_.add(compileNpcVisual(value));
+        for (const auto& value : authored.dialogues) registry.dialogues_.add(compileDialogue(value));
+        for (const auto& value : authored.quests) registry.quests_.add(compileQuest(value));
+        for (const auto& value : authored.pickups) registry.pickups_.push_back(compilePickup(value));
+        registry.authoringDescriptors_ = authored.authoringDescriptors;
+        for (const auto& value : authored.tileSemantics) registry.authoringSemantics_.addTile(compileTileSemantic(value));
+        for (const auto& value : authored.stamps) registry.authoringSemantics_.addStamp(compileStamp(value));
         result.registry.emplace(std::move(registry));
     } catch (const std::exception& exception) {
-        result.report.diagnostics.push_back({ContentDiagnosticSeverity::error,
-            "catalog_rejected", exception.what(), ContentKind::tileset, {}, "registry"});
-        result.registry.reset();
+        result.report.diagnostics.push_back({ContentDiagnosticSeverity::error, "catalog_rejected", exception.what(), ContentKind::tileset, {}, "registry"});
     }
     return result;
 }
 
-ContentCompileResult compileContent(const AuthoredContentPack& authored) {
-    return ContentCompiler{}.compile(authored);
-}
+ContentCompileResult compileContent(const AuthoredContentPack& authored) { return ContentCompiler{}.compile(authored); }
 
 } // namespace underworld::game::content

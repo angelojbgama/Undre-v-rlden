@@ -37,7 +37,7 @@ bool contains(const std::unordered_set<std::string>& values,
     return values.contains(std::string(id.value()));
 }
 
-void validateAttack(const gameplay::AttackDefinition& value, ContentValidationReport& report) {
+void validateAttack(const AuthoredAttack& value, ContentValidationReport& report) {
     if (value.visualActionId.empty() || value.damage.amount <= 0 || value.damage.knockbackPixels < 0)
         error(report, ContentKind::attack, value.id, "invalid_value", "attack visual and damage values are invalid", "definition");
     if (value.totalTicks == 0) error(report, ContentKind::attack, value.id, "invalid_value", "total ticks must be positive", "totalTicks");
@@ -139,12 +139,12 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.pickups) {
         if (value.visualId.empty() || value.collectionBounds.width <= 0 || value.collectionBounds.height <= 0) error(report, ContentKind::pickup, value.id, "invalid_value", "pickup visual and collection bounds are invalid", "definition");
-        if (const auto* item = std::get_if<gameplay::ItemPickup>(&value.payload)) {
+        if (const auto* item = std::get_if<AuthoredItemPickup>(&value.payload)) {
             if (!contains(items, item->itemId) || item->quantity == 0)
                 error(report, ContentKind::pickup, value.id, "unknown_reference", "item pickup references an invalid item or quantity", "payload");
-        } else if (const auto* health = std::get_if<gameplay::HealthPickup>(&value.payload); health && health->amount <= 0) {
+        } else if (const auto* health = std::get_if<AuthoredHealthPickup>(&value.payload); health && health->amount <= 0) {
             error(report, ContentKind::pickup, value.id, "invalid_value", "health pickup amount must be positive", "payload");
-        } else if (const auto* currency = std::get_if<gameplay::CurrencyPickup>(&value.payload); currency && currency->amount == 0) {
+        } else if (const auto* currency = std::get_if<AuthoredCurrencyPickup>(&value.payload); currency && currency->amount == 0) {
             error(report, ContentKind::pickup, value.id, "invalid_value", "currency pickup amount must be positive", "payload");
         }
     }
@@ -185,7 +185,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.tileSemantics) {
         const auto tileset = std::find_if(pack.tilesets.begin(), pack.tilesets.end(), [&](const auto& other) { return other.id == value.tilesetId; });
-        if (!contains(tilesets, value.tilesetId) || tileset == pack.tilesets.end() || value.sourceIndex >= tileset->tileCount()) error(report, ContentKind::tileSemantic, value.id, "invalid_tile_reference", "semantic tile references an invalid tileset index", "sourceIndex");
+        if (!contains(tilesets, value.tilesetId) || tileset == pack.tilesets.end() || value.sourceIndex >= tileset->columns * tileset->rows) error(report, ContentKind::tileSemantic, value.id, "invalid_tile_reference", "semantic tile references an invalid tileset index", "sourceIndex");
     }
     for (const auto& value : pack.stamps) {
         if (value.width == 0 || value.height == 0 || value.cells.empty()) error(report, ContentKind::stamp, value.id, "invalid_stamp_cell", "stamp dimensions and cells are required", "cells");

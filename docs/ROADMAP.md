@@ -78,8 +78,9 @@ a Session e concentrou capture/restore lógico de save em operações específic
 Session. `GameRuntime` permanece como application shell para input, filesystem,
 assets e presentation; ele observa estado constante e não muta internals de gameplay.
 Os cortes concluídos abrangem Player, mapa, combate, criaturas, projéteis, objetos,
-pickups, inventário, NPC/diálogo/quests e ownership/persistence closure. Replay,
-state hashing, networking e o Content Definition Boundary continuam planejados.
+pickups, inventário, NPC/diálogo/quests e ownership/persistence closure. Replay e
+state hashing permanecem como ferramentas opcionais de testes e auditoria;
+networking e multiplayer estão fora do escopo do projeto.
 
 ---
 
@@ -100,8 +101,7 @@ FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
 FASE 12 — RPG + XP + equipment + loot
-FASE 13 — Headless + replay + auditoria multiplayer
-FASE 14 — Networking
+FASE 13 — Headless + replay + auditoria determinística
 ```
 
 Baseline validada da Fase 6:
@@ -1050,11 +1050,11 @@ Novo item/monstro entra principalmente por definitions e dados, sem alterar engi
 
 ---
 
-# Fase 13 — headless, replay e auditoria multiplayer
+# Fase 13 — headless, replay e auditoria determinística
 
 ## Gate
 
-Networking real não começa aqui.
+Networking e multiplayer estão fora do escopo; esta fase trata apenas de testes e auditoria.
 
 ## Objetivo
 
@@ -1067,7 +1067,7 @@ Provar que gameplay/simulation consegue existir sem janela/render e que command 
 - execução headless;
 - gravar/reproduzir command streams;
 - numerar snapshots;
-- definir identidade replicável/network IDs;
+- registrar identificadores estáveis apenas para testes e auditoria;
 - medir nondeterminismo relevante.
 
 ## Aceite
@@ -1075,30 +1075,6 @@ Provar que gameplay/simulation consegue existir sem janela/render e que command 
 Simulação headless executa cenário gravado e alcança estado esperado.
 
 ---
-
-# Fase 14 — Networking
-
-Somente depois da Fase 13.
-
-## Capacidades iniciais
-
-- adapter Winsock;
-- framing;
-- handshake;
-- protocol versioning;
-- conexão;
-- command upload;
-- servidor autoritativo;
-- snapshots/deltas;
-- interpolation;
-- timeout/rate limits;
-- latency/loss testing.
-
-Prediction/reconciliation entram somente quando medições/experiência de jogo justificarem.
-
-## Primeiro marco
-
-Dois clientes em LAN veem movimento autoritativo; combate/networking é expandido em incrementos próprios depois.
 
 ---
 
@@ -1117,8 +1093,7 @@ antes de event stream + IDs persistentes
 não iniciar RPG completo
 antes de vertical slice estável e jogável
 
-não iniciar networking
-antes de simulação headless + replay/command stream
+replay e state hashing são ferramentas de teste opcionais, sem relação com rede
 
 não criar ECS genérico
 antes de múltiplas entidades reais justificarem
@@ -1145,7 +1120,7 @@ Exemplo já adotado:
 
 ```text
 PlayerCommand foi criado cedo porque Player já precisava dele,
-e a mesma fronteira também ajuda testes/replay/multiplayer futuro.
+e a mesma fronteira também ajuda testes e replay determinístico.
 ```
 
 Exemplo atual aceitável:
@@ -1158,7 +1133,7 @@ porque sword target, projectile target e creatures precisarão da mesma identida
 Exemplo não aceitável:
 
 ```text
-criar ECS completo, network snapshots ou scripting engine
+criar ECS completo, snapshots de estado ou scripting engine
 porque talvez sejam úteis no futuro.
 ```
 
@@ -1224,7 +1199,7 @@ development-only and ignored by Git. This does not mark Phase 13 complete.
 Still deferred, in order, are logical-framebuffer BMP capture, the real headless
 platform, deterministic scripted playtest runner, Windows manual/F12 integration,
 portable Linux build/runtime, and seeded stress playtesting. Formal command replay,
-state hashing, network identity and multiplayer authority remain Phase 13/14 work.
+state hashing remains optional deterministic-test tooling; network identity and multiplayer authority are out of scope.
 
 The logical framebuffer screenshot increment is also complete: `writeBmp32` preserves
 the framebuffer dimensions and RGBA8 pixels in a development-only 32-bit BMP, and
@@ -1263,7 +1238,7 @@ Linux targets (`game`, `tests` and `playtest_runner`). `docker/build_windows.ps1
 and `docker/Dockerfile.windows` provide the corresponding Windows-container recipe
 for the existing MSVC `build.bat`; it can only run on a Windows Docker daemon.
 The Linux graphical runtime implementation is now present in the working tree;
-formal replay, state hashing, networking and multiplayer audit remain deferred.
+formal replay and state hashing remain optional audit tooling; networking and multiplayer are out of scope.
 
 ## Linux graphical runtime — Block G
 
@@ -1272,11 +1247,11 @@ input mapping, monotonic time and libpng-based RGBA8 image loading. The Docker
 Linux image builds `build/linux/game` using the same gameplay and software renderer
 as the other targets. No Linux-specific gameplay or renderer path was created. A
 graphical smoke requires an X11/WSLg display; formal replay, seeded stress
-playtesting and networking remain deferred.
+playtesting remains iterative; networking is out of scope.
 
 ### Content Definition Boundary — DONE
 
-O conteúdo authored é representado por `AuthoredContentPack`, validado com
+O conteúdo authored é representado por DTOs tipados dentro de `AuthoredContentPack`, validado com
 diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
 em C++ é a fonte authored temporária; JSON, arquivos externos, Content Studio, LLM
 authoring e serialização persistente de conteúdo continuam deferidos.

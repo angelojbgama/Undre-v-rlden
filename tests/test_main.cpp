@@ -90,6 +90,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -3206,7 +3207,6 @@ void testPhase11QuestPersistence() {
            "save validation accepts active quest progress against the quest catalog");
     expect(!save::validateSaveData(data, {&content.items(), {&map}}).empty(),
            "save validation rejects quest progress without a quest catalog");
-
     const auto encoded = save::serializeSave(data);
     expect(encoded.size() > 7 && encoded[6] == 2 && encoded[7] == 0,
            "quest persistence advances DSAV only to minor version 2");
@@ -3246,8 +3246,7 @@ void testPhase11QuestPersistence() {
 
     quests::QuestProgress invalid{definition.id, quests::QuestStatus::active,
                                   {{definition.objectives[0].id, 99},
-                                   {definition.objectives[1].id, 0},
-                                   {definition.objectives[2].id, 0}}};
+                                   {definition.objectives[1].id, 0}}};
     quests::QuestStateStore restored;
     expect(!restored.restore(std::span<const quests::QuestProgress>{&invalid, 1},
                              content.quests()),
@@ -4849,7 +4848,20 @@ void testAuthoredContentBoundary() {
     namespace content = underworld::game::content;
     namespace simulation = underworld::simulation;
 
+    static_assert(!std::is_same_v<content::AuthoredAttack,
+                                  underworld::game::gameplay::AttackDefinition>);
+    static_assert(!std::is_same_v<content::AuthoredEnemy,
+                                  underworld::game::gameplay::creatures::EnemyDefinition>);
+    static_assert(!std::is_same_v<content::AuthoredNpc,
+                                  underworld::game::gameplay::npcs::NpcDefinition>);
+    static_assert(!std::is_same_v<content::AuthoredDialogue,
+                                  underworld::game::gameplay::dialogue::DialogueDefinition>);
+    static_assert(!std::is_same_v<content::AuthoredQuest,
+                                  underworld::game::gameplay::quests::QuestDefinition>);
+
     const content::AuthoredContentPack builtin = content::makeBuiltinAuthoredContent();
+    expect(builtin.tileSemantics.size() == 72 && builtin.stamps.size() == 8,
+           "builtin authored content carries dungeon semantics before compilation");
     const auto compiled = content::compileContent(builtin);
     expect(compiled && compiled.registry->attacks().find(
                underworld::game::gameplay::playerSwordAttackId()) != nullptr &&
