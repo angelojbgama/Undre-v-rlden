@@ -2739,6 +2739,7 @@ void testPhase8PersistentMapsAndSave() {
     auto legacyBytes = save::serializeSave(legacySave);
     removeSaveChunk(legacyBytes, "PROG");
     removeSaveChunk(legacyBytes, "EQIP");
+    removeSaveChunk(legacyBytes, "BANK");
     legacyBytes[6] = 0;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, saveCatalogs);
@@ -3233,6 +3234,9 @@ void testPhase11QuestPersistence() {
     data.player.health = content.progressions().require(
         underworld::game::gameplay::rpg::defaultPlayerProgressionId()).baseStats.maximumHealth;
     data.progression = {underworld::game::gameplay::rpg::defaultPlayerProgressionId(), 137};
+    data.bank.items[0] = underworld::game::gameplay::ItemStack{
+        underworld::game::gameplay::lifePotionItemId(), 20};
+    data.bank.gold = 500;
     data.quests = state;
     const save::SaveValidationCatalogs catalogs{&content.items(), {&map}, &content.quests(),
                                                &content.progressions()};
@@ -3242,10 +3246,12 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 4 && encoded[7] == 0,
-           "equipment persistence advances DSAV to minor version 4");
+    expect(encoded.size() > 7 && encoded[6] == 5 && encoded[7] == 0,
+           "bank persistence advances DSAV to minor version 5");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
+               loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
+               loaded.data.bank.gold == 500 &&
                loaded.data.quests.snapshot() == data.quests.snapshot() &&
                encoded == save::serializeSave(loaded.data),
            "DSAV QSTS roundtrips quest status and objective counters deterministically");
@@ -3255,6 +3261,7 @@ void testPhase11QuestPersistence() {
     auto legacyBytes = save::serializeSave(legacy);
     removeSaveChunk(legacyBytes, "PROG");
     removeSaveChunk(legacyBytes, "EQIP");
+    removeSaveChunk(legacyBytes, "BANK");
     legacyBytes[6] = 1;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, catalogs);
@@ -5153,6 +5160,53 @@ void testPhase12C1Equipment() {
     expect(health.current == 5, "decreasing maximum health clamps current health");
 }
 
+void testPhase12DBank() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    ItemCatalog catalog;
+    catalog.add(makeLifePotionDefinition());
+    const simulation::DefinitionId filler{"item.test.bank_filler"};
+    catalog.add({filler, {"visual.test.filler"}, ItemCategory::misc, 1, std::nullopt});
+
+    PlayerInventory inventory(catalog);
+    PlayerBank bank(catalog);
+    expect(PlayerBank::slotCount == 50 && PlayerBank::rows == 5 && PlayerBank::columns == 10,
+           "player bank has the fixed 5 by 10 capacity");
+    static_cast<void>(inventory.items().add(lifePotionItemId(), 10));
+    expect(bank.depositItem(inventory.items(), lifePotionItemId(), 7) == 7 &&
+               inventory.items().count(lifePotionItemId()) == 3 &&
+               bank.items().count(lifePotionItemId()) == 7,
+           "bank deposit reuses ItemContainer stacking and moves the requested quantity");
+    expect(bank.withdrawItem(inventory.items(), lifePotionItemId(), 4) == 4 &&
+               inventory.items().count(lifePotionItemId()) == 7 &&
+               bank.items().count(lifePotionItemId()) == 3,
+           "bank withdrawal moves only the requested quantity back to inventory");
+
+    for (int index = 0; index < 50; ++index) {
+        const simulation::DefinitionId id{"item.test.bank_slot." + std::to_string(index)};
+        catalog.add({id, {"visual.test.filler"}, ItemCategory::misc, 1, std::nullopt});
+        static_cast<void>(bank.items().add(id, 1));
+    }
+    static_cast<void>(inventory.items().add(filler, 1));
+    expect(bank.depositItem(inventory.items(), filler, 1) == 0 &&
+               inventory.items().count(filler) == 1,
+           "full bank leaves an item transfer source unchanged");
+
+    Wallet wallet;
+    wallet.restoreGold(100);
+    expect(bank.depositGold(wallet, 40) == 40 && wallet.gold() == 60 && bank.gold() == 40,
+           "bank gold deposit moves carried gold safely");
+    expect(bank.withdrawGold(wallet, 25) == 25 && wallet.gold() == 85 && bank.gold() == 15,
+           "bank gold withdrawal credits the wallet safely");
+    expect(wallet.removeGold(200) == 85 && wallet.gold() == 0,
+           "wallet gold removal saturates at the available balance");
+    wallet.restoreGold(std::numeric_limits<std::uint64_t>::max() - 1);
+    bank.restoreGold(10);
+    expect(bank.withdrawGold(wallet, 10) == 1 &&
+               wallet.gold() == std::numeric_limits<std::uint64_t>::max() && bank.gold() == 9,
+           "bank gold withdrawal saturates wallet capacity without loss");
+}
+
 } // namespace
 
 int main() {
@@ -5218,6 +5272,7 @@ int main() {
         testPhase12BRewardEventSnapshot();
         testPhase12C1Equipment();
         testPhase12C1EquipmentTransactions();
+        testPhase12DBank();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

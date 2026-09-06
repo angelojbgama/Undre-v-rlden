@@ -1288,4 +1288,11 @@ DSAV persistence are implemented. Equipment UI and weapon replacement remain fut
 ### 12C2 — Equipment UI / inspection / unequip — DONE
 
 Inventory and equipment focus, slot inspection, equip/unequip commands and derived-stat
-presentation are implemented. Bank remains future work.
+presentation are implemented. Bank storage is covered by 12D1; access and UI remain future work.
+
+### 12D1 — Bank storage + persistence — DONE
+
+`PlayerBank` provides 50 reusable `ItemContainer` slots and separate persistent gold.
+Item/gold transfers are bounded and lossless, bank state survives map transitions, and
+DSAV 1.5 persists it through the `BANK` chunk. Bank access points and UI remain the
+future 12D2 slice; the full RPG phase is not yet complete.

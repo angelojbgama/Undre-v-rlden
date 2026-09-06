@@ -3,6 +3,7 @@
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/rpg/equipment.h"
+#include "game/gameplay/player_bank.h"
 #include "engine/simulation/player_command.h"
 
 #include <array>
@@ -32,7 +33,7 @@ enum class InventoryOverlayFocus { inventory, equipment };
 
 class PlayerItems final {
 public:
-    explicit PlayerItems(const ItemCatalog& catalog) : inventory_(catalog) {}
+    explicit PlayerItems(const ItemCatalog& catalog) : inventory_(catalog), bank_(catalog) {}
     [[nodiscard]] PlayerInventory& inventory() noexcept { return inventory_; }
     [[nodiscard]] const PlayerInventory& inventory() const noexcept { return inventory_; }
     [[nodiscard]] Wallet& wallet() noexcept { return wallet_; }
@@ -41,6 +42,8 @@ public:
     [[nodiscard]] const QuickSlotBindings& quickSlots() const noexcept { return quickSlots_; }
     [[nodiscard]] rpg::PlayerEquipment& equipment() noexcept { return equipment_; }
     [[nodiscard]] const rpg::PlayerEquipment& equipment() const noexcept { return equipment_; }
+    [[nodiscard]] PlayerBank& bank() noexcept { return bank_; }
+    [[nodiscard]] const PlayerBank& bank() const noexcept { return bank_; }
     [[nodiscard]] ItemUseResult useQuickSlot(std::size_t index, const ItemCatalog& catalog,
                                              Health& health);
 
@@ -49,6 +52,7 @@ private:
     Wallet wallet_;
     QuickSlotBindings quickSlots_;
     rpg::PlayerEquipment equipment_;
+    PlayerBank bank_;
 };
 
 class InventoryOverlayState final {

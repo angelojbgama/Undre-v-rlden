@@ -378,6 +378,12 @@ struct GameRuntime::State final {
         snapshot.equippedArmor = session.playerItems().equipment().item(gameplay::rpg::EquipmentSlot::armor);
         snapshot.equippedAccessory = session.playerItems().equipment().item(gameplay::rpg::EquipmentSlot::accessory);
         snapshot.gold = session.playerItems().wallet().gold();
+        snapshot.bankGold = session.playerItems().bank().gold();
+        for (std::size_t index = 0; index < session.playerItems().bank().items().capacity(); ++index) {
+            if (session.playerItems().bank().items().slot(index)) {
+                ++snapshot.bankOccupiedSlots;
+            }
+        }
         snapshot.inventoryOpen = session.inventoryOverlay().open();
 
         for (std::size_t index = 0; index < session.playerItems().inventory().items().capacity(); ++index) {

@@ -70,11 +70,16 @@ void GameSession::configureNarrative(
 }
 
 save::SaveData GameSession::captureSaveData() const {
+    save::SavedPlayerBank bank;
+    for (std::size_t index = 0; index < bank.items.size(); ++index) {
+        bank.items[index] = playerItems_->bank().items().slot(index);
+    }
+    bank.gold = playerItems_->bank().gold();
     return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
             {progression_.definition().id, progression_.totalExperience()}, worldState_,
             dialogueFlags_, questState_,
             {playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor),
-             playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)}};
+             playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)}, bank};
 }
 
 bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error) {
@@ -99,10 +104,21 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         error = "save references invalid equipment";
         return false;
     }
+    for (const auto& slot : data.bank.items) {
+        if (slot) {
+            const auto* definition = itemCatalog_->find(slot->itemId);
+            if (!definition || slot->quantity == 0 || slot->quantity > definition->stackLimit) {
+                error = "save references invalid bank item";
+                return false;
+            }
+        }
+    }
     const save::SaveData previous = captureSaveData();
     if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
     playerItems_->equipment().restore(data.equipment.armor, data.equipment.accessory);
     refreshDerivedPlayerStats();
+    playerItems_->bank().items().restoreSlots(data.bank.items);
+    playerItems_->bank().restoreGold(data.bank.gold);
     if (!save::applyPlayer(data.player, player_, *playerItems_, *itemCatalog_, error) ||
         !restoreNarrativeState(data.dialogueFlags, data.quests.snapshot(), error) ||
         !progression_.restoreExperience(data.progression.totalExperience)) {
@@ -111,6 +127,8 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
                                      rollbackError));
         playerItems_->equipment().restore(previous.equipment.armor, previous.equipment.accessory);
         refreshDerivedPlayerStats();
+        playerItems_->bank().items().restoreSlots(previous.bank.items);
+        playerItems_->bank().restoreGold(previous.bank.gold);
         static_cast<void>(save::applyPlayer(previous.player, player_, *playerItems_,
                                             *itemCatalog_, rollbackError));
         static_cast<void>(restoreNarrativeState(previous.dialogueFlags,

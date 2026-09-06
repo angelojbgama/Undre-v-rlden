@@ -83,6 +83,8 @@ struct GameAuditSnapshot final {
     std::optional<simulation::DefinitionId> equippedAccessory{};
 
     std::uint64_t gold{};
+    std::uint64_t bankGold{};
+    std::size_t bankOccupiedSlots{};
     bool inventoryOpen{};
     std::vector<AuditInventorySlot> inventory;
     std::vector<AuditQuickSlot> quickSlots;

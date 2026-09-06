@@ -62,6 +62,8 @@ std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot) {
         << ",\"derivedMaximumHealth\":" << snapshot.playerDerivedMaximumHealth
         << ",\"attackDamageBonus\":" << snapshot.playerAttackDamageBonus << "}"
         << ",\"gold\":" << snapshot.gold
+        << ",\"bankGold\":" << snapshot.bankGold
+        << ",\"bankOccupiedSlots\":" << snapshot.bankOccupiedSlots
         << ",\"inventoryOpen\":" << (snapshot.inventoryOpen ? "true" : "false")
         << ",\"inventory\":[";
     for (std::size_t index = 0; index < snapshot.inventory.size(); ++index) {

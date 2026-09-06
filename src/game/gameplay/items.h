@@ -90,6 +90,7 @@ public:
     [[nodiscard]] std::uint64_t gold() const noexcept { return gold_; }
     // Saturates at uint64 max and returns the amount that could not be credited.
     [[nodiscard]] std::uint64_t addGold(std::uint64_t amount) noexcept;
+    [[nodiscard]] std::uint64_t removeGold(std::uint64_t amount) noexcept;
     void restoreGold(std::uint64_t amount) noexcept { gold_ = amount; }
 
 private:

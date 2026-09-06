@@ -40,6 +40,10 @@ struct SavedPlayerEquipment final {
     std::optional<simulation::DefinitionId> armor;
     std::optional<simulation::DefinitionId> accessory;
 };
+struct SavedPlayerBank final {
+    std::array<std::optional<gameplay::ItemStack>, gameplay::PlayerBank::slotCount> items{};
+    std::uint64_t gold{};
+};
 
 struct ObjectDelta final {
     simulation::PersistentEntityKey key{};
@@ -70,6 +74,7 @@ struct SaveData final {
     gameplay::dialogue::DialogueFlagSet dialogueFlags;
     gameplay::quests::QuestStateStore quests;
     SavedPlayerEquipment equipment;
+    SavedPlayerBank bank;
 };
 
 struct SaveValidationCatalogs final {
@@ -87,8 +92,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 adds EQIP.
-inline constexpr std::uint16_t saveMinorVersion = 4;
+// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP; minor 5 adds BANK.
+inline constexpr std::uint16_t saveMinorVersion = 5;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

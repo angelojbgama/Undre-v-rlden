@@ -1562,3 +1562,12 @@ effective `DamageSpec` is produced. Inventory/equipment transfers are transactio
 exposes copied equipment and derived-stat read models; `GamePresentation` renders them
 without mutating gameplay. Inventory routing reports equipment changes explicitly so
 `GameSession` refreshes derived stats.
+
+## Bank storage
+
+`PlayerBank` is global Player-owned gameplay state, composed into `PlayerItems` and
+backed by the existing `ItemContainer` stacking rules. It has a fixed capacity of 50
+slots (5 by 10) and a gold balance distinct from the carried `Wallet`. Bank contents
+survive map transitions and are persisted by the `BANK` chunk in DSAV 1.5; they are
+not part of `RuntimeWorld`, `SessionWorldState`, DMAP, or transient loot. Bank access
+and its UI are intentionally deferred to 12D2.

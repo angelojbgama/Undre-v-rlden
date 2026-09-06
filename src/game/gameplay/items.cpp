@@ -163,6 +163,12 @@ std::uint64_t Wallet::addGold(std::uint64_t amount) noexcept {
     return amount - accepted;
 }
 
+std::uint64_t Wallet::removeGold(std::uint64_t amount) noexcept {
+    const auto removed = std::min(amount, gold_);
+    gold_ -= removed;
+    return removed;
+}
+
 const simulation::DefinitionId& lifePotionItemId() { return lifePotion; }
 
 ItemDefinition makeLifePotionDefinition() {
