@@ -4,6 +4,9 @@
 #include "engine/simulation/events.h"
 #include "engine/simulation/player_command.h"
 #include "game/gameplay/player.h"
+#include "game/gameplay/combat_system.h"
+#include "game/gameplay/creatures/creature_engine.h"
+#include "game/gameplay/projectile_system.h"
 #include "game/maps/map_catalog.h"
 
 #include <memory>
@@ -27,6 +30,13 @@ public:
                                       std::string& error);
     void tick(const simulation::PlayerCommand& command);
 
+    void configureCombat(const gameplay::AttackCatalog& attacks,
+                         const gameplay::ProjectileCatalog& projectiles,
+                         const gameplay::creatures::BehaviorCatalog& behaviors,
+                         const gameplay::AttackDefinition& sword,
+                         const gameplay::AttackDefinition& bow);
+    void clearCombatTransients() noexcept;
+
     [[nodiscard]] const gameplay::Player& player() const noexcept { return player_; }
     [[nodiscard]] gameplay::Player& playerForRuntime() noexcept { return player_; }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
@@ -36,14 +46,42 @@ public:
     [[nodiscard]] const maps::MapData& mapData() const;
     [[nodiscard]] const save::SessionWorldState& worldState() const noexcept { return worldState_; }
     [[nodiscard]] save::SessionWorldState& worldStateForRuntime() noexcept { return worldState_; }
+    [[nodiscard]] const gameplay::ProjectileSystem& projectiles() const noexcept {
+        return *projectiles_;
+    }
+    [[nodiscard]] const gameplay::Hitbox& activeSword() const noexcept { return activeSword_; }
+    [[nodiscard]] const gameplay::AttackExecution* playerAttack() const noexcept {
+        return playerAttack_ ? &*playerAttack_ : nullptr;
+    }
     [[nodiscard]] bool restoreMap(const simulation::MapId& mapId,
                                   const save::SessionWorldState& state, std::string& error);
 
 private:
+    void startPlayerAttack();
+    void advancePlayerAttack();
+    void applyResolution(const gameplay::CombatResolution& resolution);
+    void resolvePlayerSword();
+    void resolveEnemyContacts();
+    void updateEnemies();
+    void removeDefeatedEnemies();
+    [[nodiscard]] std::vector<gameplay::CombatTargetRef> combatTargets();
+
+    simulation::EntityHandlePool& handles_;
     gameplay::Player player_;
     simulation::EventBuffer events_;
     save::SessionWorldState worldState_;
     std::unique_ptr<maps::MapSession> mapSession_;
+    const gameplay::AttackCatalog* attackCatalog_{};
+    const gameplay::ProjectileCatalog* projectileCatalog_{};
+    const gameplay::creatures::BehaviorCatalog* behaviorCatalog_{};
+    const gameplay::AttackDefinition* swordDefinition_{};
+    const gameplay::AttackDefinition* bowDefinition_{};
+    gameplay::creatures::EnemyBehaviorSystem enemyBehavior_;
+    gameplay::CombatSystem combat_;
+    std::unique_ptr<gameplay::ProjectileSystem> projectiles_;
+    gameplay::Hitbox activeSword_{};
+    std::optional<gameplay::AttackExecution> playerAttack_{};
+    gameplay::AttackInstanceId nextContactAttackInstance_{1};
 };
 
 } // namespace underworld::game

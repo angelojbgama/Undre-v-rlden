@@ -91,6 +91,10 @@ void Player::update(const simulation::PlayerCommand& command,
         applyKnockback(stepX, stepY, collision, tileSize);
         damageKnockbackRemainingX_ -= stepX;
         damageKnockbackRemainingY_ -= stepY;
+        if (actionState_ == PlayerActionState::hurt &&
+            damageKnockbackRemainingX_ == 0 && damageKnockbackRemainingY_ == 0) {
+            actionState_ = PlayerActionState::none;
+        }
     }
 
     if (actionState_ == PlayerActionState::none) {

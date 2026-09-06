@@ -3974,6 +3974,45 @@ void testOfficialGameplayMapSet() {
         });
     expect(enteredMap02 && gameSession.world().id() == simulation::MapId{"map.dungeon.02"},
            "GameSession performs map transition and emits typed MapEntered");
+
+    gameplay::AttackCatalog sessionAttacks = content.attacks();
+    sessionAttacks.add(gameplay::makePlayerSwordAttackDefinition());
+    sessionAttacks.add(gameplay::makePlayerBowAttackDefinition());
+    gameplay::ProjectileCatalog sessionProjectiles = content.projectiles();
+    sessionProjectiles.add(gameplay::makePlayerArrowProjectileDefinition());
+    creatures::EnemyFactory logicalEnemyFactory(handles, content.enemies(), content.behaviors(),
+        sessionAttacks, sessionProjectiles);
+    maps::RuntimeWorldBuilder logicalBuilder(validation, logicalEnemyFactory, objectFactory,
+        handles, runtimeTilesets, &npcFactory);
+    game::GameSession combatSession(handles, {0});
+    combatSession.configureCombat(sessionAttacks, sessionProjectiles, content.behaviors(),
+        sessionAttacks.require(gameplay::playerSwordAttackId()),
+        sessionAttacks.require(gameplay::playerBowAttackId()));
+    std::string combatError;
+    expect(combatSession.initializeMap(catalog, validation, logicalBuilder, handles,
+        simulation::MapId{"map.dungeon.01"}, simulation::SpawnId{"entry.start"}, combatError),
+        "GameSession combat fixture initializes without visual catalogs or presentation");
+    if (combatSession.world().enemies().empty()) {
+        expect(false, "GameSession combat fixture contains a logical enemy");
+    } else {
+        auto& enemy = combatSession.worldForRuntime().enemies().front().instance;
+        enemy.combatant().health.current = 1;
+        const auto enemyFeet = enemy.feetPosition();
+        combatSession.playerForRuntime().relocate(
+            {enemyFeet.x - 12, enemyFeet.y}, gameplay::FacingDirection::right);
+        combatSession.tick(actionCommand(3, true, false));
+        for (std::uint32_t tick = 4; tick <= 8; ++tick) {
+            combatSession.tick(movementCommand(tick, 0, 0));
+        }
+        const bool damagedOrDefeated = std::any_of(
+            combatSession.events().events().begin(), combatSession.events().events().end(),
+            [](const simulation::SimulationEvent& event) {
+                return std::holds_alternative<simulation::EntityDamaged>(event) ||
+                       std::holds_alternative<simulation::EntityDefeated>(event);
+            });
+        expect(damagedOrDefeated,
+               "headless GameSession advances Player sword combat without presentation");
+    }
 }
 
 void testPhase9StartupAndEditorPerformanceContracts() {

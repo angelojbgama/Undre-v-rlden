@@ -202,6 +202,14 @@ EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles,
                            const EnemyCatalog& enemies,
                            const BehaviorCatalog& behaviors,
                            const AttackCatalog& attacks,
+                           const ProjectileCatalog& projectiles)
+    : handles_(handles), enemies_(enemies), behaviors_(behaviors), attacks_(attacks),
+      projectiles_(projectiles) {}
+
+EnemyFactory::EnemyFactory(simulation::EntityHandlePool& handles,
+                           const EnemyCatalog& enemies,
+                           const BehaviorCatalog& behaviors,
+                           const AttackCatalog& attacks,
                            const ProjectileCatalog& projectiles,
                            std::span<const simulation::DefinitionId> availableVisualSets)
     : handles_(handles), enemies_(enemies), behaviors_(behaviors), attacks_(attacks),
@@ -212,7 +220,8 @@ EnemyInstance EnemyFactory::create(const simulation::DefinitionId& definitionId,
                                    core::WorldPointI feet, FacingDirection facing) const {
     const EnemyDefinition& definition = enemies_.require(definitionId);
     const BehaviorProfile& profile = behaviors_.require(definition.behaviorProfileId);
-    if (std::find(availableVisualSets_.begin(), availableVisualSets_.end(),
+    if (!availableVisualSets_.empty() &&
+        std::find(availableVisualSets_.begin(), availableVisualSets_.end(),
                   definition.visualSetId) == availableVisualSets_.end()) {
         throw std::invalid_argument("enemy definition references an unavailable visual set");
     }

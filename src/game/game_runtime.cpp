@@ -232,7 +232,7 @@ struct GameRuntime::State final {
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
-          projectiles(handles, projectileCatalog), playerItems(itemCatalog) {
+          playerItems(itemCatalog) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
@@ -282,10 +282,8 @@ struct GameRuntime::State final {
                       bowDefinition.totalTicks / 2, {16, 31}, false),
             makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
-        const auto availableVisuals = enemyVisualCatalog.ids();
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
-            handles, enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog,
-            availableVisuals);
+            handles, enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog);
         objectFactory = std::make_unique<gameplay::WorldObjectFactory>(
             handles, objectCatalog, itemCatalog);
         npcFactory = std::make_unique<gameplay::npcs::NpcFactory>(handles, npcCatalog);
@@ -293,6 +291,8 @@ struct GameRuntime::State final {
         runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
             validationCatalogs, *enemyFactory, *objectFactory, handles,
             runtimeTilesets, npcFactory.get());
+        session.configureCombat(attackCatalog, projectileCatalog, behaviorCatalog,
+                                swordDefinition, bowDefinition);
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -450,7 +450,7 @@ struct GameRuntime::State final {
         for (const auto& flag : dialogueFlags.values()) {
             snapshot.dialogueFlags.emplace_back(flag.value());
         }
-        snapshot.activeProjectileCount = projectiles.projectiles().size();
+        snapshot.activeProjectileCount = session.projectiles().projectiles().size();
         snapshot.lastEvent = lastEvent;
         return snapshot;
     }
@@ -476,237 +476,6 @@ struct GameRuntime::State final {
                                   activeMap().worldHeightPixels());
     }
 
-    void startPlayerAttack() {
-        const auto& definition = player.actionState() == gameplay::PlayerActionState::swordAttack
-                                     ? swordDefinition : bowDefinition;
-        playerAttack_ = {&definition, {player.entityHandle(), player.attackInstance()},
-                         player.facing()};
-    }
-
-    void advancePlayerAttack() {
-        if (!playerAttack_) { return; }
-        std::vector<gameplay::AttackTimelineEvent> eventsAtTick;
-        playerAttack_->advance(eventsAtTick);
-        for (const auto& event : eventsAtTick) {
-            if (event.kind == gameplay::AttackTimelineEventKind::activateHitbox) {
-                const auto direction = gameplay::directionVector(playerAttack_->lockedFacing);
-                activeSword = {
-                    playerAttack_->definition->meleeHitboxes->forFacing(
-                        playerAttack_->lockedFacing).at(player.feetPosition()),
-                    playerAttack_->key, gameplay::Faction::player,
-                    playerAttack_->definition->damage,
-                    direction.x * playerAttack_->definition->damage.knockbackPixels,
-                    direction.y * playerAttack_->definition->damage.knockbackPixels, true};
-            } else if (event.kind == gameplay::AttackTimelineEventKind::deactivateHitbox) {
-                activeSword.enabled = false;
-            } else if (event.kind == gameplay::AttackTimelineEventKind::spawnProjectile) {
-                const auto& projectileDefinition = projectileCatalog.require(
-                    *playerAttack_->definition->projectileDefinitionId);
-                const auto offset = projectileDefinition.spawnOffsets.forFacing(
-                    playerAttack_->lockedFacing);
-                [[maybe_unused]] const auto handle = projectiles.spawn(
-                    playerAttack_->key, gameplay::Faction::player, projectileDefinition.id,
-                    gameplay::addOffset(player.feetPosition(), offset),
-                    playerAttack_->lockedFacing, playerAttack_->definition->damage);
-            }
-        }
-        if (playerAttack_->finished) {
-            combat.finishAttack(playerAttack_->key);
-            activeSword.enabled = false;
-            player.finishAttack();
-            playerAttack_.reset();
-        }
-    }
-
-    void applyResolution(const gameplay::CombatResolution& resolution) {
-        if (!resolution.damaged) { return; }
-        if (resolution.target == player.entityHandle()) {
-            activeSword.enabled = false;
-            if (playerAttack_) {
-                combat.finishAttack(playerAttack_->key);
-                playerAttack_.reset();
-            }
-            player.beginHurt();
-            playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
-            player.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
-                player.combatant().invulnerabilityTicks, playerDamageInvulnerabilityTicks);
-            player.applyDamageKnockback(resolution.requestedKnockbackX,
-                                        resolution.requestedKnockbackY,
-                                        activeMap().collision(), activeMap().tileSize());
-            return;
-        }
-        auto& enemies = activeWorld().enemies();
-        const auto found = std::find_if(enemies.begin(), enemies.end(), [&](const auto& enemy) {
-            return enemy.instance.handle() == resolution.target;
-        });
-        if (found != enemies.end()) {
-            found->instance.applyKnockback(resolution.requestedKnockbackX,
-                                           resolution.requestedKnockbackY,
-                                           activeMap().collision(), activeMap().tileSize());
-        }
-    }
-
-    void resolvePlayerSword() {
-        if (!activeSword.enabled) { return; }
-        activeSword.bounds = swordDefinition.meleeHitboxes->forFacing(player.facing()).at(
-            player.feetPosition());
-        for (auto& enemy : activeWorld().enemies()) {
-            applyResolution(combat.resolve(activeSword, enemy.instance.combatTarget(), events));
-        }
-        for (auto& object : activeWorld().objects()) {
-            if (object.instance.combatant()) {
-                applyResolution(combat.resolve(activeSword, object.instance.combatTarget(), events));
-            }
-        }
-    }
-
-    void resolveEnemyContacts() {
-        constexpr int contactDamage = 1;
-        constexpr int contactKnockback = gameplay::Player::damageKnockbackPixels;
-        auto playerBody = player.collisionBody();
-        for (auto& persistentEnemy : activeWorld().enemies()) {
-            auto& enemy = persistentEnemy.instance;
-            if (enemy.state() == gameplay::creatures::BehaviorState::dead) { continue; }
-            const auto enemyBody = enemy.collisionBody();
-            if (!gameplay::overlaps(playerBody, enemyBody)) { continue; }
-
-            const int playerCenterX = playerBody.x + playerBody.width / 2;
-            const int playerCenterY = playerBody.y + playerBody.height / 2;
-            const int enemyCenterX = enemyBody.x + enemyBody.width / 2;
-            const int enemyCenterY = enemyBody.y + enemyBody.height / 2;
-            const int distanceX = playerCenterX - enemyCenterX;
-            const int distanceY = playerCenterY - enemyCenterY;
-            int knockbackX = 0;
-            int knockbackY = 0;
-            if (distanceX == 0 && distanceY == 0) {
-                switch (player.facing()) {
-                case gameplay::FacingDirection::left: knockbackX = contactKnockback; break;
-                case gameplay::FacingDirection::right: knockbackX = -contactKnockback; break;
-                case gameplay::FacingDirection::up: knockbackY = contactKnockback; break;
-                case gameplay::FacingDirection::down: knockbackY = -contactKnockback; break;
-                }
-            } else if (std::abs(distanceX) >= std::abs(distanceY)) {
-                knockbackX = distanceX > 0 ? contactKnockback : -contactKnockback;
-            } else {
-                knockbackY = distanceY > 0 ? contactKnockback : -contactKnockback;
-            }
-
-            const gameplay::Hitbox contact{
-                enemyBody,
-                {enemy.handle(), nextContactAttackInstance_++},
-                gameplay::Faction::enemy,
-                {contactDamage, contactKnockback},
-                knockbackX,
-                knockbackY,
-                true};
-            const auto resolution = combat.resolve(contact, player.combatTarget(), events);
-            combat.finishAttack(contact.attack);
-            player.applyDamageKnockback(knockbackX, knockbackY,
-                                        activeMap().collision(), activeMap().tileSize());
-            // Separate both bodies.  Pushing only the Player would allow a
-            // chasing enemy to remain embedded and repeatedly reapply contact
-            // damage against a wall or map edge.
-            enemy.applyKnockback(-knockbackX, -knockbackY,
-                                 activeMap().collision(), activeMap().tileSize());
-            playerBody = player.collisionBody();
-            if (resolution.damaged) {
-                player.beginHurt();
-                playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
-                // Contact has its own short cadence in addition to the
-                // combat system's hit invulnerability.  This keeps touching
-                // an enemy from becoming a rapid-damage loop while retaining
-                // the normal damage/invulnerability contract.
-                player.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
-                    player.combatant().invulnerabilityTicks, 30U);
-                captureActiveWorld();
-            }
-        }
-    }
-
-    void advanceEnemyAttack(gameplay::creatures::EnemyInstance& enemy) {
-        if (!enemy.activeAttack()) { return; }
-        std::vector<gameplay::AttackTimelineEvent> eventsAtTick;
-        auto& active = *enemy.activeAttack();
-        active.advance(eventsAtTick);
-        for (const auto& event : eventsAtTick) {
-            if (event.kind == gameplay::AttackTimelineEventKind::spawnProjectile) {
-                if (!active.definition->projectileDefinitionId) {
-                    throw std::logic_error("projectile timeline requires projectile attack data");
-                }
-                const auto& projectileDefinition = projectileCatalog.require(
-                    *active.definition->projectileDefinitionId);
-                const auto offset = projectileDefinition.spawnOffsets.forFacing(
-                    active.lockedFacing);
-                [[maybe_unused]] const auto handle = projectiles.spawn(
-                    active.key, enemy.combatant().faction, projectileDefinition.id,
-                    gameplay::addOffset(enemy.feetPosition(), offset),
-                    active.lockedFacing, active.definition->damage);
-            }
-        }
-    }
-
-    void updateEnemies() {
-        auto& enemies = activeWorld().enemies();
-        for (std::size_t index = 0; index < enemies.size();) {
-            auto& enemy = enemies[index].instance;
-            auto& enemyVisual = enemyVisuals[index];
-            const auto& profile = behaviorCatalog.require(
-                enemy.definition().behaviorProfileId);
-            const std::optional<gameplay::AttackKey> previousAttack = enemy.activeAttack()
-                ? std::optional<gameplay::AttackKey>{enemy.activeAttack()->key}
-                : std::nullopt;
-            static_cast<void>(enemyBehavior.update(
-                enemy, player.entityHandle(), player.feetPosition(),
-                !player.health().depleted(), profile, attackCatalog,
-                activeMap().collision(), activeMap().tileSize()));
-            if (previousAttack && !enemy.activeAttack()) {
-                combat.finishAttack(*previousAttack);
-            }
-            advanceEnemyAttack(enemy);
-            enemyVisual.update(enemy);
-
-            if (enemy.activeAttack() && enemy.activeAttack()->meleeHitboxActive) {
-                const auto& active = *enemy.activeAttack();
-                if (!active.definition->meleeHitboxes) {
-                    throw std::logic_error("active melee marker requires melee hitbox data");
-                }
-                const auto direction = gameplay::directionVector(active.lockedFacing);
-                gameplay::Hitbox hitbox{
-                    active.definition->meleeHitboxes->forFacing(
-                        active.lockedFacing).at(enemy.feetPosition()),
-                    active.key, enemy.combatant().faction, active.definition->damage,
-                    direction.x * active.definition->damage.knockbackPixels,
-                    direction.y * active.definition->damage.knockbackPixels, true};
-                applyResolution(combat.resolve(hitbox, player.combatTarget(), events));
-            }
-
-            if (enemy.activeAttack() && enemy.activeAttack()->finished) {
-                combat.finishAttack(enemy.activeAttack()->key);
-                enemyBehavior.finishAttack(enemy, profile);
-            }
-            if (enemy.state() == gameplay::creatures::BehaviorState::dead &&
-                enemyVisual.animator().finished()) {
-                [[maybe_unused]] const bool destroyed = handles.destroy(enemy.handle());
-                enemies.erase(enemies.begin() + static_cast<std::ptrdiff_t>(index));
-                enemyVisuals.erase(enemyVisuals.begin() + static_cast<std::ptrdiff_t>(index));
-                continue;
-            }
-            ++index;
-        }
-    }
-
-    std::vector<gameplay::CombatTargetRef> combatTargets() {
-        std::vector<gameplay::CombatTargetRef> targets;
-        targets.reserve(activeWorld().enemies().size() + activeWorld().objects().size() + 1);
-        targets.push_back(player.combatTarget());
-        for (auto& enemy : activeWorld().enemies()) {
-            targets.push_back(enemy.instance.combatTarget());
-        }
-        for (auto& object : activeWorld().objects()) {
-            if (object.instance.combatant()) { targets.push_back(object.instance.combatTarget()); }
-        }
-        return targets;
-    }
 
     void collectNearbyPickups() {
         const world::AabbI area = player.collisionBody();
@@ -749,6 +518,9 @@ struct GameRuntime::State final {
                 std::ostringstream text;
                 text << "DAMAGE " << damaged->amount << " HP " << damaged->remainingHealth;
                 lastEvent = text.str();
+                if (damaged->target == player.entityHandle()) {
+                    playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
+                }
             } else if (std::holds_alternative<simulation::EntityDefeated>(event)) {
                 lastEvent = "ENTITY DEFEATED";
             } else if (const auto* impact = std::get_if<simulation::ProjectileImpact>(&event)) {
@@ -826,12 +598,8 @@ struct GameRuntime::State final {
 
     void clearMapTransients() {
         dialogue.close();
-        projectiles.clear(combat);
+        session.clearCombatTransients();
         effects->clear();
-        combat.clearTransientRecords();
-        activeSword.enabled = false;
-        playerAttack_.reset();
-        player.finishAttack();
     }
 
     void commitTransitionIfRequested() {
@@ -899,12 +667,10 @@ struct GameRuntime::State final {
 
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
-        events.clear();
         if (playerDamageBlinkTicksRemaining_ > 0) {
             --playerDamageBlinkTicksRemaining_;
         }
         gameplay::tickInvulnerability(player.combatant());
-        const gameplay::PlayerActionState previousAction = player.actionState();
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
         if (dialogue.handleCommand(command)) {
             lastTick = tick;
@@ -929,48 +695,22 @@ struct GameRuntime::State final {
         // the remaining systems in this transitional Runtime do not observe a
         // world whose visual instances belong to the previous map.
         commitTransitionIfRequested();
+        if (enemyVisuals.size() != activeWorld().enemies().size()) {
+            rebuildWorldVisuals();
+        }
+        for (std::size_t index = 0; index < enemyVisuals.size(); ++index) {
+            enemyVisuals[index].update(activeWorld().enemies()[index].instance);
+        }
         if (command.actions.interactPressed) {
             interactWithWorld();
         }
-        if (previousAction == gameplay::PlayerActionState::none &&
-            (player.actionState() == gameplay::PlayerActionState::swordAttack ||
-             player.actionState() == gameplay::PlayerActionState::bowAttack)) {
-            startPlayerAttack();
-        }
-        visual->update(player.motionState(), player.facing(), player.actionState());
-        advancePlayerAttack();
-        updateEnemies();
-        // Resolve the Player's melee hit after enemy behavior has moved the
-        // actors for this tick. Otherwise Chase can immediately overwrite the
-        // knockback and make a valid hit appear not to move the enemy.
-        resolvePlayerSword();
-        resolveEnemyContacts();
-        auto targets = combatTargets();
-        std::vector<gameplay::CombatResolution> projectileResolutions;
-        projectiles.update(activeMap().collision(), activeMap().tileSize(), targets, combat, events,
-                           projectileResolutions);
-        for (const gameplay::CombatResolution& resolution : projectileResolutions) {
-            applyResolution(resolution);
-        }
-        // Enemy attacks and contact damage are resolved after the first visual
-        // update. Refresh here so the hurt clip and the knockback position are
-        // visible in the same rendered frame as the hit.
         visual->update(player.motionState(), player.facing(), player.actionState());
         collectNearbyPickups();
         updateObjects();
         consumeSimulationEvents();
         effects->update();
-        if (player.actionState() == gameplay::PlayerActionState::hurt &&
-            visual->animator().finished()) {
-            player.finishAttack();
-        }
-        if (previousAction == gameplay::PlayerActionState::none &&
-            player.actionState() != gameplay::PlayerActionState::none) {
-            lastAttack = player.attackInstance();
-        }
         if (debugInput.toggleCollisionPressed) { collisionOverlay = !collisionOverlay; }
         combatDebug.apply(debugInput);
-        commitTransitionIfRequested();
         followPlayer();
         lastTick = tick;
         lastSequence = command.sequence;
@@ -979,10 +719,11 @@ struct GameRuntime::State final {
     void render(render::Framebuffer& framebuffer) const {
         const auto view = buildGameViewModel(player, playerItems, itemCatalog, inventoryOverlay);
         presentation.render(framebuffer, {
-            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects, projectiles,
+            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
+            session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
             projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
-            dialogue, view, combatDebug, activeSword, lastEvent, collisionOverlay,
+            dialogue, view, combatDebug, session.activeSword(), lastEvent, collisionOverlay,
             playerSpriteVisibleDuringInvulnerability()});
     }
 
@@ -1050,10 +791,7 @@ struct GameRuntime::State final {
                        std::shared_ptr<const render::SpriteSheet>,
                        simulation::DefinitionIdHash> projectileVisuals;
     EnemyVisualCatalog enemyVisualCatalog;
-    gameplay::creatures::EnemyBehaviorSystem enemyBehavior;
     std::vector<EnemyVisualInstance> enemyVisuals;
-    gameplay::CombatSystem combat;
-    gameplay::ProjectileSystem projectiles;
     gameplay::PlayerItems playerItems;
     gameplay::InventoryOverlayState inventoryOverlay;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
@@ -1070,16 +808,11 @@ struct GameRuntime::State final {
     maps::MapCatalog mapCatalog;
     std::vector<maps::MapData> knownMapData;
     simulation::EventBuffer& events{session.eventsForRuntime()};
-    gameplay::Hitbox activeSword{};
-    std::optional<gameplay::AttackExecution> playerAttack_{};
-    gameplay::AttackInstanceId nextContactAttackInstance_{1};
     static constexpr std::uint32_t playerDamageBlinkDurationTicks = 12;
-    static constexpr std::uint32_t playerDamageInvulnerabilityTicks = 30;
     std::uint32_t playerDamageBlinkTicksRemaining_{};
     CommandBuilder commandBuilder;
     simulation::Tick lastTick{};
     std::uint32_t lastSequence{};
-    gameplay::AttackInstanceId lastAttack{};
     bool collisionOverlay{};
     CombatDebugVisibility combatDebug{};
     std::string lastEvent;

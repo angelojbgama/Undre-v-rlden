@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes g++ ca-certificates libpng-dev libx11-dev \
+    && apt-get install --no-install-recommends --yes g++ make ca-certificates libpng-dev libx11-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

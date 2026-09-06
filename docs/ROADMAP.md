@@ -57,6 +57,11 @@ separação `GameSession`/Presentation
 como pronta até que mapa, combate, criaturas, objetos, pickups, inventário, diálogo e
 quests sejam coordenados pela Session.
 
+O corte seguinte moveu `CombatSystem`, `ProjectileSystem`, `EnemyBehaviorSystem`,
+`AttackExecution`, contato, dano, knockback e derrota para a Session. Objetos,
+pickups, inventário, diálogo e quests ainda permanecem como bridges transitórias no
+`GameRuntime`.
+
 ---
 
 ## 2. Estado macro

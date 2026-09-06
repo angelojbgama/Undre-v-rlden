@@ -143,6 +143,9 @@ class EnemyFactory final {
 public:
     EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
                  const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
+                 const ProjectileCatalog& projectiles);
+    EnemyFactory(simulation::EntityHandlePool& handles, const EnemyCatalog& enemies,
+                 const BehaviorCatalog& behaviors, const AttackCatalog& attacks,
                  const ProjectileCatalog& projectiles,
                  std::span<const simulation::DefinitionId> availableVisualSets);
 

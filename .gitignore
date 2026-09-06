@@ -5,6 +5,8 @@
 # Build output
 /build/
 /audit/
+*.d
+.ccache/
 
 # MSVC output
 *.obj
