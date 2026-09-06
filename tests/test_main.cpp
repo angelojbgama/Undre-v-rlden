@@ -5425,15 +5425,81 @@ void testPhase13AJsonFoundation() {
            "content JSON rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
-    expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->items.size() == 2 &&
+    expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
+               roundtrip.content->behaviors.size() == 1 && roundtrip.content->items.size() == 2 &&
                roundtrip.content->items[0].use && roundtrip.content->items[1].equipment &&
-               roundtrip.content->npcVisuals.size() == 1 && roundtrip.content->npcVisuals[0].markerColor.r == 1,
-           "core authored DTO decoder preserves selected fields, optionals and uint64 precision");
+               roundtrip.content->npcVisuals.size() == 1 && roundtrip.content->npcVisuals[0].markerColor.r == 1 &&
+               roundtrip.content->playerProgressions.size() == 1 && roundtrip.content->playerProgressions[0].cumulativeExperienceThresholds.back() == UINT64_MAX &&
+               roundtrip.content->rewardProfiles.size() == 1 && roundtrip.content->rewardProfiles[0].experience == UINT64_MAX &&
+               roundtrip.content->rewardGrants.size() == 1 && roundtrip.content->rewardGrants[0].items[0].quantity == 100 &&
+               roundtrip.content->shops.size() == 1 && roundtrip.content->shops[0].offers[0].playerBuyPrice == 0 && !roundtrip.content->shops[0].offers[0].playerSellPrice &&
+               roundtrip.content->authoringDescriptors.size() == 1 && roundtrip.content->authoringDescriptors[0].category == underworld::game::content::AuthoringCategory::item,
+           "core authored DTO decoder preserves all 13A1 categories and uint64 precision");
     expect(!decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":[{"id":"x","visualId":"v","category":"misc","stackLmit":3}]})").content,
            "core decoder rejects unknown nested item fields");
     const std::string invalidUtf8{"{\"x\":\xC0\x80}"};
     expect(parseJson(invalidUtf8).value == nullptr,
            "strict JSON rejects overlong raw UTF-8 sequences");
+
+    const auto minimal = [&](std::string_view category, std::string_view entry) {
+        return decodeAuthoredContentJson(std::string{"{\"format\":\"dungeon-underworld-content\",\"version\":1,\""} +
+                                          std::string{category} + "\":[" + std::string{entry} + "]}");
+    };
+    const auto hasDiagnostic = [](const auto& result, std::string_view path, std::string_view message) {
+        for (const auto& diagnostic : result.diagnostics) {
+            if (diagnostic.path == path && diagnostic.message.find(message) != std::string::npos) return true;
+        }
+        return false;
+    };
+    const auto visual = minimal("npcVisuals", R"({"id":"visual.npc.decoder_test","markerColor":{"r":10,"g":20,"b":30,"a":255}})");
+    expect(visual.content && visual.diagnostics.empty() && visual.content->npcVisuals.size() == 1 &&
+               visual.content->npcVisuals[0].id.value() == "visual.npc.decoder_test" &&
+               visual.content->npcVisuals[0].markerColor.r == 10 && visual.content->npcVisuals[0].markerColor.g == 20 &&
+               visual.content->npcVisuals[0].markerColor.b == 30 && visual.content->npcVisuals[0].markerColor.a == 255,
+           "npc visual decoder dispatches and preserves RGBA");
+    expect(!minimal("npcVisuals", R"({"id":"v","markerColor":{"r":-1,"g":0,"b":0,"a":0}})").content &&
+               !minimal("npcVisuals", R"({"id":"v","markerColor":{"r":256,"g":0,"b":0,"a":0}})").content &&
+               !minimal("npcVisuals", R"({"id":"v","markerColor":{"r":1.5,"g":0,"b":0,"a":0}})").content &&
+               !minimal("npcVisuals", R"({"id":"v","markerColor":{"r":"255","g":0,"b":0,"a":0}})").content &&
+               !minimal("npcVisuals", R"({"id":"v","markerColor":{"r":0,"g":0,"b":0,"a":0,"alpha":1}})").content,
+           "color decoder rejects range, fractional and unknown fields");
+    expect(!minimal("items", R"({"id":"i","visualId":"v","stackLimit":1})").content &&
+               hasDiagnostic(minimal("items", R"({"id":"i","visualId":"v","stackLimit":1})"), "items[0].category", "missing required field"),
+           "item category is required with a precise diagnostic");
+    expect(!minimal("items", R"({"id":"i","visualId":"v","category":"consumable","stackLimit":1,"use":{"amount":2}})").content &&
+               hasDiagnostic(minimal("items", R"({"id":"i","visualId":"v","category":"consumable","stackLimit":1,"use":{"amount":2}})"), "items[0].use.kind", "missing required field") &&
+               !minimal("items", R"({"id":"i","visualId":"v","category":"consumable","stackLimit":1,"use":{"kind":"restoreMana","amount":2}})").content,
+           "item use requires and strictly decodes its kind");
+    const auto missingModifier = minimal("items", R"({"id":"i","visualId":"v","category":"equipment","stackLimit":1,"equipment":{"modifiers":{"maximumHealthBonus":2}}})");
+    expect(!missingModifier.content && hasDiagnostic(missingModifier, "items[0].equipment.slot", "missing required field") &&
+               hasDiagnostic(missingModifier, "items[0].equipment.modifiers.playerAttackDamageBonus", "missing required field"),
+           "equipment required fields are safe and diagnostic");
+    expect(!minimal("items", R"({"id":"i","visualId":"v","category":"equipment","stackLimit":1,"equipment":{"slot":"armor"}})").content &&
+               hasDiagnostic(minimal("items", R"({"id":"i","visualId":"v","category":"equipment","stackLimit":1,"equipment":{"slot":"armor"}})"), "items[0].equipment.modifiers", "missing required field"),
+           "equipment modifiers are required");
+    const auto multilineMissing = decodeAuthoredContentJson("{\n  \"format\": \"dungeon-underworld-content\",\n  \"version\": 1,\n  \"shops\": [{\n    \"id\": \"shop.test\"\n  }]\n}");
+    expect(!multilineMissing.content && hasDiagnostic(multilineMissing, "shops[0].offers", "missing required field") &&
+               multilineMissing.diagnostics.front().line > 1,
+           "missing required field uses the parent object source span");
+    expect(!minimal("playerProgressions", R"({"id":"p","cumulativeExperienceThresholds":[]})").content &&
+               !minimal("rewardProfiles", R"({"id":"r","experience":0})").content &&
+               !minimal("rewardGrants", R"({"id":"g","experience":0,"gold":0})").content &&
+               !minimal("shops", R"({"id":"s"})").content &&
+               !minimal("authoringDescriptors", R"({"definitionId":"d","displayName":"D","tags":[]})").content,
+           "all core DTO required collections and objects are enforced");
+    expect(minimal("items", R"({"id":"i","visualId":"v","category":"misc","stackLimit":1})").content &&
+               !minimal("items", R"({"id":"i","visualId":"v","category":"misc","stackLimit":18446744073709551615})").content &&
+               minimal("shops", R"({"id":"s","offers":[{"itemId":"i","playerBuyPrice":null,"playerSellPrice":0}]})").content,
+           "numeric ranges and optional null shop prices are handled exactly");
+    expect(!decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"mysteryCategory":[]})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":{}})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"attacks":{}})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"attacks":[{"id":"a"}]})").content,
+           "top-level strictness rejects unknown, malformed and unsupported categories");
+    const auto invalidVersionType = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":"one"})");
+    expect(!invalidVersionType.content && invalidVersionType.diagnostics.size() == 1 &&
+               invalidVersionType.diagnostics[0].path == "version",
+           "invalid schema version type emits one numeric diagnostic");
 }
 
 int main() {
