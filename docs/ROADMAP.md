@@ -100,7 +100,7 @@ FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
-FASE 12 — RPG + XP + equipment + loot
+FASE 12 — RPG (12A progression DONE; rewards, loot, equipment e bank futuros)
 FASE 13 — Headless + replay + auditoria determinística
 ```
 
@@ -1021,15 +1021,30 @@ o reader valida tudo contra o `QuestCatalog` antes de aceitar o save. Saves DSAV
 e 1.1 sem esse chunk continuam compatíveis, enquanto um `QSTS` em versão anterior é
 rejeitado explicitamente. DMAP permanece inalterado.
 
+## Block 12A — Player progression foundation (DONE)
+
+Progressão authored passa pelo `ContentCompiler` e `PlayerProgressionCatalog`.
+`GameSession` possui XP cumulativo e deriva o level da curva compilada; DSAV 1.3
+persiste o profile e o XP total, mantendo saves anteriores compatíveis. Rewards,
+loot, equipment, modifiers e bank permanecem nos cortes futuros de RPG.
+
 ---
 
-# Fase 12 — RPG, XP, equipment e loot
+# Fase 12 — RPG
 
 ## Gate
 
 Somente depois de existir vertical slice estável e jogável.
 
-## Capacidades
+## 12A — Progression Foundation — DONE
+
+Base stats authored, XP cumulativo, level derivado pela curva compilada e
+persistência DSAV estão concluídos. A curva builtin `{0, 100, 250}` é provisória
+para desenvolvimento e não representa balanceamento final.
+
+## 12B/12C/12D — Rewards, equipment e bank — FUTURO
+
+## Capacidades futuras
 
 - stats derivados;
 - XP;
@@ -1040,7 +1055,7 @@ Somente depois de existir vertical slice estável e jogável.
 - inventário expandido;
 - UI associada.
 
-`EnemyDefinition` pode fornecer reward metadata; Creature não incrementa diretamente XP do Player.
+`EnemyDefinition` poderá fornecer reward metadata; Creature não incrementa diretamente XP do Player.
 
 Loot tables resolvem drops; não espalhar RNG em cada classe de inimigo.
 

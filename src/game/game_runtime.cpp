@@ -228,8 +228,9 @@ struct GameRuntime::State final {
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
-          session(localPlayerId, {}),
-          content(content::compileBuiltinContentOrThrow()) {
+          content(content::compileBuiltinContentOrThrow()),
+          session(localPlayerId, content.progressions().require(
+                                      gameplay::rpg::defaultPlayerProgressionId()), {}) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
@@ -369,6 +370,8 @@ struct GameRuntime::State final {
         snapshot.playerAction = gameplay::actionStateName(player.actionState());
         snapshot.playerHealth = player.health().current;
         snapshot.playerMaximumHealth = player.health().maximum;
+        snapshot.playerExperience = session.progression().totalExperience();
+        snapshot.playerLevel = session.progression().level();
         snapshot.gold = session.playerItems().wallet().gold();
         snapshot.inventoryOpen = session.inventoryOverlay().open();
 
@@ -517,7 +520,7 @@ struct GameRuntime::State final {
         std::vector<const maps::MapData*> maps;
         maps.reserve(knownMapData.size());
         for (const auto& map : knownMapData) { maps.push_back(&map); }
-        return {&itemCatalog, std::move(maps), &content.quests()};
+        return {&itemCatalog, std::move(maps), &content.quests(), &content.progressions()};
     }
 
     void saveGame() {
@@ -637,9 +640,9 @@ struct GameRuntime::State final {
     std::filesystem::path executableDirectory;
     std::filesystem::path savePath;
     GamePresentation presentation;
+    GameContentRegistry content;
     GameSession session;
     const gameplay::Player& player{session.player()};
-    GameContentRegistry content;
     RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
     TilesetVisualCatalog tilesetVisuals;
     const gameplay::AttackCatalog& attackCatalog{content.attacks()};

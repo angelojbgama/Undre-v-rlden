@@ -8,6 +8,7 @@
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/quests/quest_state.h"
+#include "game/gameplay/rpg/player_progression.h"
 #include "game/maps/map_data.h"
 #include "game/maps/runtime_world.h"
 
@@ -29,6 +30,11 @@ struct SavedPlayer final {
     std::array<std::optional<gameplay::ItemStack>, gameplay::PlayerInventory::slotCount> inventory{};
     std::uint64_t gold{};
     std::array<std::optional<simulation::DefinitionId>, gameplay::QuickSlotBindings::slotCount> quickSlots{};
+};
+
+struct SavedPlayerProgression final {
+    simulation::DefinitionId definitionId{};
+    std::uint64_t totalExperience{};
 };
 
 struct ObjectDelta final {
@@ -55,6 +61,7 @@ struct SessionWorldState final {
 
 struct SaveData final {
     SavedPlayer player;
+    SavedPlayerProgression progression;
     SessionWorldState world;
     gameplay::dialogue::DialogueFlagSet dialogueFlags;
     gameplay::quests::QuestStateStore quests;
@@ -64,6 +71,7 @@ struct SaveValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
     std::vector<const maps::MapData*> maps;
     const gameplay::quests::QuestCatalog* quests{};
+    const gameplay::rpg::PlayerProgressionCatalog* progressions{};
 };
 
 struct SaveResult final {
@@ -74,8 +82,8 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 added FLGS; minor 2 adds the optional QSTS chunk. Older saves remain readable.
-inline constexpr std::uint16_t saveMinorVersion = 2;
+// Minor 1 added FLGS; minor 2 added QSTS; minor 3 adds PROG. Older saves remain readable.
+inline constexpr std::uint16_t saveMinorVersion = 3;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

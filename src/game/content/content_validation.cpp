@@ -93,6 +93,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                                    [](const auto& value) { return value.id; });
     const auto stamps = ids(pack.stamps, report, ContentKind::stamp,
                             [](const auto& value) { return value.id; });
+    const auto progressions = ids(pack.playerProgressions, report, ContentKind::playerProgression,
+                                  [](const auto& value) { return value.id; });
 
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||
@@ -194,6 +196,13 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (cell.x < 0 || cell.y < 0 || static_cast<std::uint32_t>(cell.x) >= value.width || static_cast<std::uint32_t>(cell.y) >= value.height || !contains(tileSemantics, cell.tileId) || !cells.emplace(std::to_string(cell.x) + ":" + std::to_string(cell.y)).second)
                 error(report, ContentKind::stamp, value.id, "invalid_stamp_cell", "stamp cell is outside bounds, duplicated or unknown", "cells");
         }
+    }
+    for (const auto& value : pack.playerProgressions) {
+        if (value.baseStats.maximumHealth <= 0 || value.cumulativeExperienceThresholds.empty() ||
+            value.cumulativeExperienceThresholds.front() != 0 ||
+            !std::is_sorted(value.cumulativeExperienceThresholds.begin(), value.cumulativeExperienceThresholds.end()) ||
+            std::adjacent_find(value.cumulativeExperienceThresholds.begin(), value.cumulativeExperienceThresholds.end()) != value.cumulativeExperienceThresholds.end())
+            error(report, ContentKind::playerProgression, value.id, "invalid_curve", "progression health and cumulative thresholds are invalid", "cumulativeExperienceThresholds");
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");

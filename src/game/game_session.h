@@ -15,6 +15,7 @@
 #include "game/gameplay/quests/quest_system.h"
 #include "game/maps/map_catalog.h"
 #include "game/save/save_data.h"
+#include "game/gameplay/rpg/player_progression.h"
 
 #include <memory>
 #include <span>
@@ -27,6 +28,7 @@ namespace underworld::game {
 class GameSession final {
 public:
     GameSession(simulation::PlayerId playerId,
+                const gameplay::rpg::PlayerProgressionDefinition& progression,
                 core::WorldPointI initialPosition = {});
 
     [[nodiscard]] bool initializeMap(const maps::MapCatalog& maps,
@@ -76,6 +78,9 @@ public:
     [[nodiscard]] const gameplay::quests::QuestStateStore& questState() const noexcept {
         return questState_;
     }
+    [[nodiscard]] const gameplay::rpg::PlayerProgressionState& progression() const noexcept {
+        return progression_;
+    }
     [[nodiscard]] bool restoreNarrativeState(
         const gameplay::dialogue::DialogueFlagSet& flags,
         std::span<const gameplay::quests::QuestProgress> progress,
@@ -104,6 +109,7 @@ private:
 
     simulation::EntityHandlePool handles_;
     gameplay::Player player_;
+    gameplay::rpg::PlayerProgressionState progression_;
     simulation::EventBuffer events_;
     save::SessionWorldState worldState_;
     std::unique_ptr<maps::MapSession> mapSession_;

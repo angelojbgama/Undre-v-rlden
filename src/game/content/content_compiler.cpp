@@ -46,6 +46,7 @@ gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
     for (const auto& objective : v.objectives) result.objectives.push_back({objective.id, objective.kind, objective.targetId, objective.requiredCount, objective.description});
     return result;
 }
+gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
 authoring::TileSemanticDefinition compileTileSemantic(const AuthoredTileSemantic& v) { return {v.id, v.tilesetId, v.sourceIndex, v.family, v.role, v.topology, v.north, v.east, v.south, v.west, v.preferredLayer, v.flipXAllowed, v.visualConfidence, v.semanticConfidence, v.gameplayConfidence}; }
 authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
     authoring::StampDefinition result{v.id, v.displayName, v.width, v.height, {}, v.anchor, v.flipXAllowed, v.atomic, v.confidence};
@@ -72,6 +73,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.npcVisuals) registry.npcVisuals_.add(compileNpcVisual(value));
         for (const auto& value : authored.dialogues) registry.dialogues_.add(compileDialogue(value));
         for (const auto& value : authored.quests) registry.quests_.add(compileQuest(value));
+        for (const auto& value : authored.playerProgressions) registry.progressions_.add(compileProgression(value));
         for (const auto& value : authored.pickups) registry.pickups_.push_back(compilePickup(value));
         registry.authoringDescriptors_ = authored.authoringDescriptors;
         for (const auto& value : authored.tileSemantics) registry.authoringSemantics_.addTile(compileTileSemantic(value));

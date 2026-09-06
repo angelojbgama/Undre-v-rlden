@@ -243,6 +243,17 @@ responsabilidade da aplicação. Restauração faz rollback internamente, fecha 
 e limpa transientes antes de devolver o controle ao Runtime. Nenhum renderer, asset
 ou dependência de plataforma pode entrar em `GameSession`.
 
+### RPG — Progression Foundation (12A)
+
+Progressão do Player é estado autoritativo da `GameSession`. Os base stats usados
+atualmente originam-se de conteúdo authored compilado; `Player` não possui mais uma
+constante concreta de maximum health. XP é armazenado como total cumulativo em
+`uint64_t`, com acumulação saturada, e o level é derivado deterministicamente da
+curva compilada. Criaturas não concedem XP diretamente: `EntityDefeated` continuará
+sendo consumido por um futuro sistema de rewards, que permanece separado desta
+fundação. O save persiste o ID da definição de progressão e o XP total, não um level
+independente; a curva builtin atual é provisória para desenvolvimento.
+
 ---
 
 ## 4. Módulos e dependências
@@ -1412,6 +1423,16 @@ complete. `reset` removes the record and returns the quest to its inactive state
 This block does not consume domain events or serialize state itself; those concerns are
 provided by the following 11C and 11D blocks.
 
+## Fase 12A — Player progression foundation
+
+`PlayerProgressionDefinition` is compiled from authored content and supplies the
+typed base stats currently used by the Player, including maximum health. The
+`GameSession` owns `PlayerProgressionState`; it stores cumulative `uint64_t` XP and
+derives level, next threshold and current-level progress from the compiled curve.
+Accumulation saturates at the integer maximum. The current builtin curve is
+provisional development content, not final balance. Creatures do not grant XP
+directly; reward resolution remains a future domain system consuming defeat events.
+
 ## Fase 11C — Event-driven quest progression
 
 `QuestSystem` consumes the existing `SimulationEvent` variant and advances only active
@@ -1430,7 +1451,9 @@ runtime `QuestCatalog`. The reader validates quest existence, objective order,
 counter limits and active/completed consistency before replacing state. DSAV 1.0 and
 1.1 saves without `QSTS` remain readable, and older versions reject the future chunk.
 The game save/load path passes the quest catalog and carries the state through F5/F9;
-DMAP is unchanged.
+DMAP is unchanged. DSAV minor 3 adds the `PROG` chunk containing the progression
+definition ID and cumulative XP; older saves without it default to level 1 of the
+default progression.
 
 ## Audit foundation (Block A)
 

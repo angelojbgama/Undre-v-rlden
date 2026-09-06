@@ -9,6 +9,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/quests/quest_model.h"
+#include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/world_objects.h"
 #include "game/tilesets.h"
 
@@ -43,6 +44,8 @@ struct AuthoredDialogueNode final { simulation::DefinitionId id{}; std::string s
 struct AuthoredDialogue final { simulation::DefinitionId id{}; simulation::DefinitionId entryNodeId{}; std::vector<AuthoredDialogueNode> nodes; };
 struct AuthoredQuestObjective final { simulation::DefinitionId id{}; gameplay::quests::QuestObjectiveKind kind{}; simulation::DefinitionId targetId{}; std::uint32_t requiredCount{1}; std::string description; };
 struct AuthoredQuest final { simulation::DefinitionId id{}; std::string title; std::vector<AuthoredQuestObjective> objectives; std::vector<std::string> tags; };
+struct AuthoredPlayerBaseStats final { int maximumHealth{}; };
+struct AuthoredPlayerProgression final { simulation::DefinitionId id{}; AuthoredPlayerBaseStats baseStats{}; std::vector<std::uint64_t> cumulativeExperienceThresholds; };
 struct AuthoringDescriptor final { simulation::DefinitionId definitionId{}; std::string displayName; AuthoringCategory category{AuthoringCategory::enemy}; std::vector<std::string> tags; };
 
 struct AuthoredTileSemantic final { simulation::DefinitionId id{}; simulation::DefinitionId tilesetId{}; std::uint32_t sourceIndex{}; std::string family; authoring::TileRole role{authoring::TileRole::unknown}; authoring::TileTopology topology{authoring::TileTopology::unknown}; authoring::EdgeProfile north{authoring::EdgeProfile::unknown}; authoring::EdgeProfile east{authoring::EdgeProfile::unknown}; authoring::EdgeProfile south{authoring::EdgeProfile::unknown}; authoring::EdgeProfile west{authoring::EdgeProfile::unknown}; std::string preferredLayer; bool flipXAllowed{}; authoring::SemanticConfidence visualConfidence{authoring::SemanticConfidence::confirmed}; authoring::SemanticConfidence semanticConfidence{authoring::SemanticConfidence::unverified}; authoring::SemanticConfidence gameplayConfidence{authoring::SemanticConfidence::unverified}; };
@@ -55,6 +58,7 @@ struct AuthoredContentPack final {
     std::vector<AuthoredWorldObject> objects; std::vector<AuthoredPickup> pickups; std::vector<AuthoredNpc> npcs;
     std::vector<AuthoredNpcVisualSet> npcVisuals; std::vector<AuthoredDialogue> dialogues; std::vector<AuthoredQuest> quests;
     std::vector<AuthoringDescriptor> authoringDescriptors; std::vector<AuthoredTileSemantic> tileSemantics; std::vector<AuthoredStamp> stamps;
+    std::vector<AuthoredPlayerProgression> playerProgressions;
 };
 
 } // namespace underworld::game::content

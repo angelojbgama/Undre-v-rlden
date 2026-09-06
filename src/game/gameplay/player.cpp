@@ -37,6 +37,7 @@ std::int64_t checkedAdd(std::int64_t value, std::int64_t delta) {
 
 Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
                core::WorldPointI feetPosition,
+               int maximumHealth,
                PlayerMovementConfig config)
     : id_(id), combatant_{entity, Faction::player, Health{maximumHealth}, 0, false},
       position_{checkedSubpixelCoordinate(feetPosition.x),

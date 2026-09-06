@@ -10,8 +10,10 @@
 namespace underworld::game {
 
 GameSession::GameSession(simulation::PlayerId playerId,
+                         const gameplay::rpg::PlayerProgressionDefinition& progression,
                          core::WorldPointI initialPosition)
-    : player_(playerId, handles_.create(), initialPosition) {}
+    : player_(playerId, handles_.create(), initialPosition, progression.baseStats.maximumHealth),
+      progression_(progression) {}
 
 void GameSession::relocatePlayer(core::WorldPointI position,
                                  gameplay::FacingDirection facing) noexcept {
@@ -48,7 +50,8 @@ void GameSession::configureNarrative(
 
 save::SaveData GameSession::captureSaveData() const {
     return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
-            worldState_, dialogueFlags_, questState_};
+            {progression_.definition().id, progression_.totalExperience()}, worldState_,
+            dialogueFlags_, questState_};
 }
 
 bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error) {
@@ -56,10 +59,15 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         error = "GameSession is not fully configured";
         return false;
     }
+    if (data.progression.definitionId != progression_.definition().id) {
+        error = "save references a different player progression";
+        return false;
+    }
     const save::SaveData previous = captureSaveData();
     if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
     if (!save::applyPlayer(data.player, player_, *playerItems_, *itemCatalog_, error) ||
-        !restoreNarrativeState(data.dialogueFlags, data.quests.snapshot(), error)) {
+        !restoreNarrativeState(data.dialogueFlags, data.quests.snapshot(), error) ||
+        !progression_.restoreExperience(data.progression.totalExperience)) {
         std::string rollbackError;
         static_cast<void>(restoreMap(previous.player.currentMapId, previous.world,
                                      rollbackError));
@@ -67,6 +75,7 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
                                             *itemCatalog_, rollbackError));
         static_cast<void>(restoreNarrativeState(previous.dialogueFlags,
                                                 previous.quests.snapshot(), rollbackError));
+        static_cast<void>(progression_.restoreExperience(previous.progression.totalExperience));
         return false;
     }
     clearCombatTransients();

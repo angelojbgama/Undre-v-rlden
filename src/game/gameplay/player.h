@@ -44,7 +44,6 @@ struct SubpixelPosition final {
 
 class Player final {
 public:
-    static constexpr int maximumHealth = 5;
     static constexpr int damageKnockbackPixels = 32;
     static constexpr int damageKnockbackDurationTicks = 8;
     static constexpr int hurtboxWidth = 14;
@@ -54,6 +53,7 @@ public:
 
     Player(simulation::PlayerId id, simulation::EntityHandle entity,
            core::WorldPointI feetPosition,
+           int maximumHealth,
            PlayerMovementConfig config = {});
 
     void update(const simulation::PlayerCommand& command,

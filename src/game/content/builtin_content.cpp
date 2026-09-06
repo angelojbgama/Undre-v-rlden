@@ -59,6 +59,8 @@ void addBuiltinDungeonSemantics(AuthoredContentPack& pack) {
 AuthoredContentPack makeBuiltinAuthoredContent() {
     AuthoredContentPack pack;
     pack.tilesets.push_back({{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
+    // Temporary development curve; final game balance is intentionally undecided.
+    pack.playerProgressions.push_back({{"progression.player.default"}, {5}, {0, 100, 250}});
     pack.projectiles = {
         {{"projectile.player.arrow"}, {"visual.projectile.player.arrow"}, FacingDirection::up, 4, 120, 6, 6, arrowOffsets()},
         {{"projectile.skull.arrow"}, {"visual.projectile.skull.arrow"}, FacingDirection::right, 4, 120, 6, 6, arrowOffsets()}};

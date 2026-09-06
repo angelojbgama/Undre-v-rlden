@@ -56,7 +56,9 @@ std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot) {
         << "\",\"motion\":\"" << escapeJsonString(snapshot.playerMotion)
         << "\",\"action\":\"" << escapeJsonString(snapshot.playerAction)
         << "\",\"health\":" << snapshot.playerHealth
-        << ",\"maximumHealth\":" << snapshot.playerMaximumHealth << "}"
+        << ",\"maximumHealth\":" << snapshot.playerMaximumHealth
+        << ",\"experience\":" << snapshot.playerExperience
+        << ",\"level\":" << snapshot.playerLevel << "}"
         << ",\"gold\":" << snapshot.gold
         << ",\"inventoryOpen\":" << (snapshot.inventoryOpen ? "true" : "false")
         << ",\"inventory\":[";

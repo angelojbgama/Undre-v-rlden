@@ -73,6 +73,8 @@ struct GameAuditSnapshot final {
     std::string playerAction;
     int playerHealth{};
     int playerMaximumHealth{};
+    std::uint64_t playerExperience{};
+    std::uint32_t playerLevel{};
 
     std::uint64_t gold{};
     bool inventoryOpen{};

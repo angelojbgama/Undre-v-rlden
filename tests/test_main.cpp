@@ -98,11 +98,34 @@ namespace {
 int failures = 0;
 int checks = 0;
 
+const underworld::game::gameplay::rpg::PlayerProgressionDefinition& testProgression() {
+    static const underworld::game::gameplay::rpg::PlayerProgressionDefinition definition{
+        {"progression.player.default"}, {5}, {0, 100, 250}};
+    return definition;
+}
+
 void expect(bool condition, std::string_view description) {
     ++checks;
     if (!condition) {
         ++failures;
         std::cerr << "FAIL: " << description << '\n';
+    }
+}
+
+void removeSaveChunk(std::vector<std::uint8_t>& bytes, std::string_view tag) {
+    const auto found = std::search(bytes.begin() + 20, bytes.end(), tag.begin(), tag.end());
+    if (found == bytes.end()) return;
+    const auto position = static_cast<std::size_t>(found - bytes.begin());
+    std::uint64_t payloadSize{};
+    for (unsigned index = 0; index < 8; ++index) {
+        payloadSize |= static_cast<std::uint64_t>(bytes[position + 4 + index]) << (index * 8U);
+    }
+    const auto chunkSize = static_cast<std::size_t>(12 + payloadSize);
+    bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(position),
+                bytes.begin() + static_cast<std::ptrdiff_t>(position + chunkSize));
+    const auto newSize = static_cast<std::uint64_t>(bytes.size());
+    for (unsigned index = 0; index < 8; ++index) {
+        bytes[12 + index] = static_cast<std::uint8_t>(newSize >> (index * 8U));
     }
 }
 
@@ -889,7 +912,7 @@ underworld::simulation::PlayerCommand actionCommand(
 void testPlayerMovementAndFacing() {
     namespace gameplay = underworld::game::gameplay;
     underworld::world::CollisionGrid openGrid(256, 256);
-    gameplay::Player right({0}, {0, 1}, {1000, 1000});
+    gameplay::Player right({0}, {0, 1}, {1000, 1000}, 5);
     const auto start = right.subpixelPosition();
     right.update(movementCommand(1, 1, 0), openGrid, 16);
     expect(right.subpixelPosition().x - start.x ==
@@ -904,7 +927,7 @@ void testPlayerMovementAndFacing() {
                right.motionState() == gameplay::PlayerMotionState::idle,
            "stopping selects idle while preserving the last facing direction");
 
-    gameplay::Player directions({0}, {0, 1}, {1000, 1000});
+    gameplay::Player directions({0}, {0, 1}, {1000, 1000}, 5);
     directions.update(movementCommand(1, -1, 0), openGrid, 16);
     expect(directions.facing() == gameplay::FacingDirection::left,
            "left intent selects left facing");
@@ -918,9 +941,9 @@ void testPlayerMovementAndFacing() {
     expect(directions.facing() == gameplay::FacingDirection::up,
            "vertical direction has deterministic priority for diagonal facing");
 
-    gameplay::Player freeLeft({0}, {0, 1}, {1000, 1000});
-    gameplay::Player freeUp({0}, {1, 1}, {1000, 1000});
-    gameplay::Player freeDown({0}, {2, 1}, {1000, 1000});
+    gameplay::Player freeLeft({0}, {0, 1}, {1000, 1000}, 5);
+    gameplay::Player freeUp({0}, {1, 1}, {1000, 1000}, 5);
+    gameplay::Player freeDown({0}, {2, 1}, {1000, 1000}, 5);
     freeLeft.update(movementCommand(1, -1, 0), openGrid, 16);
     freeUp.update(movementCommand(1, 0, -1), openGrid, 16);
     freeDown.update(movementCommand(1, 0, 1), openGrid, 16);
@@ -934,15 +957,15 @@ void testPlayerMovementAndFacing() {
                freeDown.subpixelPosition().x == start.x,
            "Player moves freely downward");
 
-    gameplay::Player oneSecond({0}, {0, 1}, {1000, 1000});
+    gameplay::Player oneSecond({0}, {0, 1}, {1000, 1000}, 5);
     for (std::uint64_t tick = 1; tick <= 60; ++tick) {
         oneSecond.update(movementCommand(tick, 1, 0), openGrid, 16);
     }
     expect(oneSecond.feetPosition().x == 1090 && oneSecond.feetPosition().y == 1000,
            "60 fixed ticks move the Player exactly 90 world pixels");
 
-    gameplay::Player cardinal({0}, {0, 1}, {1000, 1000});
-    gameplay::Player diagonal({0}, {1, 1}, {1000, 1000});
+    gameplay::Player cardinal({0}, {0, 1}, {1000, 1000}, 5);
+    gameplay::Player diagonal({0}, {1, 1}, {1000, 1000}, 5);
     for (std::uint64_t tick = 1; tick <= 600; ++tick) {
         cardinal.update(movementCommand(tick, 1, 0), openGrid, 16);
         diagonal.update(movementCommand(tick, 1, 1), openGrid, 16);
@@ -958,7 +981,7 @@ void testPlayerMovementAndFacing() {
     expect(std::abs(diagonalDistance - static_cast<double>(cardinalDelta)) < 512.0,
            "600-tick diagonal distance matches cardinal distance within two pixels");
 
-    const auto body = gameplay::Player({0}, {0, 1}, {100, 80}).collisionBody();
+    const auto body = gameplay::Player({0}, {0, 1}, {100, 80}, 5).collisionBody();
     expect(body == underworld::world::AabbI{95, 72, 10, 8},
            "Player collision body is 10x8 and offset -5,-8 from the feet");
 
@@ -973,8 +996,8 @@ void testPlayerMovementAndFacing() {
 
 void testGameSessionCommandBoundary() {
     using underworld::game::GameSession;
-    GameSession first({0}, {1000, 1000});
-    GameSession second({0}, {1000, 1000});
+    GameSession first({0}, testProgression(), {1000, 1000});
+    GameSession second({0}, testProgression(), {1000, 1000});
     const auto initial = first.player().subpixelPosition();
     const auto firstCommand = movementCommand(1, 1, 0);
     const auto secondCommand = movementCommand(2, 0, 0);
@@ -994,13 +1017,13 @@ void testPlayerCollision() {
     for (int y = 0; y < verticalWall.height(); ++y) {
         verticalWall.setSolid(3, y, true);
     }
-    gameplay::Player againstWall({0}, {0, 1}, {43, 40});
+    gameplay::Player againstWall({0}, {0, 1}, {43, 40}, 5);
     againstWall.update(movementCommand(1, 1, 0), verticalWall, 16);
     expect(againstWall.feetPosition() == underworld::core::WorldPointI{43, 40} &&
                againstWall.lastMovement().blockedX,
            "Player collision body stops exactly against a vertical wall");
 
-    gameplay::Player sliding({0}, {0, 1}, {43, 40});
+    gameplay::Player sliding({0}, {0, 1}, {43, 40}, 5);
     sliding.update(movementCommand(1, 1, 1), verticalWall, 16);
     expect(sliding.feetPosition().x == 43 && sliding.feetPosition().y > 40 &&
                sliding.lastMovement().blockedX && !sliding.lastMovement().blockedY,
@@ -1010,7 +1033,7 @@ void testPlayerCollision() {
     for (int x = 0; x < horizontalWall.width(); ++x) {
         horizontalWall.setSolid(x, 3, true);
     }
-    gameplay::Player aboveWall({0}, {0, 1}, {43, 48});
+    gameplay::Player aboveWall({0}, {0, 1}, {43, 48}, 5);
     aboveWall.update(movementCommand(1, 0, 1), horizontalWall, 16);
     expect(aboveWall.feetPosition() == underworld::core::WorldPointI{43, 48} &&
                aboveWall.lastMovement().blockedY,
@@ -1023,7 +1046,7 @@ void testPlayerCollision() {
     for (int x = 0; x < cornerGrid.width(); ++x) {
         cornerGrid.setSolid(x, 3, true);
     }
-    gameplay::Player corner({0}, {0, 1}, {43, 48});
+    gameplay::Player corner({0}, {0, 1}, {43, 48}, 5);
     corner.update(movementCommand(1, 1, 1), cornerGrid, 16);
     expect(corner.feetPosition() == underworld::core::WorldPointI{43, 48} &&
                corner.lastMovement().blockedX && corner.lastMovement().blockedY,
@@ -1034,7 +1057,7 @@ void testPlayerCollision() {
         corridorGrid.setSolid(x, 1, true);
         corridorGrid.setSolid(x, 3, true);
     }
-    gameplay::Player corridor({0}, {0, 1}, {21, 43});
+    gameplay::Player corridor({0}, {0, 1}, {21, 43}, 5);
     for (std::uint64_t tick = 1; tick <= 40; ++tick) {
         corridor.update(movementCommand(tick, 1, 0), corridorGrid, 16);
     }
@@ -1042,7 +1065,7 @@ void testPlayerCollision() {
            "Player body traverses a one-tile corridor");
 
     underworld::world::CollisionGrid boundary(8, 8);
-    gameplay::Player edge({0}, {0, 1}, {5, 8});
+    gameplay::Player edge({0}, {0, 1}, {5, 8}, 5);
     edge.update(movementCommand(1, -1, -1), boundary, 16);
     expect(edge.feetPosition() == underworld::core::WorldPointI{5, 8} &&
                edge.lastMovement().blockedX && edge.lastMovement().blockedY,
@@ -1182,7 +1205,7 @@ void testActionCommandsAndPlayerAttackState() {
            "focus-loss clear removes all pending action edges and prevents ghost attacks");
 
     underworld::world::CollisionGrid grid(64, 64);
-    gameplay::Player player({0}, {0, 1}, {100, 100});
+    gameplay::Player player({0}, {0, 1}, {100, 100}, 5);
     player.update(actionCommand(1, true, false, 1, 0), grid, 16);
     const auto lockedPosition = player.subpixelPosition();
     const auto firstAttack = player.attackInstance();
@@ -1651,7 +1674,7 @@ void testPhase6CombatGeneralization() {
            "finishing owner A attack does not erase owner B hit deduplication");
 
     const auto playerHandle = pool.create();
-    gameplay::Player player({9}, playerHandle, {200, 200});
+    gameplay::Player player({9}, playerHandle, {200, 200}, 5);
     gameplay::Hitbox enemyHit{{190, 178, 24, 24}, {ownerA, 2}, gameplay::Faction::enemy,
                               {1, 6}, 6, 0, true};
     const auto playerHit = combat.resolve(enemyHit, player.combatTarget(), events);
@@ -1943,7 +1966,7 @@ void testCreatureCombatIntegration() {
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
     simulation::EntityHandlePool handles;
     const auto playerHandle = handles.create();
-    gameplay::Player player({0}, playerHandle, {200, 200});
+    gameplay::Player player({0}, playerHandle, {200, 200}, 5);
     creatures::EnemyFactory factory(
         handles, definitions, behaviors, attacks, projectileDefinitions, visuals);
     auto soldier = factory.create(creatures::soldierEnemyId(), {220, 200},
@@ -1987,7 +2010,7 @@ void testCreatureCombatIntegration() {
            "Player sword damage applies the configured knockback to the enemy");
 
     const auto contactPlayerHandle = handles.create();
-    gameplay::Player contactPlayer({1}, contactPlayerHandle, {500, 500});
+    gameplay::Player contactPlayer({1}, contactPlayerHandle, {500, 500}, 5);
     auto contactEnemy = factory.create(creatures::soldierEnemyId(), {494, 500},
                                        gameplay::FacingDirection::right);
     const gameplay::Hitbox contactHit{
@@ -2394,7 +2417,7 @@ void testPickupsQuickSlotsAndInventoryOverlay() {
     InventoryOverlayState routedOverlay;
     PlayerItems routedItems(catalog);
     world::CollisionGrid emptyGrid(8, 8);
-    Player routedPlayer({3}, handles.create(), {32, 32});
+    Player routedPlayer({3}, handles.create(), {32, 32}, 5);
     simulation::PlayerCommand openCommand{};
     openCommand.playerId = routedPlayer.id();
     openCommand.movement = {1, 0};
@@ -2419,7 +2442,7 @@ void testViewModelAndWorldObjects() {
     static_cast<void>(playerItems.wallet().addGold(7));
     playerItems.quickSlots().bind(0, lifePotionItemId());
     simulation::EntityHandlePool handles;
-    Player player({0}, handles.create(), {10, 10});
+    Player player({0}, handles.create(), {10, 10}, 5);
     static_cast<void>(player.health().applyDamage(2));
     InventoryOverlayState overlay;
     overlay.toggle();
@@ -2675,7 +2698,9 @@ void testPhase8PersistentMapsAndSave() {
     saved.world.set(save::PickupDelta{{map.id,{5}},false,2});
     static_cast<void>(saved.dialogueFlags.set(simulation::DefinitionId{"dialogue.flag.zeta"}));
     static_cast<void>(saved.dialogueFlags.set(simulation::DefinitionId{"dialogue.flag.alpha"}));
-    save::SaveValidationCatalogs saveCatalogs{&items,{&map}};
+    gameplay::rpg::PlayerProgressionCatalog progressions;
+    progressions.add(testProgression());
+    save::SaveValidationCatalogs saveCatalogs{&items,{&map},nullptr,&progressions};
     expect(save::validateSaveData(saved,saveCatalogs).empty(),
            "save validation accepts player state and explicit chest crate and pickup deltas");
     const auto saveBytes=save::serializeSave(saved);const auto loaded=save::deserializeSave(saveBytes,saveCatalogs);
@@ -2688,7 +2713,7 @@ void testPhase8PersistentMapsAndSave() {
            "DSAV v1.2 roundtrips player state world deltas and persistent dialogue flags");
     expect(saveBytes==save::serializeSave(loaded.data), "DSAV output is deterministic for equivalent state");
     gameplay::PlayerItems restoredItems(items);simulation::EntityHandlePool playerHandles;
-    gameplay::Player restoredPlayer({7},playerHandles.create(),{1,1});
+    gameplay::Player restoredPlayer({7},playerHandles.create(),{1,1}, 5);
     std::string restoreError;
     expect(save::applyPlayer(loaded.data.player,restoredPlayer,restoredItems,items,restoreError)&&
                restoredPlayer.feetPosition()==underworld::core::WorldPointI{20,22}&&
@@ -2709,6 +2734,7 @@ void testPhase8PersistentMapsAndSave() {
     auto legacySave = saved;
     legacySave.dialogueFlags.clearAll();
     auto legacyBytes = save::serializeSave(legacySave);
+    removeSaveChunk(legacyBytes, "PROG");
     legacyBytes[6] = 0;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, saveCatalogs);
@@ -3200,28 +3226,35 @@ void testPhase11QuestPersistence() {
     const auto map = makeSyntheticMap("map.test.quest.save", "map.test.quest.save");
     save::SaveData data;
     data.player.currentMapId = map.id;
-    data.player.health = underworld::game::gameplay::Player::maximumHealth;
+    data.player.health = content.progressions().require(
+        underworld::game::gameplay::rpg::defaultPlayerProgressionId()).baseStats.maximumHealth;
+    data.progression = {underworld::game::gameplay::rpg::defaultPlayerProgressionId(), 137};
     data.quests = state;
-    const save::SaveValidationCatalogs catalogs{&content.items(), {&map}, &content.quests()};
+    const save::SaveValidationCatalogs catalogs{&content.items(), {&map}, &content.quests(),
+                                               &content.progressions()};
     expect(save::validateSaveData(data, catalogs).empty(),
            "save validation accepts active quest progress against the quest catalog");
-    expect(!save::validateSaveData(data, {&content.items(), {&map}}).empty(),
+    expect(!save::validateSaveData(data, {&content.items(), {&map}, nullptr,
+                                          &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 2 && encoded[7] == 0,
-           "quest persistence advances DSAV only to minor version 2");
+    expect(encoded.size() > 7 && encoded[6] == 3 && encoded[7] == 0,
+           "progression persistence advances DSAV to minor version 3");
     const auto loaded = save::deserializeSave(encoded, catalogs);
-    expect(loaded && loaded.data.quests.snapshot() == data.quests.snapshot() &&
+    expect(loaded && loaded.data.progression.totalExperience == 137 &&
+               loaded.data.quests.snapshot() == data.quests.snapshot() &&
                encoded == save::serializeSave(loaded.data),
            "DSAV QSTS roundtrips quest status and objective counters deterministically");
 
     auto legacy = data;
     static_cast<void>(legacy.quests.reset(definition.id));
     auto legacyBytes = save::serializeSave(legacy);
+    removeSaveChunk(legacyBytes, "PROG");
     legacyBytes[6] = 1;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, catalogs);
-    expect(legacyLoaded && legacyLoaded.data.quests.size() == 0,
+    expect(legacyLoaded && legacyLoaded.data.progression.totalExperience == 0 &&
+               legacyLoaded.data.quests.size() == 0,
            "DSAV 1.1 saves without QSTS remain backward compatible");
 
     auto incompatible = encoded;
@@ -3294,6 +3327,54 @@ void testNearestImageRegions() {
     renderer.drawImageRegionNearest(transparent, {0, 0, 1, 1}, {0, 0, 2, 2});
     expect(framebufferPixel(framebuffer, 0, 0) == blue && framebufferPixel(framebuffer, 1, 1) == blue,
            "drawImageRegionNearest preserves alpha blending semantics");
+}
+
+void testPhase12AProgressionFoundation() {
+    namespace rpg = underworld::game::gameplay::rpg;
+    namespace content = underworld::game::content;
+    static_assert(!std::is_same_v<content::AuthoredPlayerProgression,
+                                  rpg::PlayerProgressionDefinition>);
+
+    rpg::PlayerProgressionDefinition definition{{"progression.test"}, {5}, {0, 100, 250}};
+    rpg::PlayerProgressionState state(definition);
+    expect(state.level() == 1 && state.nextLevelExperienceThreshold() == 100 &&
+               state.experienceNeededForNextLevel() == 100,
+           "progression starts at level one with the first cumulative threshold");
+    expect(state.grantExperience(99).newLevel == 1 &&
+               state.experienceNeededForNextLevel() == 1,
+           "progression remains below the exact level threshold");
+    const auto levelTwo = state.grantExperience(1);
+    expect(levelTwo.leveledUp() && levelTwo.previousLevel == 1 &&
+               levelTwo.newLevel == 2 && state.level() == 2,
+           "progression reaches level two at the exact cumulative threshold");
+    expect(state.grantExperience(150).newLevel == 3 && state.level() == 3 &&
+               !state.nextLevelExperienceThreshold() && !state.experienceNeededForNextLevel(),
+           "progression supports multi-level gains and derives the maximum level");
+    const auto zero = state.grantExperience(0);
+    expect(zero.granted == 0 && zero.previousLevel == zero.newLevel &&
+               state.totalExperience() == 250,
+           "zero experience does not change progression state");
+    rpg::PlayerProgressionState saturated(definition);
+    static_cast<void>(saturated.restoreExperience(std::numeric_limits<std::uint64_t>::max() - 1));
+    const auto saturatedGain = saturated.grantExperience(99);
+    expect(saturatedGain.granted == 1 &&
+               saturated.totalExperience() == std::numeric_limits<std::uint64_t>::max(),
+           "experience accumulation saturates instead of overflowing");
+
+    const auto compiled = content::compileBuiltinContentOrThrow();
+    const auto& builtin = compiled.progressions().require(rpg::defaultPlayerProgressionId());
+    expect(builtin.baseStats.maximumHealth == 5 &&
+               builtin.cumulativeExperienceThresholds == std::vector<std::uint64_t>{0, 100, 250},
+           "builtin player progression preserves the provisional health and curve");
+    auto invalid = content::makeBuiltinAuthoredContent();
+    invalid.playerProgressions.front().cumulativeExperienceThresholds = {0, 100, 100};
+    const auto invalidResult = content::compileContent(invalid);
+    expect(!invalidResult && std::any_of(invalidResult.report.diagnostics.begin(),
+               invalidResult.report.diagnostics.end(), [](const auto& diagnostic) {
+                   return diagnostic.kind == content::ContentKind::playerProgression &&
+                          diagnostic.code == "invalid_curve";
+               }),
+           "content validation rejects a non-increasing progression curve");
 }
 
 void testPhase9EditorFoundation() {
@@ -3910,8 +3991,10 @@ void testOfficialGameplayMapSet() {
     for (const auto& map : loadedMaps) {
         save::SaveData saveData;
         saveData.player.currentMapId = map.id;
-        saveData.player.health = gameplay::Player::maximumHealth;
-        expect(save::validateSaveData(saveData, {&content.items(), saveMaps}).empty(),
+        saveData.player.health = 5;
+        saveData.progression = {gameplay::rpg::defaultPlayerProgressionId(), 0};
+        expect(save::validateSaveData(saveData, {&content.items(), saveMaps, nullptr,
+                                                  &content.progressions()}).empty(),
                "save validation recognizes every official gameplay MapId");
     }
     simulation::EntityHandlePool handles;
@@ -3958,7 +4041,7 @@ void testOfficialGameplayMapSet() {
     expect(back01.changed && session.world()->id() == simulation::MapId{"map.dungeon.01"},
            "official map transition returns from Map 02 to Map 01");
 
-    game::GameSession gameSession({0});
+    game::GameSession gameSession({0}, testProgression());
     std::string sessionError;
     expect(gameSession.initializeMap(catalog, validation, builder,
                                      simulation::MapId{"map.dungeon.01"},
@@ -3987,7 +4070,7 @@ void testOfficialGameplayMapSet() {
         sessionAttacks, sessionProjectiles);
     maps::RuntimeWorldBuilder logicalBuilder(validation, logicalEnemyFactory, objectFactory,
         handles, runtimeTilesets, &npcFactory);
-    game::GameSession combatSession({0});
+    game::GameSession combatSession({0}, testProgression());
     combatSession.configureCombat(sessionAttacks, sessionProjectiles, content.behaviors(),
         sessionAttacks.require(gameplay::playerSwordAttackId()),
         sessionAttacks.require(gameplay::playerBowAttackId()));
@@ -4017,7 +4100,7 @@ void testOfficialGameplayMapSet() {
                "headless GameSession advances Player sword combat without presentation");
     }
 
-    game::GameSession narrativeSession({0});
+    game::GameSession narrativeSession({0}, testProgression());
     narrativeSession.configureItems(content.items());
     narrativeSession.configureNarrative(content.dialogues(), content.quests());
     std::string narrativeError;
@@ -4054,7 +4137,7 @@ void testOfficialGameplayMapSet() {
         expect(false, "headless GameSession narrative fixture contains the Scholar");
     }
 
-    game::GameSession itemSession({0});
+    game::GameSession itemSession({0}, testProgression());
     itemSession.configureItems(content.items());
     itemSession.configureNarrative(content.dialogues(), content.quests());
     std::string itemError;
@@ -4958,6 +5041,7 @@ int main() {
         testFixedStepAccumulator();
         testWin32Clock();
         testAuthoredContentBoundary();
+        testPhase12AProgressionFoundation();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

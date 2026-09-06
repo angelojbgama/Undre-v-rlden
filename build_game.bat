@@ -31,6 +31,10 @@ echo Compiling changed Player gameplay...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\player.obj" "src\game\gameplay\player.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling changed Player progression...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\player_progression.obj" "src\game\gameplay\rpg\player_progression.cpp"
+if errorlevel 1 goto :build_failed
+
 if not exist "build\obj\dialogue_flags.obj" (
     echo Compiling missing dialogue flags object...
     cl.exe %COMMON_FLAGS% /Fo"build\obj\dialogue_flags.obj" "src\game\gameplay\dialogue\dialogue_flags.cpp"
@@ -62,7 +66,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\dmap.obj" "build\obj\game_launch.obj" "build\obj\runtime_world.obj" "build\obj\save_data.obj" ^
     "build\obj\map_catalog.obj" "build\obj\official_maps.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" ^
     "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\combat_system.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\combat_system.obj" ^
     "build\obj\projectile_system.obj" "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" ^
     "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
