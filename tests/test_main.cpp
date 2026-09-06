@@ -78,6 +78,8 @@
 #include "game/maps/map_composition.h"
 #include "game/maps/reachability.h"
 #include "game/maps/runtime_world.h"
+#include "game/maps/authored_map.h"
+#include "game/maps/region_tracker.h"
 #include "game/save/save_data.h"
 
 #ifdef _WIN32
@@ -2871,8 +2873,8 @@ void testPhase10NpcFoundation() {
     const auto bytes = maps::serializeDmap(map);
     const auto decoded = maps::deserializeDmap(bytes, &catalogs);
     expect(decoded && decoded.data.npcs.size() == 2 &&
-               maps::semanticallyEqual(map, decoded.data) && maps::dmapMinorVersion == 1,
-           "DMAP minor 1 roundtrips authored NPC placements without changing DSAV");
+               maps::semanticallyEqual(map, decoded.data) && maps::dmapMinorVersion >= 1,
+           "DMAP current minor roundtrips authored NPC placements without changing DSAV");
     auto unknown = map;
     unknown.npcs[0].definitionId = simulation::DefinitionId{"npc.missing"};
     expect(!maps::validateMapData(unknown, &catalogs),
@@ -4565,7 +4567,7 @@ void testMultiTilesetAuthoringAndRuntime() {
            "MapData accepts multiple known tilesets in the same layer");
     const auto bytes = maps::serializeDmap(map);
     const auto decoded = maps::deserializeDmap(bytes, &validation);
-    expect(decoded && maps::dmapMajorVersion == 1 && maps::dmapMinorVersion == 1 &&
+    expect(decoded && maps::dmapMajorVersion == 1 && maps::dmapMinorVersion >= 1 &&
                decoded.data.tileReferences[0] == map.tileReferences[0] &&
                decoded.data.tileReferences[1] == map.tileReferences[1],
            "DMAP v1 preserves multi-tileset DefinitionIds source indices and flags");
@@ -6008,6 +6010,47 @@ void testPhase13B1ContentWorkspace() {
     std::filesystem::remove_all(root);
 }
 
+void testPhase14AuthoredMapFoundation() {
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    maps::AuthoredMapSource source;
+    source.map.id = simulation::MapId{"map.authored.test"};
+    source.map.width = 2;
+    source.map.height = 2;
+    source.map.tileSize = 16;
+    source.map.layers.push_back({"ground", true, std::vector<std::optional<std::uint32_t>>(4)});
+    source.map.collision.assign(4, 0);
+    source.map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {8, 8},
+                                       underworld::game::gameplay::FacingDirection::down});
+    source.map.regions.push_back({simulation::DefinitionId{"region.test"}, {0, 0, 16, 16}});
+    source.map.encounters.push_back({simulation::DefinitionId{"encounter.test"}, {{42}}, std::nullopt});
+
+    const auto json = maps::encodeAuthoredMapJson(source);
+    const auto decoded = maps::decodeAuthoredMapJson(json);
+    expect(decoded.source.has_value() && decoded.diagnostics.empty(),
+           "authored map JSON decodes through the strict parser");
+    expect(decoded.source && maps::encodeAuthoredMapJson(*decoded.source) == json,
+           "authored map JSON roundtrip is deterministic");
+
+    const auto dmap = maps::deserializeDmap(maps::serializeDmap(source.map));
+    expect(dmap && dmap.data.regions == source.map.regions,
+           "DMAP 1.2 preserves authored regions");
+
+    simulation::EventBuffer events;
+    maps::RegionTracker tracker;
+    tracker.update(source.map.id, source.map.regions, {8, 8}, events);
+    expect(events.events().size() == 1 &&
+               std::holds_alternative<simulation::RegionEntered>(events.events().front()),
+           "region tracker emits entry on first tick inside a region");
+    events.clear();
+    tracker.update(source.map.id, source.map.regions, {8, 8}, events);
+    expect(events.events().empty(), "region tracker does not repeat entry while staying inside");
+    tracker.update(source.map.id, source.map.regions, {24, 8}, events);
+    expect(events.events().size() == 1 &&
+               std::holds_alternative<simulation::RegionExited>(events.events().front()),
+           "region tracker emits one exit after leaving a region");
+}
+
 int main() {
     try {
         testMetrics();
@@ -6080,6 +6123,7 @@ int main() {
         testPhase13A2JsonDecoders();
         testPhase13A3JsonDecoders();
         testPhase13B1ContentWorkspace();
+        testPhase14AuthoredMapFoundation();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

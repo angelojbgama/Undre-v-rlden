@@ -582,6 +582,8 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     const auto& map = mapSession_->world()->map();
     const auto previousAction = player_.actionState();
     player_.update(command, map.collision(), map.tileSize());
+    regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
+                          player_.feetPosition(), events_);
     // Combat is optional for the small logical map fixtures used by Session
     // tests. A fully bootstrapped game configures it before the first tick.
     if (projectiles_ && attackCatalog_ && projectileCatalog_ && behaviorCatalog_ &&

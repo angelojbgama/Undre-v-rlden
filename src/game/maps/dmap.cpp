@@ -52,6 +52,16 @@ StringTable collectStrings(const MapData& data) {
         addString(table.values, link.id); addString(table.values, link.targetMapId.value());
         addString(table.values, link.targetSpawnId.value());
     }
+    for (const auto& region : data.regions) { addString(table.values, region.id.value()); }
+    for (const auto& rule : data.worldRules) {
+        addString(table.values, rule.id.value()); addString(table.values, rule.trigger.target.value());
+        for (const auto& condition : rule.conditions) { addString(table.values, condition.target.value()); }
+        for (const auto& action : rule.actions) { addString(table.values, action.target.value()); }
+    }
+    for (const auto& encounter : data.encounters) {
+        addString(table.values, encounter.id.value());
+        if (encounter.rewardGrantId) addString(table.values, encounter.rewardGrantId->value());
+    }
     std::sort(table.values.begin(), table.values.end());
     table.values.erase(std::unique(table.values.begin(), table.values.end()), table.values.end());
     for (std::size_t i = 0; i < table.values.size(); ++i) {
@@ -173,6 +183,41 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
         link.writeU32(strings.index(value.targetSpawnId.value()));
     }
     appendChunk(chunks, {'L','I','N','K'}, std::move(link));
+    ByteWriter regions; regions.writeU32(static_cast<std::uint32_t>(data.regions.size()));
+    for (const auto& region : data.regions) {
+        regions.writeU32(strings.index(region.id.value()));
+        writeArea(regions, region.bounds);
+    }
+    appendChunk(chunks, {'R','E','G','N'}, std::move(regions));
+    ByteWriter worldRules; worldRules.writeU32(static_cast<std::uint32_t>(data.worldRules.size()));
+    for (const auto& rule : data.worldRules) {
+        worldRules.writeU32(strings.index(rule.id.value()));
+        worldRules.writeU8(static_cast<std::uint8_t>(rule.trigger.kind));
+        worldRules.writeU32(strings.index(rule.trigger.target.value()));
+        worldRules.writeU8(rule.once ? 1 : 0);
+        worldRules.writeU32(static_cast<std::uint32_t>(rule.conditions.size()));
+        for (const auto& condition : rule.conditions) {
+            worldRules.writeU8(static_cast<std::uint8_t>(condition.kind));
+            worldRules.writeU32(strings.index(condition.target.value()));
+            worldRules.writeU8(static_cast<std::uint8_t>(condition.doorState));
+        }
+        worldRules.writeU32(static_cast<std::uint32_t>(rule.actions.size()));
+        for (const auto& action : rule.actions) {
+            worldRules.writeU8(static_cast<std::uint8_t>(action.kind));
+            worldRules.writeU32(strings.index(action.target.value()));
+            worldRules.writeU8(static_cast<std::uint8_t>(action.doorState));
+        }
+    }
+    appendChunk(chunks, {'W','R','L','D'}, std::move(worldRules));
+    ByteWriter encounters; encounters.writeU32(static_cast<std::uint32_t>(data.encounters.size()));
+    for (const auto& encounter : data.encounters) {
+        encounters.writeU32(strings.index(encounter.id.value()));
+        encounters.writeU32(static_cast<std::uint32_t>(encounter.participants.size()));
+        for (const auto participant : encounter.participants) encounters.writeU64(participant.value);
+        encounters.writeU8(encounter.rewardGrantId ? 1 : 0);
+        if (encounter.rewardGrantId) encounters.writeU32(strings.index(encounter.rewardGrantId->value()));
+    }
+    appendChunk(chunks, {'E','N','C','T'}, std::move(encounters));
 
     ByteWriter result;
     for (char value : std::array<char,4>{'D','M','A','P'}) { result.writeU8(static_cast<std::uint8_t>(value)); }
@@ -202,7 +247,7 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         const std::string tag(reinterpret_cast<const char*>(tagBytes.data()), 4);
         const bool known = tag == "META" || tag == "STRS" || tag == "TREF" || tag == "LAYR" ||
                            tag == "COLL" || tag == "SPWN" || tag == "ENTS" || tag == "NPCS" ||
-                           tag == "LINK";
+                           tag == "LINK" || tag == "REGN" || tag == "WRLD" || tag == "ENCT";
         if (known && !chunks.emplace(tag, payload).second) return fail("duplicate singleton DMAP chunk");
     }
     if (minor == 0 && chunks.contains("NPCS")) {
@@ -303,6 +348,64 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             if(!readIndex(in,strings,id)||!readArea(in,area)||!readId(in,strings,target)||!readId(in,strings,spawn)) return fail("invalid LINK record");
             data.links.push_back({std::move(id),area,std::move(target),std::move(spawn)});}
         if(in.remaining()!=0)return fail("trailing LINK data");
+    }
+    if (const auto found = chunks.find("REGN"); found != chunks.end()) {
+        if (minor < 2) return fail("REGN chunk requires DMAP minor version 2");
+        ByteReader in(found->second); std::uint32_t count{};
+        if (!readCount(in, MapLimits::maximumPlacements, count)) return fail("invalid REGN count");
+        data.regions.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            simulation::DefinitionId id; world::AabbI bounds{};
+            if (!readId(in, strings, id) || !readArea(in, bounds)) return fail("invalid REGN record");
+            data.regions.push_back({std::move(id), bounds});
+        }
+        if (in.remaining() != 0) return fail("trailing REGN data");
+    }
+    if (const auto found = chunks.find("WRLD"); found != chunks.end()) {
+        if (minor < 2) return fail("WRLD chunk requires DMAP minor version 2");
+        ByteReader in(found->second); std::uint32_t count{};
+        if (!readCount(in, MapLimits::maximumPlacements, count)) return fail("invalid WRLD count");
+        data.worldRules.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            WorldRuleDefinition rule; std::uint8_t kind{}, once{}; std::uint32_t conditionCount{}, actionCount{};
+            if (!readId(in, strings, rule.id) || !in.readU8(kind) || kind > 5 ||
+                !readId(in, strings, rule.trigger.target) || !in.readU8(once) || once > 1 ||
+                !readCount(in, MapLimits::maximumPlacements, conditionCount)) return fail("invalid WRLD rule");
+            rule.trigger.kind = static_cast<WorldTriggerKind>(kind); rule.once = once != 0;
+            for (std::uint32_t j = 0; j < conditionCount; ++j) {
+                WorldCondition condition; std::uint8_t state{};
+                if (!in.readU8(kind) || kind > 4 || !readId(in, strings, condition.target) ||
+                    !in.readU8(state) || state > 2) return fail("invalid WRLD condition");
+                condition.kind = static_cast<WorldConditionKind>(kind);
+                condition.doorState = static_cast<DoorState>(state); rule.conditions.push_back(std::move(condition));
+            }
+            if (!readCount(in, MapLimits::maximumPlacements, actionCount)) return fail("invalid WRLD action count");
+            for (std::uint32_t j = 0; j < actionCount; ++j) {
+                WorldAction action; std::uint8_t state{};
+                if (!in.readU8(kind) || kind > 3 || !readId(in, strings, action.target) ||
+                    !in.readU8(state) || state > 2) return fail("invalid WRLD action");
+                action.kind = static_cast<WorldActionKind>(kind);
+                action.doorState = static_cast<DoorState>(state); rule.actions.push_back(std::move(action));
+            }
+            data.worldRules.push_back(std::move(rule));
+        }
+        if (in.remaining() != 0) return fail("trailing WRLD data");
+    }
+    if (const auto found = chunks.find("ENCT"); found != chunks.end()) {
+        if (minor < 2) return fail("ENCT chunk requires DMAP minor version 2");
+        ByteReader in(found->second); std::uint32_t count{};
+        if (!readCount(in, MapLimits::maximumPlacements, count)) return fail("invalid ENCT count");
+        data.encounters.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            EncounterDefinition encounter; std::uint32_t participants{}; std::uint8_t hasReward{};
+            if (!readId(in, strings, encounter.id) || !readCount(in, MapLimits::maximumPlacements, participants)) return fail("invalid ENCT record");
+            encounter.participants.reserve(participants);
+            for (std::uint32_t j = 0; j < participants; ++j) { std::uint64_t id{}; if (!in.readU64(id) || id == 0) return fail("invalid ENCT participant"); encounter.participants.push_back({id}); }
+            if (!in.readU8(hasReward) || hasReward > 1) return fail("invalid ENCT reward flag");
+            if (hasReward) { simulation::DefinitionId reward; if (!readId(in, strings, reward)) return fail("invalid ENCT reward"); encounter.rewardGrantId = std::move(reward); }
+            data.encounters.push_back(std::move(encounter));
+        }
+        if (in.remaining() != 0) return fail("trailing ENCT data");
     }
     const auto validation=validateMapData(data,catalogs);if(!validation)return fail(validation.error);
     return {true,std::move(data),{}};

@@ -25,6 +25,8 @@ private:
     void consume(const simulation::PickupCollected& event);
     void consume(const simulation::NpcTalked& event);
     void consume(const simulation::MapEntered& event);
+    void consume(const simulation::RegionEntered&) noexcept {}
+    void consume(const simulation::RegionExited&) noexcept {}
     void consume(const simulation::ObjectOpened& event);
     void consume(const simulation::ItemDelivered& event);
     void consume(const simulation::ExperienceGranted&) noexcept {}

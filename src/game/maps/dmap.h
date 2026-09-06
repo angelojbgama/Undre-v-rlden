@@ -11,8 +11,8 @@
 namespace underworld::game::maps {
 
 inline constexpr std::uint16_t dmapMajorVersion = 1;
-// Minor 1 adds the optional NPCS placement chunk. Readers accept 1.0 maps too.
-inline constexpr std::uint16_t dmapMinorVersion = 1;
+// Minor 1 adds NPCS; minor 2 adds the optional REGN chunk. Readers accept 1.0/1.1.
+inline constexpr std::uint16_t dmapMinorVersion = 2;
 
 struct DmapLoadResult final {
     bool success{};

@@ -168,6 +168,13 @@ MapValidationResult validateMapData(const MapData& data,
             return failure("map link is invalid or duplicate");
         }
     }
+    std::unordered_set<std::string> regionIds;
+    for (const auto& region : data.regions) {
+        if (region.id.empty() || !regionIds.emplace(std::string(region.id.value())).second ||
+            !validArea(region.bounds)) {
+            return failure("map region id or bounds are invalid");
+        }
+    }
     return {true, {}};
 }
 
@@ -176,6 +183,7 @@ bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {
         a.tileSize != b.tileSize || a.tileReferences != b.tileReferences ||
         a.layers != b.layers || a.collision != b.collision ||
         a.playerSpawns != b.playerSpawns || a.enemies != b.enemies || a.npcs != b.npcs ||
+        a.regions != b.regions || a.worldRules != b.worldRules || a.encounters != b.encounters ||
         a.links != b.links ||
         a.objects.size() != b.objects.size() || a.pickups.size() != b.pickups.size()) { return false; }
     for (std::size_t i = 0; i < a.objects.size(); ++i) {

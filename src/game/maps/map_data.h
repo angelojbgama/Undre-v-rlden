@@ -92,6 +92,51 @@ struct MapLink final {
     [[nodiscard]] bool operator==(const MapLink&) const noexcept = default;
 };
 
+struct MapRegionDefinition final {
+    simulation::DefinitionId id{};
+    world::AabbI bounds{};
+    [[nodiscard]] bool operator==(const MapRegionDefinition&) const noexcept = default;
+};
+
+enum class WorldTriggerKind { mapEntered, regionEntered, regionExited, encounterStarted,
+                              encounterCompleted, objectOpened };
+enum class WorldConditionKind { flagSet, flagNotSet, encounterCompleted,
+                                encounterNotCompleted, doorState };
+enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState };
+enum class DoorState { locked, closed, open };
+
+struct WorldTrigger final {
+    WorldTriggerKind kind{WorldTriggerKind::mapEntered};
+    simulation::DefinitionId target{};
+    [[nodiscard]] bool operator==(const WorldTrigger&) const noexcept = default;
+};
+struct WorldCondition final {
+    WorldConditionKind kind{WorldConditionKind::flagSet};
+    simulation::DefinitionId target{};
+    DoorState doorState{DoorState::closed};
+    [[nodiscard]] bool operator==(const WorldCondition&) const noexcept = default;
+};
+struct WorldAction final {
+    WorldActionKind kind{WorldActionKind::setFlag};
+    simulation::DefinitionId target{};
+    DoorState doorState{DoorState::closed};
+    [[nodiscard]] bool operator==(const WorldAction&) const noexcept = default;
+};
+struct WorldRuleDefinition final {
+    simulation::DefinitionId id{};
+    WorldTrigger trigger{};
+    std::vector<WorldCondition> conditions;
+    std::vector<WorldAction> actions;
+    bool once{};
+    [[nodiscard]] bool operator==(const WorldRuleDefinition&) const noexcept = default;
+};
+struct EncounterDefinition final {
+    simulation::DefinitionId id{};
+    std::vector<simulation::PersistentInstanceId> participants;
+    std::optional<simulation::DefinitionId> rewardGrantId{};
+    [[nodiscard]] bool operator==(const EncounterDefinition&) const noexcept = default;
+};
+
 struct MapData final {
     simulation::MapId id{};
     std::uint32_t width{};
@@ -106,6 +151,9 @@ struct MapData final {
     std::vector<ObjectPlacement> objects;
     std::vector<PickupPlacement> pickups;
     std::vector<MapLink> links;
+    std::vector<MapRegionDefinition> regions;
+    std::vector<WorldRuleDefinition> worldRules;
+    std::vector<EncounterDefinition> encounters;
 };
 
 struct MapValidationCatalogs final {
