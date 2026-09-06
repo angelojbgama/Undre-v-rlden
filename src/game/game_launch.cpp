@@ -73,6 +73,13 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             if (!*assetResult) { return std::nullopt; }
             continue;
         }
+        const bool hadContent = options.contentRoot.has_value();
+        const auto contentResult = consumeValue(L"--content", "--content", options.contentRoot);
+        if (contentResult.has_value()) {
+            if (!*contentResult) { return std::nullopt; }
+            if (hadContent) { error = "duplicate --content option"; return std::nullopt; }
+            continue;
+        }
         if (argument == L"--spawn") {
             if (index + 1 >= argc || argv[index + 1] == nullptr ||
                 std::wstring(argv[index + 1]).empty()) {
@@ -137,6 +144,13 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
         const auto assetResult = consumeValue("--asset-root", options.assetRoot);
         if (assetResult.has_value()) {
             if (!*assetResult) { return std::nullopt; }
+            continue;
+        }
+        const bool hadContent = options.contentRoot.has_value();
+        const auto contentResult = consumeValue("--content", options.contentRoot);
+        if (contentResult.has_value()) {
+            if (!*contentResult) { return std::nullopt; }
+            if (hadContent) { error = "duplicate --content option"; return std::nullopt; }
             continue;
         }
         if (argument == "--spawn" || argument.rfind("--spawn=", 0) == 0) {

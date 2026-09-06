@@ -6,12 +6,14 @@
 #include "engine/render/framebuffer.h"
 #include "game/audit/audit_session.h"
 #include "game/game_runtime.h"
+#include "game/content/content_source.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace underworld::game {
 
@@ -224,8 +226,29 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
                                     core::GameMetrics::logicalHeight);
     const auto executableDirectory = platform.executableDirectory();
     const auto assetRoot = options.assetRoot.value_or(findLicensedAssetRoot(executableDirectory));
+    content::ContentSourceSelection selection;
+    if (options.contentRoot) {
+        selection.kind = content::ContentSourceKind::workspaceDirectory;
+        selection.workspaceRoot = *options.contentRoot;
+    }
+    const auto source = content::loadContentSource(selection);
+    if (!source) {
+        for (const auto& diagnostic : source.diagnostics) {
+            platform.log(platform::LogLevel::error,
+                         content::formatContentWorkspaceDiagnostic(diagnostic));
+        }
+        return 1;
+    }
+    if (source.content->sourceKind == content::ContentSourceKind::builtin) {
+        platform.log(platform::LogLevel::info, "content source: builtin");
+    } else {
+        platform.log(platform::LogLevel::info,
+                     "content source: workspace root=" +
+                     source.content->sourceRoot.string() + " files=" +
+                     std::to_string(source.content->sourceFileCount));
+    }
     GameRuntime runtime(platform.imageDecoder(),
-                    assetRoot, executableDirectory, options);
+                    assetRoot, executableDirectory, std::move(source.content->registry), options);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;

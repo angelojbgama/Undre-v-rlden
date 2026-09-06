@@ -46,6 +46,7 @@ struct LoadedContentWorkspace final {
     AuthoredContentPack authored;
     GameContentRegistry registry;
     ContentSourceMap sources;
+    std::size_t sourceFileCount{};
 };
 
 struct ContentWorkspaceLoadResult final {
@@ -56,5 +57,28 @@ struct ContentWorkspaceLoadResult final {
 
 [[nodiscard]] ContentWorkspaceLoadResult loadContentWorkspaceFiles(
     std::span<const std::filesystem::path> files);
+
+struct ContentWorkspaceDiscoveryResult final {
+    std::optional<std::vector<std::filesystem::path>> files;
+    std::vector<ContentWorkspaceDiagnostic> diagnostics;
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return files.has_value() && diagnostics.empty();
+    }
+};
+
+[[nodiscard]] ContentWorkspaceDiscoveryResult discoverContentWorkspaceFiles(
+    const std::filesystem::path& root);
+
+struct ContentWorkspaceDirectoryLoadResult final {
+    std::optional<LoadedContentWorkspace> workspace;
+    std::vector<ContentWorkspaceDiagnostic> diagnostics;
+    std::size_t sourceFileCount{};
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return workspace.has_value() && diagnostics.empty();
+    }
+};
+
+[[nodiscard]] ContentWorkspaceDirectoryLoadResult loadContentWorkspaceDirectory(
+    const std::filesystem::path& root);
 
 } // namespace underworld::game::content

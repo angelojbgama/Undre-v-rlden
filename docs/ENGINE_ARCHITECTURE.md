@@ -1553,12 +1553,15 @@ publicado não oferece mutação aos consumidores e não semeia conteúdo no con
 
 ## External Content Workspace
 
-O `ContentWorkspace` recebe uma lista explícita de arquivos JSON v1. Cada arquivo
-passa pelo decoder estrito existente; depois os documentos são ordenados por caminho
-lexical normalizado, mesclados por categoria e validados/compilados uma única vez:
+O `ContentWorkspace` recebe uma lista explícita ou um diretório de arquivos JSON v1.
+Cada arquivo passa pelo decoder estrito existente; depois os documentos são ordenados
+por caminho lexical normalizado, mesclados por categoria e validados/compilados uma
+única vez:
 
 ```text
-Explicit JSON Sources
+Authoring Sources
+       ↓
+Builtin ou workspace directory discovery
        ↓
 ContentWorkspaceLoader
        ↓
@@ -1574,8 +1577,9 @@ GameContentRegistry
 ```
 
 O resultado preserva o `AuthoredContentPack`, o `GameContentRegistry` e o mapa de
-origens para uso futuro por tooling. Não há overrides, last-wins, descoberta de
-diretórios, manifest, seleção de conteúdo no runtime ou hot reload nesta etapa.
+origens. A seleção é compartilhada por Game, Map Maker e `content_check`; builtin é a
+fonte transicional default e `--content` é uma substituição explícita, sem overrides.
+Não há manifest, hot reload, mutação de registry ou autoria visual genérica.
 
 ## Authored Map Source Boundary
 

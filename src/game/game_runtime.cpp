@@ -16,7 +16,6 @@
 #include "game/command_builder.h"
 #include "game/game_view_model.h"
 #include "game/game_content.h"
-#include "game/content/builtin_content.h"
 #include "game/actor_render_order.h"
 #include "game/audit/audit_snapshot.h"
 #include "game/combat_debug.h"
@@ -189,6 +188,7 @@ struct GameRuntime::State final {
           std::shared_ptr<const render::Image> breakingCrateImage,
           std::shared_ptr<const render::Image> hudHeartImage,
           std::shared_ptr<const render::Image> hudMoneyImage,
+          GameContentRegistry contentDefinitions,
           std::filesystem::path executableDirectory,
           const GameLaunchOptions& launchOptions)
         : tileset(std::move(tileImage)),
@@ -228,7 +228,7 @@ struct GameRuntime::State final {
               std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
-          content(content::compileBuiltinContentOrThrow()),
+          content(std::move(contentDefinitions)),
           session(localPlayerId, content.progressions().require(
                                       gameplay::rpg::defaultPlayerProgressionId()), {}) {
         const auto& dungeonDefinition = content.tilesets().require(
@@ -700,8 +700,8 @@ struct GameRuntime::State final {
 GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
                        const std::filesystem::path& executableDirectory,
+                       GameContentRegistry contentDefinitions,
                        const GameLaunchOptions& launchOptions) {
-    const auto contentDefinitions = content::compileBuiltinContentOrThrow();
     const auto& dungeonDefinition = contentDefinitions.tilesets().require(
         simulation::DefinitionId{"tileset.dungeon"});
     const auto tileset = assets_.loadImage("tileset.dungeon",
@@ -762,7 +762,7 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
         soldierIdle, soldierWalk, soldierAttack, soldierDeath,
         skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
         heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney,
-        executableDirectory, launchOptions);
+        std::move(contentDefinitions), executableDirectory, launchOptions);
     startupSummary_ = state_->startupSummary();
 }
 

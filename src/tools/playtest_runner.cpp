@@ -6,6 +6,7 @@
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/world_objects.h"
 #include "game/game_runtime.h"
+#include "game/content/builtin_content.h"
 #include "game/maps/dmap.h"
 #include "game/maps/official_maps.h"
 
@@ -162,7 +163,7 @@ public:
         launch.mapPath = mapPath(root_, mapId_);
         demo_ = std::make_unique<game::GameRuntime>(
             decoder_, options.assetRoot.empty() ? root_ : options.assetRoot,
-            executableDirectory_, launch);
+            executableDirectory_, game::content::compileBuiltinContentOrThrow(), launch);
 
         AuditSessionConfig config;
         config.outputRoot = options.auditRoot;

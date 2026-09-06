@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <system_error>
 #include <sstream>
 #include <string_view>
 
@@ -184,8 +185,91 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
         }
         return result;
     }
-    result.workspace = LoadedContentWorkspace{std::move(merged), *compiled.registry, std::move(sources)};
+    result.workspace = LoadedContentWorkspace{std::move(merged), *compiled.registry,
+                                              std::move(sources), decoded.size()};
     return result;
+}
+
+ContentWorkspaceDiscoveryResult discoverContentWorkspaceFiles(
+    const std::filesystem::path& root) {
+    ContentWorkspaceDiscoveryResult result;
+    if (root.empty()) {
+        result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, root, {}, 0, 0, {},
+                                      "workspace_root_missing", {}, {},
+                                      "workspace root is empty"});
+        return result;
+    }
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(root, error);
+    if (error || !std::filesystem::exists(status)) {
+        result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, root, {}, 0, 0, {},
+                                      "workspace_root_missing", {}, {},
+                                      "workspace root does not exist"});
+        return result;
+    }
+    if (std::filesystem::is_symlink(status) || !std::filesystem::is_directory(status)) {
+        result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, root, {}, 0, 0, {},
+                                      "workspace_root_not_directory", {}, {},
+                                      "workspace root is not a directory"});
+        return result;
+    }
+
+    std::vector<std::filesystem::path> files;
+    std::filesystem::recursive_directory_iterator iterator(
+        root, std::filesystem::directory_options::skip_permission_denied, error);
+    if (error) {
+        result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, root, {}, 0, 0, {},
+                                      "workspace_scan_failed", {}, {}, error.message()});
+        return result;
+    }
+    const std::filesystem::recursive_directory_iterator end;
+    while (iterator != end) {
+        const auto path = iterator->path();
+        std::error_code entryError;
+        const auto entryStatus = iterator->symlink_status(entryError);
+        if (entryError) {
+            result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, path, {}, 0, 0,
+                                          {}, "workspace_scan_failed", {}, {},
+                                          entryError.message()});
+        } else if (!std::filesystem::is_symlink(entryStatus)) {
+            if (std::filesystem::is_directory(entryStatus)) {
+                // The iterator does not recurse into symlink directories because they
+                // are skipped above; regular directories are traversed normally.
+            } else if (std::filesystem::is_regular_file(entryStatus) &&
+                       path.extension() == ".json") {
+                files.push_back(path.lexically_normal());
+            }
+        }
+        iterator.increment(error);
+        if (error) {
+            result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, root, {}, 0, 0,
+                                          {}, "workspace_scan_failed", {}, {},
+                                          error.message()});
+            error.clear();
+        }
+    }
+    std::sort(files.begin(), files.end(), [](const auto& left, const auto& right) {
+        return left.generic_string() < right.generic_string();
+    });
+    if (!result.diagnostics.empty()) return result;
+    if (files.empty()) {
+        result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::merge, root, {}, 0, 0, {},
+                                      "empty_workspace", {}, {},
+                                      "workspace contains no JSON source files"});
+        return result;
+    }
+    result.files = std::move(files);
+    return result;
+}
+
+ContentWorkspaceDirectoryLoadResult loadContentWorkspaceDirectory(
+    const std::filesystem::path& root) {
+    const auto discovered = discoverContentWorkspaceFiles(root);
+    if (!discovered.files) {
+        return {std::nullopt, discovered.diagnostics, 0};
+    }
+    const auto loaded = loadContentWorkspaceFiles(*discovered.files);
+    return {std::move(loaded.workspace), std::move(loaded.diagnostics), discovered.files->size()};
 }
 
 } // namespace underworld::game::content

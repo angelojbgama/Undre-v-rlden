@@ -11,6 +11,7 @@
 #include <cmath>
 #include <sstream>
 #include <exception>
+#include <utility>
 
 namespace underworld::editor {
 namespace {
@@ -46,8 +47,10 @@ void outline(render::Renderer2D& renderer, core::RectI bounds, core::ColorRGBA8 
 }
 }
 
-EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot)
-    : document_(EditorDocument::newMap(simulation::MapId{"map.untitled"},32,24,16,true)),
+EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
+                     game::GameContentRegistry content)
+    : content_(std::move(content)),
+      document_(EditorDocument::newMap(simulation::MapId{"map.untitled"},32,24,16,true)),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
     for (const auto& definition : content_.tilesets().definitions()) {
         std::string error;

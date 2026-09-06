@@ -101,11 +101,11 @@ FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
 FASE 12 — RPG (12A–12E3 DONE)                         COMPLETE
-FASE 13 — External Authored Content                   DONE
+FASE 13 — External Authored Content                   IN PROGRESS
 13B — External Content Workspace                      IN PROGRESS
 13B1 — Multi-file Workspace Core + Deterministic Merge DONE
-13B2 — Workspace Discovery / Manifest                 FUTURE
-13B3 — Tooling Integration                            FUTURE
+13B2 — Workspace Directory Discovery                  IN PROGRESS
+13B3 — Application/Tooling Integration                IN PROGRESS
 ```
 
 Baseline validada da Fase 6:
@@ -1284,8 +1284,8 @@ playtesting remains iterative; networking is out of scope.
 
 O conteúdo authored é representado por DTOs tipados dentro de `AuthoredContentPack`, validado com
 diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
-em C++ é a fonte authored temporária; JSON, arquivos externos, Content Studio, LLM
-authoring e serialização persistente de conteúdo continuam deferidos.
+em C++ é a fonte authored default temporária; o workspace JSON externo é opt-in.
+Content Studio, LLM authoring e autoria visual completa continuam deferidos.
 
 ### FASE 13 — External Authored Content
 
@@ -1296,16 +1296,17 @@ codec remains separate from runtime source.
 
 13B — External Content Workspace — IN PROGRESS
 13B1 — Multi-file Workspace Core + Deterministic Merge — DONE.
-13B2 — Workspace Discovery / Manifest — FUTURE.
-13B3 — Tooling Integration — FUTURE.
+13B2 — Workspace Directory Discovery — IN PROGRESS.
+13B3 — Application/Tooling Integration — IN PROGRESS.
 
 FASE 14 — Content Studio Foundation — FUTURE. Replay/state hashing are optional
 testing/debug tooling; networking and multiplayer remain permanently out of scope.
 
-The explicit 13B1 loader sorts caller-provided source paths, rejects duplicate
-definitions without overrides, preserves source provenance, and validates the
-merged pack through the existing compiler. Directory discovery and manifests are
-deliberately deferred to 13B2.
+The explicit loader sorts caller-provided source paths, rejects duplicate definitions
+without overrides, preserves source provenance, and validates the merged pack through
+the existing compiler. 13B2 discovers regular `.json` files recursively; 13B3 shares
+the source bootstrap with Game, Map Maker and the headless `content_check` tool. No
+manifest is required at this stage.
 
 ### Map authored-source boundary — FUTURE
 

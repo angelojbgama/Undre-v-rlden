@@ -44,6 +44,8 @@
 #include "game/content/content_validation.h"
 #include "game/content/content_json.h"
 #include "game/content/content_workspace.h"
+#include "game/content/content_source.h"
+#include "editor/editor_launch.h"
 #include "engine/data/json.h"
 #include "game/game_session.h"
 #include "game/game_view_model.h"
@@ -4312,6 +4314,24 @@ void testPhase9StartupAndEditorPerformanceContracts() {
                linuxOptions->assetRoot && linuxOptions->assetRoot->generic_string() == "assets" &&
                linuxOptions->auditEnabled,
            "Linux startup options parse map spawn and audit arguments");
+    const char* contentCommandLine[] = {"game", "--content", "content", "--map", "map.dmap"};
+    const auto contentOptions = game::parseGameLaunchOptions(5, contentCommandLine, optionError);
+    expect(contentOptions && contentOptions->contentRoot && contentOptions->mapPath,
+           "game startup options parse explicit content independently of map and assets");
+    const char* duplicateContent[] = {"game", "--content=a", "--content", "b"};
+    expect(!game::parseGameLaunchOptions(4, duplicateContent, optionError) &&
+               optionError.find("duplicate") != std::string::npos,
+           "game startup options reject duplicate content sources");
+    const char* missingContent[] = {"game", "--content"};
+    expect(!game::parseGameLaunchOptions(2, missingContent, optionError),
+           "game startup options reject content without a value");
+    const char* editorContent[] = {"editor", "--content", "content", "--asset-root", "assets"};
+    const auto editorOptions = editor::parseEditorLaunchOptions(5, editorContent, optionError);
+    expect(editorOptions && editorOptions->contentRoot && editorOptions->assetRoot,
+           "editor startup options parse content and asset roots");
+    const char* duplicateEditor[] = {"editor", "--content=a", "--content=b"};
+    expect(!editor::parseEditorLaunchOptions(3, duplicateEditor, optionError),
+           "editor startup options reject duplicate content sources");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
@@ -5863,6 +5883,51 @@ void testPhase13B1ContentWorkspace() {
     const auto visualResult = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 1>{visualPath});
     expect(visualResult.workspace.has_value() && visualResult.workspace->sources.find("npcVisuals", {"visual.npc.merchant"}) != nullptr,
            "13B1 accepts standalone NPC visual authored content");
+
+    const auto discoveredRoot = root / "discovered";
+    std::filesystem::create_directories(discoveredRoot / "z");
+    std::filesystem::create_directories(discoveredRoot / "a");
+    write(discoveredRoot / "z" / "enemy.json", creatures);
+    write(discoveredRoot / "a" / "attack.json", combat);
+    write(discoveredRoot / "items.json", items);
+    { std::ofstream ignored(discoveredRoot / "ignored.txt"); ignored << "not JSON"; }
+    const auto discovered = content::discoverContentWorkspaceFiles(discoveredRoot);
+    expect(discovered.files && discovered.files->size() == 3 &&
+               (*discovered.files)[0].generic_string() < (*discovered.files)[1].generic_string() &&
+               (*discovered.files)[1].generic_string() < (*discovered.files)[2].generic_string(),
+           "13B2 discovers only recursive JSON files in deterministic order");
+    const auto directoryLoaded = content::loadContentWorkspaceDirectory(discoveredRoot);
+    expect(directoryLoaded.workspace && directoryLoaded.sourceFileCount == 3,
+           "13B2 directory loader reuses explicit multi-file merge");
+    const auto missingRoot = content::discoverContentWorkspaceFiles(root / "missing-root");
+    expect(!missingRoot.files && !missingRoot.diagnostics.empty() &&
+               missingRoot.diagnostics[0].code == "workspace_root_missing",
+           "13B2 reports a missing workspace root");
+    const auto fileRoot = content::discoverContentWorkspaceFiles(itemsPath);
+    expect(!fileRoot.files && !fileRoot.diagnostics.empty() &&
+               fileRoot.diagnostics[0].code == "workspace_root_not_directory",
+           "13B2 rejects a file as workspace root");
+    const auto emptyRoot = root / "empty";
+    std::filesystem::create_directories(emptyRoot);
+    const auto emptyDirectory = content::discoverContentWorkspaceFiles(emptyRoot);
+    expect(!emptyDirectory.files && !emptyDirectory.diagnostics.empty() &&
+               emptyDirectory.diagnostics[0].code == "empty_workspace",
+           "13B2 rejects directories without JSON sources");
+    const auto builtinSource = content::loadContentSource({content::ContentSourceKind::builtin, {}});
+    expect(builtinSource && builtinSource.content->sourceKind == content::ContentSourceKind::builtin,
+           "13B3 loads builtin content through the shared source bootstrap");
+    auto changed = builtin;
+    changed.items.front().stackLimit += 1;
+    const auto changedRoot = root / "changed";
+    std::filesystem::create_directories(changedRoot);
+    write(changedRoot / "changed.json", changed);
+    const auto externalSource = content::loadContentSource({content::ContentSourceKind::workspaceDirectory, changedRoot});
+    expect(externalSource && externalSource.content->registry.items().require(changed.items.front().id).stackLimit ==
+               changed.items.front().stackLimit,
+           "13B3 external source changes reach the compiled registry without builtin fallback");
+    const auto invalidSource = content::loadContentSource({content::ContentSourceKind::workspaceDirectory, root / "missing-root"});
+    expect(!invalidSource && !invalidSource.content,
+           "13B3 invalid explicit workspace does not fall back to builtin");
     std::filesystem::remove_all(root);
 }
 

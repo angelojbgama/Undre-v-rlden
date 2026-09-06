@@ -3,9 +3,9 @@
 #include "editor/editor_commands.h"
 #include "editor/editor_playtest.h"
 #include "editor/editor_ui.h"
-#include "game/content/builtin_content.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
+#include "game/game_content.h"
 
 #include <memory>
 #include <optional>
@@ -20,7 +20,8 @@ enum class EditorShellCommand { newMap, undo, redo, toggleGrid, frameMap, playte
 
 class EditorApp final {
 public:
-    EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot);
+    EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
+              game::GameContentRegistry content);
     ~EditorApp();
 
     void resize(int width, int height);
@@ -73,7 +74,7 @@ private:
     void updateStatus(core::RectI viewport, const EditorInputState& input);
     void togglePlaytest();
 
-    game::GameContentRegistry content_{game::content::compileBuiltinContentOrThrow()};
+    game::GameContentRegistry content_;
     EditorDocument document_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;

@@ -6,6 +6,8 @@
 #include "engine/simulation/player_command.h"
 #include "game/audit/audit_snapshot.h"
 #include "game/game_launch.h"
+#include "game/content/content_dto.h"
+#include "game/game_content.h"
 
 #include <filesystem>
 #include <memory>
@@ -20,6 +22,7 @@ class GameRuntime final {
 public:
     GameRuntime(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
                const std::filesystem::path& executableDirectory,
+               GameContentRegistry content,
                const GameLaunchOptions& launchOptions = {});
     ~GameRuntime();
 

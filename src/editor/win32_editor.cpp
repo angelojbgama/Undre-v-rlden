@@ -7,13 +7,16 @@
 #include <commdlg.h>
 
 #include "editor/editor_app.h"
+#include "editor/editor_launch.h"
 #include "engine/platform/win32/win32_image_decoder.h"
+#include "game/content/content_source.h"
 
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace underworld::editor {
@@ -27,7 +30,9 @@ std::filesystem::path findAssetRoot(){for(auto start:{std::filesystem::current_p
 
 class EditorWindow final {
 public:
-    EditorWindow(HINSTANCE instance,int show):instance_(instance),show_(show),app_(decoder_,findAssetRoot()){}
+    EditorWindow(HINSTANCE instance, int show, std::filesystem::path assetRoot,
+                 game::GameContentRegistry content)
+        : instance_(instance), show_(show), app_(decoder_, assetRoot, std::move(content)) {}
     int run(){
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=&procedure;wc.hInstance=instance_;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);wc.lpszClassName=className;
@@ -77,4 +82,17 @@ private:
 }
 }
 
-int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){try{return underworld::editor::EditorWindow(instance,show).run();}catch(const std::exception& exception){const std::string text=exception.what();const std::wstring wide(text.begin(),text.end());MessageBoxW(nullptr,wide.c_str(),L"Map Maker initialization error",MB_OK|MB_ICONERROR);return 1;}catch(...){MessageBoxW(nullptr,L"Unknown initialization failure",L"Map Maker initialization error",MB_OK|MB_ICONERROR);return 1;}}
+int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){try{
+    int argc=0; LPWSTR* raw=CommandLineToArgvW(GetCommandLineW(),&argc);
+    if(!raw) throw std::runtime_error("could not parse editor command line");
+    std::vector<const wchar_t*> argv; argv.reserve(static_cast<std::size_t>(argc));
+    for(int i=0;i<argc;++i)argv.push_back(raw[i]); std::string error;
+    const auto options=underworld::editor::parseEditorLaunchOptions(argc,argv.data(),error); LocalFree(raw);
+    if(!options) throw std::runtime_error(error);
+    underworld::game::content::ContentSourceSelection selection;
+    if(options->contentRoot){selection.kind=underworld::game::content::ContentSourceKind::workspaceDirectory;selection.workspaceRoot=*options->contentRoot;}
+    const auto source=underworld::game::content::loadContentSource(selection);
+    if(!source){std::string message;for(const auto& diagnostic:source.diagnostics)message+=underworld::game::content::formatContentWorkspaceDiagnostic(diagnostic)+"\n";throw std::runtime_error(message);}
+    const auto assetRoot=options->assetRoot.value_or(findAssetRoot());
+    return underworld::editor::EditorWindow(instance,show,assetRoot,std::move(source.content->registry)).run();
+}catch(const std::exception& exception){const std::string text=exception.what();const std::wstring wide(text.begin(),text.end());MessageBoxW(nullptr,wide.c_str(),L"Map Maker initialization error",MB_OK|MB_ICONERROR);return 1;}catch(...){MessageBoxW(nullptr,L"Unknown initialization failure",L"Map Maker initialization error",MB_OK|MB_ICONERROR);return 1;}}
