@@ -25,7 +25,8 @@ void validate(const WorldObjectDefinition& definition) {
     if (definition.destructible &&
         (definition.destructible->maximumHealth <= 0 ||
          definition.destructible->hurtbox.width <= 0 ||
-         definition.destructible->hurtbox.height <= 0)) {
+         definition.destructible->hurtbox.height <= 0 ||
+         definition.destructible->destructionDurationTicks == 0)) {
         throw std::invalid_argument("object destructible capability is invalid");
     }
 }
@@ -115,15 +116,26 @@ CombatTargetRef WorldObjectInstance::combatTarget() {
     if (!combatant_) { throw std::logic_error("object is not destructible"); }
     return {*combatant_, hurtbox()};
 }
-void WorldObjectInstance::open() noexcept {
-    if (definition_->interactable) { state_ = WorldObjectState::opened; }
+bool WorldObjectInstance::open() noexcept {
+    if (!definition_->interactable || state_ != WorldObjectState::idle) { return false; }
+    state_ = WorldObjectState::opened;
+    return true;
 }
 bool WorldObjectInstance::syncDestructionState() noexcept {
     if (combatant_ && combatant_->health.depleted() && state_ == WorldObjectState::idle) {
         state_ = WorldObjectState::destroying;
+        destructionTicksRemaining_ = definition_->destructible->destructionDurationTicks;
         return true;
     }
     return false;
+}
+void WorldObjectInstance::advanceDestructionTick() noexcept {
+    if (state_ == WorldObjectState::destroying && destructionTicksRemaining_ > 0) {
+        --destructionTicksRemaining_;
+    }
+}
+bool WorldObjectInstance::destructionComplete() const noexcept {
+    return state_ == WorldObjectState::destroying && destructionTicksRemaining_ == 0;
 }
 bool WorldObjectInstance::completeDestruction(simulation::EntityHandlePool& handles) noexcept {
     if (state_ != WorldObjectState::destroying) { return false; }
@@ -154,7 +166,7 @@ ObjectInteractionResult interactNearest(
         }
     }
     if (selected == nullptr) { return {}; }
-    selected->open();
+    if (!selected->open()) { return {}; }
     std::uint64_t transferred{};
     if (ItemContainer* contents = selected->contents()) {
         for (std::size_t index = 0; index < contents->capacity(); ++index) {

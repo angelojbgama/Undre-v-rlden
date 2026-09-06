@@ -59,8 +59,14 @@ quests sejam coordenados pela Session.
 
 O corte seguinte moveu `CombatSystem`, `ProjectileSystem`, `EnemyBehaviorSystem`,
 `AttackExecution`, contato, dano, knockback e derrota para a Session. Objetos,
-pickups, inventário, diálogo e quests ainda permanecem como bridges transitórias no
-`GameRuntime`.
+pickups, inventário, Wallet e Quick Slots agora também pertencem à Session; coleta,
+interação e ciclo lógico de destruição avançam por ticks fixos. NPC/diálogo e quests
+ainda permanecem como bridges transitórias no `GameRuntime`, assim como algumas
+operações de persistência.
+
+O corte atual conclui os blocos `Objects`, `Pickups`, `Inventory / Wallet` e
+`Quick Slots` da extração. A extração global de `GameSession` continua em progresso
+até a migração de NPC/diálogo/quests e o cleanup das bridges mutáveis restantes.
 
 ---
 

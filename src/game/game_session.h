@@ -7,6 +7,10 @@
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/projectile_system.h"
+#include "game/gameplay/player_items.h"
+#include "game/gameplay/world_objects.h"
+#include "game/gameplay/world_pickups.h"
+#include "game/gameplay/npcs/npc_engine.h"
 #include "game/maps/map_catalog.h"
 
 #include <memory>
@@ -35,10 +39,19 @@ public:
                          const gameplay::creatures::BehaviorCatalog& behaviors,
                          const gameplay::AttackDefinition& sword,
                          const gameplay::AttackDefinition& bow);
+    void configureItems(const gameplay::ItemCatalog& items);
     void clearCombatTransients() noexcept;
 
     [[nodiscard]] const gameplay::Player& player() const noexcept { return player_; }
     [[nodiscard]] gameplay::Player& playerForRuntime() noexcept { return player_; }
+    [[nodiscard]] const gameplay::PlayerItems& playerItems() const noexcept { return *playerItems_; }
+    [[nodiscard]] gameplay::PlayerItems& playerItemsForRuntime() noexcept { return *playerItems_; }
+    [[nodiscard]] const gameplay::InventoryOverlayState& inventoryOverlay() const noexcept {
+        return inventoryOverlay_;
+    }
+    [[nodiscard]] gameplay::InventoryOverlayState& inventoryOverlayForRuntime() noexcept {
+        return inventoryOverlay_;
+    }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] simulation::EventBuffer& eventsForRuntime() noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
@@ -64,6 +77,10 @@ private:
     void resolveEnemyContacts();
     void updateEnemies();
     void removeDefeatedEnemies();
+    void collectNearbyPickups();
+    void updateObjects();
+    void interactWithWorld();
+    void captureWorldState();
     [[nodiscard]] std::vector<gameplay::CombatTargetRef> combatTargets();
 
     simulation::EntityHandlePool& handles_;
@@ -76,11 +93,14 @@ private:
     const gameplay::creatures::BehaviorCatalog* behaviorCatalog_{};
     const gameplay::AttackDefinition* swordDefinition_{};
     const gameplay::AttackDefinition* bowDefinition_{};
+    const gameplay::ItemCatalog* itemCatalog_{};
     gameplay::creatures::EnemyBehaviorSystem enemyBehavior_;
     gameplay::CombatSystem combat_;
     std::unique_ptr<gameplay::ProjectileSystem> projectiles_;
     gameplay::Hitbox activeSword_{};
     std::optional<gameplay::AttackExecution> playerAttack_{};
+    std::unique_ptr<gameplay::PlayerItems> playerItems_;
+    gameplay::InventoryOverlayState inventoryOverlay_;
     gameplay::AttackInstanceId nextContactAttackInstance_{1};
 };
 

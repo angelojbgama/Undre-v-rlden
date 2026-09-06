@@ -2507,6 +2507,15 @@ void testViewModelAndWorldObjects() {
     expect(resolution.defeated && defeatCount == 1 && crate.syncDestructionState() &&
                !crate.hurtbox().enabled && crate.state() == WorldObjectState::destroying,
            "crate defeat emits once, disables hurtbox, and enters destruction lifecycle");
+    const auto destructionTicks = crate.definition().destructible->destructionDurationTicks;
+    for (std::uint32_t tick = 0; tick + 1 < destructionTicks; ++tick) {
+        crate.advanceDestructionTick();
+    }
+    expect(!crate.destructionComplete(),
+           "crate remains logically destroying until its fixed destruction duration elapses");
+    crate.advanceDestructionTick();
+    expect(crate.destructionComplete() && destructionTicks == 28,
+           "crate destruction uses the authored 7-frame by 4-tick logical duration");
     const auto crateHandle = crate.handle();
     expect(crate.completeDestruction(handles) && !handles.valid(crateHandle) &&
                crate.state() == WorldObjectState::destroyed,
@@ -4012,6 +4021,35 @@ void testOfficialGameplayMapSet() {
             });
         expect(damagedOrDefeated,
                "headless GameSession advances Player sword combat without presentation");
+    }
+
+    game::GameSession itemSession(handles, {0});
+    itemSession.configureItems(content.items());
+    std::string itemError;
+    expect(itemSession.initializeMap(catalog, validation, builder, handles,
+        simulation::MapId{"map.dungeon.01"}, simulation::SpawnId{"entry.start"}, itemError),
+        "GameSession item fixture initializes without presentation assets");
+    const auto moneyPickup = std::find_if(
+        itemSession.world().pickups().begin(), itemSession.world().pickups().end(),
+        [](const auto& pickup) {
+            return std::holds_alternative<gameplay::CurrencyPickup>(
+                pickup.instance.payload());
+        });
+    if (moneyPickup != itemSession.world().pickups().end()) {
+        const auto pickupPosition = moneyPickup->instance.position();
+        const auto pickupCount = itemSession.world().pickups().size();
+        itemSession.playerForRuntime().relocate(pickupPosition, gameplay::FacingDirection::down);
+        itemSession.tick(movementCommand(1, 0, 0));
+        const bool collected = std::any_of(
+            itemSession.events().events().begin(), itemSession.events().events().end(),
+            [](const simulation::SimulationEvent& event) {
+                return std::holds_alternative<simulation::PickupCollected>(event);
+            });
+        expect(collected && itemSession.playerItems().wallet().gold() > 0 &&
+                   itemSession.world().pickups().size() + 1 == pickupCount,
+               "GameSession routes logical pickup collection without presentation");
+    } else {
+        expect(false, "GameSession item fixture contains a logical pickup");
     }
 }
 

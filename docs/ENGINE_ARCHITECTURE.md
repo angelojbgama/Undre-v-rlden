@@ -228,8 +228,11 @@ plataforma, decoder ou assets gráficos. Ela possui o Player, o `EventBuffer` e 
 sessão lógica do mapa (`MapSession`, `RuntimeWorld` e `SessionWorldState`). Seu
 `tick` recebe somente `PlayerCommand`, resolve internamente a colisão e o tile size
 do mapa ativo, emite `MapEntered` após transições e agora também coordena a autoridade
-de combate, criaturas e projéteis em fixed ticks. `GameRuntime` continua compondo
-os sistemas restantes enquanto a migração de objetos, inventário,
+de combate, criaturas, projéteis, objetos, pickups e inventário em fixed ticks.
+Isso inclui Wallet, Quick Slots, interação lógica de objetos e o timer de destruição
+de objetos; a conclusão de destruição nunca depende de `Animator::finished()`.
+`GamePresentation` apenas observa esses estados para desenhar. `GameRuntime` continua compondo
+os sistemas restantes enquanto a migração de
 diálogo e quests é feita em incrementos
 menores. A API de filesystem para save/load permanece no runtime.
 

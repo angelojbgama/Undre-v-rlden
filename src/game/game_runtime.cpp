@@ -231,8 +231,7 @@ struct GameRuntime::State final {
           dialogueFlags(), dialogue(content.dialogues(), dialogueFlags),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
-          arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()),
-          playerItems(itemCatalog) {
+          arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
@@ -293,6 +292,7 @@ struct GameRuntime::State final {
             runtimeTilesets, npcFactory.get());
         session.configureCombat(attackCatalog, projectileCatalog, behaviorCatalog,
                                 swordDefinition, bowDefinition);
+        session.configureItems(itemCatalog);
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -370,16 +370,16 @@ struct GameRuntime::State final {
         snapshot.playerAction = gameplay::actionStateName(player.actionState());
         snapshot.playerHealth = player.health().current;
         snapshot.playerMaximumHealth = player.health().maximum;
-        snapshot.gold = playerItems.wallet().gold();
-        snapshot.inventoryOpen = inventoryOverlay.open();
+        snapshot.gold = session.playerItems().wallet().gold();
+        snapshot.inventoryOpen = session.inventoryOverlay().open();
 
-        for (std::size_t index = 0; index < playerItems.inventory().items().capacity(); ++index) {
-            const auto& slot = playerItems.inventory().items().slot(index);
+        for (std::size_t index = 0; index < session.playerItems().inventory().items().capacity(); ++index) {
+            const auto& slot = session.playerItems().inventory().items().slot(index);
             if (!slot) { continue; }
             snapshot.inventory.push_back({index, std::string(slot->itemId.value()), slot->quantity});
         }
         for (std::size_t index = 0; index < gameplay::QuickSlotBindings::slotCount; ++index) {
-            const auto& binding = playerItems.quickSlots().binding(index);
+            const auto& binding = session.playerItems().quickSlots().binding(index);
             snapshot.quickSlots.push_back({
                 index, binding ? std::string(binding->value()) : std::string{}});
         }
@@ -477,41 +477,6 @@ struct GameRuntime::State final {
     }
 
 
-    void collectNearbyPickups() {
-        const world::AabbI area = player.collisionBody();
-        auto& pickups = activeWorld().pickups();
-        for (std::size_t index = 0; index < pickups.size();) {
-            const auto result = gameplay::collectPickup(
-                pickups[index].instance, player.entityHandle(), area, player.health(),
-                playerItems.inventory().items(), playerItems.wallet(), handles, events);
-            if (result.fullyConsumed) {
-                pickups.erase(pickups.begin() + static_cast<std::ptrdiff_t>(index));
-            } else {
-                ++index;
-            }
-            if (result.collected) { captureActiveWorld(); }
-        }
-    }
-
-    void updateObjects() {
-        auto& objects = activeWorld().objects();
-        for (std::size_t index = 0; index < objects.size();) {
-            auto& object = objects[index].instance;
-            static_cast<void>(object.syncDestructionState());
-            objectVisuals[index].update(object);
-            if (object.state() == gameplay::WorldObjectState::destroying &&
-                objectVisuals[index].finished()) {
-                static_cast<void>(object.completeDestruction(handles));
-                objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
-                objectVisuals.erase(objectVisuals.begin() + static_cast<std::ptrdiff_t>(index));
-                captureActiveWorld();
-                continue;
-            }
-            if (object.combatant()) { gameplay::tickInvulnerability(*object.combatant()); }
-            ++index;
-        }
-    }
-
     void consumeSimulationEvents() {
         for (const simulation::SimulationEvent& event : events.events()) {
             if (const auto* damaged = std::get_if<simulation::EntityDamaged>(&event)) {
@@ -529,71 +494,23 @@ struct GameRuntime::State final {
                 }
             } else if (const auto* pickup = std::get_if<simulation::PickupCollected>(&event)) {
                 lastEvent = "PICKUP " + std::to_string(pickup->amount);
+            } else if (const auto* talked = std::get_if<simulation::NpcTalked>(&event)) {
+                const auto found = std::find_if(activeWorld().npcs().begin(), activeWorld().npcs().end(),
+                    [&](const auto& persistent) { return persistent.instance.handle() == talked->npc; });
+                if (found != activeWorld().npcs().end()) {
+                    std::string error;
+                    if (dialogue.begin(found->instance.definition().defaultDialogueId, error)) {
+                        lastEvent = "DIALOGUE";
+                    } else {
+                        lastEvent = "DIALOGUE ERROR";
+                    }
+                }
             }
         }
     }
 
     void captureActiveWorld() {
         save::captureWorldState(session.mapData(), session.world(), session.worldStateForRuntime());
-    }
-
-    void interactWithWorld() {
-        maps::PersistentObject* selected{};
-        std::int64_t selectedDistance{};
-        const auto playerFeet = player.feetPosition();
-        const auto playerArea = player.interactionArea().bounds;
-        const auto npcInteraction = gameplay::npcs::interactNearest(
-            playerFeet, playerArea, activeWorld().npcs());
-        if (npcInteraction.npc) {
-            const auto found = std::find_if(activeWorld().npcs().begin(),
-                                            activeWorld().npcs().end(),
-                                            [&](const auto& persistent) {
-                                                return persistent.instance.handle() ==
-                                                       npcInteraction.npc;
-                                            });
-            if (found == activeWorld().npcs().end() ||
-                found->instance.definition().defaultDialogueId.empty()) {
-                lastEvent = "NPC INTERACTION";
-                return;
-            }
-            std::string error;
-            if (dialogue.begin(found->instance.definition().defaultDialogueId, error)) {
-                lastEvent = "DIALOGUE";
-            } else {
-                lastEvent = "DIALOGUE ERROR";
-            }
-            return;
-        }
-        for (auto& persistent : activeWorld().objects()) {
-            auto& object = persistent.instance;
-            const auto area = object.interactionArea();
-            if (!area || !gameplay::overlaps(playerArea, *area)) { continue; }
-            const auto dx = static_cast<std::int64_t>(playerFeet.x) - object.position().x;
-            const auto dy = static_cast<std::int64_t>(playerFeet.y) - object.position().y;
-            const auto distance = dx * dx + dy * dy;
-            const bool earlierHandle = selected &&
-                (object.handle().index < selected->instance.handle().index ||
-                 (object.handle().index == selected->instance.handle().index &&
-                  object.handle().generation < selected->instance.handle().generation));
-            if (!selected || distance < selectedDistance ||
-                (distance == selectedDistance && earlierHandle)) {
-                selected = &persistent;
-                selectedDistance = distance;
-            }
-        }
-        if (!selected) { return; }
-        auto& object = selected->instance;
-        object.open();
-        if (auto* contents = object.contents()) {
-            for (std::size_t index = 0; index < contents->capacity(); ++index) {
-                const auto slot = contents->slot(index);
-                if (slot) {
-                    static_cast<void>(contents->transferTo(
-                        playerItems.inventory().items(), slot->itemId, slot->quantity));
-                }
-            }
-        }
-        captureActiveWorld();
     }
 
     void clearMapTransients() {
@@ -623,7 +540,7 @@ struct GameRuntime::State final {
 
     void saveGame() {
         captureActiveWorld();
-        save::SaveData data{save::capturePlayer(player, playerItems, activeWorld().id()),
+        save::SaveData data{save::capturePlayer(player, session.playerItems(), activeWorld().id()),
                             session.worldState(), dialogueFlags, questState};
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
@@ -639,7 +556,8 @@ struct GameRuntime::State final {
             lastEvent = "LOAD ERROR";
             return;
         }
-        const auto previousPlayer = save::capturePlayer(player, playerItems, activeWorld().id());
+        const auto previousPlayer = save::capturePlayer(
+            player, session.playerItems(), activeWorld().id());
         const auto previousWorldState = session.worldState();
         std::string restoreError;
         if (!session.restoreMap(loaded.data.player.currentMapId, loaded.data.world,
@@ -648,11 +566,12 @@ struct GameRuntime::State final {
             return;
         }
         std::string error;
-        if (!save::applyPlayer(loaded.data.player, player, playerItems, itemCatalog, error)) {
+        if (!save::applyPlayer(loaded.data.player, player, session.playerItemsForRuntime(),
+                               itemCatalog, error)) {
             static_cast<void>(session.restoreMap(previousPlayer.currentMapId,
                                                   previousWorldState, restoreError));
             static_cast<void>(save::applyPlayer(
-                previousPlayer, player, playerItems, itemCatalog, error));
+                previousPlayer, player, session.playerItemsForRuntime(), itemCatalog, error));
             rebuildWorldVisuals();
             lastEvent = "LOAD ERROR";
             return;
@@ -670,6 +589,10 @@ struct GameRuntime::State final {
         if (playerDamageBlinkTicksRemaining_ > 0) {
             --playerDamageBlinkTicksRemaining_;
         }
+        // Kept in the Runtime until dialogue/inventory pause semantics are
+        // fully owned by the Session. This preserves the old rule that the
+        // player's invulnerability timer advances even while those overlays
+        // consume a command tick.
         gameplay::tickInvulnerability(player.combatant());
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
         if (dialogue.handleCommand(command)) {
@@ -679,17 +602,6 @@ struct GameRuntime::State final {
         }
         if (command.actions.saveGamePressed) { saveGame(); }
         if (command.actions.loadGamePressed) { loadGame(); }
-        if (gameplay::routeInventoryCommand(
-                inventoryOverlay, command, playerItems, itemCatalog, player.health())) {
-            lastTick = tick;
-            lastSequence = command.sequence;
-            return;
-        }
-        if (command.actions.quickSlotPressed >= 0) {
-            static_cast<void>(playerItems.useQuickSlot(
-                static_cast<std::size_t>(command.actions.quickSlotPressed), itemCatalog,
-                player.health()));
-        }
         session.tick(command);
         // The Session owns map transitions. Rebuild presentation immediately so
         // the remaining systems in this transitional Runtime do not observe a
@@ -701,12 +613,10 @@ struct GameRuntime::State final {
         for (std::size_t index = 0; index < enemyVisuals.size(); ++index) {
             enemyVisuals[index].update(activeWorld().enemies()[index].instance);
         }
-        if (command.actions.interactPressed) {
-            interactWithWorld();
-        }
         visual->update(player.motionState(), player.facing(), player.actionState());
-        collectNearbyPickups();
-        updateObjects();
+        for (std::size_t index = 0; index < objectVisuals.size(); ++index) {
+            objectVisuals[index].update(activeWorld().objects()[index].instance);
+        }
         consumeSimulationEvents();
         effects->update();
         if (debugInput.toggleCollisionPressed) { collisionOverlay = !collisionOverlay; }
@@ -717,7 +627,8 @@ struct GameRuntime::State final {
     }
 
     void render(render::Framebuffer& framebuffer) const {
-        const auto view = buildGameViewModel(player, playerItems, itemCatalog, inventoryOverlay);
+        const auto view = buildGameViewModel(
+            player, session.playerItems(), itemCatalog, session.inventoryOverlay());
         presentation.render(framebuffer, {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
             session.projectiles(),
@@ -792,8 +703,6 @@ struct GameRuntime::State final {
                        simulation::DefinitionIdHash> projectileVisuals;
     EnemyVisualCatalog enemyVisualCatalog;
     std::vector<EnemyVisualInstance> enemyVisuals;
-    gameplay::PlayerItems playerItems;
-    gameplay::InventoryOverlayState inventoryOverlay;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
                        simulation::DefinitionIdHash> pickupVisuals;
     std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,

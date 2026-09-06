@@ -1,5 +1,7 @@
 #include "game/game_session.h"
 
+#include "game/save/save_data.h"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -21,6 +23,11 @@ void GameSession::configureCombat(const gameplay::AttackCatalog& attacks,
     swordDefinition_ = &sword;
     bowDefinition_ = &bow;
     projectiles_ = std::make_unique<gameplay::ProjectileSystem>(handles_, projectiles);
+}
+
+void GameSession::configureItems(const gameplay::ItemCatalog& items) {
+    itemCatalog_ = &items;
+    playerItems_ = std::make_unique<gameplay::PlayerItems>(items);
 }
 
 void GameSession::clearCombatTransients() noexcept {
@@ -218,6 +225,107 @@ std::vector<gameplay::CombatTargetRef> GameSession::combatTargets() {
     return targets;
 }
 
+void GameSession::collectNearbyPickups() {
+    if (!playerItems_) { return; }
+    bool changed = false;
+    const auto collectorArea = player_.collisionBody();
+    auto& pickups = mapSession_->world()->pickups();
+    for (std::size_t index = 0; index < pickups.size();) {
+        const auto result = gameplay::collectPickup(
+            pickups[index].instance, player_.entityHandle(), collectorArea, player_.health(),
+            playerItems_->inventory().items(), playerItems_->wallet(), handles_, events_);
+        if (result.fullyConsumed) {
+            pickups.erase(pickups.begin() + static_cast<std::ptrdiff_t>(index));
+        } else {
+            ++index;
+        }
+        changed = changed || result.collected;
+    }
+    if (changed) { captureWorldState(); }
+}
+
+void GameSession::updateObjects() {
+    auto& objects = mapSession_->world()->objects();
+    bool changed = false;
+    for (std::size_t index = 0; index < objects.size();) {
+        auto& object = objects[index].instance;
+        static_cast<void>(object.syncDestructionState());
+        if (auto* combatant = object.combatant()) {
+            gameplay::tickInvulnerability(*combatant);
+        }
+        object.advanceDestructionTick();
+        if (object.destructionComplete()) {
+            static_cast<void>(object.completeDestruction(handles_));
+            objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
+            changed = true;
+            continue;
+        }
+        ++index;
+    }
+    if (changed) { captureWorldState(); }
+}
+
+void GameSession::interactWithWorld() {
+    if (!playerItems_) { return; }
+    const auto playerFeet = player_.feetPosition();
+    const auto playerArea = player_.interactionArea().bounds;
+    const auto npcInteraction = gameplay::npcs::interactNearest(
+        playerFeet, playerArea, mapSession_->world()->npcs());
+    if (npcInteraction.npc) {
+        const auto found = std::find_if(
+            mapSession_->world()->npcs().begin(), mapSession_->world()->npcs().end(),
+            [&](const auto& persistent) {
+                return persistent.instance.handle() == npcInteraction.npc;
+            });
+        if (found != mapSession_->world()->npcs().end()) {
+            events_.emit(simulation::NpcTalked{
+                player_.entityHandle(), npcInteraction.npc,
+                found->instance.definition().id});
+        }
+        return;
+    }
+    maps::PersistentObject* selected = nullptr;
+    std::int64_t selectedDistance = 0;
+    for (auto& persistent : mapSession_->world()->objects()) {
+        auto& object = persistent.instance;
+        const auto area = object.interactionArea();
+        if (!area || !gameplay::overlaps(playerArea, *area)) { continue; }
+        const auto dx = static_cast<std::int64_t>(playerFeet.x) - object.position().x;
+        const auto dy = static_cast<std::int64_t>(playerFeet.y) - object.position().y;
+        const auto distance = dx * dx + dy * dy;
+        const bool earlierHandle = selected &&
+            (object.handle().index < selected->instance.handle().index ||
+             (object.handle().index == selected->instance.handle().index &&
+              object.handle().generation < selected->instance.handle().generation));
+        if (!selected || distance < selectedDistance ||
+            (distance == selectedDistance && earlierHandle)) {
+            selected = &persistent;
+            selectedDistance = distance;
+        }
+    }
+    if (!selected) { return; }
+    auto& object = selected->instance;
+    if (!object.open()) { return; }
+    if (auto* contents = object.contents()) {
+        for (std::size_t index = 0; index < contents->capacity(); ++index) {
+            const auto slot = contents->slot(index);
+            if (slot) {
+                static_cast<void>(contents->transferTo(
+                    playerItems_->inventory().items(), slot->itemId, slot->quantity));
+            }
+        }
+    }
+    events_.emit(simulation::ObjectOpened{
+        player_.entityHandle(), object.handle(), object.definition().id});
+    captureWorldState();
+}
+
+void GameSession::captureWorldState() {
+    if (mapSession_ && mapSession_->world() && mapSession_->data()) {
+        save::captureWorldState(*mapSession_->data(), *mapSession_->world(), worldState_);
+    }
+}
+
 bool GameSession::initializeMap(const maps::MapCatalog& maps,
                                 const maps::MapValidationCatalogs& catalogs,
                                 const maps::RuntimeWorldBuilder& builder,
@@ -237,6 +345,15 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
 void GameSession::tick(const simulation::PlayerCommand& command) {
     events_.clear();
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
+    if (playerItems_ && gameplay::routeInventoryCommand(
+            inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health())) {
+        return;
+    }
+    if (playerItems_ && command.actions.quickSlotPressed >= 0) {
+        static_cast<void>(playerItems_->useQuickSlot(
+            static_cast<std::size_t>(command.actions.quickSlotPressed), *itemCatalog_,
+            player_.health()));
+    }
     const auto& map = mapSession_->world()->map();
     const auto previousAction = player_.actionState();
     player_.update(command, map.collision(), map.tileSize());
@@ -261,12 +378,16 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     }
     mapSession_->beginTick();
     static_cast<void>(mapSession_->requestTransition(player_.collisionBody()));
-    if (!mapSession_->pending()) { return; }
-    const auto transition = mapSession_->commitPending();
-    if (transition.changed) {
-        player_.relocate(transition.spawn.position, transition.spawn.facing);
-        events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+    if (mapSession_->pending()) {
+        const auto transition = mapSession_->commitPending();
+        if (transition.changed) {
+            player_.relocate(transition.spawn.position, transition.spawn.facing);
+            events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+        }
     }
+    if (command.actions.interactPressed) { interactWithWorld(); }
+    collectNearbyPickups();
+    updateObjects();
 }
 
 void GameSession::removeDefeatedEnemies() {

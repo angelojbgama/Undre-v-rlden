@@ -20,6 +20,9 @@ struct ObjectContainerDefinition final { std::size_t capacity{}; };
 struct ObjectDestructibleDefinition final {
     int maximumHealth{};
     world::AabbI hurtbox{};
+    // Matches the current crate.break presentation clip (7 frames x 4 ticks),
+    // while remaining authoritative logical gameplay data.
+    std::uint32_t destructionDurationTicks{28};
 };
 
 struct WorldObjectDefinition final {
@@ -65,8 +68,10 @@ public:
     [[nodiscard]] const CombatantState* combatant() const noexcept;
     [[nodiscard]] Hurtbox hurtbox() const noexcept;
     [[nodiscard]] CombatTargetRef combatTarget();
-    void open() noexcept;
+    [[nodiscard]] bool open() noexcept;
     [[nodiscard]] bool syncDestructionState() noexcept;
+    void advanceDestructionTick() noexcept;
+    [[nodiscard]] bool destructionComplete() const noexcept;
     [[nodiscard]] bool completeDestruction(simulation::EntityHandlePool& handles) noexcept;
 
 private:
@@ -82,6 +87,7 @@ private:
     WorldObjectState state_{WorldObjectState::idle};
     std::optional<ItemContainer> contents_{};
     std::optional<CombatantState> combatant_{};
+    std::uint32_t destructionTicksRemaining_{};
 };
 
 class WorldObjectFactory final {

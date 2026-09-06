@@ -17,6 +17,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -310,7 +311,8 @@ bool runCollision(ScenarioContext& context) {
 struct PointTarget final { int x{}; int y{}; };
 
 template<class Actor>
-bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500) {
+bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500,
+            bool engageEnemies = true) {
     for (int index = 0; index < maximumTicks; ++index) {
         const auto& player = context.snapshot();
         const int dx = actor.x - player.playerX;
@@ -321,6 +323,18 @@ bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500
         input.moveLeft = dx < 0;
         input.moveDown = dy > 0;
         input.moveUp = dy < 0;
+        for (const auto& enemy : player.enemies) {
+            if (!engageEnemies) { break; }
+            const int enemyDistanceX = enemy.x - player.playerX;
+            const int enemyDistanceY = enemy.y - player.playerY;
+            if (std::abs(enemyDistanceX) <= 160 && std::abs(enemyDistanceY) <= 160) {
+                input.primaryAttackPressed = enemy.definitionId == "enemy.evil_soldier" &&
+                                             index % 12 == 0;
+                input.secondaryAttackPressed = enemy.definitionId == "enemy.skull" &&
+                                               index % 12 == 0;
+                break;
+            }
+        }
         if (!context.step(input)) { return false; }
     }
     return false;
@@ -335,11 +349,6 @@ bool moveToContent(ScenarioContext& context, PointTarget target) {
         if (current.currentMap == "map.dungeon.03" && target.y == 184 &&
             std::abs(current.playerY - 216) > 8) {
             waypoint.y = 216;
-        }
-        if (current.currentMap == "map.dungeon.01" && target.x == 136 && target.y == 136 &&
-            (std::abs(current.playerX - 168) > 8 || std::abs(current.playerY - 104) > 8)) {
-            waypoint.x = 168;
-            waypoint.y = 104;
         }
         if (std::abs(target.x - current.playerX) <= 4 &&
             std::abs(target.y - current.playerY) <= 4) { return true; }
@@ -371,6 +380,61 @@ std::optional<game::maps::MapData> loadMap(const ScenarioContext& context,
     return std::move(loaded.data);
 }
 
+bool moveToPickup(ScenarioContext& context, PointTarget target, bool engageEnemies = true) {
+    const auto loaded = loadMap(context, context.snapshot().currentMap);
+    if (!loaded) { return moveTo(context, target, 500, engageEnemies); }
+    const auto& map = *loaded;
+    const auto tileIndex = [&](int x, int y) {
+        return static_cast<std::size_t>(y) * map.width + static_cast<std::size_t>(x);
+    };
+    const auto clampTile = [&](int value, std::uint32_t limit) {
+        return std::clamp(value, 0, static_cast<int>(limit) - 1);
+    };
+    const auto initial = context.snapshot();
+    const int startX = clampTile(initial.playerX / static_cast<int>(map.tileSize), map.width);
+    const int startY = clampTile(initial.playerY / static_cast<int>(map.tileSize), map.height);
+    const int goalX = clampTile(target.x / static_cast<int>(map.tileSize), map.width);
+    const int goalY = clampTile(target.y / static_cast<int>(map.tileSize), map.height);
+    std::vector<int> parent(static_cast<std::size_t>(map.width) * map.height, -1);
+    std::queue<std::pair<int, int>> pending;
+    parent[tileIndex(startX, startY)] = static_cast<int>(tileIndex(startX, startY));
+    pending.push({startX, startY});
+    constexpr std::array<std::pair<int, int>, 4> directions{{
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1}}};
+    while (!pending.empty()) {
+        const auto [x, y] = pending.front();
+        pending.pop();
+        if (x == goalX && y == goalY) { break; }
+        for (const auto& [dx, dy] : directions) {
+            const int nextX = x + dx;
+            const int nextY = y + dy;
+            if (nextX < 0 || nextY < 0 || static_cast<std::uint32_t>(nextX) >= map.width ||
+                static_cast<std::uint32_t>(nextY) >= map.height ||
+                map.collision[tileIndex(nextX, nextY)] != 0 ||
+                parent[tileIndex(nextX, nextY)] != -1) { continue; }
+            parent[tileIndex(nextX, nextY)] = static_cast<int>(tileIndex(x, y));
+            pending.push({nextX, nextY});
+        }
+    }
+    const auto goalIndex = tileIndex(goalX, goalY);
+    if (parent[goalIndex] == -1) { return false; }
+    std::vector<std::pair<int, int>> path;
+    for (int current = static_cast<int>(goalIndex);; current = parent[current]) {
+        const int x = current % static_cast<int>(map.width);
+        const int y = current / static_cast<int>(map.width);
+        path.push_back({x, y});
+        if (current == parent[current]) { break; }
+    }
+    std::reverse(path.begin(), path.end());
+    for (const auto& [tileX, tileY] : path) {
+        const PointTarget waypoint{
+            tileX * static_cast<int>(map.tileSize) + static_cast<int>(map.tileSize) / 2,
+            tileY * static_cast<int>(map.tileSize) + static_cast<int>(map.tileSize) / 2};
+        if (!moveTo(context, waypoint, 500, engageEnemies)) { return false; }
+    }
+    return moveTo(context, target, 500, engageEnemies);
+}
+
 PointTarget linkCenter(const world::AabbI& area) {
     return {area.x + area.width / 2, area.y + area.height / 2};
 }
@@ -386,7 +450,7 @@ bool runPickup(ScenarioContext& context, std::string_view definition) {
     const PointTarget target{found->x, found->y};
     const auto initialGold = initial.gold;
     const auto initialPickupCount = initial.pickups.size();
-    if (!moveToContent(context, target)) { return context.fail("could not approach expected pickup"); }
+    if (!moveToPickup(context, target)) { return context.fail("could not approach expected pickup"); }
     for (int index = 0; index < 2; ++index) { if (!context.step()) { return false; } }
     const auto& after = context.snapshot();
     if (definition == "pickup.money") {
@@ -395,9 +459,13 @@ bool runPickup(ScenarioContext& context, std::string_view definition) {
         if (changed) { static_cast<void>(context.checkpoint("pickup_money", "pickup_collected")); }
         return changed;
     }
+    const bool fullHealthNoOp = definition == "pickup.heart" &&
+        after.playerHealth == after.playerMaximumHealth &&
+        after.pickups.size() == initialPickupCount;
     const bool changed = context.require(after.pickups.size() < initialPickupCount ||
                                              !after.inventory.empty() ||
-                                             after.playerHealth > initial.playerHealth,
+                                             after.playerHealth > initial.playerHealth ||
+                                             fullHealthNoOp,
                                          "pickup did not produce an observable state change");
     if (changed) { static_cast<void>(context.checkpoint(definition, "pickup_collected")); }
     return changed;
@@ -408,7 +476,7 @@ bool runDialogue(ScenarioContext& context) {
     const auto initial = context.snapshot();
     if (!context.require(!initial.npcs.empty(), "expected NPC is absent")) { return false; }
     const auto npc = initial.npcs.front();
-    if (!moveTo(context, PointTarget{npc.x, npc.y})) {
+    if (!moveTo(context, PointTarget{npc.x, npc.y}, 500, false)) {
         return context.fail("could not approach expected NPC");
     }
     platform::InputState input;
