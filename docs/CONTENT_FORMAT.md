@@ -11,9 +11,10 @@ The canonical top-level field order is:
 `playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`,
 `authoringDescriptors`, `tileSemantics`, `stamps`.
 
-Each category is an array; an omitted category decodes as empty. The current codec
-serializes every authored DTO and nested field (including directional geometry,
-timeline events, dialogue graphs, variants, semantics and stamps). Unknown fields,
+Each category is an array; an omitted category decodes as empty. In 13A1, the
+decoder foundation covers tilesets, behaviors, items, NPC visuals, progressions,
+reward profiles, reward grants, shops and authoring descriptors; the remaining
+authored categories are staged for 13A2/13A3. Unknown fields,
 unknown enum strings, duplicate object keys, comments, trailing commas and future
 versions are errors. Definition IDs are strings. Optional fields may be omitted or
 `null`. Variants use an explicit `kind` string. Integer fields are parsed from their

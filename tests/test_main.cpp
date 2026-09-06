@@ -5423,12 +5423,15 @@ void testPhase13AJsonFoundation() {
     expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
                !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content,
            "content JSON rejects wrong format identifiers and unsupported versions");
-    const auto builtin = underworld::game::content::makeBuiltinAuthoredContent();
-    const auto json1 = underworld::game::content::encodeAuthoredContentJson(builtin);
-    const auto roundtrip = decodeAuthoredContentJson(json1);
-    expect(roundtrip.content && roundtrip.diagnostics.empty() &&
-               underworld::game::content::encodeAuthoredContentJson(*roundtrip.content) == json1,
-           "builtin authored content has a canonical JSON roundtrip");
+    const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
+    const auto roundtrip = decodeAuthoredContentJson(coreJson);
+    expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->items.size() == 2 &&
+               roundtrip.content->items[0].use && roundtrip.content->items[1].equipment &&
+               roundtrip.content->playerProgressions[0].cumulativeExperienceThresholds.back() == std::numeric_limits<std::uint64_t>::max() &&
+               roundtrip.content->shops[0].offers[0].playerBuyPrice == 0 && !roundtrip.content->shops[0].offers[0].playerSellPrice,
+           "core authored DTO decoder preserves selected fields, optionals and uint64 precision");
+    expect(!decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":[{"id":"x","visualId":"v","category":"misc","stackLmit":3}]})").content,
+           "core decoder rejects unknown nested item fields");
     const std::string invalidUtf8{"{\"x\":\xC0\x80}"};
     expect(parseJson(invalidUtf8).value == nullptr,
            "strict JSON rejects overlong raw UTF-8 sequences");
