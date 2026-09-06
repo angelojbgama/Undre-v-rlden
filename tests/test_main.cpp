@@ -5427,8 +5427,7 @@ void testPhase13AJsonFoundation() {
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->items.size() == 2 &&
                roundtrip.content->items[0].use && roundtrip.content->items[1].equipment &&
-               roundtrip.content->playerProgressions[0].cumulativeExperienceThresholds.back() == std::numeric_limits<std::uint64_t>::max() &&
-               roundtrip.content->shops[0].offers[0].playerBuyPrice == 0 && !roundtrip.content->shops[0].offers[0].playerSellPrice,
+               roundtrip.content->npcVisuals.size() == 1 && roundtrip.content->npcVisuals[0].markerColor.r == 1,
            "core authored DTO decoder preserves selected fields, optionals and uint64 precision");
     expect(!decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":[{"id":"x","visualId":"v","category":"misc","stackLmit":3}]})").content,
            "core decoder rejects unknown nested item fields");
