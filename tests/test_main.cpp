@@ -4325,6 +4325,21 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     const char* missingContent[] = {"game", "--content"};
     expect(!game::parseGameLaunchOptions(2, missingContent, optionError),
            "game startup options reject content without a value");
+    const wchar_t* wideContent[] = {L"game", L"--content=external-content",
+                                    L"--asset-root", L"assets"};
+    const auto wideOptions = game::parseGameLaunchOptions(4, wideContent, optionError);
+    expect(wideOptions && wideOptions->contentRoot &&
+               wideOptions->contentRoot->generic_string() == "external-content" &&
+               wideOptions->assetRoot && wideOptions->assetRoot->generic_string() == "assets",
+           "wide game startup options parse content= and asset-root");
+    const wchar_t* wideDuplicateContent[] = {L"game", L"--content", L"a",
+                                             L"--content=b"};
+    expect(!game::parseGameLaunchOptions(4, wideDuplicateContent, optionError) &&
+               optionError.find("duplicate") != std::string::npos,
+           "wide game startup options reject duplicate content sources");
+    const wchar_t* wideMissingContent[] = {L"game", L"--content"};
+    expect(!game::parseGameLaunchOptions(2, wideMissingContent, optionError),
+           "wide game startup options reject content without a value");
     const char* editorContent[] = {"editor", "--content", "content", "--asset-root", "assets"};
     const auto editorOptions = editor::parseEditorLaunchOptions(5, editorContent, optionError);
     expect(editorOptions && editorOptions->contentRoot && editorOptions->assetRoot,
@@ -4332,6 +4347,22 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     const char* duplicateEditor[] = {"editor", "--content=a", "--content=b"};
     expect(!editor::parseEditorLaunchOptions(3, duplicateEditor, optionError),
            "editor startup options reject duplicate content sources");
+    const wchar_t* wideEditorContent[] = {L"editor", L"--content=external-content",
+                                           L"--asset-root", L"assets"};
+    const auto wideEditorOptions = editor::parseEditorLaunchOptions(
+        4, wideEditorContent, optionError);
+    expect(wideEditorOptions && wideEditorOptions->contentRoot &&
+               wideEditorOptions->contentRoot->generic_string() == "external-content" &&
+               wideEditorOptions->assetRoot,
+           "wide editor startup options parse content= and asset-root");
+    const wchar_t* wideEditorDuplicate[] = {L"editor", L"--content", L"a",
+                                            L"--content=b"};
+    expect(!editor::parseEditorLaunchOptions(4, wideEditorDuplicate, optionError) &&
+               optionError.find("duplicate") != std::string::npos,
+           "wide editor startup options reject duplicate content sources");
+    const wchar_t* wideEditorMissing[] = {L"editor", L"--content"};
+    expect(!editor::parseEditorLaunchOptions(2, wideEditorMissing, optionError),
+           "wide editor startup options reject content without a value");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
@@ -4373,6 +4404,30 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     cache.refreshIfNeeded(document, content);
     expect(cache.recomputeCount() == 1,
            "pan and zoom do not invalidate semantic validation");
+    auto externalAuthored = game::content::makeBuiltinAuthoredContent();
+    const auto semanticIt = std::find_if(externalAuthored.tileSemantics.begin(),
+                                         externalAuthored.tileSemantics.end(),
+        [](const auto& value) { return value.id.value() == "tile.dungeon.masonry.39"; });
+    expect(semanticIt != externalAuthored.tileSemantics.end(),
+           "editor injection fixture finds the authored starter semantic");
+    if (semanticIt != externalAuthored.tileSemantics.end()) {
+        semanticIt->sourceIndex = 100;
+        const auto externalCompiled = game::content::compileContent(externalAuthored);
+        expect(externalCompiled.registry.has_value(),
+               "editor injection fixture compiles an altered authored registry");
+        if (externalCompiled.registry) {
+            const auto builtinDocument = editor::EditorDocument::newAuthoredMap(
+                simulation::MapId{"map.editor.builtin"}, 8, 8, 16, content, false);
+            const auto externalDocument = editor::EditorDocument::newAuthoredMap(
+                simulation::MapId{"map.editor.external"}, 8, 8, 16,
+                *externalCompiled.registry, false);
+            expect(!builtinDocument.data().tileReferences.empty() &&
+                       !externalDocument.data().tileReferences.empty() &&
+                       builtinDocument.data().tileReferences.back().sourceIndex !=
+                           externalDocument.data().tileReferences.back().sourceIndex,
+                   "editor authored document consumes the injected registry data");
+        }
+    }
     std::string error;
     expect(!document.execute(std::make_unique<editor::PaintTilesCommand>(0,
                std::vector<editor::TileCoordinate>{{99, 99}},
@@ -5925,6 +5980,28 @@ void testPhase13B1ContentWorkspace() {
     expect(externalSource && externalSource.content->registry.items().require(changed.items.front().id).stackLimit ==
                changed.items.front().stackLimit,
            "13B3 external source changes reach the compiled registry without builtin fallback");
+    auto runtimeIncompatible = builtin;
+    runtimeIncompatible.attacks.erase(std::remove_if(runtimeIncompatible.attacks.begin(),
+                                                     runtimeIncompatible.attacks.end(),
+        [](const auto& value) { return value.id.value() == "attack.player.sword"; }),
+        runtimeIncompatible.attacks.end());
+    const auto incompatibleRoot = root / "runtime-incompatible";
+    std::filesystem::create_directories(incompatibleRoot);
+    write(incompatibleRoot / "incompatible.json", runtimeIncompatible);
+    const auto incompatibleSource = content::loadContentSource(
+        {content::ContentSourceKind::workspaceDirectory, incompatibleRoot});
+    expect(incompatibleSource && incompatibleSource.content &&
+               !content::validateCurrentRuntimeContentRequirements(
+                    incompatibleSource.content->registry).empty(),
+           "runtime-incompatible external content is rejected by explicit bootstrap requirements");
+    const content::ContentWorkspaceDiagnostic formatterDiagnostic{
+        content::ContentWorkspaceDiagnosticStage::validation, "content/enemies.json", {}, 14, 9,
+        "enemies[2].behaviorProfileId", "unknown_reference", "enemies", {"enemy.test"},
+        "behavior profile does not exist"};
+    const auto formatted = content::formatContentWorkspaceDiagnostic(formatterDiagnostic);
+    expect(formatted.find("[validation/unknown_reference]") != std::string::npos &&
+               formatted.find("enemies[2].behaviorProfileId") != std::string::npos,
+           "workspace diagnostics format stage and JSON path deterministically");
     const auto invalidSource = content::loadContentSource({content::ContentSourceKind::workspaceDirectory, root / "missing-root"});
     expect(!invalidSource && !invalidSource.content,
            "13B3 invalid explicit workspace does not fall back to builtin");

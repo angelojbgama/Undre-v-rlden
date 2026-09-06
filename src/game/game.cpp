@@ -247,6 +247,15 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
                      source.content->sourceRoot.string() + " files=" +
                      std::to_string(source.content->sourceFileCount));
     }
+    const auto runtimeRequirements =
+        content::validateCurrentRuntimeContentRequirements(source.content->registry);
+    if (!runtimeRequirements.empty()) {
+        for (const auto& diagnostic : runtimeRequirements) {
+            platform.log(platform::LogLevel::error,
+                         content::formatContentWorkspaceDiagnostic(diagnostic));
+        }
+        return 1;
+    }
     GameRuntime runtime(platform.imageDecoder(),
                     assetRoot, executableDirectory, std::move(source.content->registry), options);
     core::FixedStepAccumulator accumulator(fixedStepConfig);

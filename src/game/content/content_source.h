@@ -35,6 +35,9 @@ struct ContentSourceLoadResult final {
 [[nodiscard]] ContentSourceLoadResult loadContentSource(
     const ContentSourceSelection& selection);
 
+[[nodiscard]] std::vector<ContentWorkspaceDiagnostic>
+validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry);
+
 [[nodiscard]] std::string formatContentWorkspaceDiagnostic(
     const ContentWorkspaceDiagnostic& diagnostic);
 

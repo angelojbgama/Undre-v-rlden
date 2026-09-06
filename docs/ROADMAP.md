@@ -101,11 +101,11 @@ FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
 FASE 12 — RPG (12A–12E3 DONE)                         COMPLETE
-FASE 13 — External Authored Content                   IN PROGRESS
-13B — External Content Workspace                      IN PROGRESS
+FASE 13 — External Authored Content                   DONE
+13B — External Content Workspace                      DONE
 13B1 — Multi-file Workspace Core + Deterministic Merge DONE
-13B2 — Workspace Directory Discovery                  IN PROGRESS
-13B3 — Application/Tooling Integration                IN PROGRESS
+13B2 — Workspace Directory Discovery                  DONE
+13B3 — Application/Tooling Integration                DONE
 ```
 
 Baseline validada da Fase 6:
@@ -1294,10 +1294,10 @@ Content Studio, LLM authoring e autoria visual completa continuam deferidos.
 13A3 — Narrative + Semantic DTOs + Full Roundtrip — DONE. The strict UTF-8 JSON
 codec remains separate from runtime source.
 
-13B — External Content Workspace — IN PROGRESS
+13B — External Content Workspace — DONE
 13B1 — Multi-file Workspace Core + Deterministic Merge — DONE.
-13B2 — Workspace Directory Discovery — IN PROGRESS.
-13B3 — Application/Tooling Integration — IN PROGRESS.
+13B2 — Workspace Directory Discovery — DONE.
+13B3 — Application/Tooling Integration — DONE.
 
 FASE 14 — Content Studio Foundation — FUTURE. Replay/state hashing are optional
 testing/debug tooling; networking and multiplayer remain permanently out of scope.

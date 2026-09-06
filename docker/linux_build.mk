@@ -18,7 +18,7 @@ CONTENT_CHECK_OBJECT := $(OBJ_DIR)/tools/content_check.o
 TEST_OBJECT := $(OBJ_DIR)/tests/test_main.o
 LINUX_OBJECTS := $(patsubst src/%.cpp,$(OBJ_DIR)/linux/%.o,$(shell find src/engine/platform/linux -name '*.cpp' -print))
 
-ALL_OBJECTS := $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT) $(TEST_OBJECT) $(LINUX_OBJECTS)
+ALL_OBJECTS := $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT) $(CONTENT_CHECK_OBJECT) $(TEST_OBJECT) $(LINUX_OBJECTS)
 DEP_FILES := $(ALL_OBJECTS:.o=.d)
 
 .PHONY: all build tests playtest game content_check clean
