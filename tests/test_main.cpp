@@ -5019,6 +5019,30 @@ void testPhase12BRewards() {
         }), "invalid reward chance is rejected before publication");
 }
 
+void testPhase12BRewardEventSnapshot() {
+    underworld::simulation::EventBuffer events;
+    const underworld::simulation::EntityDefeated first{{1, 1}, {2, 1}, 1, {"enemy.evil_soldier"}};
+    const underworld::simulation::EntityDefeated second{{1, 1}, {3, 1}, 2, {"enemy.skull"}};
+    events.emit(first);
+    events.emit(second);
+    std::vector<underworld::simulation::EntityDefeated> defeatEvents;
+    for (const auto& event : events.events()) {
+        if (const auto* defeated = std::get_if<underworld::simulation::EntityDefeated>(&event)) {
+            defeatEvents.push_back(*defeated);
+        }
+    }
+    for (const auto& defeated : defeatEvents) {
+        events.emit(underworld::simulation::ExperienceGranted{
+            {1, 1}, defeated.defeatedDefinitionId, 1, 1, 1, 1});
+    }
+    const auto defeatedCount = std::count_if(events.events().begin(), events.events().end(),
+        [](const auto& event) { return std::holds_alternative<underworld::simulation::EntityDefeated>(event); });
+    const auto grantedCount = std::count_if(events.events().begin(), events.events().end(),
+        [](const auto& event) { return std::holds_alternative<underworld::simulation::ExperienceGranted>(event); });
+    expect(defeatEvents.size() == 2 && defeatedCount == 2 && grantedCount == 2,
+           "reward processing snapshots multiple defeat events before emitting results");
+}
+
 } // namespace
 
 int main() {
@@ -5081,6 +5105,7 @@ int main() {
         testAuthoredContentBoundary();
         testPhase12AProgressionFoundation();
         testPhase12BRewards();
+        testPhase12BRewardEventSnapshot();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

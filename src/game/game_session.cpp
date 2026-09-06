@@ -515,14 +515,19 @@ void GameSession::resolveDefeatRewards() {
     if (rewardCatalog_ == nullptr || pickupDefinitions_ == nullptr || mapSession_ == nullptr || mapSession_->world() == nullptr) {
         return;
     }
-    std::vector<simulation::EntityHandle> resolved;
+    std::vector<simulation::EntityDefeated> defeatEvents;
     for (const auto& event : events_.events()) {
-        const auto* defeated = std::get_if<simulation::EntityDefeated>(&event);
-        if (defeated == nullptr || defeated->attacker != player_.entityHandle()) { continue; }
-        if (std::find(resolved.begin(), resolved.end(), defeated->target) != resolved.end()) { continue; }
+        if (const auto* defeated = std::get_if<simulation::EntityDefeated>(&event)) {
+            defeatEvents.push_back(*defeated);
+        }
+    }
+    std::vector<simulation::EntityHandle> resolved;
+    for (const auto& defeated : defeatEvents) {
+        if (defeated.attacker != player_.entityHandle()) { continue; }
+        if (std::find(resolved.begin(), resolved.end(), defeated.target) != resolved.end()) { continue; }
         const auto enemy = std::find_if(mapSession_->world()->enemies().begin(),
             mapSession_->world()->enemies().end(), [&](const auto& value) {
-                return value.instance.handle() == defeated->target;
+                return value.instance.handle() == defeated.target;
             });
         if (enemy == mapSession_->world()->enemies().end() ||
             !enemy->instance.definition().rewardProfileId) { continue; }
@@ -546,7 +551,7 @@ void GameSession::resolveDefeatRewards() {
                                                         enemy->instance.feetPosition()}});
             }
         }
-        resolved.push_back(defeated->target);
+        resolved.push_back(defeated.target);
     }
 }
 
