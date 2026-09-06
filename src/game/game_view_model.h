@@ -3,6 +3,7 @@
 #include "engine/simulation/definition_id.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
+#include "game/gameplay/bank_overlay.h"
 #include "game/gameplay/rpg/equipment.h"
 
 #include <array>
@@ -34,12 +35,19 @@ struct GameViewModel final {
     ItemSlotView accessory{};
     int derivedMaximumHealth{};
     int playerAttackDamageBonus{};
+    bool bankOpen{};
+    gameplay::BankOverlayFocus bankFocus{gameplay::BankOverlayFocus::inventory};
+    std::size_t bankSelection{};
+    gameplay::BankGoldSelection bankGoldSelection{gameplay::BankGoldSelection::carried};
+    std::array<ItemSlotView, gameplay::PlayerBank::slotCount> bank{};
+    std::uint64_t bankGold{};
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
     const gameplay::Player& player, const gameplay::PlayerItems& items,
     const gameplay::ItemCatalog& catalog,
     const gameplay::InventoryOverlayState& overlay,
+    const gameplay::BankOverlayState& bankOverlay,
     const gameplay::rpg::PlayerDerivedStats& derivedStats);
 
 } // namespace underworld::game

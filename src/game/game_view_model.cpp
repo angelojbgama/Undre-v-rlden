@@ -17,6 +17,7 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::PlayerItems& items,
                                  const gameplay::ItemCatalog& catalog,
                                  const gameplay::InventoryOverlayState& overlay,
+                                 const gameplay::BankOverlayState& bankOverlay,
                                  const gameplay::rpg::PlayerDerivedStats& derivedStats) {
     GameViewModel result;
     result.playerHealth = player.health().current;
@@ -29,6 +30,11 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     result.equipmentSelection = overlay.equipmentSelection();
     result.derivedMaximumHealth = derivedStats.maximumHealth;
     result.playerAttackDamageBonus = derivedStats.playerAttackDamageBonus;
+    result.bankOpen = bankOverlay.open();
+    result.bankFocus = bankOverlay.focus();
+    result.bankSelection = bankOverlay.bankSelection();
+    result.bankGoldSelection = bankOverlay.goldSelection();
+    result.bankGold = items.bank().gold();
     const auto makeEquipment = [&](gameplay::rpg::EquipmentSlot slot) {
         const auto& item = items.equipment().item(slot);
         if (!item) { return ItemSlotView{}; }
@@ -39,6 +45,10 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     for (std::size_t index = 0; index < result.inventory.size(); ++index) {
         const auto& slot = items.inventory().items().slot(index);
         if (slot) { result.inventory[index] = makeSlot(*slot, catalog); }
+    }
+    for (std::size_t index = 0; index < result.bank.size(); ++index) {
+        const auto& slot = items.bank().items().slot(index);
+        if (slot) { result.bank[index] = makeSlot(*slot, catalog); }
     }
     for (std::size_t index = 0; index < result.quickSlots.size(); ++index) {
         const auto& binding = items.quickSlots().binding(index);

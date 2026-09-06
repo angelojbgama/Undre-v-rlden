@@ -35,6 +35,7 @@
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
 #include "game/gameplay/rpg/rewards.h"
+#include "game/gameplay/bank_overlay.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
@@ -2450,7 +2451,8 @@ void testViewModelAndWorldObjects() {
     InventoryOverlayState overlay;
     overlay.toggle();
     overlay.moveSelection(1, 1);
-    auto view = game::buildGameViewModel(player, playerItems, items, overlay, {5, 0});
+    auto view = game::buildGameViewModel(player, playerItems, items, overlay,
+                                         game::gameplay::BankOverlayState{}, {5, 0});
     expect(view.playerHealth == 3 && view.playerMaximumHealth == 5 && view.gold == 7 &&
                view.quickSlots[0].quantity == 5 && view.inventory[0].quantity == 5 &&
                view.inventoryOpen && view.inventorySelection == 11,
@@ -3405,7 +3407,7 @@ void testPhase9EditorFoundation() {
                content.pickup(simulation::DefinitionId{"pickup.money"}),
            "shared GameContentRegistry resolves runtime and editor definitions from one registration");
     expect(content.authoringDescriptors(game::AuthoringCategory::enemy).size() == 2 &&
-               content.authoringDescriptors(game::AuthoringCategory::object).size() == 2 &&
+               content.authoringDescriptors(game::AuthoringCategory::object).size() == 3 &&
                content.authoringDescriptors(game::AuthoringCategory::pickup).size() == 3,
            "authoring palette is derived from shared content descriptors");
 
@@ -3709,6 +3711,62 @@ void testPhase9EditorFoundation() {
            "editor backup rejects replacing the authored document path");
     std::filesystem::remove(authoredPath, removeError);
     std::filesystem::remove(backupPath, removeError);
+}
+
+void testPhase12D2BankInterface() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    const auto content = game::content::compileBuiltinContentOrThrow();
+    const auto& bankObject = content.objects().require({"object.bank_access"});
+    expect(bankObject.bankAccess && bankObject.interactable && !bankObject.container &&
+               !bankObject.destructible, "builtin bank access is an interactable capability");
+
+    auto authored = game::content::makeBuiltinAuthoredContent();
+    auto& authoredBank = authored.objects.back();
+    authoredBank.interactable.reset();
+    expect(game::content::ContentValidator{}.validate(authored).hasErrors(),
+           "bank access without interaction is rejected by content validation");
+    authored = game::content::makeBuiltinAuthoredContent();
+    authored.objects.back().container = ObjectContainerDefinition{1};
+    expect(game::content::ContentValidator{}.validate(authored).hasErrors(),
+           "bank access combined with a container is rejected");
+
+    ItemCatalog catalog;
+    catalog.add(makeLifePotionDefinition());
+    ItemContainer source(3, catalog);
+    ItemContainer destination(1, catalog);
+    static_cast<void>(source.add(lifePotionItemId(), 66));
+    static_cast<void>(source.add(lifePotionItemId(), 20));
+    static_cast<void>(destination.add(lifePotionItemId(), 56));
+    expect(source.transferSlotTo(destination, 1, 20) == 10 &&
+               source.slot(0)->quantity == 66 && source.slot(1)->quantity == 10 &&
+               destination.slot(0)->quantity == 66,
+           "slot-aware transfer uses the selected stack and preserves partial remainder");
+    expect(source.transferSlotTo(destination, 2, 1) == 0 &&
+               source.transferSlotTo(source, 1, 1) == 0 &&
+               source.transferSlotTo(destination, 1, 0) == 0,
+           "slot-aware transfer handles empty, same-container and zero requests");
+
+    PlayerItems items(content.items());
+    static_cast<void>(items.inventory().items().add(lifePotionItemId(), 4));
+    BankOverlayState overlay;
+    overlay.toggle();
+    simulation::PlayerCommand command{};
+    command.actions.primaryAttackPressed = true;
+    expect(routeBankCommand(overlay, command, items).itemsMoved == 4 &&
+               items.inventory().items().count(lifePotionItemId()) == 0 &&
+               items.bank().items().count(lifePotionItemId()) == 4,
+           "bank command deposits the complete selected inventory stack");
+    command = {};
+    command.movement.y = 1;
+    for (int index = 0; index < 8; ++index) { overlay.moveSelection(0, 1); }
+    expect(overlay.focus() == BankOverlayFocus::gold,
+           "bank overlay reaches gold focus after the bottom storage row");
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    expect(overlay.goldSelection() == BankGoldSelection::carried &&
+               routeBankCommand(overlay, command, items).goldMoved == 0,
+           "empty carried gold deposit is a safe bank action");
 }
 
 void testSyntheticMapIntegrationFixture() {
@@ -5273,6 +5331,7 @@ int main() {
         testPhase12C1Equipment();
         testPhase12C1EquipmentTransactions();
         testPhase12DBank();
+        testPhase12D2BankInterface();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

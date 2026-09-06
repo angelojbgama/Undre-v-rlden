@@ -138,6 +138,7 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
     }
     clearCombatTransients();
     closeDialogue();
+    bankOverlay_.close();
     error.clear();
     return true;
 }
@@ -453,6 +454,11 @@ void GameSession::interactWithWorld() {
     }
     if (!selected) { return; }
     auto& object = selected->instance;
+    if (object.definition().bankAccess) {
+        inventoryOverlay_.close();
+        bankOverlay_.toggle();
+        return;
+    }
     if (!object.open()) { return; }
     if (auto* contents = object.contents()) {
         for (std::size_t index = 0; index < contents->capacity(); ++index) {
@@ -519,6 +525,11 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
     if (handleDialogueCommand(command)) {
         consumeQuestEvents();
+        return;
+    }
+    if (bankOverlay_.open()) {
+        if (command.actions.toggleInventoryPressed) { bankOverlay_.toggle(); }
+        else { static_cast<void>(gameplay::routeBankCommand(bankOverlay_, command, *playerItems_)); }
         return;
     }
     if (playerItems_) {

@@ -8,6 +8,7 @@
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player_items.h"
+#include "game/gameplay/bank_overlay.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/npcs/npc_engine.h"
@@ -64,6 +65,9 @@ public:
     [[nodiscard]] const gameplay::PlayerItems& playerItems() const noexcept { return *playerItems_; }
     [[nodiscard]] const gameplay::InventoryOverlayState& inventoryOverlay() const noexcept {
         return inventoryOverlay_;
+    }
+    [[nodiscard]] const gameplay::BankOverlayState& bankOverlay() const noexcept {
+        return bankOverlay_;
     }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
@@ -141,6 +145,7 @@ private:
     std::optional<gameplay::AttackExecution> playerAttack_{};
     std::unique_ptr<gameplay::PlayerItems> playerItems_;
     gameplay::InventoryOverlayState inventoryOverlay_;
+    gameplay::BankOverlayState bankOverlay_;
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
     const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};

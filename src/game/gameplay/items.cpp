@@ -141,6 +141,25 @@ std::uint32_t ItemContainer::transferTo(ItemContainer& destination,
     return added.accepted;
 }
 
+std::uint32_t ItemContainer::transferSlotTo(ItemContainer& destination,
+                                             std::size_t sourceSlot,
+                                             std::uint32_t quantity) {
+    if (this == &destination || quantity == 0) { return 0; }
+    const auto& source = slot(sourceSlot);
+    if (!source) { return 0; }
+    const auto requested = std::min(quantity, source->quantity);
+    const auto accepted = destination.canAdd(source->itemId, requested).accepted;
+    if (accepted == 0) { return 0; }
+    const auto itemId = source->itemId;
+    const auto added = destination.add(itemId, accepted);
+    if (added.remainder != 0) {
+        throw std::logic_error("slot item transfer destination changed unexpectedly");
+    }
+    slots_[sourceSlot]->quantity -= added.accepted;
+    if (slots_[sourceSlot]->quantity == 0) { slots_[sourceSlot].reset(); }
+    return added.accepted;
+}
+
 void ItemContainer::restoreSlots(std::span<const std::optional<ItemStack>> slots) {
     if (slots.size() != slots_.size()) {
         throw std::invalid_argument("restored item slots do not match container capacity");

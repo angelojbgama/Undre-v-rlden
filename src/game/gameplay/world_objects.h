@@ -24,6 +24,7 @@ struct ObjectDestructibleDefinition final {
     // while remaining authoritative logical gameplay data.
     std::uint32_t destructionDurationTicks{28};
 };
+struct ObjectBankAccessDefinition final {};
 
 struct WorldObjectDefinition final {
     simulation::DefinitionId id{};
@@ -31,6 +32,7 @@ struct WorldObjectDefinition final {
     std::optional<ObjectInteractionDefinition> interactable{};
     std::optional<ObjectContainerDefinition> container{};
     std::optional<ObjectDestructibleDefinition> destructible{};
+    std::optional<ObjectBankAccessDefinition> bankAccess{};
 };
 
 class WorldObjectCatalog final {

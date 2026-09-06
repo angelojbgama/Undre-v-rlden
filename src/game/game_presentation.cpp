@@ -297,6 +297,40 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         } else { render::drawText(renderer, frame.font, "E NEXT  X CLOSE", 14, 181); }
         return;
     }
+    if (view.bankOpen) {
+        renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
+        render::drawText(renderer, frame.font, "BANK", 8, 27);
+        const auto drawGrid = [&](const auto& slots, std::size_t selected,
+                                  gameplay::BankOverlayFocus focus,
+                                  gameplay::BankOverlayFocus gridFocus, int y, int cell) {
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                const int x = 8 + static_cast<int>(index % 10) * cell;
+                const int row = static_cast<int>(index / 10);
+                const int slotY = y + row * 15;
+                const bool highlighted = view.bankFocus == focus && index == selected;
+                renderer.fillRect({x, slotY, cell - 2, 13}, highlighted
+                    ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
+                if (slots[index].visualId) {
+                    const auto found = frame.itemVisuals.find(*slots[index].visualId);
+                    if (found != frame.itemVisuals.end()) { renderer.drawImage(*found->second, x + 1, slotY); }
+                }
+                if (slots[index].quantity > 1) {
+                    render::drawText(renderer, frame.font, std::to_string(slots[index].quantity), x + 1, slotY + 4);
+                }
+            }
+            static_cast<void>(gridFocus);
+        };
+        render::drawText(renderer, frame.font, "INVENTORY", 8, 43);
+        drawGrid(view.inventory, view.inventorySelection, gameplay::BankOverlayFocus::inventory,
+                 gameplay::BankOverlayFocus::inventory, 53, 26);
+        render::drawText(renderer, frame.font, "STORAGE", 8, 105);
+        drawGrid(view.bank, view.bankSelection, gameplay::BankOverlayFocus::bank,
+                 gameplay::BankOverlayFocus::bank, 115, 26);
+        render::drawText(renderer, frame.font, "CARRIED " + std::to_string(view.gold) +
+                         "  STORED " + std::to_string(view.bankGold), 8, 188);
+        render::drawText(renderer, frame.font, "Z TRANSFER  I CLOSE", 152, 188);
+        return;
+    }
     if (!view.inventoryOpen) { return; }
     renderer.fillRect({6, 52, 260, 145}, {8, 10, 16, 245});
     render::drawText(renderer, frame.font, "INVENTORY", 10, 55);

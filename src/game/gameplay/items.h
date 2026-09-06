@@ -67,6 +67,9 @@ public:
     [[nodiscard]] std::uint32_t transferTo(ItemContainer& destination,
                                            const simulation::DefinitionId& itemId,
                                            std::uint32_t quantity);
+    [[nodiscard]] std::uint32_t transferSlotTo(ItemContainer& destination,
+                                                std::size_t sourceSlot,
+                                                std::uint32_t quantity);
     void restoreSlots(std::span<const std::optional<ItemStack>> slots);
 
 private:

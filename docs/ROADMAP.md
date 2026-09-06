@@ -1294,5 +1294,16 @@ presentation are implemented. Bank storage is covered by 12D1; access and UI rem
 
 `PlayerBank` provides 50 reusable `ItemContainer` slots and separate persistent gold.
 Item/gold transfers are bounded and lossless, bank state survives map transitions, and
-DSAV 1.5 persists it through the `BANK` chunk. Bank access points and UI remain the
-future 12D2 slice; the full RPG phase is not yet complete.
+DSAV 1.5 persists it through the `BANK` chunk.
+
+### 12D2 — Bank access + UI — DONE
+
+Bank access is exposed through an authored/compiled world-object capability and opens
+a dedicated inventory/storage/gold overlay backed by the global `PlayerBank`. Transfers
+operate on selected slots, gold uses Deposit All/Withdraw All, and the modal pauses
+gameplay. Official placement and final art remain level-design/content tasks.
+
+### Phase 12 — RPG / XP / Equipment / Loot / Bank — COMPLETE
+
+The planned RPG domain slices are complete. No Bank placement or new art is added to
+the official DMAP in this increment; that remains a content/level-design decision.

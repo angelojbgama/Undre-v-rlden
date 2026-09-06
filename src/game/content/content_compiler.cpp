@@ -24,7 +24,11 @@ gameplay::ItemDefinition compileItem(const AuthoredItem& v) {
     }
     return {v.id, v.visualId, v.category, v.stackLimit, v.use, equipment};
 }
-gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) { return {v.id, v.visualSetId, v.interactable, v.container, v.destructible}; }
+gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) {
+    return {v.id, v.visualSetId, v.interactable, v.container, v.destructible,
+            v.bankAccess ? std::optional<gameplay::ObjectBankAccessDefinition>{gameplay::ObjectBankAccessDefinition{}}
+                         : std::nullopt};
+}
 gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor}; }
 gameplay::npcs::NpcDefinition compileNpc(const AuthoredNpc& v) { return {v.id, v.visualSetId, v.interaction, v.defaultDialogueId, v.tags}; }
 

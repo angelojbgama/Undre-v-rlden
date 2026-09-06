@@ -1570,4 +1570,9 @@ backed by the existing `ItemContainer` stacking rules. It has a fixed capacity o
 slots (5 by 10) and a gold balance distinct from the carried `Wallet`. Bank contents
 survive map transitions and are persisted by the `BANK` chunk in DSAV 1.5; they are
 not part of `RuntimeWorld`, `SessionWorldState`, DMAP, or transient loot. Bank access
-and its UI are intentionally deferred to 12D2.
+and its UI are implemented as a separate access slice. `WorldObjectDefinition::bankAccess`
+is an access capability, not storage: the object contains no bank contents and does not
+open as a container or emit `ObjectOpened`. `BankOverlayState` contains only transient
+navigation state. `GameSession` owns modal lifetime and routes selected-slot transfers
+and Deposit All/Withdraw All operations; the ViewModel copies Bank data for presentation,
+which never mutates it. Official placement and final art remain content/level-design work.

@@ -78,7 +78,8 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.items.push_back({{"item.power_charm"}, {"visual.item.power_charm"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::accessory, {0, 1}}});
     pack.objects = {
         {{"object.chest"}, {"visual.object.chest"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, gameplay::ObjectContainerDefinition{5}, std::nullopt},
-        {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28}}};
+        {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28}},
+        {{"object.bank_access"}, {"visual.object.bank_access"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, std::nullopt, std::nullopt, AuthoredObjectBankAccess{}}};
     pack.pickups = {
         {{"pickup.heart"}, {"visual.pickup.heart"}, {-5, -5, 10, 10}, AuthoredHealthPickup{2}},
         {{"pickup.money"}, {"visual.pickup.money"}, {-5, -5, 10, 10}, AuthoredCurrencyPickup{1}},
@@ -124,7 +125,8 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
         {{"item.life_potion"}, "Life Potion", AuthoringCategory::item, {"item", "consumable"}},
         {{"item.training_armor"}, "Training Armor", AuthoringCategory::item, {"item", "equipment"}},
-        {{"item.power_charm"}, "Power Charm", AuthoringCategory::item, {"item", "equipment"}}};
+        {{"item.power_charm"}, "Power Charm", AuthoringCategory::item, {"item", "equipment"}},
+        {{"object.bank_access"}, "Bank Access", AuthoringCategory::object, {"bank", "storage"}}};
     addBuiltinDungeonSemantics(pack);
     return pack;
 }

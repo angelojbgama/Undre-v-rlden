@@ -29,6 +29,9 @@ void validate(const WorldObjectDefinition& definition) {
          definition.destructible->destructionDurationTicks == 0)) {
         throw std::invalid_argument("object destructible capability is invalid");
     }
+    if (definition.bankAccess && (!definition.interactable || definition.container || definition.destructible)) {
+        throw std::invalid_argument("bank access requires an interactable non-container object");
+    }
 }
 
 bool handleBefore(simulation::EntityHandle left, simulation::EntityHandle right) noexcept {
