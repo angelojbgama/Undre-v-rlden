@@ -11,9 +11,12 @@
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/npcs/npc_engine.h"
+#include "game/gameplay/dialogue/dialogue_session.h"
+#include "game/gameplay/quests/quest_system.h"
 #include "game/maps/map_catalog.h"
 
 #include <memory>
+#include <span>
 #include <string>
 
 namespace underworld::game {
@@ -40,7 +43,10 @@ public:
                          const gameplay::AttackDefinition& sword,
                          const gameplay::AttackDefinition& bow);
     void configureItems(const gameplay::ItemCatalog& items);
+    void configureNarrative(const gameplay::dialogue::DialogueCatalog& dialogues,
+                            const gameplay::quests::QuestCatalog& quests);
     void clearCombatTransients() noexcept;
+    void closeDialogue() noexcept;
 
     [[nodiscard]] const gameplay::Player& player() const noexcept { return player_; }
     [[nodiscard]] gameplay::Player& playerForRuntime() noexcept { return player_; }
@@ -68,6 +74,19 @@ public:
     }
     [[nodiscard]] bool restoreMap(const simulation::MapId& mapId,
                                   const save::SessionWorldState& state, std::string& error);
+    [[nodiscard]] const gameplay::dialogue::DialogueFlagSet& dialogueFlags() const noexcept {
+        return dialogueFlags_;
+    }
+    [[nodiscard]] const gameplay::dialogue::DialogueSession& dialogue() const noexcept {
+        return *dialogue_;
+    }
+    [[nodiscard]] const gameplay::quests::QuestStateStore& questState() const noexcept {
+        return questState_;
+    }
+    [[nodiscard]] bool restoreNarrativeState(
+        const gameplay::dialogue::DialogueFlagSet& flags,
+        std::span<const gameplay::quests::QuestProgress> progress,
+        std::string& error);
 
 private:
     void startPlayerAttack();
@@ -81,6 +100,9 @@ private:
     void updateObjects();
     void interactWithWorld();
     void captureWorldState();
+    [[nodiscard]] bool handleDialogueCommand(const simulation::PlayerCommand& command);
+    void applyDialogueActions();
+    void consumeQuestEvents();
     [[nodiscard]] std::vector<gameplay::CombatTargetRef> combatTargets();
 
     simulation::EntityHandlePool& handles_;
@@ -101,6 +123,12 @@ private:
     std::optional<gameplay::AttackExecution> playerAttack_{};
     std::unique_ptr<gameplay::PlayerItems> playerItems_;
     gameplay::InventoryOverlayState inventoryOverlay_;
+    const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
+    const gameplay::quests::QuestCatalog* questCatalog_{};
+    gameplay::dialogue::DialogueFlagSet dialogueFlags_;
+    std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
+    gameplay::quests::QuestStateStore questState_;
+    std::unique_ptr<gameplay::quests::QuestSystem> questSystem_;
     gameplay::AttackInstanceId nextContactAttackInstance_{1};
 };
 

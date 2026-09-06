@@ -68,6 +68,12 @@ O corte atual conclui os blocos `Objects`, `Pickups`, `Inventory / Wallet` e
 `Quick Slots` da extração. A extração global de `GameSession` continua em progresso
 até a migração de NPC/diálogo/quests e o cleanup das bridges mutáveis restantes.
 
+O corte narrativo agora moveu `DialogueFlagSet`, `DialogueSession`, `QuestStateStore`
+e `QuestSystem` para a Session. O diálogo roteia comandos modais, choices emitem
+ações concretas (incluindo ativação de quest) e quests consomem eventos de domínio
+uma vez por tick. A extração global segue em progresso apenas para o fechamento das
+bridges mutáveis e a revisão final de ownership.
+
 ---
 
 ## 2. Estado macro

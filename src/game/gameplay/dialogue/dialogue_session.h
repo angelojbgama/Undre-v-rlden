@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace underworld::game::gameplay::dialogue {
@@ -24,9 +25,12 @@ public:
                              std::string& error);
     void close() noexcept;
 
-    // A dialogue consumes the complete command while open, including movement. This
-    // keeps player simulation and inventory routing outside the dialogue overlay.
+    // A dialogue consumes the complete command while open, including movement. Actions
+    // selected by a choice are queued for the gameplay owner to execute.
     [[nodiscard]] bool handleCommand(const simulation::PlayerCommand& command);
+    [[nodiscard]] std::vector<DialogueAction> takeActions() noexcept {
+        return std::exchange(pendingActions_, {});
+    }
 
     [[nodiscard]] bool isOpen() const noexcept { return state_ != DialogueSessionState::closed; }
     [[nodiscard]] DialogueSessionState state() const noexcept { return state_; }
@@ -59,6 +63,7 @@ private:
     std::size_t pageIndex_{};
     std::size_t selectedChoice_{};
     std::vector<std::size_t> availableChoiceIndices_;
+    std::vector<DialogueAction> pendingActions_;
 };
 
 } // namespace underworld::game::gameplay::dialogue

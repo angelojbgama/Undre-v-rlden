@@ -231,10 +231,13 @@ do mapa ativo, emite `MapEntered` após transições e agora também coordena a 
 de combate, criaturas, projéteis, objetos, pickups e inventário em fixed ticks.
 Isso inclui Wallet, Quick Slots, interação lógica de objetos e o timer de destruição
 de objetos; a conclusão de destruição nunca depende de `Animator::finished()`.
-`GamePresentation` apenas observa esses estados para desenhar. `GameRuntime` continua compondo
-os sistemas restantes enquanto a migração de
-diálogo e quests é feita em incrementos
-menores. A API de filesystem para save/load permanece no runtime.
+`GamePresentation` apenas observa esses estados para desenhar. A Session também
+possui `DialogueSession`, flags, `QuestStateStore` e `QuestSystem`: diálogo é roteado
+antes da simulação normal, escolhas produzem ações concretas e a progressão consome
+o `EventBuffer` uma vez por tick. `GameRuntime` continua compondo filesystem e
+apresentação, enquanto bridges mutáveis restantes serão removidas no fechamento.
+Player combat invulnerability também é avançada pela Session antes dos modais,
+preservando a pausa estabelecida. A API de filesystem para save/load permanece no runtime.
 
 ---
 

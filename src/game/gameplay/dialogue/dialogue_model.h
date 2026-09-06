@@ -19,10 +19,10 @@ struct DialogueCondition final {
     simulation::DefinitionId flagId{};
 };
 
-enum class DialogueActionKind { setFlag, clearFlag };
+enum class DialogueActionKind { setFlag, clearFlag, startQuest };
 struct DialogueAction final {
     DialogueActionKind kind{DialogueActionKind::setFlag};
-    simulation::DefinitionId flagId{};
+    simulation::DefinitionId targetId{};
 };
 
 struct DialogueChoice final {

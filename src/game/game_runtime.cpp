@@ -228,7 +228,6 @@ struct GameRuntime::State final {
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
           session(handles, localPlayerId, {}),
-          dialogueFlags(), dialogue(content.dialogues(), dialogueFlags),
           swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
           bowDefinition(gameplay::makePlayerBowAttackDefinition()),
           arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()) {
@@ -293,6 +292,7 @@ struct GameRuntime::State final {
         session.configureCombat(attackCatalog, projectileCatalog, behaviorCatalog,
                                 swordDefinition, bowDefinition);
         session.configureItems(itemCatalog);
+        session.configureNarrative(content.dialogues(), content.quests());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -431,14 +431,14 @@ struct GameRuntime::State final {
                 pickup.position().x, pickup.position().y, quantity});
         }
 
-        snapshot.dialogue.active = dialogue.isOpen();
-        snapshot.dialogue.dialogueId = std::string(dialogue.dialogueId());
-        snapshot.dialogue.nodeId = std::string(dialogue.nodeId());
-        snapshot.dialogue.pageIndex = dialogue.pageIndex();
-        snapshot.dialogue.pageCount = dialogue.pageCount();
-        snapshot.dialogue.choicesVisible = dialogue.choicesVisible();
-        snapshot.dialogue.selectedChoice = dialogue.selectedChoice();
-        for (const auto& progress : questState.snapshot()) {
+        snapshot.dialogue.active = session.dialogue().isOpen();
+        snapshot.dialogue.dialogueId = std::string(session.dialogue().dialogueId());
+        snapshot.dialogue.nodeId = std::string(session.dialogue().nodeId());
+        snapshot.dialogue.pageIndex = session.dialogue().pageIndex();
+        snapshot.dialogue.pageCount = session.dialogue().pageCount();
+        snapshot.dialogue.choicesVisible = session.dialogue().choicesVisible();
+        snapshot.dialogue.selectedChoice = session.dialogue().selectedChoice();
+        for (const auto& progress : session.questState().snapshot()) {
             audit::AuditQuest quest{std::string(progress.questId.value()),
                                     questStatusName(progress.status), {}};
             for (const auto& objective : progress.objectives) {
@@ -447,7 +447,7 @@ struct GameRuntime::State final {
             }
             snapshot.quests.push_back(std::move(quest));
         }
-        for (const auto& flag : dialogueFlags.values()) {
+        for (const auto& flag : session.dialogueFlags().values()) {
             snapshot.dialogueFlags.emplace_back(flag.value());
         }
         snapshot.activeProjectileCount = session.projectiles().projectiles().size();
@@ -494,17 +494,8 @@ struct GameRuntime::State final {
                 }
             } else if (const auto* pickup = std::get_if<simulation::PickupCollected>(&event)) {
                 lastEvent = "PICKUP " + std::to_string(pickup->amount);
-            } else if (const auto* talked = std::get_if<simulation::NpcTalked>(&event)) {
-                const auto found = std::find_if(activeWorld().npcs().begin(), activeWorld().npcs().end(),
-                    [&](const auto& persistent) { return persistent.instance.handle() == talked->npc; });
-                if (found != activeWorld().npcs().end()) {
-                    std::string error;
-                    if (dialogue.begin(found->instance.definition().defaultDialogueId, error)) {
-                        lastEvent = "DIALOGUE";
-                    } else {
-                        lastEvent = "DIALOGUE ERROR";
-                    }
-                }
+            } else if (std::holds_alternative<simulation::NpcTalked>(event)) {
+                lastEvent = "NPC INTERACTION";
             }
         }
     }
@@ -514,7 +505,7 @@ struct GameRuntime::State final {
     }
 
     void clearMapTransients() {
-        dialogue.close();
+        session.closeDialogue();
         session.clearCombatTransients();
         effects->clear();
     }
@@ -541,7 +532,7 @@ struct GameRuntime::State final {
     void saveGame() {
         captureActiveWorld();
         save::SaveData data{save::capturePlayer(player, session.playerItems(), activeWorld().id()),
-                            session.worldState(), dialogueFlags, questState};
+                            session.worldState(), session.dialogueFlags(), session.questState()};
         std::string error;
         if (save::writeSaveAtomic(savePath, data, error)) {
             lastEvent = "SAVED";
@@ -576,8 +567,12 @@ struct GameRuntime::State final {
             lastEvent = "LOAD ERROR";
             return;
         }
-        dialogueFlags = loaded.data.dialogueFlags;
-        questState = loaded.data.quests;
+        const auto questProgress = loaded.data.quests.snapshot();
+        if (!session.restoreNarrativeState(loaded.data.dialogueFlags,
+                                           questProgress, error)) {
+            lastEvent = "LOAD ERROR";
+            return;
+        }
         clearMapTransients();
         rebuildWorldVisuals();
         followPlayer();
@@ -593,15 +588,11 @@ struct GameRuntime::State final {
         // fully owned by the Session. This preserves the old rule that the
         // player's invulnerability timer advances even while those overlays
         // consume a command tick.
-        gameplay::tickInvulnerability(player.combatant());
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
-        if (dialogue.handleCommand(command)) {
-            lastTick = tick;
-            lastSequence = command.sequence;
-            return;
+        if (!session.dialogue().isOpen()) {
+            if (command.actions.saveGamePressed) { saveGame(); }
+            if (command.actions.loadGamePressed) { loadGame(); }
         }
-        if (command.actions.saveGamePressed) { saveGame(); }
-        if (command.actions.loadGamePressed) { loadGame(); }
         session.tick(command);
         // The Session owns map transitions. Rebuild presentation immediately so
         // the remaining systems in this transitional Runtime do not observe a
@@ -634,7 +625,7 @@ struct GameRuntime::State final {
             session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
             projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
-            dialogue, view, combatDebug, session.activeSword(), lastEvent, collisionOverlay,
+            session.dialogue(), view, combatDebug, session.activeSword(), lastEvent, collisionOverlay,
             playerSpriteVisibleDuringInvulnerability()});
     }
 
@@ -692,9 +683,6 @@ struct GameRuntime::State final {
     gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
     gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
     gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
-    gameplay::dialogue::DialogueFlagSet dialogueFlags;
-    gameplay::dialogue::DialogueSession dialogue{content.dialogues(), dialogueFlags};
-    gameplay::quests::QuestStateStore questState;
     gameplay::AttackDefinition swordDefinition;
     gameplay::AttackDefinition bowDefinition;
     gameplay::ProjectileDefinition arrowDefinition;

@@ -1,5 +1,7 @@
 #include "game/gameplay/dialogue/dialogue_model.h"
 
+#include "game/gameplay/quests/quest_model.h"
+
 #include <stdexcept>
 #include <utility>
 
@@ -33,8 +35,8 @@ void validateNodeTargets(const DialogueDefinition& definition,
             }
         }
         for (const auto& action : choice.actions) {
-            if (action.flagId.empty()) {
-                throw std::invalid_argument("dialogue action flag is empty");
+            if (action.targetId.empty()) {
+                throw std::invalid_argument("dialogue action target is empty");
             }
         }
     }
@@ -130,7 +132,8 @@ DialogueDefinition makeScholarDialogueDefinition() {
     return {scholarDialogueId(), entry,
             {{entry, "Scholar", {"The old stones remember every footstep."}, {},
               {{"Ask about the dungeon", left, {},
-                {{DialogueActionKind::setFlag, scholarAskedFlagId()}}},
+                {{DialogueActionKind::setFlag, scholarAskedFlagId()},
+                 {DialogueActionKind::startQuest, quests::scholarQuestId()}}},
                {"Say farewell", right,
                 {{DialogueConditionKind::flagNotSet, scholarAskedFlagId()}}, {}},
                {"Recall the lesson", left,

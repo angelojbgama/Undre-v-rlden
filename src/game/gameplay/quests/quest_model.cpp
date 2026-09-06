@@ -67,9 +67,7 @@ const simulation::DefinitionId& scholarQuestId() {
 
 QuestDefinition makeScholarQuestDefinition() {
     return {scholarQuestId(), "The Scholar's Path",
-            {{simulation::DefinitionId{"quest.scholar.talk"}, QuestObjectiveKind::talk,
-              simulation::DefinitionId{"npc.scholar"}, 1, "Speak with the scholar."},
-             {simulation::DefinitionId{"quest.scholar.kill"}, QuestObjectiveKind::kill,
+            {{simulation::DefinitionId{"quest.scholar.kill"}, QuestObjectiveKind::kill,
               simulation::DefinitionId{"enemy.evil_soldier"}, 1, "Defeat an evil soldier."},
              {simulation::DefinitionId{"quest.scholar.pickup"}, QuestObjectiveKind::pickup,
               simulation::DefinitionId{"pickup.heart"}, 1, "Find a heart pickup."}},

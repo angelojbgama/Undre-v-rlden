@@ -2998,8 +2998,15 @@ void testPhase10DialogueSession() {
     expect(session.begin(dialogue::scholarDialogueId(), error) &&
                session.handleCommand(actionCommand(9, true, false)) &&
                session.handleCommand(actionCommand(10, true, false)) &&
-               flags.isSet(dialogue::scholarAskedFlagId()) && !session.choicesVisible(),
-           "selected dialogue action sets a persistent flag through the session");
+               !session.choicesVisible(),
+           "selected dialogue action is reported by the dialogue session");
+    for (const auto& action : session.takeActions()) {
+        if (action.kind == dialogue::DialogueActionKind::setFlag) {
+            static_cast<void>(flags.set(action.targetId));
+        }
+    }
+    expect(flags.isSet(dialogue::scholarAskedFlagId()),
+           "gameplay owner applies selected dialogue flag actions");
     session.close();
     expect(session.begin(dialogue::scholarDialogueId(), error) &&
                session.handleCommand(actionCommand(11, true, false)) &&
@@ -3014,12 +3021,9 @@ void testPhase11QuestDefinitions() {
     const underworld::game::GameContentRegistry content;
     const auto& scholarQuest = content.quests().require(quests::scholarQuestId());
     expect(content.quests().size() == 1 && scholarQuest.title == "The Scholar's Path" &&
-               scholarQuest.objectives.size() == 3 &&
-               scholarQuest.objectives[0].kind == quests::QuestObjectiveKind::talk &&
-               scholarQuest.objectives[0].targetId ==
-                   simulation::DefinitionId{"npc.scholar"} &&
-               scholarQuest.objectives[1].kind == quests::QuestObjectiveKind::kill &&
-               scholarQuest.objectives[2].kind == quests::QuestObjectiveKind::pickup,
+               scholarQuest.objectives.size() == 2 &&
+               scholarQuest.objectives[0].kind == quests::QuestObjectiveKind::kill &&
+               scholarQuest.objectives[1].kind == quests::QuestObjectiveKind::pickup,
            "GameContentRegistry exposes a reusable multi-objective quest definition");
 
     expect(quests::findObjective(scholarQuest,
@@ -3106,31 +3110,27 @@ void testPhase11QuestState() {
     expect(!state.start(definition) && state.size() == 1,
            "a quest cannot be started twice while its progress is active");
 
-    expect(state.advanceObjective(definition,
-                                  simulation::DefinitionId{"quest.scholar.talk"}) &&
+    expect(state.setObjectiveProgress(definition,
+                                      simulation::DefinitionId{"quest.scholar.pickup"}, 99) &&
                quests::findObjectiveProgress(state.require(definition.id),
-                                              simulation::DefinitionId{"quest.scholar.talk"})
+                                              simulation::DefinitionId{"quest.scholar.pickup"})
                        ->currentCount == 1 &&
                state.status(definition.id) == quests::QuestStatus::active,
-           "advancing one objective updates only its runtime progress");
-    expect(state.setObjectiveProgress(definition,
-                                      simulation::DefinitionId{"quest.scholar.kill"}, 99) &&
+           "setting one objective clamps to the immutable required count");
+    expect(state.advanceObjective(definition,
+                                  simulation::DefinitionId{"quest.scholar.kill"}) &&
                quests::findObjectiveProgress(state.require(definition.id),
                                               simulation::DefinitionId{"quest.scholar.kill"})
                        ->currentCount == 1 &&
-               state.status(definition.id) == quests::QuestStatus::active,
-           "objective progress clamps to the immutable required count");
+               state.status(definition.id) == quests::QuestStatus::completed,
+           "advancing the final objective completes the runtime quest state");
     expect(!state.advanceObjective(definition,
                                    simulation::DefinitionId{"quest.scholar.missing"}) &&
                !state.setObjectiveProgress(definition,
                                            simulation::DefinitionId{"quest.scholar.missing"}, 1),
            "unknown objectives do not mutate quest state");
-    expect(state.advanceObjective(definition,
-                                  simulation::DefinitionId{"quest.scholar.pickup"}) &&
-               state.status(definition.id) == quests::QuestStatus::completed,
-           "completing the final objective transitions the quest to completed");
     expect(!state.advanceObjective(definition,
-                                   simulation::DefinitionId{"quest.scholar.talk"}) &&
+                                   simulation::DefinitionId{"quest.scholar.kill"}) &&
                state.status(definition.id) == quests::QuestStatus::completed,
            "completed quests reject further objective progress");
     expect(state.reset(definition.id) && state.status(definition.id) == quests::QuestStatus::inactive &&
@@ -3196,7 +3196,6 @@ void testPhase11QuestPersistence() {
     const auto& definition = content.quests().require(quests::scholarQuestId());
     quests::QuestStateStore state;
     expect(state.start(definition) &&
-               state.advanceObjective(definition, simulation::DefinitionId{"quest.scholar.talk"}) &&
                state.advanceObjective(definition, simulation::DefinitionId{"quest.scholar.kill"}),
            "quest progress can be prepared for persistence without copying definitions");
 
@@ -3776,6 +3775,8 @@ void testOfficialGameplayMapSet() {
     namespace gameplay = underworld::game::gameplay;
     namespace creatures = underworld::game::gameplay::creatures;
     namespace npcs = underworld::game::gameplay::npcs;
+    namespace dialogue = underworld::game::gameplay::dialogue;
+    namespace quests = underworld::game::gameplay::quests;
     namespace maps = underworld::game::maps;
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
@@ -4021,6 +4022,43 @@ void testOfficialGameplayMapSet() {
             });
         expect(damagedOrDefeated,
                "headless GameSession advances Player sword combat without presentation");
+    }
+
+    game::GameSession narrativeSession(handles, {0});
+    narrativeSession.configureItems(content.items());
+    narrativeSession.configureNarrative(content.dialogues(), content.quests());
+    std::string narrativeError;
+    expect(narrativeSession.initializeMap(catalog, validation, logicalBuilder, handles,
+        simulation::MapId{"map.dungeon.02"}, simulation::SpawnId{"entry.from_01"},
+        narrativeError), "headless GameSession narrative fixture initializes logically");
+    const auto scholar = std::find_if(narrativeSession.world().npcs().begin(),
+        narrativeSession.world().npcs().end(), [&](const auto& npc) {
+            return npc.instance.definition().id == npcs::scholarNpcId();
+        });
+    if (scholar != narrativeSession.world().npcs().end()) {
+        narrativeSession.playerForRuntime().relocate(
+            scholar->instance.position(), gameplay::FacingDirection::down);
+        auto interact = actionCommand(1, false, false);
+        interact.actions.interactPressed = true;
+        narrativeSession.tick(interact);
+        expect(narrativeSession.dialogue().isOpen() &&
+                   narrativeSession.dialogue().dialogueId() ==
+                       dialogue::scholarDialogueId().value() &&
+                   std::any_of(narrativeSession.events().events().begin(),
+                               narrativeSession.events().events().end(), [](const auto& event) {
+                                   return std::holds_alternative<simulation::NpcTalked>(event);
+                               }),
+               "GameSession opens dialogue and emits NpcTalked without presentation");
+        narrativeSession.tick(actionCommand(2, true, false));
+        expect(narrativeSession.dialogue().choicesVisible(),
+               "GameSession routes dialogue navigation before world simulation");
+        narrativeSession.tick(actionCommand(3, true, false));
+        expect(narrativeSession.dialogueFlags().isSet(dialogue::scholarAskedFlagId()) &&
+                   narrativeSession.questState().status(quests::scholarQuestId()) ==
+                       quests::QuestStatus::active,
+               "GameSession applies dialogue flag and starts Scholar quest action");
+    } else {
+        expect(false, "headless GameSession narrative fixture contains the Scholar");
     }
 
     game::GameSession itemSession(handles, {0});

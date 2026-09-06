@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace underworld::game {
 
@@ -28,6 +29,45 @@ void GameSession::configureCombat(const gameplay::AttackCatalog& attacks,
 void GameSession::configureItems(const gameplay::ItemCatalog& items) {
     itemCatalog_ = &items;
     playerItems_ = std::make_unique<gameplay::PlayerItems>(items);
+}
+
+void GameSession::configureNarrative(
+    const gameplay::dialogue::DialogueCatalog& dialogues,
+    const gameplay::quests::QuestCatalog& quests) {
+    dialogueCatalog_ = &dialogues;
+    questCatalog_ = &quests;
+    dialogue_ = std::make_unique<gameplay::dialogue::DialogueSession>(
+        dialogues, dialogueFlags_);
+    questSystem_ = std::make_unique<gameplay::quests::QuestSystem>(quests, questState_);
+}
+
+void GameSession::closeDialogue() noexcept {
+    if (dialogue_) { dialogue_->close(); }
+}
+
+bool GameSession::restoreNarrativeState(
+    const gameplay::dialogue::DialogueFlagSet& flags,
+    std::span<const gameplay::quests::QuestProgress> progress,
+    std::string& error) {
+    if (!dialogueCatalog_ || !questCatalog_ || !dialogue_ || !questSystem_) {
+        error = "GameSession narrative is not configured";
+        return false;
+    }
+    gameplay::dialogue::DialogueFlagSet restoredFlags;
+    if (!restoredFlags.restore(flags.values())) {
+        error = "invalid dialogue flags";
+        return false;
+    }
+    gameplay::quests::QuestStateStore restoredQuests;
+    if (!restoredQuests.restore(progress, *questCatalog_)) {
+        error = "invalid quest state";
+        return false;
+    }
+    dialogueFlags_ = std::move(restoredFlags);
+    questState_ = std::move(restoredQuests);
+    dialogue_->close();
+    error.clear();
+    return true;
 }
 
 void GameSession::clearCombatTransients() noexcept {
@@ -281,6 +321,11 @@ void GameSession::interactWithWorld() {
             events_.emit(simulation::NpcTalked{
                 player_.entityHandle(), npcInteraction.npc,
                 found->instance.definition().id});
+            if (dialogue_) {
+                std::string error;
+                static_cast<void>(dialogue_->begin(
+                    found->instance.definition().defaultDialogueId, error));
+            }
         }
         return;
     }
@@ -320,6 +365,30 @@ void GameSession::interactWithWorld() {
     captureWorldState();
 }
 
+bool GameSession::handleDialogueCommand(const simulation::PlayerCommand& command) {
+    if (!dialogue_ || !dialogue_->isOpen()) { return false; }
+    static_cast<void>(dialogue_->handleCommand(command));
+    applyDialogueActions();
+    return true;
+}
+
+void GameSession::applyDialogueActions() {
+    if (!dialogue_) { return; }
+    for (const auto& action : dialogue_->takeActions()) {
+        if (action.kind == gameplay::dialogue::DialogueActionKind::setFlag) {
+            static_cast<void>(dialogueFlags_.set(action.targetId));
+        } else if (action.kind == gameplay::dialogue::DialogueActionKind::clearFlag) {
+            static_cast<void>(dialogueFlags_.clear(action.targetId));
+        } else if (questSystem_) {
+            static_cast<void>(questSystem_->start(action.targetId));
+        }
+    }
+}
+
+void GameSession::consumeQuestEvents() {
+    if (questSystem_) { questSystem_->consume(events_); }
+}
+
 void GameSession::captureWorldState() {
     if (mapSession_ && mapSession_->world() && mapSession_->data()) {
         save::captureWorldState(*mapSession_->data(), *mapSession_->world(), worldState_);
@@ -344,9 +413,15 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
 
 void GameSession::tick(const simulation::PlayerCommand& command) {
     events_.clear();
+    gameplay::tickInvulnerability(player_.combatant());
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
+    if (handleDialogueCommand(command)) {
+        consumeQuestEvents();
+        return;
+    }
     if (playerItems_ && gameplay::routeInventoryCommand(
             inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health())) {
+        consumeQuestEvents();
         return;
     }
     if (playerItems_ && command.actions.quickSlotPressed >= 0) {
@@ -388,6 +463,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (command.actions.interactPressed) { interactWithWorld(); }
     collectNearbyPickups();
     updateObjects();
+    consumeQuestEvents();
 }
 
 void GameSession::removeDefeatedEnemies() {

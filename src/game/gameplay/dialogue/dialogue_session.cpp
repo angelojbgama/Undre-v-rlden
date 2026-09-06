@@ -35,6 +35,7 @@ void DialogueSession::close() noexcept {
     pageIndex_ = 0;
     selectedChoice_ = 0;
     availableChoiceIndices_.clear();
+    pendingActions_.clear();
 }
 
 bool DialogueSession::handleCommand(const simulation::PlayerCommand& command) {
@@ -57,13 +58,9 @@ bool DialogueSession::handleCommand(const simulation::PlayerCommand& command) {
                 return true;
             }
             const auto choiceIndex = availableChoiceIndices_[selectedChoice_];
-            for (const auto& action : node_->choices[choiceIndex].actions) {
-                if (action.kind == DialogueActionKind::setFlag) {
-                    static_cast<void>(flags_->set(action.flagId));
-                } else {
-                    static_cast<void>(flags_->clear(action.flagId));
-                }
-            }
+            pendingActions_.insert(pendingActions_.end(),
+                                   node_->choices[choiceIndex].actions.begin(),
+                                   node_->choices[choiceIndex].actions.end());
             enterNode(node_->choices[choiceIndex].targetNodeId);
         }
         return true;

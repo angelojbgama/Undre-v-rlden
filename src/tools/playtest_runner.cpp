@@ -489,6 +489,31 @@ bool runDialogue(ScenarioContext& context) {
     return active;
 }
 
+bool runQuest(ScenarioContext& context) {
+    if (!runBaseline(context)) { return false; }
+    const auto initial = context.snapshot();
+    const auto scholar = std::find_if(initial.npcs.begin(), initial.npcs.end(),
+        [](const auto& npc) { return npc.definitionId == "npc.scholar"; });
+    if (!context.require(scholar != initial.npcs.end(), "expected Scholar is absent")) {
+        return false;
+    }
+    if (!moveTo(context, PointTarget{scholar->x, scholar->y}, 500, false)) {
+        return context.fail("could not approach Scholar");
+    }
+    platform::InputState input;
+    input.interactPressed = true;
+    if (!context.step(input)) { return false; }
+    input = {};
+    input.primaryAttackPressed = true;
+    if (!context.step(input) || !context.step(input)) { return false; }
+    const auto& after = context.snapshot();
+    const auto quest = std::find_if(after.quests.begin(), after.quests.end(),
+        [](const auto& value) { return value.questId == "quest.scholar.path"; });
+    const bool active = quest != after.quests.end() && quest->status == "active";
+    if (active) { static_cast<void>(context.checkpoint("quest_start", "quest_activated")); }
+    return context.require(active, "Scholar dialogue did not activate its quest");
+}
+
 bool runSaveLoad(ScenarioContext& context) {
     if (!runBaseline(context)) { return false; }
     platform::InputState input;
@@ -664,9 +689,9 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
     else if (name == "npc_dialogue" || name == "dialogue_pagination" ||
              name == "dialogue_choice" || name == "dialogue_flag") {
         passed = runDialogue(context);
+    } else if (name == "quest") {
+        passed = runQuest(context);
     } else {
-        // Quest start is not exposed through a player command yet. Keep these names
-        // in the matrix as startup/update/render smoke until that public boundary exists.
         passed = runBaseline(context);
     }
     const bool closed = context.finish();
