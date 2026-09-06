@@ -5576,6 +5576,39 @@ void testPhase13A2JsonDecoders() {
     expect(!unsupported.content && unsupported.diagnostics.size() == 1 && unsupported.diagnostics[0].path == "dialogues" &&
                !wrongCategoryType.content && wrongCategoryType.diagnostics.size() == 1 && wrongCategoryType.diagnostics[0].path == "attacks",
            "13A2 unsupported non-empty and wrong-type categories fail explicitly");
+    const auto hasDiagnostic = [](const auto& result, std::string_view path) {
+        return !result.content && std::any_of(result.diagnostics.begin(), result.diagnostics.end(), [path](const auto& diagnostic) {
+            return diagnostic.path == path;
+        });
+    };
+    expect(hasDiagnostic(document("attacks", R"({"id":"a","kind":"unknown","damage":{"amount":1,"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[]})"), "attacks[0].kind") &&
+               hasDiagnostic(document("enemies", R"({"id":"e","visualSetId":"v","behaviorProfileId":"b","faction":"unknown","maximumHealth":1,"movementSpeedSubpixelsPerTick":0,"collisionBody":{"offsetX":0,"offsetY":0,"width":1,"height":1},"hurtbox":{"offsetX":0,"offsetY":0,"width":1,"height":1},"attackIds":[]})"), "enemies[0].faction"),
+           "13A2 AttackKind and Faction unknown values are rejected at their fields");
+    expect(hasDiagnostic(document("projectiles", R"({"id":"p","visualId":"v","canonicalFacing":"down","speedPixelsPerTick":1,"lifetimeTicks":1,"hitboxWidth":1,"hitboxHeight":1,"spawnOffsets":{"down":{"x":0},"up":{"x":0,"y":0},"left":{"x":0,"y":0},"right":{"x":0,"y":0}}})"), "projectiles[0].spawnOffsets.down.y") &&
+               hasDiagnostic(document("projectiles", R"({"id":"p","visualId":"v","canonicalFacing":"down","speedPixelsPerTick":1,"lifetimeTicks":4294967296,"hitboxWidth":1,"hitboxHeight":1,"spawnOffsets":{"down":{"x":0,"y":0},"up":{"x":0,"y":0},"left":{"x":0,"y":0},"right":{"x":0,"y":0}}})"), "projectiles[0].lifetimeTicks"),
+           "13A2 projectile directional and narrow unsigned validation is strict");
+    expect(hasDiagnostic(document("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[]})"), "attacks[0].damage.amount") &&
+               hasDiagnostic(document("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"amount":1},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[]})"), "attacks[0].damage.knockbackPixels") &&
+               hasDiagnostic(document("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"amount":1,"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","timeline":[{"tick":1}]})"), "attacks[0].timeline[0].kind") &&
+               hasDiagnostic(document("attacks", R"({"id":"a","kind":"meleeHitbox","damage":{"amount":1,"knockbackPixels":0},"totalTicks":1,"cooldownTicks":1,"minimumRangePixels":0,"maximumRangePixels":1,"visualActionId":"v","meleeHitboxes":{"down":{"offsetX":0,"offsetY":0,"width":4},"up":{"offsetX":0,"offsetY":0,"width":4,"height":4},"left":{"offsetX":0,"offsetY":0,"width":4,"height":4},"right":{"offsetX":0,"offsetY":0,"width":4,"height":4}},"timeline":[]})"), "attacks[0].meleeHitboxes.down.height"),
+           "13A2 DamageSpec, timeline and melee box required fields are strict");
+    const auto attackIdsElement = document("enemies", R"({"id":"e","visualSetId":"v","behaviorProfileId":"b","faction":"enemy","maximumHealth":1,"movementSpeedSubpixelsPerTick":-9223372036854775808,"collisionBody":{"offsetX":0,"offsetY":0,"width":1,"height":1},"hurtbox":{"offsetX":0,"offsetY":0,"width":1,"height":1},"attackIds":["attack.valid",123]})");
+    expect(hasDiagnostic(attackIdsElement, "enemies[0].attackIds[1]"), "13A2 enemy attackIds rejects non-string elements");
+    expect(hasDiagnostic(document("objects", R"({"id":"o","visualSetId":"v","destructible":{"maximumHealth":1,"hurtbox":{"x":0,"y":0,"width":1,"height":1}}})"), "objects[0].destructible.destructionDurationTicks") &&
+               hasDiagnostic(document("objects", R"({"id":"o","visualSetId":"v","bankAccess":1})"), "objects[0].bankAccess") &&
+               hasDiagnostic(document("objects", R"({"id":"o","visualSetId":"v","interactable":{"x":0,"y":0,"width":1}})"), "objects[0].interactable.height"),
+           "13A2 world object capability shapes are strict");
+    const auto maxCapacity = document("objects", R"({"id":"o","visualSetId":"v","container":{"capacity":18446744073709551615}})");
+    expect(maxCapacity.content.has_value(), "13A2 size_t capacity accepts UINT64_MAX on the 64-bit host");
+    expect(hasDiagnostic(document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"amount":1}})"), "pickups[0].payload.kind") &&
+               hasDiagnostic(document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"mana","amount":1}})"), "pickups[0].payload.kind") &&
+               hasDiagnostic(document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"currency","amount":18446744073709551616}})"), "pickups[0].payload.amount") &&
+               hasDiagnostic(document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"item","quantity":1}})"), "pickups[0].payload.itemId") &&
+               hasDiagnostic(document("pickups", R"({"id":"p","visualId":"v","collectionBounds":{"x":0,"y":0,"width":1,"height":1},"payload":{"kind":"item","itemId":"i","quantity":4294967296}})"), "pickups[0].payload.quantity"),
+           "13A2 pickup kind, uint64 and uint32 boundaries are strict");
+    expect(hasDiagnostic(document("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1},"interactionEnabled":true,"defaultDialogueId":"d","tags":[]})"), "npcs[0].interaction.height") &&
+               hasDiagnostic(document("npcs", R"({"id":"n","visualSetId":"v","interaction":{"x":0,"y":0,"width":1,"height":1},"interactionEnabled":true,"defaultDialogueId":"d","tags":{}})"), "npcs[0].tags"),
+           "13A2 NPC interaction and tags shapes are strict");
 }
 
 int main() {
