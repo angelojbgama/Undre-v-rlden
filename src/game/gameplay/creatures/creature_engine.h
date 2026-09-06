@@ -50,6 +50,7 @@ struct EnemyDefinition final {
     ActorBoxDefinition collisionBody{};
     ActorBoxDefinition hurtbox{};
     std::vector<simulation::DefinitionId> attackIds{};
+    std::optional<simulation::DefinitionId> rewardProfileId{};
 };
 
 class BehaviorCatalog final {

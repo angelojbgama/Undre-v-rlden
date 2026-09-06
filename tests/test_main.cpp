@@ -34,6 +34,7 @@
 #include "game/audit/audit_snapshot.h"
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
+#include "game/gameplay/rpg/rewards.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
@@ -4981,6 +4982,43 @@ void testAuthoredContentBoundary() {
            "content diagnostics are deterministic for the same authored pack");
 }
 
+void testPhase12BRewards() {
+    using RewardProfileDefinition = underworld::game::gameplay::rpg::RewardProfileDefinition;
+    using RewardResolver = underworld::game::gameplay::rpg::RewardResolver;
+    const auto builtin = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto& soldier = builtin.rewards().require({"reward.enemy.evil_soldier"});
+    const auto& skull = builtin.rewards().require({"reward.enemy.skull"});
+    expect(soldier.experience == 60 && skull.experience == 40 && soldier.loot.size() == 2,
+           "builtin reward profiles contain provisional XP and loot");
+    expect(!std::is_same_v<underworld::game::content::AuthoredRewardProfile,
+                           RewardProfileDefinition>,
+           "authored reward profile is distinct from runtime definition");
+    RewardResolver resolver;
+    const underworld::simulation::MapId map{"map.dungeon.01"};
+    const underworld::simulation::PersistentInstanceId enemy{42};
+    const auto first = resolver.resolve(soldier, {map, enemy});
+    const auto second = resolver.resolve(soldier, {map, enemy});
+    expect(first.experience == 60 && first.loot == second.loot,
+           "reward resolution is deterministic for a persistent enemy");
+    const RewardProfileDefinition guaranteed{{"reward.test"}, 50,
+        {{{"pickup.money"}, 10000, 2, 4}, {{"pickup.heart"}, 0, 1, 1}}};
+    const auto guaranteedResult = resolver.resolve(guaranteed, {map, enemy});
+    expect(guaranteedResult.experience == 50 && guaranteedResult.loot.size() == 1 &&
+               guaranteedResult.loot.front().count >= 2 && guaranteedResult.loot.front().count <= 4,
+           "guaranteed loot honors an independent count range");
+    const RewardProfileDefinition xpOnly{{"reward.xp_only"}, 50, {}};
+    expect(resolver.resolve(xpOnly, {map, enemy}).loot.empty(),
+           "XP-only reward produces no loot");
+    auto invalid = underworld::game::content::makeBuiltinAuthoredContent();
+    invalid.rewardProfiles.front().loot.front().chanceBasisPoints = 10001;
+    const auto invalidResult = underworld::game::content::compileContent(invalid);
+    expect(!invalidResult && std::any_of(invalidResult.report.diagnostics.begin(),
+        invalidResult.report.diagnostics.end(), [](const auto& diagnostic) {
+            return diagnostic.kind == underworld::game::content::ContentKind::rewardProfile &&
+                   diagnostic.code == "invalid_range";
+        }), "invalid reward chance is rejected before publication");
+}
+
 } // namespace
 
 int main() {
@@ -5042,6 +5080,7 @@ int main() {
         testWin32Clock();
         testAuthoredContentBoundary();
         testPhase12AProgressionFoundation();
+        testPhase12BRewards();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

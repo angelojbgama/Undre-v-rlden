@@ -11,6 +11,7 @@
 #include "game/tilesets.h"
 #include "game/authoring/authoring_semantics.h"
 #include "game/gameplay/rpg/player_progression.h"
+#include "game/gameplay/rpg/rewards.h"
 #include "game/content/content_dto.h"
 
 #include <string>
@@ -57,6 +58,7 @@ public:
         return authoringSemantics_;
     }
     [[nodiscard]] const gameplay::rpg::PlayerProgressionCatalog& progressions() const noexcept { return progressions_; }
+    [[nodiscard]] const gameplay::rpg::RewardProfileCatalog& rewards() const noexcept { return rewards_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -84,6 +86,7 @@ private:
     TilesetCatalog tilesets_;
     authoring::AuthoringSemanticRegistry authoringSemantics_;
     gameplay::rpg::PlayerProgressionCatalog progressions_;
+    gameplay::rpg::RewardProfileCatalog rewards_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };

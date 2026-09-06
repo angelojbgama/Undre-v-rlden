@@ -16,6 +16,7 @@
 #include "game/maps/map_catalog.h"
 #include "game/save/save_data.h"
 #include "game/gameplay/rpg/player_progression.h"
+#include "game/gameplay/rpg/rewards.h"
 
 #include <memory>
 #include <span>
@@ -50,6 +51,11 @@ public:
     void configureItems(const gameplay::ItemCatalog& items);
     void configureNarrative(const gameplay::dialogue::DialogueCatalog& dialogues,
                             const gameplay::quests::QuestCatalog& quests);
+    void configureRewards(const gameplay::rpg::RewardProfileCatalog& rewards,
+                          const std::vector<gameplay::PickupDefinition>& pickups) noexcept {
+        rewardCatalog_ = &rewards;
+        pickupDefinitions_ = &pickups;
+    }
     [[nodiscard]] save::SaveData captureSaveData() const;
     [[nodiscard]] bool restoreSaveData(const save::SaveData& data, std::string& error);
 
@@ -94,6 +100,7 @@ private:
     void resolveEnemyContacts();
     void updateEnemies();
     void removeDefeatedEnemies();
+    void resolveDefeatRewards();
     void collectNearbyPickups();
     void updateObjects();
     void interactWithWorld();
@@ -128,6 +135,9 @@ private:
     gameplay::InventoryOverlayState inventoryOverlay_;
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
+    const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};
+    const std::vector<gameplay::PickupDefinition>* pickupDefinitions_{};
+    gameplay::rpg::RewardResolver rewardResolver_;
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;

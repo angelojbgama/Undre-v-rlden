@@ -122,7 +122,7 @@ SaveResult readSave(const std::filesystem::path& path,const SaveValidationCatalo
 
 bool applyWorldState(const SessionWorldState& state,maps::RuntimeWorld& world,simulation::EntityHandlePool& handles,const gameplay::ItemCatalog& items,std::string& error){
     auto& objects=world.objects();for(auto it=objects.begin();it!=objects.end();){const auto* delta=state.findObject({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->destroyed){static_cast<void>(handles.destroy(it->instance.handle()));it=objects.erase(it);continue;}if(delta->opened)static_cast<void>(it->instance.open());if(auto* contents=it->instance.contents()){for(std::size_t index=0;index<contents->capacity();++index){if(const auto slot=contents->slot(index))static_cast<void>(contents->remove(slot->itemId,slot->quantity));}for(const auto& stack:delta->remainingContents){const auto added=contents->add(stack.itemId,stack.quantity);if(added.remainder){error="saved object contents do not fit";return false;}}}++it;}
-    auto& pickups=world.pickups();for(auto it=pickups.begin();it!=pickups.end();){const auto* delta=state.findPickup({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->collected){static_cast<void>(handles.destroy(it->instance.handle()));it=pickups.erase(it);continue;}if(delta->remainingQuantity){if(auto* currency=std::get_if<gameplay::CurrencyPickup>(&it->instance.payload()))currency->amount=*delta->remainingQuantity;else if(auto* item=std::get_if<gameplay::ItemPickup>(&it->instance.payload())){if(*delta->remainingQuantity>std::numeric_limits<std::uint32_t>::max()){error="saved item pickup remainder overflows";return false;}item->quantity=static_cast<std::uint32_t>(*delta->remainingQuantity);}else{error="health pickup cannot have partial remainder";return false;}}++it;}static_cast<void>(items);return true;
+    auto& pickups=world.pickups();for(auto it=pickups.begin();it!=pickups.end();){if(it->transient){++it;continue;}const auto* delta=state.findPickup({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->collected){static_cast<void>(handles.destroy(it->instance.handle()));it=pickups.erase(it);continue;}if(delta->remainingQuantity){if(auto* currency=std::get_if<gameplay::CurrencyPickup>(&it->instance.payload()))currency->amount=*delta->remainingQuantity;else if(auto* item=std::get_if<gameplay::ItemPickup>(&it->instance.payload())){if(*delta->remainingQuantity>std::numeric_limits<std::uint32_t>::max()){error="saved item pickup remainder overflows";return false;}item->quantity=static_cast<std::uint32_t>(*delta->remainingQuantity);}else{error="health pickup cannot have partial remainder";return false;}}++it;}static_cast<void>(items);return true;
 }
 
 void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& world,
@@ -163,7 +163,7 @@ void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& 
     for (const auto& placement : original.pickups) {
         const auto runtime = std::find_if(
             world.pickups().begin(), world.pickups().end(), [&](const auto& candidate) {
-                return candidate.persistentId == placement.id;
+                return !candidate.transient && candidate.persistentId == placement.id;
             });
         if (runtime == world.pickups().end()) {
             state.set(PickupDelta{{original.id, placement.id}, true, std::nullopt});

@@ -27,6 +27,7 @@ private:
     void consume(const simulation::MapEntered& event);
     void consume(const simulation::ObjectOpened& event);
     void consume(const simulation::ItemDelivered& event);
+    void consume(const simulation::ExperienceGranted&) noexcept {}
 
     void advance(QuestObjectiveKind kind,
                  const simulation::DefinitionId& targetId,

@@ -243,6 +243,16 @@ responsabilidade da aplicação. Restauração faz rollback internamente, fecha 
 e limpa transientes antes de devolver o controle ao Runtime. Nenhum renderer, asset
 ou dependência de plataforma pode entrar em `GameSession`.
 
+### RPG — Rewards and Loot (12B)
+
+Criaturas nunca concedem recompensas diretamente. `EnemyDefinition` referencia um
+`RewardProfileDefinition`; após `EntityDefeated`, `GameSession` resolve o perfil com
+`RewardResolver`, aplica o XP e cria pickups de loot. O resolver é lógica pura,
+determinística e usa o mapa e a instância persistente como contexto. Ouro continua
+sendo um pickup físico antes de entrar na Wallet. Drops de inimigos são transitórios,
+não entram em DSAV/DMAP e são descartados em transições; `QuestSystem` observa o mesmo
+evento de derrota independentemente.
+
 ### RPG — Progression Foundation (12A)
 
 Progressão do Player é estado autoritativo da `GameSession`. Os base stats usados

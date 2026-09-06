@@ -491,6 +491,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         std::vector<gameplay::CombatResolution> resolutions;
         projectiles_->update(map.collision(), map.tileSize(), targets, combat_, events_, resolutions);
         for (const auto& resolution : resolutions) { applyResolution(resolution); }
+        resolveDefeatRewards();
         removeDefeatedEnemies();
     }
     mapSession_->beginTick();
@@ -508,6 +509,45 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     collectNearbyPickups();
     updateObjects();
     consumeQuestEvents();
+}
+
+void GameSession::resolveDefeatRewards() {
+    if (rewardCatalog_ == nullptr || pickupDefinitions_ == nullptr || mapSession_ == nullptr || mapSession_->world() == nullptr) {
+        return;
+    }
+    std::vector<simulation::EntityHandle> resolved;
+    for (const auto& event : events_.events()) {
+        const auto* defeated = std::get_if<simulation::EntityDefeated>(&event);
+        if (defeated == nullptr || defeated->attacker != player_.entityHandle()) { continue; }
+        if (std::find(resolved.begin(), resolved.end(), defeated->target) != resolved.end()) { continue; }
+        const auto enemy = std::find_if(mapSession_->world()->enemies().begin(),
+            mapSession_->world()->enemies().end(), [&](const auto& value) {
+                return value.instance.handle() == defeated->target;
+            });
+        if (enemy == mapSession_->world()->enemies().end() ||
+            !enemy->instance.definition().rewardProfileId) { continue; }
+        const auto* profile = rewardCatalog_->find(*enemy->instance.definition().rewardProfileId);
+        if (profile == nullptr) { continue; }
+        const auto resolution = rewardResolver_.resolve(
+            *profile, {mapSession_->world()->id(), enemy->persistentId});
+        const auto gain = progression_.grantExperience(resolution.experience);
+        if (gain.granted != 0) {
+            events_.emit(simulation::ExperienceGranted{
+                player_.entityHandle(), enemy->instance.definition().id, gain.granted,
+                progression_.totalExperience(), gain.previousLevel, gain.newLevel});
+        }
+        for (const auto& drop : resolution.loot) {
+            const auto definition = std::find_if(pickupDefinitions_->begin(), pickupDefinitions_->end(),
+                [&](const auto& value) { return value.id == drop.pickupDefinitionId; });
+            if (definition == pickupDefinitions_->end()) { continue; }
+            for (std::uint32_t count = 0; count < drop.count; ++count) {
+                mapSession_->world()->pickups().push_back({
+                    {}, true, gameplay::WorldPickup{handles_.create(), *definition,
+                                                        enemy->instance.feetPosition()}});
+            }
+        }
+        resolved.push_back(defeated->target);
+    }
 }
 
 void GameSession::removeDefeatedEnemies() {

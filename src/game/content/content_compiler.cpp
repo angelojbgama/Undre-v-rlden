@@ -11,7 +11,7 @@ TilesetDefinition compileTileset(const AuthoredTileset& v) { return {v.id, v.dis
 gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets}; }
 gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) { return {v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks, v.minimumRangePixels, v.maximumRangePixels, v.visualActionId, v.meleeHitboxes, v.projectileDefinitionId, v.timeline}; }
 gameplay::creatures::BehaviorProfile compileBehavior(const AuthoredBehaviorProfile& v) { return {v.id, v.detectionRangePixels, v.disengageRangePixels, v.idleDurationTicks, v.wanderDurationTicks}; }
-gameplay::creatures::EnemyDefinition compileEnemy(const AuthoredEnemy& v) { return {v.id, v.visualSetId, v.behaviorProfileId, v.faction, v.maximumHealth, v.movementSpeedSubpixelsPerTick, v.collisionBody, v.hurtbox, v.attackIds}; }
+gameplay::creatures::EnemyDefinition compileEnemy(const AuthoredEnemy& v) { return {v.id, v.visualSetId, v.behaviorProfileId, v.faction, v.maximumHealth, v.movementSpeedSubpixelsPerTick, v.collisionBody, v.hurtbox, v.attackIds, v.rewardProfileId}; }
 gameplay::ItemDefinition compileItem(const AuthoredItem& v) { return {v.id, v.visualId, v.category, v.stackLimit, v.use}; }
 gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) { return {v.id, v.visualSetId, v.interactable, v.container, v.destructible}; }
 gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor}; }
@@ -47,6 +47,7 @@ gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
     return result;
 }
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
+gameplay::rpg::RewardProfileDefinition compileReward(const AuthoredRewardProfile& v) { gameplay::rpg::RewardProfileDefinition result{v.id, v.experience, {}}; for (const auto& entry : v.loot) result.loot.push_back({entry.pickupDefinitionId, entry.chanceBasisPoints, entry.minimumCount, entry.maximumCount}); return result; }
 authoring::TileSemanticDefinition compileTileSemantic(const AuthoredTileSemantic& v) { return {v.id, v.tilesetId, v.sourceIndex, v.family, v.role, v.topology, v.north, v.east, v.south, v.west, v.preferredLayer, v.flipXAllowed, v.visualConfidence, v.semanticConfidence, v.gameplayConfidence}; }
 authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
     authoring::StampDefinition result{v.id, v.displayName, v.width, v.height, {}, v.anchor, v.flipXAllowed, v.atomic, v.confidence};
@@ -67,6 +68,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.attacks) registry.attacks_.add(compileAttack(value));
         for (const auto& value : authored.behaviors) registry.behaviors_.add(compileBehavior(value));
         for (const auto& value : authored.enemies) registry.enemies_.add(compileEnemy(value));
+        for (const auto& value : authored.rewardProfiles) registry.rewards_.add(compileReward(value));
         for (const auto& value : authored.items) registry.items_.add(compileItem(value));
         for (const auto& value : authored.objects) registry.objects_.add(compileObject(value));
         for (const auto& value : authored.npcs) registry.npcs_.add(compileNpc(value));

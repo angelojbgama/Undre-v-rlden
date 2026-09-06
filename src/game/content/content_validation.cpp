@@ -95,6 +95,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                             [](const auto& value) { return value.id; });
     const auto progressions = ids(pack.playerProgressions, report, ContentKind::playerProgression,
                                   [](const auto& value) { return value.id; });
+    const auto rewards = ids(pack.rewardProfiles, report, ContentKind::rewardProfile,
+                             [](const auto& value) { return value.id; });
 
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||
@@ -124,6 +126,19 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::enemy, value.id, "unknown_reference", "behavior profile does not exist", "behaviorProfileId");
         for (const auto& attack : value.attackIds) if (!contains(attacks, attack))
             error(report, ContentKind::enemy, value.id, "unknown_reference", "attack definition does not exist", "attackIds");
+        if (value.rewardProfileId && !contains(rewards, *value.rewardProfileId))
+            error(report, ContentKind::enemy, value.id, "unknown_reference", "reward profile does not exist", "rewardProfileId");
+    }
+    for (const auto& value : pack.rewardProfiles) {
+        if (value.loot.size() > gameplay::rpg::maximumLootEntriesPerProfile)
+            error(report, ContentKind::rewardProfile, value.id, "invalid_range", "reward profile has too many loot entries", "loot");
+        for (const auto& entry : value.loot) {
+            if (entry.pickupDefinitionId.empty() || !contains(pickups, entry.pickupDefinitionId))
+                error(report, ContentKind::rewardProfile, value.id, "unknown_reference", "loot pickup definition does not exist", "pickupDefinitionId");
+            if (entry.chanceBasisPoints > 10000 || entry.minimumCount == 0 ||
+                entry.minimumCount > entry.maximumCount || entry.maximumCount > gameplay::rpg::maximumDropCountPerEntry)
+                error(report, ContentKind::rewardProfile, value.id, "invalid_range", "loot chance or count is invalid", "loot");
+        }
     }
     for (const auto& value : pack.items) {
         if (value.visualId.empty() || value.stackLimit == 0 ||
@@ -206,7 +221,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

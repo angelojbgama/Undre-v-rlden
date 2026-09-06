@@ -23,7 +23,11 @@ struct PersistentRuntimeInstance final {
 using PersistentEnemy = PersistentRuntimeInstance<gameplay::creatures::EnemyInstance>;
 using PersistentNpc = PersistentRuntimeInstance<gameplay::npcs::NpcInstance>;
 using PersistentObject = PersistentRuntimeInstance<gameplay::WorldObjectInstance>;
-using PersistentPickup = PersistentRuntimeInstance<gameplay::WorldPickup>;
+struct PersistentPickup final {
+    simulation::PersistentInstanceId persistentId{};
+    bool transient{};
+    gameplay::WorldPickup instance;
+};
 
 class RuntimeWorld final {
 public:

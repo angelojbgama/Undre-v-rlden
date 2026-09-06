@@ -66,7 +66,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         }
         result->pickups_.reserve(data.pickups.size());
         for (std::size_t index = 0; index < data.pickups.size(); ++index) {
-            result->pickups_.push_back({data.pickups[index].id, gameplay::WorldPickup{
+            result->pickups_.push_back({data.pickups[index].id, false, gameplay::WorldPickup{
                 handles.create(), result->pickupDefinitions_[index], data.pickups[index].position}});
         }
         return {std::move(result), {}};

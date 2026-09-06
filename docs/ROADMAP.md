@@ -1042,7 +1042,15 @@ Base stats authored, XP cumulativo, level derivado pela curva compilada e
 persistência DSAV estão concluídos. A curva builtin `{0, 100, 250}` é provisória
 para desenvolvimento e não representa balanceamento final.
 
-## 12B/12C/12D — Rewards, equipment e bank — FUTURO
+## 12B — Rewards + Loot — DONE
+
+`EntityDefeated` alimenta resolução determinística de rewards na `GameSession`. XP e
+loot usam conteúdo compilado; drops de inimigos são transient no mundo ativo e não
+alteram DSAV/DMAP. Os valores builtin são provisórios.
+
+## 12C — Equipment + Modifiers + Derived Stats — FUTURO
+
+## 12D — Bank / persistence / UI — FUTURO
 
 ## Capacidades futuras
 
@@ -1055,7 +1063,9 @@ para desenvolvimento e não representa balanceamento final.
 - inventário expandido;
 - UI associada.
 
-`EnemyDefinition` poderá fornecer reward metadata; Creature não incrementa diretamente XP do Player.
+`EnemyDefinition` fornece referência a reward metadata; Creature não incrementa
+diretamente XP do Player. Rewards e loot estão concluídos em 12B; equipment,
+modifiers, stats derivados e bank permanecem futuros.
 
 Loot tables resolvem drops; não espalhar RNG em cada classe de inimigo.
 

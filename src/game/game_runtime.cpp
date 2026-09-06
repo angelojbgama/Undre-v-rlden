@@ -293,6 +293,7 @@ struct GameRuntime::State final {
                                 attackCatalog.require(gameplay::playerBowAttackId()));
         session.configureItems(itemCatalog);
         session.configureNarrative(content.dialogues(), content.quests());
+        session.configureRewards(content.rewards(), content.pickups());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
                                         std::filesystem::current_path());
         const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
@@ -429,7 +430,8 @@ struct GameRuntime::State final {
                 }
             }, pickup.payload());
             snapshot.pickups.push_back({
-                persistent.persistentId.value, std::string(pickup.definition().id.value()),
+                persistent.persistentId.value,
+                std::string(pickup.definition().id.value()),
                 pickup.position().x, pickup.position().y, quantity});
         }
 

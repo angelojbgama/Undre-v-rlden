@@ -69,9 +69,18 @@ struct ItemDelivered final {
     std::uint64_t amount{};
 };
 
+struct ExperienceGranted final {
+    EntityHandle player{};
+    DefinitionId sourceDefinitionId{};
+    std::uint64_t amount{};
+    std::uint64_t totalExperience{};
+    std::uint32_t previousLevel{};
+    std::uint32_t newLevel{};
+};
+
 using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
                                      PickupCollected, NpcTalked, MapEntered, ObjectOpened,
-                                     ItemDelivered>;
+                                     ItemDelivered, ExperienceGranted>;
 
 class EventBuffer final {
 public:
