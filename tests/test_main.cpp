@@ -5423,6 +5423,15 @@ void testPhase13AJsonFoundation() {
     expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
                !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content,
            "content JSON rejects wrong format identifiers and unsupported versions");
+    const auto builtin = underworld::game::content::makeBuiltinAuthoredContent();
+    const auto json1 = underworld::game::content::encodeAuthoredContentJson(builtin);
+    const auto roundtrip = decodeAuthoredContentJson(json1);
+    expect(roundtrip.content && roundtrip.diagnostics.empty() &&
+               underworld::game::content::encodeAuthoredContentJson(*roundtrip.content) == json1,
+           "builtin authored content has a canonical JSON roundtrip");
+    const std::string invalidUtf8{"{\"x\":\xC0\x80}"};
+    expect(parseJson(invalidUtf8).value == nullptr,
+           "strict JSON rejects overlong raw UTF-8 sequences");
 }
 
 int main() {

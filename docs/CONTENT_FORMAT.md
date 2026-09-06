@@ -11,7 +11,9 @@ The canonical top-level field order is:
 `playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`,
 `authoringDescriptors`, `tileSemantics`, `stamps`.
 
-Each category is an array; an omitted category decodes as empty. Unknown fields,
+Each category is an array; an omitted category decodes as empty. The current codec
+serializes every authored DTO and nested field (including directional geometry,
+timeline events, dialogue graphs, variants, semantics and stamps). Unknown fields,
 unknown enum strings, duplicate object keys, comments, trailing commas and future
 versions are errors. Definition IDs are strings. Optional fields may be omitted or
 `null`. Variants use an explicit `kind` string. Integer fields are parsed from their
@@ -55,5 +57,8 @@ Examples:
 ```
 
 `ContentJsonEncoder`/`ContentJsonDecoder` are reusable by the future Content Studio.
+The builtin C++ pack remains the runtime source in 13A; this document defines the
+codec boundary, not runtime external-content selection. Workspace loading and
+multi-file merge are deferred to 13B.
 This slice does not scan workspaces, merge files, replace builtin runtime content or
 implement Studio/LLM tooling; those belong to later phases.

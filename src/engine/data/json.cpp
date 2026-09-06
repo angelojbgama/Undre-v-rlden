@@ -3,6 +3,7 @@
 #include <cctype>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 
 namespace underworld::engine::data {
 const JsonValue* JsonValue::find(std::string_view key) const noexcept {
@@ -60,7 +61,26 @@ private:
         while (!atEnd() && peek() != '"') {
             const unsigned char c = static_cast<unsigned char>(peek());
             if (c < 0x20) { fail("unescaped control character in string"); return std::nullopt; }
-            if (c != '\\') { result.push_back(static_cast<char>(c)); advance(); continue; }
+            if (c != '\\') {
+                if (c >= 0x80) {
+                    const auto needed = c < 0xE0 ? 1u : c < 0xF0 ? 2u : c < 0xF8 ? 3u : 0u;
+                    if (needed == 0) { fail("invalid UTF-8 leading byte"); return std::nullopt; }
+                    std::uint32_t code = c & ((1u << (7u - needed)) - 1u);
+                    advance();
+                    for (unsigned i = 0; i < needed; ++i) {
+                        const auto next = static_cast<unsigned char>(peek());
+                        if ((next & 0xC0u) != 0x80u) { fail("invalid UTF-8 continuation byte"); return std::nullopt; }
+                        code = (code << 6u) | (next & 0x3Fu); advance();
+                    }
+                    if ((needed == 1 && code < 0x80u) || (needed == 2 && code < 0x800u) ||
+                        (needed == 3 && code < 0x10000u) || code > 0x10FFFFu ||
+                        (code >= 0xD800u && code <= 0xDFFFu)) {
+                        fail("invalid UTF-8 code point"); return std::nullopt;
+                    }
+                    result.append(input_.substr(position_ - needed - 1, needed + 1)); continue;
+                }
+                result.push_back(static_cast<char>(c)); advance(); continue;
+            }
             advance(); const char escaped = peek(); advance();
             if (escaped == '"' || escaped == '\\' || escaped == '/') result.push_back(escaped);
             else if (escaped == 'b') result.push_back('\b'); else if (escaped == 'f') result.push_back('\f'); else if (escaped == 'n') result.push_back('\n'); else if (escaped == 'r') result.push_back('\r'); else if (escaped == 't') result.push_back('\t');

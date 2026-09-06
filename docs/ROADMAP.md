@@ -1282,6 +1282,14 @@ O conteúdo authored é representado por DTOs tipados dentro de `AuthoredContent
 diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
 em C++ é a fonte authored temporária; JSON, arquivos externos, Content Studio, LLM
 authoring e serialização persistente de conteúdo continuam deferidos.
+
+### FASE 13 — External Authored Content
+
+13A — Strict JSON Codec + Authored Content Schema v1 — DONE. The strict UTF-8 JSON
+codec covers the authored content boundary and remains separate from runtime source.
+13B — Workspace Loader + Multi-file Merge — FUTURE. FASE 14 — Content Studio
+Foundation — FUTURE. Replay/state hashing are optional testing/debug tooling;
+networking and multiplayer remain permanently out of scope.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and
