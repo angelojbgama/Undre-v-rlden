@@ -7,6 +7,10 @@ Ele consolida as decisões arquiteturais, a ordem de desenvolvimento e as restri
 > Regra principal: este projeto não deve crescer pela criação apressada de features isoladas.
 > Cada nova capacidade deve entrar na ordem correta, reutilizar a base existente e deixar o jogo mais fácil — e não mais difícil — de expandir depois.
 
+Regra permanente de conteúdo: não adicionar definições concretas diretamente ao
+`GameContentRegistry` ou ao `GameRuntime`. Novo conteúdo deve entrar pelo
+`AuthoredContentPack` e pela fronteira `ContentValidator`/`ContentCompiler`.
+
 ---
 
 # 1. Papel do agente

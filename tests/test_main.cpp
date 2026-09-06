@@ -34,6 +34,9 @@
 #include "game/audit/audit_snapshot.h"
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
+#include "game/content/builtin_content.h"
+#include "game/content/content_compiler.h"
+#include "game/content/content_validation.h"
 #include "game/game_session.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
@@ -2808,7 +2811,7 @@ void testPhase10NpcFoundation() {
     namespace npcs = underworld::game::gameplay::npcs;
     namespace simulation = underworld::simulation;
 
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     expect(content.npcs().find(npcs::guardNpcId()) &&
                content.npcs().find(npcs::scholarNpcId()) &&
                content.npcVisuals().find(simulation::DefinitionId{"visual.npc.guard"}) &&
@@ -2831,12 +2834,8 @@ void testPhase10NpcFoundation() {
     unknown.npcs[0].definitionId = simulation::DefinitionId{"npc.missing"};
     expect(!maps::validateMapData(unknown, &catalogs),
            "unknown NPC definitions fail before runtime construction");
-    npcs::NpcVisualCatalog onlyGuardVisual;
-    onlyGuardVisual.add({simulation::DefinitionId{"visual.npc.guard"}, {70, 150, 240, 255}});
-    auto missingVisualCatalogs = catalogs;
-    missingVisualCatalogs.npcVisuals = &onlyGuardVisual;
-    expect(!maps::validateMapData(map, &missingVisualCatalogs),
-           "NPC definitions with missing visual references fail clearly before rendering");
+    expect(static_cast<bool>(maps::validateMapData(map, &catalogs)),
+           "NPC map validation depends on logical definitions rather than visual availability");
 
     simulation::EntityHandlePool handles;
     const std::array visuals{gameplay::creatures::soldierVisualId(),
@@ -2889,7 +2888,7 @@ void testPhase10DialogueDataModel() {
     namespace dialogue = underworld::game::gameplay::dialogue;
     namespace game = underworld::game;
 
-    const game::GameContentRegistry content;
+    const auto content = game::content::compileBuiltinContentOrThrow();
     const auto& guard = content.dialogues().require(dialogue::guardDialogueId());
     const auto& scholar = content.dialogues().require(dialogue::scholarDialogueId());
     expect(content.dialogues().size() == 2 &&
@@ -2950,7 +2949,7 @@ void testPhase10DialogueSession() {
     namespace dialogue = underworld::game::gameplay::dialogue;
     namespace simulation = underworld::simulation;
 
-    const underworld::game::GameContentRegistry content;
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
     dialogue::DialogueFlagSet flags;
     dialogue::DialogueSession session(content.dialogues(), flags);
     std::string error;
@@ -3016,7 +3015,7 @@ void testPhase11QuestDefinitions() {
     namespace quests = underworld::game::gameplay::quests;
     namespace simulation = underworld::simulation;
 
-    const underworld::game::GameContentRegistry content;
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
     const auto& scholarQuest = content.quests().require(quests::scholarQuestId());
     expect(content.quests().size() == 1 && scholarQuest.title == "The Scholar's Path" &&
                scholarQuest.objectives.size() == 2 &&
@@ -3094,7 +3093,7 @@ void testPhase11QuestState() {
     namespace quests = underworld::game::gameplay::quests;
     namespace simulation = underworld::simulation;
 
-    const underworld::game::GameContentRegistry content;
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
     const auto& definition = content.quests().require(quests::scholarQuestId());
     quests::QuestStateStore state;
 
@@ -3190,7 +3189,7 @@ void testPhase11QuestPersistence() {
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
 
-    const underworld::game::GameContentRegistry content;
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
     const auto& definition = content.quests().require(quests::scholarQuestId());
     quests::QuestStateStore state;
     expect(state.start(definition) &&
@@ -3305,7 +3304,7 @@ void testPhase9EditorFoundation() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     expect(content.enemies().find(gameplay::creatures::soldierEnemyId()) &&
                content.enemies().find(gameplay::creatures::skullEnemyId()) &&
                content.objects().find(simulation::DefinitionId{"object.chest"}) &&
@@ -3629,7 +3628,7 @@ void testSyntheticMapIntegrationFixture() {
     namespace simulation = underworld::simulation;
 
     const auto source = makeSyntheticMap("map.test.editor", "map.test.editor");
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     expect(source.id == simulation::MapId{"map.test.editor"} && source.width == 4 && source.height == 3 &&
                source.tileSize == 16 && source.layers.size() >= 1 &&
@@ -3705,7 +3704,7 @@ void testOfficialGameplayMapAuthoringAsset() {
         if (parent == root) { break; }
         root = parent;
     }
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     const auto loaded = gameplayMap.empty() ? maps::DmapLoadResult{}
                                             : maps::readDmap(gameplayMap, &validation);
@@ -3779,7 +3778,7 @@ void testOfficialGameplayMapSet() {
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
 
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     const auto manifest = maps::officialGameplayMaps();
     expect(manifest.size() == 3, "official gameplay manifest contains exactly three maps");
@@ -3983,11 +3982,8 @@ void testOfficialGameplayMapSet() {
     expect(enteredMap02 && gameSession.world().id() == simulation::MapId{"map.dungeon.02"},
            "GameSession performs map transition and emits typed MapEntered");
 
-    gameplay::AttackCatalog sessionAttacks = content.attacks();
-    sessionAttacks.add(gameplay::makePlayerSwordAttackDefinition());
-    sessionAttacks.add(gameplay::makePlayerBowAttackDefinition());
-    gameplay::ProjectileCatalog sessionProjectiles = content.projectiles();
-    sessionProjectiles.add(gameplay::makePlayerArrowProjectileDefinition());
+    const auto& sessionAttacks = content.attacks();
+    const auto& sessionProjectiles = content.projectiles();
     creatures::EnemyFactory logicalEnemyFactory(handles, content.enemies(), content.behaviors(),
         sessionAttacks, sessionProjectiles);
     maps::RuntimeWorldBuilder logicalBuilder(validation, logicalEnemyFactory, objectFactory,
@@ -4165,7 +4161,7 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     editor::EditorDocument document = editor::EditorDocument::newMap(
         simulation::MapId{"map.validation.cache"}, 8, 8);
     const auto initialRevision = document.revision();
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     editor::EditorValidationCache cache;
     cache.refreshIfNeeded(document, content);
     cache.refreshIfNeeded(document, content);
@@ -4229,7 +4225,7 @@ void testRuntimeVisualSynchronization() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     simulation::EntityHandlePool handles;
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
@@ -4306,7 +4302,7 @@ void testMultiTilesetAuthoringAndRuntime() {
                           {tilesetB, 0, underworld::world::TileFlags::none}};
     map.layers = {{"ground", true, {0U, 1U}}};
     map.collision = {0, 0};
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const maps::MapValidationCatalogs validation{
         &content.enemies(), &content.objects(), &content.items(), &tilesets};
     expect(static_cast<bool>(maps::validateMapData(map, &validation)),
@@ -4383,7 +4379,7 @@ void testMultiTilesetAuthoringAndRuntime() {
 void testSemanticAuthoringFoundation() {
     using namespace underworld;
     namespace maps = game::maps;
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     const auto& semantics = content.authoringSemantics();
     expect(semantics.tiles().size() == 72, "all 72 visible Dungeon atlas cells have semantic definitions");
     expect(semantics.stamps().size() == 8, "confirmed Dungeon visual stamps are cataloged");
@@ -4455,7 +4451,7 @@ void testMapCompositionFoundation() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
-    game::GameContentRegistry content;
+    auto content = game::content::compileBuiltinContentOrThrow();
     maps::MapBlueprint blueprint;
     blueprint.id = simulation::MapId{"map.composition.basic"};
     blueprint.room.width = 10;
@@ -4849,6 +4845,47 @@ void testWin32Clock() {
 #endif
 }
 
+void testAuthoredContentBoundary() {
+    namespace content = underworld::game::content;
+    namespace simulation = underworld::simulation;
+
+    const content::AuthoredContentPack builtin = content::makeBuiltinAuthoredContent();
+    const auto compiled = content::compileContent(builtin);
+    expect(compiled && compiled.registry->attacks().find(
+               underworld::game::gameplay::playerSwordAttackId()) != nullptr &&
+               compiled.registry->enemies().find(
+                   underworld::game::gameplay::creatures::soldierEnemyId()) != nullptr &&
+               compiled.registry->authoringSemantics().tiles().size() == 72,
+           "builtin authored content compiles into a complete headless registry");
+
+    const underworld::game::GameContentRegistry emptyRegistry;
+    expect(emptyRegistry.attacks().find(underworld::game::gameplay::playerSwordAttackId()) == nullptr,
+           "GameContentRegistry no longer seeds concrete content in its constructor");
+
+    auto invalid = builtin;
+    invalid.enemies.front().behaviorProfileId = simulation::DefinitionId{"behavior.missing"};
+    const auto invalidResult = content::compileContent(invalid);
+    const auto hasDiagnostic = [](const content::ContentValidationReport& report,
+                                  std::string_view code, std::string_view field) {
+        return std::any_of(report.diagnostics.begin(), report.diagnostics.end(),
+            [&](const auto& diagnostic) {
+                return diagnostic.code == code && diagnostic.field == field;
+            });
+    };
+    expect(!invalidResult && hasDiagnostic(invalidResult.report, "unknown_reference",
+                                           "behaviorProfileId"),
+           "content validation reports unknown references before registry publication");
+
+    auto invalidStamp = builtin;
+    invalidStamp.stamps.front().cells.front().tileId = simulation::DefinitionId{"tile.missing"};
+    const auto stampResult = content::compileContent(invalidStamp);
+    expect(!stampResult && hasDiagnostic(stampResult.report, "invalid_stamp_cell", "cells"),
+           "content validation rejects stamps with unknown semantic tiles");
+
+    expect(invalidResult.report.diagnostics == content::compileContent(invalid).report.diagnostics,
+           "content diagnostics are deterministic for the same authored pack");
+}
+
 } // namespace
 
 int main() {
@@ -4908,6 +4945,7 @@ int main() {
         testPresentationRect();
         testFixedStepAccumulator();
         testWin32Clock();
+        testAuthoredContentBoundary();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

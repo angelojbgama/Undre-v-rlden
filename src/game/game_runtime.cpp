@@ -16,6 +16,7 @@
 #include "game/command_builder.h"
 #include "game/game_view_model.h"
 #include "game/game_content.h"
+#include "game/content/builtin_content.h"
 #include "game/actor_render_order.h"
 #include "game/audit/audit_snapshot.h"
 #include "game/combat_debug.h"
@@ -228,18 +229,14 @@ struct GameRuntime::State final {
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
           session(localPlayerId, {}),
-          swordDefinition(gameplay::makePlayerSwordAttackDefinition()),
-          bowDefinition(gameplay::makePlayerBowAttackDefinition()),
-          arrowDefinition(gameplay::makePlayerArrowProjectileDefinition()) {
+          content(content::compileBuiltinContentOrThrow()) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
-        attackCatalog.add(swordDefinition);
-        attackCatalog.add(bowDefinition);
-        projectileCatalog.add(arrowDefinition);
-        projectileVisuals.emplace(arrowDefinition.visualId, arrowSheet);
+        projectileVisuals.emplace(
+            content.projectiles().require(gameplay::playerArrowProjectileId()).visualId, arrowSheet);
         projectileVisuals.emplace(
             projectileCatalog.require(gameplay::creatures::skullArrowProjectileId()).visualId,
             skullArrowSheet);
@@ -275,9 +272,11 @@ struct GameRuntime::State final {
             makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
             makeClips("player.walk", walkSheet, 32, 4, 8, {16, 31}, true),
             makeClips("player.sword", swordSheet, 48, 4,
-                      swordDefinition.totalTicks / 4, {24, 31}, false),
+                      attackCatalog.require(gameplay::playerSwordAttackId()).totalTicks / 4,
+                      {24, 31}, false),
             makeClips("player.bow", bowSheet, 32, 2,
-                      bowDefinition.totalTicks / 2, {16, 31}, false),
+                      attackCatalog.require(gameplay::playerBowAttackId()).totalTicks / 2,
+                      {16, 31}, false),
             makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
@@ -289,7 +288,8 @@ struct GameRuntime::State final {
         runtimeBuilder = std::make_unique<maps::RuntimeWorldBuilder>(
             validationCatalogs, *enemyFactory, *objectFactory, runtimeTilesets, npcFactory.get());
         session.configureCombat(attackCatalog, projectileCatalog, behaviorCatalog,
-                                swordDefinition, bowDefinition);
+                                attackCatalog.require(gameplay::playerSwordAttackId()),
+                                attackCatalog.require(gameplay::playerBowAttackId()));
         session.configureItems(itemCatalog);
         session.configureNarrative(content.dialogues(), content.quests());
         auto startup = selectStartupMap(launchOptions, this->executableDirectory,
@@ -642,17 +642,14 @@ struct GameRuntime::State final {
     GameContentRegistry content;
     RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
     TilesetVisualCatalog tilesetVisuals;
-    gameplay::AttackCatalog& attackCatalog{content.attacks()};
-    gameplay::ProjectileCatalog& projectileCatalog{content.projectiles()};
-    gameplay::creatures::BehaviorCatalog& behaviorCatalog{content.behaviors()};
-    gameplay::creatures::EnemyCatalog& enemyCatalog{content.enemies()};
-    gameplay::ItemCatalog& itemCatalog{content.items()};
-    gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
-    gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
-    gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
-    gameplay::AttackDefinition swordDefinition;
-    gameplay::AttackDefinition bowDefinition;
-    gameplay::ProjectileDefinition arrowDefinition;
+    const gameplay::AttackCatalog& attackCatalog{content.attacks()};
+    const gameplay::ProjectileCatalog& projectileCatalog{content.projectiles()};
+    const gameplay::creatures::BehaviorCatalog& behaviorCatalog{content.behaviors()};
+    const gameplay::creatures::EnemyCatalog& enemyCatalog{content.enemies()};
+    const gameplay::ItemCatalog& itemCatalog{content.items()};
+    const gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
+    const gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
+    const gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
     std::unordered_map<simulation::DefinitionId,
                        std::shared_ptr<const render::SpriteSheet>,
                        simulation::DefinitionIdHash> projectileVisuals;
@@ -686,7 +683,7 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
                        const std::filesystem::path& executableDirectory,
                        const GameLaunchOptions& launchOptions) {
-    const GameContentRegistry contentDefinitions;
+    const auto contentDefinitions = content::compileBuiltinContentOrThrow();
     const auto& dungeonDefinition = contentDefinitions.tilesets().require(
         simulation::DefinitionId{"tileset.dungeon"});
     const auto tileset = assets_.loadImage("tileset.dungeon",

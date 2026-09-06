@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace underworld::game::content { class ContentCompiler; }
+
 namespace underworld::game::authoring {
 
 enum class SemanticConfidence { confirmed, probable, unverified };
@@ -61,15 +63,22 @@ public:
     [[nodiscard]] const std::vector<StampDefinition>& stamps() const noexcept { return stamps_; }
     [[nodiscard]] std::vector<const TileSemanticDefinition*> tilesByFamily(const std::string& family) const;
     [[nodiscard]] bool edgesCompatible(EdgeProfile first, EdgeProfile second) const noexcept;
-private:
+    // Population is restricted to authored-content compilation in production.
     void addTile(TileSemanticDefinition definition);
     void addStamp(StampDefinition definition);
+private:
+    friend class content::ContentCompiler;
+    friend void addBuiltinSemantics(AuthoringSemanticRegistry& registry);
     std::vector<TileSemanticDefinition> tiles_;
     std::vector<StampDefinition> stamps_;
     std::unordered_map<std::string, std::size_t> tileById_;
     std::unordered_map<std::string, std::size_t> tileByReference_;
     std::unordered_map<std::string, std::size_t> stampById_;
 };
+
+// Temporary C++ source for the builtin authored semantic values. The registry
+// constructor itself remains empty and is populated by ContentCompiler.
+void addBuiltinSemantics(AuthoringSemanticRegistry& registry);
 
 enum class SemanticIssueSeverity { error, warning, info };
 struct SemanticIssue final {

@@ -10,66 +10,47 @@
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
 #include "game/authoring/authoring_semantics.h"
+#include "game/content/content_dto.h"
 
 #include <string>
 #include <vector>
 
 namespace underworld::game::maps { struct MapValidationCatalogs; }
+namespace underworld::game::content { class ContentCompiler; }
 
 namespace underworld::game {
 
-enum class AuthoringCategory { enemy, object, pickup, npc };
-
-struct AuthoringDescriptor final {
-    simulation::DefinitionId definitionId{};
-    std::string displayName;
-    AuthoringCategory category{AuthoringCategory::enemy};
-    std::vector<std::string> tags;
-};
+using content::AuthoringCategory;
+using content::AuthoringDescriptor;
 
 class GameContentRegistry final {
 public:
-    GameContentRegistry();
+    GameContentRegistry() = default;
 
-    [[nodiscard]] gameplay::AttackCatalog& attacks() noexcept { return attacks_; }
     [[nodiscard]] const gameplay::AttackCatalog& attacks() const noexcept { return attacks_; }
-    [[nodiscard]] gameplay::ProjectileCatalog& projectiles() noexcept { return projectiles_; }
     [[nodiscard]] const gameplay::ProjectileCatalog& projectiles() const noexcept {
         return projectiles_;
-    }
-    [[nodiscard]] gameplay::creatures::BehaviorCatalog& behaviors() noexcept {
-        return behaviors_;
     }
     [[nodiscard]] const gameplay::creatures::BehaviorCatalog& behaviors() const noexcept {
         return behaviors_;
     }
-    [[nodiscard]] gameplay::creatures::EnemyCatalog& enemies() noexcept { return enemies_; }
     [[nodiscard]] const gameplay::creatures::EnemyCatalog& enemies() const noexcept {
         return enemies_;
     }
-    [[nodiscard]] gameplay::ItemCatalog& items() noexcept { return items_; }
     [[nodiscard]] const gameplay::ItemCatalog& items() const noexcept { return items_; }
-    [[nodiscard]] gameplay::WorldObjectCatalog& objects() noexcept { return objects_; }
     [[nodiscard]] const gameplay::WorldObjectCatalog& objects() const noexcept {
         return objects_;
     }
-    [[nodiscard]] gameplay::npcs::NpcCatalog& npcs() noexcept { return npcs_; }
     [[nodiscard]] const gameplay::npcs::NpcCatalog& npcs() const noexcept { return npcs_; }
-    [[nodiscard]] gameplay::npcs::NpcVisualCatalog& npcVisuals() noexcept { return npcVisuals_; }
     [[nodiscard]] const gameplay::npcs::NpcVisualCatalog& npcVisuals() const noexcept {
         return npcVisuals_;
-    }
-    [[nodiscard]] gameplay::dialogue::DialogueCatalog& dialogues() noexcept {
-        return dialogues_;
     }
     [[nodiscard]] const gameplay::dialogue::DialogueCatalog& dialogues() const noexcept {
         return dialogues_;
     }
-    [[nodiscard]] gameplay::quests::QuestCatalog& quests() noexcept { return quests_; }
     [[nodiscard]] const gameplay::quests::QuestCatalog& quests() const noexcept {
         return quests_;
     }
-    [[nodiscard]] TilesetCatalog& tilesets() noexcept { return tilesets_; }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
     [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
         return authoringSemantics_;
@@ -87,6 +68,8 @@ public:
         AuthoringCategory category) const;
 
 private:
+    friend class content::ContentCompiler;
+    void addCompiled(content::AuthoredContentPack pack);
     gameplay::AttackCatalog attacks_;
     gameplay::ProjectileCatalog projectiles_;
     gameplay::creatures::BehaviorCatalog behaviors_;

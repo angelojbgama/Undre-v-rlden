@@ -32,7 +32,10 @@ simulation::DefinitionId tileId(const char* name) { return simulation::Definitio
 
 } // namespace
 
-AuthoringSemanticRegistry::AuthoringSemanticRegistry() {
+AuthoringSemanticRegistry::AuthoringSemanticRegistry() {}
+
+namespace {
+void seedBuiltinSemantics(AuthoringSemanticRegistry& registry) {
     for (const auto& seed : dungeonTiles) {
         TileSemanticDefinition definition;
         definition.id = tileId(seed.name);
@@ -46,17 +49,17 @@ AuthoringSemanticRegistry::AuthoringSemanticRegistry() {
             ? SemanticConfidence::unverified : SemanticConfidence::probable;
         definition.north = definition.south = definition.east = definition.west =
             seed.family == std::string("masonry") ? EdgeProfile::masonry : EdgeProfile::unknown;
-        addTile(std::move(definition));
+        registry.addTile(std::move(definition));
     }
     const auto stamp = [&](const char* id, const char* name, std::uint32_t width, std::uint32_t height,
                            bool atomic, std::initializer_list<std::pair<int,int>> cells) {
         StampDefinition value{simulation::DefinitionId{id}, name, width, height, {}, {0,0}, false, atomic,
                               SemanticConfidence::confirmed};
         for (const auto& [x,y] : cells) {
-            const auto* tile = findTile(simulation::DefinitionId{"tileset.dungeon"}, static_cast<std::uint32_t>(y * 19 + x));
+            const auto* tile = registry.findTile(simulation::DefinitionId{"tileset.dungeon"}, static_cast<std::uint32_t>(y * 19 + x));
             if (tile) { value.cells.push_back({x - cells.begin()->first, y - cells.begin()->second, tile->id}); }
         }
-        addStamp(std::move(value));
+        registry.addStamp(std::move(value));
     };
     stamp("stamp.dungeon.masonry_frame_3x3", "Masonry Frame 3x3", 3, 3, true, {{2,2},{3,2},{4,2},{2,3},{4,3},{2,4},{3,4},{4,4}});
     stamp("stamp.dungeon.inset_2x2", "Inset 2x2", 2, 2, true, {{9,3},{10,3},{9,4},{10,4}});
@@ -67,6 +70,11 @@ AuthoringSemanticRegistry::AuthoringSemanticRegistry() {
     stamp("stamp.dungeon.horizontal_toothed_3x1", "Horizontal Toothed", 3, 1, true, {{3,11},{4,11},{5,11}});
     stamp("stamp.dungeon.top_cap_3x1", "Top Cap", 3, 1, true, {{4,0},{5,0},{6,0}});
 }
+} // namespace
+
+// Kept as a single source for the legacy dungeon semantic data while the authored
+// content pack is still supplied by C++. The registry itself is intentionally empty.
+void addBuiltinSemantics(AuthoringSemanticRegistry& registry) { seedBuiltinSemantics(registry); }
 
 void AuthoringSemanticRegistry::addTile(TileSemanticDefinition definition) {
     if (definition.id.empty() || definition.tilesetId.empty() || tileById_.contains(std::string(definition.id.value())) ||

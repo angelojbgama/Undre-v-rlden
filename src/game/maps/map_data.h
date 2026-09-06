@@ -114,7 +114,6 @@ struct MapValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
     const TilesetCatalog* tilesets{};
     const gameplay::npcs::NpcCatalog* npcs{};
-    const gameplay::npcs::NpcVisualCatalog* npcVisuals{};
 };
 
 struct MapValidationResult final {

@@ -3,6 +3,7 @@
 #include "editor/editor_commands.h"
 #include "editor/editor_playtest.h"
 #include "editor/editor_ui.h"
+#include "game/content/builtin_content.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
 
@@ -72,7 +73,7 @@ private:
     void updateStatus(core::RectI viewport, const EditorInputState& input);
     void togglePlaytest();
 
-    game::GameContentRegistry content_;
+    game::GameContentRegistry content_{game::content::compileBuiltinContentOrThrow()};
     EditorDocument document_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;

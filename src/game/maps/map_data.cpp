@@ -111,9 +111,6 @@ MapValidationResult validateMapData(const MapData& data,
         if (catalogs && catalogs->npcs) {
             const auto* definition = catalogs->npcs->find(npc.definitionId);
             if (!definition) { return failure("NPC placement references an unknown definition"); }
-            if (catalogs->npcVisuals && !catalogs->npcVisuals->find(definition->visualSetId)) {
-                return failure("NPC definition references an unknown visual definition");
-            }
         }
     }
     for (const auto& object : data.objects) {

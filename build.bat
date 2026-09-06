@@ -115,6 +115,14 @@ echo Compiling shared game content...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\game_content.obj" "src\game\game_content.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling authored content boundary...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\content_validation.obj" "src\game\content\content_validation.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\content_compiler.obj" "src\game\content\content_compiler.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\builtin_content.obj" "src\game\content\builtin_content.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling shared tileset content...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\tilesets.obj" "src\game\tilesets.cpp"
 if errorlevel 1 goto :build_failed
@@ -309,7 +317,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\bitmap_font.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\runtime_map.obj" ^
     "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" ^
-    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
+    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
@@ -333,7 +341,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
@@ -367,7 +375,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\editor_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_playtest.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
@@ -401,7 +409,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\byte_io.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" ^
     "build\obj\game_launch.obj" "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^

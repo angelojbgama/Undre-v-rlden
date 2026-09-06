@@ -1537,3 +1537,13 @@ nearest-neighbor presentation; gameplay receives only `InputState` and
 the same owned RGBA8 `ImageData` contract as WIC on Windows. The portable Docker
 build emits `build/linux/game`; interactive execution requires X11/WSLg and local
 licensed assets.
+
+## Content Definition Boundary
+
+Conteúdo authored não popula catálogos de runtime diretamente. O conteúdo oficial
+temporariamente construído em C++ passa pela fronteira `AuthoredContentPack` ->
+`ContentValidator` -> `ContentCompiler` -> `GameContentRegistry`. Os DTOs são
+tipados, em memória e independentes de runtime state, renderer e assets carregados.
+Validação produz diagnósticos estruturados, estáveis e determinísticos; IDs visuais
+são metadata e sua disponibilidade pertence ao bootstrap/presentation. O registry
+publicado não oferece mutação aos consumidores e não semeia conteúdo no construtor.

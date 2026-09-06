@@ -1273,3 +1273,10 @@ Linux image builds `build/linux/game` using the same gameplay and software rende
 as the other targets. No Linux-specific gameplay or renderer path was created. A
 graphical smoke requires an X11/WSLg display; formal replay, seeded stress
 playtesting and networking remain deferred.
+
+### Content Definition Boundary — DONE
+
+O conteúdo authored é representado por `AuthoredContentPack`, validado com
+diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
+em C++ é a fonte authored temporária; JSON, arquivos externos, Content Studio, LLM
+authoring e serialização persistente de conteúdo continuam deferidos.
