@@ -101,7 +101,11 @@ FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
 FASE 12 — RPG (12A–12E3 DONE)                         COMPLETE
-PRÓXIMO FOCO — External Authored Content Format       NEXT
+FASE 13 — External Authored Content                   DONE
+13B — External Content Workspace                      IN PROGRESS
+13B1 — Multi-file Workspace Core + Deterministic Merge DONE
+13B2 — Workspace Discovery / Manifest                 FUTURE
+13B3 — Tooling Integration                            FUTURE
 ```
 
 Baseline validada da Fase 6:
@@ -1288,9 +1292,28 @@ authoring e serialização persistente de conteúdo continuam deferidos.
 13A — Strict JSON Codec + Authored Content Schema v1 — DONE.
 13A1 — Decoder Foundation + Core DTOs — DONE. 13A2 — Combat + World DTOs — DONE.
 13A3 — Narrative + Semantic DTOs + Full Roundtrip — DONE. The strict UTF-8 JSON
-codec remains separate from runtime source. 13B — Workspace Loader + Multi-file Merge — FUTURE. FASE 14 — Content Studio
-Foundation — FUTURE. Replay/state hashing are optional testing/debug tooling;
-networking and multiplayer remain permanently out of scope.
+codec remains separate from runtime source.
+
+13B — External Content Workspace — IN PROGRESS
+13B1 — Multi-file Workspace Core + Deterministic Merge — DONE.
+13B2 — Workspace Discovery / Manifest — FUTURE.
+13B3 — Tooling Integration — FUTURE.
+
+FASE 14 — Content Studio Foundation — FUTURE. Replay/state hashing are optional
+testing/debug tooling; networking and multiplayer remain permanently out of scope.
+
+The explicit 13B1 loader sorts caller-provided source paths, rejects duplicate
+definitions without overrides, preserves source provenance, and validates the
+merged pack through the existing compiler. Directory discovery and manifests are
+deliberately deferred to 13B2.
+
+### Map authored-source boundary — FUTURE
+
+DMAP remains the compiled/runtime map serialization and is unchanged. A future
+authored map source will be a higher-level document compiled through map composition
+to `MapData`, then serialized to DMAP. It may carry semantic intent, regions, world
+logic bindings, encounter placements and editor metadata; none of those are part of
+13B1 or the current DMAP format.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

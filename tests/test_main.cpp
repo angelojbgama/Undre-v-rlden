@@ -43,6 +43,7 @@
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
 #include "game/content/content_json.h"
+#include "game/content/content_workspace.h"
 #include "engine/data/json.h"
 #include "game/game_session.h"
 #include "game/game_view_model.h"
@@ -5745,6 +5746,126 @@ void testPhase13A3JsonDecoders() {
     }
 }
 
+void testPhase13B1ContentWorkspace() {
+    namespace content = underworld::game::content;
+    const auto builtin = content::makeBuiltinAuthoredContent();
+    const auto root = std::filesystem::temp_directory_path() / "undre_content_workspace_13b1";
+    std::filesystem::create_directories(root);
+    const auto write = [](const std::filesystem::path& path, const content::AuthoredContentPack& pack) {
+        std::ofstream file(path, std::ios::binary);
+        file << content::encodeAuthoredContentJson(pack);
+        return file.good();
+    };
+    content::AuthoredContentPack combat;
+    combat.tilesets = builtin.tilesets;
+    combat.projectiles = builtin.projectiles;
+    combat.attacks = builtin.attacks;
+    content::AuthoredContentPack creatures;
+    creatures.behaviors = builtin.behaviors;
+    creatures.enemies = builtin.enemies;
+    creatures.rewardProfiles = builtin.rewardProfiles;
+    creatures.rewardGrants = builtin.rewardGrants;
+    content::AuthoredContentPack items;
+    items.items = builtin.items;
+    items.objects = builtin.objects;
+    items.pickups = builtin.pickups;
+    content::AuthoredContentPack narrative;
+    narrative.npcVisuals = builtin.npcVisuals;
+    narrative.npcs = builtin.npcs;
+    narrative.dialogues = builtin.dialogues;
+    narrative.quests = builtin.quests;
+    narrative.playerProgressions = builtin.playerProgressions;
+    narrative.shops = builtin.shops;
+    narrative.authoringDescriptors = builtin.authoringDescriptors;
+    narrative.tileSemantics = builtin.tileSemantics;
+    narrative.stamps = builtin.stamps;
+    const auto combatPath = root / "z_combat.data";
+    const auto creaturesPath = root / "a_creatures.json";
+    const auto itemsPath = root / "m_items.json";
+    const auto narrativePath = root / "n_narrative.json";
+    expect(write(combatPath, combat) && write(creaturesPath, creatures) && write(itemsPath, items) && write(narrativePath, narrative),
+           "13B1 writes explicit multi-file workspace fixtures");
+    const std::vector<std::filesystem::path> forward{combatPath, creaturesPath, itemsPath, narrativePath};
+    const std::vector<std::filesystem::path> reverse{narrativePath, itemsPath, combatPath, creaturesPath};
+    const auto first = content::loadContentWorkspaceFiles(forward);
+    const auto second = content::loadContentWorkspaceFiles(reverse);
+    expect(first.workspace.has_value() && first.diagnostics.empty() && second.workspace.has_value() && second.diagnostics.empty(),
+           "13B1 merges all explicit content files and compiles cross-file references");
+    if (first.workspace && second.workspace) {
+        expect(content::encodeAuthoredContentJson(first.workspace->authored) == content::encodeAuthoredContentJson(second.workspace->authored),
+               "13B1 workspace result is independent of caller file order");
+        expect(first.workspace->registry.enemies().find({"enemy.evil_soldier"}) != nullptr &&
+                   first.workspace->registry.attacks().find({"attack.soldier.sword"}) != nullptr &&
+                   first.workspace->registry.dialogues().find({"dialogue.merchant.greeting"}) != nullptr &&
+                   first.workspace->registry.authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"}) != nullptr,
+               "13B1 merged registry retains representative cross-file definitions");
+        const auto* origin = first.workspace->sources.find("enemies", {"enemy.evil_soldier"});
+        expect(origin && origin->sourcePath == creaturesPath.lexically_normal() && origin->line > 0 &&
+                   origin->column > 0 && origin->jsonPath == "enemies[0]",
+               "13B1 provenance retains source path, location and JSON path");
+        expect(first.workspace->sources.find("npcVisuals", {"visual.npc.merchant"}) != nullptr,
+               "13B1 provenance indexes NPC visual definitions");
+    }
+
+    content::AuthoredContentPack duplicateItem;
+    duplicateItem.items.push_back(builtin.items.front());
+    const auto duplicateA = root / "a_duplicate.json";
+    const auto duplicateB = root / "b_duplicate.json";
+    expect(write(duplicateA, duplicateItem) && write(duplicateB, duplicateItem),
+           "13B1 writes duplicate definition fixtures");
+    const auto duplicate = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 2>{duplicateB, duplicateA});
+    expect(!duplicate.workspace && std::any_of(duplicate.diagnostics.begin(), duplicate.diagnostics.end(),
+               [](const auto& value) { return value.code == "duplicate_definition" && value.relatedSourcePath.filename() == "a_duplicate.json"; }),
+           "13B1 rejects duplicate definitions with both source locations");
+    content::AuthoredContentPack duplicateVisual;
+    duplicateVisual.npcVisuals.push_back(builtin.npcVisuals.back());
+    const auto duplicateVisualA = root / "a_visual.json";
+    const auto duplicateVisualB = root / "b_visual.json";
+    write(duplicateVisualA, duplicateVisual);
+    write(duplicateVisualB, duplicateVisual);
+    const auto visualDuplicate = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 2>{duplicateVisualA, duplicateVisualB});
+    expect(!visualDuplicate.workspace && std::any_of(visualDuplicate.diagnostics.begin(), visualDuplicate.diagnostics.end(),
+               [](const auto& value) { return value.code == "duplicate_definition" && value.category == "npcVisuals"; }),
+           "13B1 rejects duplicate NPC visual definitions");
+    const auto duplicatePath = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 2>{root / "content" / "items.json", root / "content" / "./items.json"});
+    expect(!duplicatePath.workspace && std::any_of(duplicatePath.diagnostics.begin(), duplicatePath.diagnostics.end(),
+               [](const auto& value) { return value.code == "duplicate_source_file"; }),
+           "13B1 rejects duplicate normalized source paths");
+
+    const auto malformedPath = root / "malformed.json";
+    { std::ofstream file(malformedPath); file << "{\n  \"format\": \"dungeon-underworld-content\",\n  \"version\": 1,\n  \"items\": [\n    {\"id\": \"broken\"}\n"; }
+    const auto malformed = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 1>{malformedPath});
+    expect(!malformed.workspace && std::any_of(malformed.diagnostics.begin(), malformed.diagnostics.end(),
+               [&](const auto& value) { return value.stage == content::ContentWorkspaceDiagnosticStage::decode && value.sourcePath == malformedPath; }),
+           "13B1 preserves malformed-file decode provenance");
+    const auto missingPath = root / "missing.json";
+    const auto missing = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 1>{missingPath});
+    expect(!missing.workspace && missing.diagnostics.size() == 1 && missing.diagnostics[0].stage == content::ContentWorkspaceDiagnosticStage::io &&
+               missing.diagnostics[0].sourcePath == missingPath,
+           "13B1 reports missing files as structured IO diagnostics");
+    const auto empty = content::loadContentWorkspaceFiles(std::span<const std::filesystem::path>{});
+    expect(!empty.workspace && !empty.diagnostics.empty() && empty.diagnostics[0].code == "empty_workspace",
+           "13B1 rejects an empty explicit workspace");
+
+    content::AuthoredContentPack npcOnly;
+    npcOnly.npcs.push_back(builtin.npcs.back());
+    npcOnly.dialogues.push_back(builtin.dialogues.back());
+    const auto npcPath = root / "npc.json";
+    write(npcPath, npcOnly);
+    const auto npcResult = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 1>{npcPath});
+    expect(!npcResult.workspace && std::any_of(npcResult.diagnostics.begin(), npcResult.diagnostics.end(),
+               [](const auto& value) { return value.code == "unknown_reference" && value.definitionId.value() == "npc.merchant" && value.jsonPath == "npcs[0].visualSetId"; }),
+           "13B1 maps NPC visual reference validation to source provenance");
+    content::AuthoredContentPack visualOnly;
+    visualOnly.npcVisuals.push_back(builtin.npcVisuals.back());
+    const auto visualPath = root / "visual.json";
+    write(visualPath, visualOnly);
+    const auto visualResult = content::loadContentWorkspaceFiles(std::array<std::filesystem::path, 1>{visualPath});
+    expect(visualResult.workspace.has_value() && visualResult.workspace->sources.find("npcVisuals", {"visual.npc.merchant"}) != nullptr,
+           "13B1 accepts standalone NPC visual authored content");
+    std::filesystem::remove_all(root);
+}
+
 int main() {
     try {
         testMetrics();
@@ -5816,6 +5937,7 @@ int main() {
         testPhase13AJsonFoundation();
         testPhase13A2JsonDecoders();
         testPhase13A3JsonDecoders();
+        testPhase13B1ContentWorkspace();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

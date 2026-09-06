@@ -60,7 +60,7 @@ std::string encodeAuthoredContentJson(const AuthoredContentPack& c){JsonObject r
 namespace underworld::game::content {
 ContentJsonDecodeResult readAuthoredContentJsonFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) return {{}, {{0, 0, path.string(), "could not open content file"}}};
+    if (!file) return {{}, {{0, 0, path.string(), "could not open content file"}}, {}};
     std::ostringstream text;
     text << file.rdbuf();
     return decodeAuthoredContentJson(text.str());

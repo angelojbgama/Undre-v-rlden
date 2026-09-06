@@ -85,6 +85,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                              [](const auto& value) { return value.id; });
     const auto npcs = ids(pack.npcs, report, ContentKind::npc,
                           [](const auto& value) { return value.id; });
+    const auto npcVisuals = ids(pack.npcVisuals, report, ContentKind::npcVisual,
+                                [](const auto& value) { return value.id; });
     const auto dialogues = ids(pack.dialogues, report, ContentKind::dialogue,
                                [](const auto& value) { return value.id; });
     const auto quests = ids(pack.quests, report, ContentKind::quest,
@@ -202,6 +204,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.npcs) {
         if (value.visualSetId.empty() || value.defaultDialogueId.empty()) error(report, ContentKind::npc, value.id, "invalid_value", "NPC visual and dialogue references are required", "definition");
+        if (!contains(npcVisuals, value.visualSetId)) error(report, ContentKind::npc, value.id, "unknown_reference", "NPC visual set does not exist", "visualSetId");
         if (!contains(dialogues, value.defaultDialogueId)) error(report, ContentKind::npc, value.id, "unknown_reference", "dialogue definition does not exist", "defaultDialogueId");
     }
     for (const auto& value : pack.dialogues) {

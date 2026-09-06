@@ -1550,6 +1550,51 @@ tipados, em memória e independentes de runtime state, renderer e assets carrega
 Validação produz diagnósticos estruturados, estáveis e determinísticos; IDs visuais
 são metadata e sua disponibilidade pertence ao bootstrap/presentation. O registry
 publicado não oferece mutação aos consumidores e não semeia conteúdo no construtor.
+
+## External Content Workspace
+
+O `ContentWorkspace` recebe uma lista explícita de arquivos JSON v1. Cada arquivo
+passa pelo decoder estrito existente; depois os documentos são ordenados por caminho
+lexical normalizado, mesclados por categoria e validados/compilados uma única vez:
+
+```text
+Explicit JSON Sources
+       ↓
+ContentWorkspaceLoader
+       ↓
+Per-file strict decode + source provenance
+       ↓
+Deterministic merge (duplicates are errors)
+       ↓
+AuthoredContentPack
+       ↓
+ContentCompiler
+       ↓
+GameContentRegistry
+```
+
+O resultado preserva o `AuthoredContentPack`, o `GameContentRegistry` e o mapa de
+origens para uso futuro por tooling. Não há overrides, last-wins, descoberta de
+diretórios, manifest, seleção de conteúdo no runtime ou hot reload nesta etapa.
+
+## Authored Map Source Boundary
+
+`DMAP` continua sendo serialização compilada/runtime e permanece inalterado. A
+direção aprovada para mapas authored é:
+
+```text
+Authored Map Source (future)
+       ↓
+Map compiler / semantic composition
+       ↓
+MapData
+       ↓
+DMAP
+```
+
+Um futuro documento de mapa poderá conter intenção semântica, regiões, bindings de
+World Logic, placements de encounters e metadados de edição. Isso não constitui uma
+implementação de `AuthoredMapDocument` nem altera `MapData` ou DMAP.
 ## Equipment and derived player stats
 
 Equipment is Player-owned gameplay state. Equipment items remain normal
