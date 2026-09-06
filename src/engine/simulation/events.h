@@ -59,6 +59,8 @@ struct MapEntered final {
 
 struct RegionEntered final { MapId mapId{}; DefinitionId regionId{}; };
 struct RegionExited final { MapId mapId{}; DefinitionId regionId{}; };
+struct EncounterStarted final { MapId mapId{}; DefinitionId encounterId{}; };
+struct EncounterCompleted final { MapId mapId{}; DefinitionId encounterId{}; };
 
 struct ObjectOpened final {
     EntityHandle player{};
@@ -83,7 +85,7 @@ struct ExperienceGranted final {
 
 using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
                                      PickupCollected, NpcTalked, MapEntered, RegionEntered,
-                                     RegionExited, ObjectOpened,
+                                     RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
                                      ItemDelivered, ExperienceGranted>;
 
 class EventBuffer final {

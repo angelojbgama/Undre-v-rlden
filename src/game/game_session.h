@@ -16,6 +16,7 @@
 #include "game/gameplay/quests/quest_system.h"
 #include "game/maps/map_catalog.h"
 #include "game/maps/region_tracker.h"
+#include "game/gameplay/world_logic.h"
 #include "game/save/save_data.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
@@ -138,6 +139,7 @@ private:
     gameplay::rpg::PlayerDerivedStats derivedPlayerStats_{};
     simulation::EventBuffer events_;
     maps::RegionTracker regionTracker_;
+    gameplay::WorldLogicSystem worldLogic_;
     save::SessionWorldState worldState_;
     std::unique_ptr<maps::MapSession> mapSession_;
     const gameplay::AttackCatalog* attackCatalog_{};
