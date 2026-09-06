@@ -1284,3 +1284,8 @@ authoring e serialização persistente de conteúdo continuam deferidos.
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and
 DSAV persistence are implemented. Equipment UI and weapon replacement remain future work.
+
+### 12C2 — Equipment UI / inspection / unequip — DONE
+
+Inventory and equipment focus, slot inspection, equip/unequip commands and derived-stat
+presentation are implemented. Bank remains future work.

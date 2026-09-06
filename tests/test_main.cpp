@@ -2406,6 +2406,7 @@ void testPickupsQuickSlotsAndInventoryOverlay() {
     overlay.moveSelection(-1, -1);
     expect(overlay.open() && overlay.selection() == 0,
            "inventory selection clamps at top-left");
+    overlay.moveSelection(0, 1);
     for (int index = 0; index < 20; ++index) { overlay.moveSelection(1, 0); }
     expect(overlay.selection() == 9, "inventory selection clamps at right edge");
     overlay.moveSelection(0, 1);
@@ -2427,7 +2428,7 @@ void testPickupsQuickSlotsAndInventoryOverlay() {
     openCommand.actions.toggleInventoryPressed = true;
     const auto beforeFeet = routedPlayer.feetPosition();
     const bool blocked = routeInventoryCommand(routedOverlay, openCommand, routedItems,
-                                                catalog, routedPlayer.health());
+                                                catalog, routedPlayer.health()).consumedTick;
     if (!blocked) { routedPlayer.update(openCommand, emptyGrid, 16); }
     expect(blocked && routedPlayer.feetPosition() == beforeFeet &&
                routedPlayer.actionState() == PlayerActionState::none,
@@ -2449,7 +2450,7 @@ void testViewModelAndWorldObjects() {
     InventoryOverlayState overlay;
     overlay.toggle();
     overlay.moveSelection(1, 1);
-    auto view = game::buildGameViewModel(player, playerItems, items, overlay);
+    auto view = game::buildGameViewModel(player, playerItems, items, overlay, {5, 0});
     expect(view.playerHealth == 3 && view.playerMaximumHealth == 5 && view.gold == 7 &&
                view.quickSlots[0].quantity == 5 && view.inventory[0].quantity == 5 &&
                view.inventoryOpen && view.inventorySelection == 11,
@@ -4176,6 +4177,28 @@ void testOfficialGameplayMapSet() {
                    itemSession.player().feetPosition() == savedPosition &&
                    itemSession.playerItems().wallet().gold() == saved.player.gold,
                "GameSession rejects invalid save without partially restoring state");
+        static_cast<void>(const_cast<gameplay::PlayerItems&>(itemSession.playerItems())
+                              .inventory().items().add(simulation::DefinitionId{"item.training_armor"}, 1));
+        auto& mutablePlayer = const_cast<gameplay::Player&>(itemSession.player());
+        auto& mutableItems = const_cast<gameplay::PlayerItems&>(itemSession.playerItems());
+        expect(mutableItems.equipment().equipFromInventory(
+                   gameplay::rpg::EquipmentSlot::armor,
+                   simulation::DefinitionId{"item.training_armor"},
+                   mutableItems.inventory().items(), content.items()),
+               "GameSession rollback fixture equips Training Armor");
+        mutablePlayer.health().setMaximum(7);
+        mutablePlayer.health().current = 7;
+        const auto equippedSave = itemSession.captureSaveData();
+        auto healthMismatch = equippedSave;
+        healthMismatch.equipment.armor.reset();
+        healthMismatch.player.health = 7;
+        expect(!itemSession.restoreSaveData(healthMismatch, restoreError) &&
+                   itemSession.playerItems().equipment().item(gameplay::rpg::EquipmentSlot::armor) ==
+                       simulation::DefinitionId{"item.training_armor"} &&
+                   itemSession.derivedPlayerStats().maximumHealth == 7 &&
+                   itemSession.player().health().current == 7 &&
+                   itemSession.player().health().maximum == 7,
+               "GameSession rollback restores equipment before previous 7/7 health");
     } else {
         expect(false, "GameSession item fixture contains a logical pickup");
     }

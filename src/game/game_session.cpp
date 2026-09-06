@@ -503,18 +503,14 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         consumeQuestEvents();
         return;
     }
-    const auto armorBefore = playerItems_ ? playerItems_->equipment().item(
-        gameplay::rpg::EquipmentSlot::armor) : std::optional<simulation::DefinitionId>{};
-    const auto accessoryBefore = playerItems_ ? playerItems_->equipment().item(
-        gameplay::rpg::EquipmentSlot::accessory) : std::optional<simulation::DefinitionId>{};
-    if (playerItems_ && gameplay::routeInventoryCommand(
-            inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health())) {
-        if (armorBefore != playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor) ||
-            accessoryBefore != playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)) {
-            refreshDerivedPlayerStats();
+    if (playerItems_) {
+        const auto inventoryResult = gameplay::routeInventoryCommand(
+            inventoryOverlay_, command, *playerItems_, *itemCatalog_, player_.health());
+        if (inventoryResult.equipmentChanged) { refreshDerivedPlayerStats(); }
+        if (inventoryResult.consumedTick) {
+            consumeQuestEvents();
+            return;
         }
-        consumeQuestEvents();
-        return;
     }
     if (playerItems_ && command.actions.quickSlotPressed >= 0) {
         static_cast<void>(playerItems_->useQuickSlot(

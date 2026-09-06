@@ -596,7 +596,8 @@ struct GameRuntime::State final {
 
     void render(render::Framebuffer& framebuffer) const {
         const auto view = buildGameViewModel(
-            player, session.playerItems(), itemCatalog, session.inventoryOverlay());
+            player, session.playerItems(), itemCatalog, session.inventoryOverlay(),
+            session.derivedPlayerStats());
         presentation.render(framebuffer, {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
             session.projectiles(),

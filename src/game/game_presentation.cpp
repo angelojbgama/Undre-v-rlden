@@ -298,14 +298,14 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         return;
     }
     if (!view.inventoryOpen) { return; }
-    renderer.fillRect({6, 52, 260, 78}, {8, 10, 16, 245});
+    renderer.fillRect({6, 52, 260, 145}, {8, 10, 16, 245});
     render::drawText(renderer, frame.font, "INVENTORY", 10, 55);
     for (std::size_t index = 0; index < view.inventory.size(); ++index) {
         const int column = static_cast<int>(index % 10);
         const int row = static_cast<int>(index / 10);
         const int x = 10 + column * 25;
         const int y = 66 + row * 20;
-        const core::ColorRGBA8 slotColor = index == view.inventorySelection
+        const core::ColorRGBA8 slotColor = view.inventoryFocus == gameplay::InventoryOverlayFocus::inventory && index == view.inventorySelection
             ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255};
         renderer.fillRect({x, y, 22, 18}, slotColor);
         if (view.inventory[index].visualId) {
@@ -316,7 +316,26 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
             }
         }
     }
-    render::drawText(renderer, frame.font, "Z USE  1-4 BIND  I CLOSE", 10, 121);
+    render::drawText(renderer, frame.font, "EQUIPMENT", 10, 128);
+    const auto drawEquipmentSlot = [&](const char* label, const ItemSlotView& item,
+                                       gameplay::rpg::EquipmentSlot slot, int x) {
+        const bool selected = view.inventoryFocus == gameplay::InventoryOverlayFocus::equipment &&
+                              view.equipmentSelection == slot;
+        renderer.fillRect({x, 138, 92, 22}, selected
+            ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
+        render::drawText(renderer, frame.font, label, x + 3, 141);
+        if (item.itemId && item.visualId) {
+            const auto found = frame.itemVisuals.find(*item.visualId);
+            if (found != frame.itemVisuals.end()) {
+                renderer.drawImage(*found->second, x + 55, 140);
+            }
+        }
+    };
+    drawEquipmentSlot("ARMOR", view.armor, gameplay::rpg::EquipmentSlot::armor, 10);
+    drawEquipmentSlot("ACCESSORY", view.accessory, gameplay::rpg::EquipmentSlot::accessory, 108);
+    render::drawText(renderer, frame.font, "MAX HP " + std::to_string(view.derivedMaximumHealth) +
+                     "  ATK +" + std::to_string(view.playerAttackDamageBonus), 10, 164);
+    render::drawText(renderer, frame.font, "Z USE/EQUIP  1-4 BIND  I CLOSE", 10, 181);
 }
 
 void GamePresentation::render(render::Framebuffer& framebuffer,

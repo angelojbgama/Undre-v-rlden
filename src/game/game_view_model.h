@@ -3,6 +3,7 @@
 #include "engine/simulation/definition_id.h"
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
+#include "game/gameplay/rpg/equipment.h"
 
 #include <array>
 #include <cstddef>
@@ -27,11 +28,18 @@ struct GameViewModel final {
     std::array<ItemSlotView, gameplay::PlayerInventory::slotCount> inventory{};
     bool inventoryOpen{};
     std::size_t inventorySelection{};
+    gameplay::InventoryOverlayFocus inventoryFocus{gameplay::InventoryOverlayFocus::inventory};
+    gameplay::rpg::EquipmentSlot equipmentSelection{gameplay::rpg::EquipmentSlot::armor};
+    ItemSlotView armor{};
+    ItemSlotView accessory{};
+    int derivedMaximumHealth{};
+    int playerAttackDamageBonus{};
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
     const gameplay::Player& player, const gameplay::PlayerItems& items,
     const gameplay::ItemCatalog& catalog,
-    const gameplay::InventoryOverlayState& overlay);
+    const gameplay::InventoryOverlayState& overlay,
+    const gameplay::rpg::PlayerDerivedStats& derivedStats);
 
 } // namespace underworld::game

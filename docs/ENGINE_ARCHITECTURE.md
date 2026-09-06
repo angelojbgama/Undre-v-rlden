@@ -1558,3 +1558,7 @@ modifiers affect only maximum health and Player attack damage. Derived stats are
 calculated from authored base stats plus equipped items and are not persisted.
 `AttackDefinition` remains immutable; Player damage bonuses are applied when an
 effective `DamageSpec` is produced. Inventory/equipment transfers are transactional.
+`InventoryOverlayState` owns only inventory/equipment navigation state. `GameViewModel`
+exposes copied equipment and derived-stat read models; `GamePresentation` renders them
+without mutating gameplay. Inventory routing reports equipment changes explicitly so
+`GameSession` refreshes derived stats.

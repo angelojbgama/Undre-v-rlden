@@ -24,6 +24,7 @@ private:
 };
 
 struct ItemUseResult final { bool applied{}; int healthRestored{}; };
+enum class InventoryOverlayFocus { inventory, equipment };
 
 [[nodiscard]] ItemUseResult useItem(const simulation::DefinitionId& itemId,
                                     ItemContainer& inventory, const ItemCatalog& catalog,
@@ -55,21 +56,24 @@ public:
     static constexpr std::size_t columns = 10;
     static constexpr std::size_t rows = 3;
     static constexpr std::size_t slotCount = columns * rows;
-    void toggle() noexcept { open_ = !open_; }
+    void toggle() noexcept;
     void close() noexcept { open_ = false; }
     [[nodiscard]] bool open() const noexcept { return open_; }
     [[nodiscard]] std::size_t selection() const noexcept { return selection_; }
+    [[nodiscard]] rpg::EquipmentSlot equipmentSelection() const noexcept { return equipmentSlot_; }
+    [[nodiscard]] bool equipmentFocused() const noexcept { return focus_ == InventoryOverlayFocus::equipment; }
     void moveSelection(int x, int y) noexcept;
 
 private:
     bool open_{};
     std::size_t selection_{};
+    InventoryOverlayFocus focus_{InventoryOverlayFocus::inventory};
+    rpg::EquipmentSlot equipmentSlot_{rpg::EquipmentSlot::armor};
 };
 
-// Returns true when the overlay consumes the tick and gameplay must remain paused.
-[[nodiscard]] bool routeInventoryCommand(InventoryOverlayState& overlay,
-                                         const simulation::PlayerCommand& command,
-                                         PlayerItems& items, const ItemCatalog& catalog,
-                                         Health& health);
+struct InventoryCommandResult final { bool consumedTick{}; bool equipmentChanged{}; };
+[[nodiscard]] InventoryCommandResult routeInventoryCommand(
+    InventoryOverlayState& overlay, const simulation::PlayerCommand& command,
+    PlayerItems& items, const ItemCatalog& catalog, Health& health);
 
 } // namespace underworld::game::gameplay

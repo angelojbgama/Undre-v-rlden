@@ -16,13 +16,26 @@ ItemSlotView makeSlot(const gameplay::ItemStack& stack,
 GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::PlayerItems& items,
                                  const gameplay::ItemCatalog& catalog,
-                                 const gameplay::InventoryOverlayState& overlay) {
+                                 const gameplay::InventoryOverlayState& overlay,
+                                 const gameplay::rpg::PlayerDerivedStats& derivedStats) {
     GameViewModel result;
     result.playerHealth = player.health().current;
     result.playerMaximumHealth = player.health().maximum;
     result.gold = items.wallet().gold();
     result.inventoryOpen = overlay.open();
     result.inventorySelection = overlay.selection();
+    result.inventoryFocus = overlay.equipmentFocused()
+        ? gameplay::InventoryOverlayFocus::equipment : gameplay::InventoryOverlayFocus::inventory;
+    result.equipmentSelection = overlay.equipmentSelection();
+    result.derivedMaximumHealth = derivedStats.maximumHealth;
+    result.playerAttackDamageBonus = derivedStats.playerAttackDamageBonus;
+    const auto makeEquipment = [&](gameplay::rpg::EquipmentSlot slot) {
+        const auto& item = items.equipment().item(slot);
+        if (!item) { return ItemSlotView{}; }
+        return makeSlot(gameplay::ItemStack{*item, 1}, catalog);
+    };
+    result.armor = makeEquipment(gameplay::rpg::EquipmentSlot::armor);
+    result.accessory = makeEquipment(gameplay::rpg::EquipmentSlot::accessory);
     for (std::size_t index = 0; index < result.inventory.size(); ++index) {
         const auto& slot = items.inventory().items().slot(index);
         if (slot) { result.inventory[index] = makeSlot(*slot, catalog); }
