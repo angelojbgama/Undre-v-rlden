@@ -42,6 +42,8 @@
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
+#include "game/content/content_json.h"
+#include "engine/data/json.h"
 #include "game/game_session.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
@@ -5404,6 +5406,25 @@ void testPhase12E3ShopInterface() {
     expect(!overlay.open() && overlay.activeShopId().empty(), "closing shop clears transient active state");
 }
 
+void testPhase13AJsonFoundation() {
+    using underworld::engine::data::parseJson;
+    using underworld::game::content::decodeAuthoredContentJson;
+    const auto parsed = parseJson(R"({"text":"Olá, viajante.","n":18446744073709551615,"unicode":"\uD83D\uDE00"})");
+    expect(parsed.value && parsed.diagnostics.empty(), "strict JSON parser accepts UTF-8, escapes and uint64 lexemes");
+    expect(parseJson(R"({"id":"a","id":"b"})").value == nullptr &&
+               parseJson(R"([1,])").value == nullptr && parseJson("{\"x\":1} trailing").value == nullptr,
+           "strict JSON rejects duplicate keys, trailing commas and trailing data");
+    expect(parseJson(R"({"x":01})").value == nullptr && parseJson(R"({"x":1.})").value == nullptr &&
+               parseJson(R"({"x":NaN})").value == nullptr,
+           "strict JSON rejects malformed numbers");
+    const auto decoded = decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":[{"id":"item.x","visualId":"visual.x","category":"misc","stackLimit":3}],"shops":[]})");
+    expect(decoded.content && decoded.content->items.size() == 1 && decoded.content->items.front().stackLimit == 3,
+           "content JSON decodes typed item fields and optional category arrays");
+    expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content,
+           "content JSON rejects wrong format identifiers and unsupported versions");
+}
+
 int main() {
     try {
         testMetrics();
@@ -5472,6 +5493,7 @@ int main() {
         testPhase12E1RewardGrants();
         testPhase12E2Shops();
         testPhase12E3ShopInterface();
+        testPhase13AJsonFoundation();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

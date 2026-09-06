@@ -20,6 +20,10 @@ if not exist "build\obj\game.obj" (
 set "COMMON_FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /EHsc /Zc:__cplusplus /utf-8 /I src /c"
 
 echo Compiling authored content boundary...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\json.obj" "src\engine\data\json.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\content_json.obj" "src\game\content\content_json.cpp"
+if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_validation.obj" "src\game\content\content_validation.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_compiler.obj" "src\game\content\content_compiler.cpp"

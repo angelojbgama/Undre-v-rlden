@@ -116,6 +116,10 @@ cl.exe %COMMON_FLAGS% /Fo"build\obj\game_content.obj" "src\game\game_content.cpp
 if errorlevel 1 goto :build_failed
 
 echo Compiling authored content boundary...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\json.obj" "src\engine\data\json.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\content_json.obj" "src\game\content\content_json.cpp"
+if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_validation.obj" "src\game\content\content_validation.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_compiler.obj" "src\game\content\content_compiler.cpp"

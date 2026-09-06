@@ -11,6 +11,11 @@ Regra permanente de conteúdo: não adicionar definições concretas diretamente
 `GameContentRegistry` ou ao `GameRuntime`. Novo conteúdo deve entrar pelo
 `AuthoredContentPack` e pela fronteira `ContentValidator`/`ContentCompiler`.
 
+Regra permanente de produto: Dungeon Underworld é single-player. Networking e
+multiplayer estão permanentemente fora de escopo; não criar arquitetura para
+replicação, cliente/servidor ou sincronização de rede. Replay e state hashing são
+somente tooling opcional de testes/debug.
+
 ---
 
 # 1. Papel do agente
