@@ -13,6 +13,7 @@
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
 #include "game/gameplay/rpg/reward_grants.h"
+#include "game/gameplay/rpg/shops.h"
 #include "game/content/content_dto.h"
 
 #include <string>
@@ -62,6 +63,7 @@ public:
     [[nodiscard]] const gameplay::rpg::RewardProfileCatalog& rewardProfiles() const noexcept { return rewards_; }
     [[nodiscard]] const gameplay::rpg::RewardProfileCatalog& rewards() const noexcept { return rewards_; }
     [[nodiscard]] const gameplay::rpg::RewardGrantCatalog& rewardGrants() const noexcept { return rewardGrants_; }
+    [[nodiscard]] const gameplay::rpg::ShopCatalog& shops() const noexcept { return shops_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -91,6 +93,7 @@ private:
     gameplay::rpg::PlayerProgressionCatalog progressions_;
     gameplay::rpg::RewardProfileCatalog rewards_;
     gameplay::rpg::RewardGrantCatalog rewardGrants_;
+    gameplay::rpg::ShopCatalog shops_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };

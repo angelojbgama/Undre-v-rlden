@@ -100,7 +100,7 @@ FASE 8 — .dmap + transições + save                     DONE
 FASE 9 — Map Maker                                     DONE
 FASE 10 — NPC + diálogo                               DONE
 FASE 11 — Quests                                      DONE
-FASE 12 — RPG (12A–12D2 DONE; 12E1 DONE; 12E2/12E3 FUTURE; phase extended)
+FASE 12 — RPG (12A–12D2 DONE; 12E1/12E2 DONE; 12E3 FUTURE; phase extended)
 FASE 13 — Headless + replay + auditoria determinística
 ```
 
@@ -1316,3 +1316,10 @@ remain future work.
 The previous RPG scope was extended with 12E1 before external authored content work.
 No shops are implemented yet; no Bank placement or new art is added to the official
 DMAP in this increment.
+
+### 12E2 — Shop definitions + transactions — DONE
+
+Shops are immutable authored content with independently optional Player buy/sell
+prices. Transactions are headless, one item at a time, atomic, use carried Wallet
+Gold only, and place purchases in Inventory only. There is no stock, buyback or shop
+persistence; access and UI remain 12E3.

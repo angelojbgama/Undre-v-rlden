@@ -64,6 +64,7 @@ gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
 gameplay::rpg::RewardProfileDefinition compileReward(const AuthoredRewardProfile& v) { gameplay::rpg::RewardProfileDefinition result{v.id, v.experience, {}}; for (const auto& entry : v.loot) result.loot.push_back({entry.pickupDefinitionId, entry.chanceBasisPoints, entry.minimumCount, entry.maximumCount}); return result; }
 gameplay::rpg::RewardGrantDefinition compileGrant(const AuthoredRewardGrant& v) { gameplay::rpg::RewardGrantDefinition result{v.id, v.experience, v.gold, {}}; for (const auto& item : v.items) result.items.push_back({item.itemId, item.quantity}); return result; }
+gameplay::rpg::ShopDefinition compileShop(const AuthoredShop& v) { gameplay::rpg::ShopDefinition result{v.id, {}}; for (const auto& offer : v.offers) result.offers.push_back({offer.itemId, offer.playerBuyPrice, offer.playerSellPrice}); return result; }
 authoring::TileSemanticDefinition compileTileSemantic(const AuthoredTileSemantic& v) { return {v.id, v.tilesetId, v.sourceIndex, v.family, v.role, v.topology, v.north, v.east, v.south, v.west, v.preferredLayer, v.flipXAllowed, v.visualConfidence, v.semanticConfidence, v.gameplayConfidence}; }
 authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
     authoring::StampDefinition result{v.id, v.displayName, v.width, v.height, {}, v.anchor, v.flipXAllowed, v.atomic, v.confidence};
@@ -86,6 +87,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.enemies) registry.enemies_.add(compileEnemy(value));
         for (const auto& value : authored.rewardProfiles) registry.rewards_.add(compileReward(value));
         for (const auto& value : authored.rewardGrants) registry.rewardGrants_.add(compileGrant(value));
+        for (const auto& value : authored.shops) registry.shops_.add(compileShop(value));
         for (const auto& value : authored.items) registry.items_.add(compileItem(value));
         for (const auto& value : authored.objects) registry.objects_.add(compileObject(value));
         for (const auto& value : authored.npcs) registry.npcs_.add(compileNpc(value));

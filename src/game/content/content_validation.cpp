@@ -99,6 +99,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                              [](const auto& value) { return value.id; });
     const auto grants = ids(pack.rewardGrants, report, ContentKind::rewardGrant,
                             [](const auto& value) { return value.id; });
+    const auto shops = ids(pack.shops, report, ContentKind::shop,
+                           [](const auto& value) { return value.id; });
 
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||
@@ -150,6 +152,16 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (item.itemId.empty() || !contains(items, item.itemId)) error(report, ContentKind::rewardGrant, value.id, "unknown_reference", "reward item does not exist", "items");
             if (item.quantity == 0) error(report, ContentKind::rewardGrant, value.id, "invalid_quantity", "reward item quantity must be positive", "items");
             if (!grantItems.emplace(std::string(item.itemId.value())).second) error(report, ContentKind::rewardGrant, value.id, "duplicate_item", "reward grant item is duplicated", "items");
+        }
+    }
+    for (const auto& value : pack.shops) {
+        if (value.offers.empty()) error(report, ContentKind::shop, value.id, "empty_shop", "shop must contain offers", "offers");
+        if (value.offers.size() > gameplay::rpg::maximumShopOffers) error(report, ContentKind::shop, value.id, "invalid_range", "shop has too many offers", "offers");
+        std::unordered_set<std::string> offerItems;
+        for (const auto& offer : value.offers) {
+            if (offer.itemId.empty() || !contains(items, offer.itemId)) error(report, ContentKind::shop, value.id, "unknown_reference", "shop offer item does not exist", "itemId");
+            if (!offer.playerBuyPrice && !offer.playerSellPrice) error(report, ContentKind::shop, value.id, "empty_offer", "shop offer must provide a buy or sell price", "offer");
+            if (!offerItems.emplace(std::string(offer.itemId.value())).second) error(report, ContentKind::shop, value.id, "duplicate_offer", "shop item offer is duplicated", "itemId");
         }
     }
     for (const auto& value : pack.items) {
@@ -245,7 +257,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

@@ -112,6 +112,16 @@ std::uint32_t ItemContainer::remove(const simulation::DefinitionId& itemId,
     return quantity - remaining;
 }
 
+std::uint32_t ItemContainer::removeFromSlot(std::size_t sourceSlot,
+                                            std::uint32_t quantity) {
+    auto& candidate = slots_.at(sourceSlot);
+    if (!candidate || quantity == 0) return 0;
+    const auto removed = std::min(quantity, candidate->quantity);
+    candidate->quantity -= removed;
+    if (candidate->quantity == 0) candidate.reset();
+    return removed;
+}
+
 bool ItemContainer::consume(const simulation::DefinitionId& itemId) {
     return remove(itemId, 1) == 1;
 }

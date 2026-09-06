@@ -1587,5 +1587,15 @@ reward remains pending for a later tick. Equipment rewards are normal non-stacka
 items and are never auto-equipped. Gold targets Wallet then Bank, XP uses
 `PlayerProgressionState`, and grant items do not emit `PickupCollected`.
 
-The QSTS claim flag is persisted in DSAV 1.6. Shops are planned for 12E2/12E3 before
-the external authored-content phase.
+The QSTS claim flag is persisted in DSAV 1.6. Shops are planned for 12E3 before the
+external authored-content phase.
+
+## Shops
+
+`ShopDefinition` is immutable authored content. Each offer independently enables
+Player purchase and/or sale through optional prices, including valid zero prices.
+Shop transactions use carried `Wallet` Gold only: purchases require Inventory space
+and sales remove exactly one item from a selected Inventory slot and credit Wallet.
+The Bank is never accessed automatically. Failures are atomic, offers have unlimited
+authored availability, and there is no runtime stock, buyback, Shop state, persistence
+or transaction event in 12E2. Shop access and presentation are deferred to 12E3.

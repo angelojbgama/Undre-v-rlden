@@ -36,6 +36,7 @@
 #include "game/game_content.h"
 #include "game/gameplay/rpg/rewards.h"
 #include "game/gameplay/rpg/reward_grants.h"
+#include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/bank_overlay.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
@@ -5315,6 +5316,56 @@ void testPhase12E1RewardGrants() {
            "guaranteed reward is atomic when inventory and bank cannot store all items");
 }
 
+void testPhase12E2Shops() {
+    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    static_assert(!std::is_same_v<underworld::game::content::AuthoredShop, underworld::game::gameplay::rpg::ShopDefinition>);
+    const auto& shop = content.shops().require({"shop.development.general"});
+    const auto& potion = *underworld::game::gameplay::rpg::findOffer(shop, {"item.life_potion"});
+    expect(potion.playerBuyPrice == 25 && potion.playerSellPrice == 10 && shop.offers.size() == 3,
+           "builtin development shop contains authored buy and sell prices");
+
+    using namespace underworld::game;
+    gameplay::PlayerItems items(content.items());
+    gameplay::rpg::ShopTransactionService service;
+    items.wallet().restoreGold(100);
+    auto bought = service.buyOne(shop, {"item.life_potion"}, items);
+    expect(bought && bought.quantity == 1 && bought.gold == 25 && items.wallet().gold() == 75 &&
+               items.inventory().items().count({"item.life_potion"}) == 1,
+           "shop buy uses carried wallet and inventory atomically");
+    for (int i = 0; i < 2; ++i) static_cast<void>(service.buyOne(shop, {"item.life_potion"}, items));
+    expect(items.wallet().gold() == 25 && items.inventory().items().count({"item.life_potion"}) == 3,
+           "shop purchases are one-unit transactions and stack normally");
+
+    items.wallet().restoreGold(50);
+    const auto sold = service.sellOneFromSlot(shop, 0, items);
+    expect(sold && sold.gold == 10 && items.wallet().gold() == 60 &&
+               items.inventory().items().count({"item.life_potion"}) == 2,
+           "shop sale removes exactly one item from the selected inventory slot");
+
+    gameplay::PlayerItems full(content.items());
+    full.wallet().restoreGold(200);
+    for (std::size_t i = 0; i < full.inventory().items().capacity(); ++i)
+        static_cast<void>(full.inventory().items().add({"item.training_armor"}, 1));
+    const auto fullBuy = service.buyOne(shop, {"item.life_potion"}, full);
+    expect(fullBuy.status == gameplay::rpg::ShopTransactionStatus::inventoryFull && full.wallet().gold() == 200,
+           "full inventory rejects purchase without charging wallet or using bank");
+
+    gameplay::PlayerItems rich(content.items());
+    rich.wallet().restoreGold(std::numeric_limits<std::uint64_t>::max() - 5);
+    static_cast<void>(rich.inventory().items().add({"item.training_armor"}, 1));
+    const auto saturated = service.sellOneFromSlot(shop, 0, rich);
+    expect(saturated.status == gameplay::rpg::ShopTransactionStatus::walletCapacityExceeded &&
+               rich.inventory().items().count({"item.training_armor"}) == 1 &&
+               rich.wallet().gold() == std::numeric_limits<std::uint64_t>::max() - 5,
+           "wallet saturation rejects sale without removing the item");
+
+    auto invalid = underworld::game::content::makeBuiltinAuthoredContent();
+    invalid.shops.front().offers.front().playerBuyPrice.reset();
+    invalid.shops.front().offers.front().playerSellPrice.reset();
+    const auto invalidResult = underworld::game::content::compileContent(invalid);
+    expect(!invalidResult, "shop offer without an operation is rejected by content validation");
+}
+
 int main() {
     try {
         testMetrics();
@@ -5381,6 +5432,7 @@ int main() {
         testPhase12DBank();
         testPhase12D2BankInterface();
         testPhase12E1RewardGrants();
+        testPhase12E2Shops();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

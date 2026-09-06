@@ -61,7 +61,9 @@ public:
     [[nodiscard]] AddResult canAdd(const simulation::DefinitionId& itemId,
                                    std::uint32_t quantity) const;
     [[nodiscard]] std::uint32_t remove(const simulation::DefinitionId& itemId,
-                                       std::uint32_t quantity);
+                                        std::uint32_t quantity);
+    [[nodiscard]] std::uint32_t removeFromSlot(std::size_t sourceSlot,
+                                                std::uint32_t quantity);
     [[nodiscard]] bool consume(const simulation::DefinitionId& itemId);
     [[nodiscard]] std::uint64_t count(const simulation::DefinitionId& itemId) const noexcept;
     [[nodiscard]] std::uint32_t transferTo(ItemContainer& destination,
