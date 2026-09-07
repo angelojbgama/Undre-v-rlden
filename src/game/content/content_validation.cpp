@@ -1,6 +1,7 @@
 #include "game/content/content_validation.h"
 
 #include <algorithm>
+#include <cctype>
 #include <limits>
 #include <string_view>
 #include <unordered_set>
@@ -35,6 +36,43 @@ std::unordered_set<std::string> ids(const Range& values, ContentValidationReport
 bool contains(const std::unordered_set<std::string>& values,
               const simulation::DefinitionId& id) {
     return values.contains(std::string(id.value()));
+}
+
+bool safeRelativeAssetPath(const std::string& value) {
+    if (value.empty() || value.find('\0') != std::string::npos) return false;
+    if (value.front() == '/' || value.front() == '\\' ||
+        (value.size() > 1 && std::isalpha(static_cast<unsigned char>(value[0])) && value[1] == ':')) return false;
+    std::string component;
+    for (const char character : value + '/') {
+        if (character == '/' || character == '\\') {
+            if (component == ".." || component == "." || component.empty()) return false;
+            component.clear();
+        } else {
+            component.push_back(character);
+        }
+    }
+    return true;
+}
+
+bool visualCoordinateOutOfBounds(int value) noexcept {
+    return value < -4096 || value > 4096;
+}
+
+void validateDirectional(const presentation::DirectionalAnimationRef& clips,
+                         const std::unordered_set<std::string>& animations,
+                         ContentValidationReport& report, ContentKind kind,
+                         const simulation::DefinitionId& id, std::string_view field) {
+    const std::optional<simulation::DefinitionId>* values[] = {
+        &clips.defaultAnimation, &clips.down, &clips.up, &clips.side};
+    bool hasBinding = false;
+    for (const auto* value : values) {
+        if (!value->has_value()) continue;
+        hasBinding = true;
+        if (!contains(animations, **value))
+            error(report, kind, id, "unknown_reference", "directional animation does not exist", std::string(field));
+    }
+    if (!hasBinding)
+        error(report, kind, id, "missing_binding", "directional animation requires at least one binding", std::string(field));
 }
 
 void validateAttack(const AuthoredAttack& value, ContentValidationReport& report) {
@@ -105,6 +143,89 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                            [](const auto& value) { return value.id; });
     static_cast<void>(ids(pack.presentationEffects, report, ContentKind::presentationEffect,
                           [](const auto& value) { return value.id; }));
+    const auto visualImages = ids(pack.visualImages, report, ContentKind::visualImage,
+                                  [](const auto& value) { return value.id; });
+    const auto staticSprites = ids(pack.staticSprites, report, ContentKind::staticSprite,
+                                   [](const auto& value) { return value.id; });
+    const auto animations = ids(pack.animations, report, ContentKind::animation,
+                                [](const auto& value) { return value.id; });
+    const auto enemyVisuals = ids(pack.enemyVisuals, report, ContentKind::enemyVisual,
+                                  [](const auto& value) { return value.id; });
+    const auto objectVisuals = ids(pack.objectVisuals, report, ContentKind::objectVisual,
+                                   [](const auto& value) { return value.id; });
+    const bool hasVisualSchema = !pack.visualImages.empty() || !pack.staticSprites.empty() ||
+        !pack.animations.empty() || !pack.enemyVisuals.empty() || !pack.objectVisuals.empty();
+
+    for (const auto& value : pack.visualImages) {
+        if (value.root != presentation::VisualAssetRoot::gameAssets &&
+            value.root != presentation::VisualAssetRoot::contentWorkspace)
+            error(report, ContentKind::visualImage, value.id, "invalid_asset_root",
+                  "visual asset root is invalid", "root");
+        if (!safeRelativeAssetPath(value.relativePath))
+            error(report, ContentKind::visualImage, value.id, "invalid_asset_path",
+                  "visual asset path must be a normalized relative path", "relativePath");
+    }
+    for (const auto& value : pack.staticSprites) {
+        if (!contains(visualImages, value.imageId))
+            error(report, ContentKind::staticSprite, value.id, "unknown_reference",
+                  "visual image does not exist", "imageId");
+        if (value.source && (value.source->x < 0 || value.source->y < 0 ||
+                             value.source->width <= 0 || value.source->height <= 0))
+            error(report, ContentKind::staticSprite, value.id, "invalid_source",
+                  "static sprite source rectangle must be positive", "source");
+        if (visualCoordinateOutOfBounds(value.anchor.x) ||
+            visualCoordinateOutOfBounds(value.anchor.y))
+            error(report, ContentKind::staticSprite, value.id, "invalid_anchor",
+                  "static sprite anchor is outside bounds", "anchor");
+    }
+    for (const auto& value : pack.animations) {
+        if (!contains(visualImages, value.imageId))
+            error(report, ContentKind::animation, value.id, "unknown_reference",
+                  "visual image does not exist", "imageId");
+        if (value.frames.empty() || value.frames.size() > 4096)
+            error(report, ContentKind::animation, value.id, "invalid_frame_count",
+                  "animation must contain a bounded non-empty frame list", "frames");
+        for (const auto& frame : value.frames) {
+            if (frame.source.x < 0 || frame.source.y < 0 || frame.source.width <= 0 ||
+                frame.source.height <= 0 || frame.durationTicks == 0 ||
+                visualCoordinateOutOfBounds(frame.anchor.x) ||
+                visualCoordinateOutOfBounds(frame.anchor.y) ||
+                visualCoordinateOutOfBounds(frame.drawOffset.x) ||
+                visualCoordinateOutOfBounds(frame.drawOffset.y))
+                error(report, ContentKind::animation, value.id, "invalid_frame",
+                      "animation frame source and duration must be positive", "frames");
+            if (frame.markers.size() > 32)
+                error(report, ContentKind::animation, value.id, "invalid_marker_count",
+                      "animation frame has too many markers", "frames.markers");
+        }
+    }
+    for (const auto& value : pack.enemyVisuals) {
+        validateDirectional(value.idle, animations, report, ContentKind::enemyVisual, value.id, "idle");
+        if (value.move) validateDirectional(*value.move, animations, report, ContentKind::enemyVisual, value.id, "move");
+        if (value.hurt) validateDirectional(*value.hurt, animations, report, ContentKind::enemyVisual, value.id, "hurt");
+        if (value.death) validateDirectional(*value.death, animations, report, ContentKind::enemyVisual, value.id, "death");
+        if (value.dead) validateDirectional(*value.dead, animations, report, ContentKind::enemyVisual, value.id, "dead");
+        std::unordered_set<std::string> attackIds;
+        for (const auto& attack : value.attacks) {
+            if (attack.visualActionId.empty() || !attackIds.emplace(std::string(attack.visualActionId.value())).second)
+                error(report, ContentKind::enemyVisual, value.id, "duplicate_attack_visual",
+                      "enemy attack visual action IDs must be unique", "attacks");
+            validateDirectional(attack.clips, animations, report, ContentKind::enemyVisual, value.id, "attacks.clips");
+        }
+    }
+    for (const auto& value : pack.objectVisuals) {
+        if (value.idleAnimationId.empty() || !contains(animations, value.idleAnimationId))
+            error(report, ContentKind::objectVisual, value.id, "unknown_reference",
+                  "idle animation does not exist", "idleAnimationId");
+        for (const auto* optionalId : {&value.openedAnimationId, &value.destroyingAnimationId,
+                                       &value.activationInactiveAnimationId, &value.activationActiveAnimationId,
+                                       &value.doorLockedAnimationId, &value.doorClosedAnimationId,
+                                       &value.doorOpenAnimationId}) {
+            if (*optionalId && !contains(animations, **optionalId))
+                error(report, ContentKind::objectVisual, value.id, "unknown_reference",
+                      "object animation does not exist", "animationId");
+        }
+    }
 
     for (const auto& value : pack.presentationEffects) {
         const bool validLifetime = value.lifetime == presentation::PresentationEffectLifetime::transient ||
@@ -161,6 +282,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.visualId.empty() || value.speedPixelsPerTick <= 0 || value.lifetimeTicks == 0 ||
             value.hitboxWidth <= 0 || value.hitboxHeight <= 0)
             error(report, ContentKind::projectile, value.id, "invalid_value", "projectile values must be positive", "projectile");
+        if (hasVisualSchema && !contains(staticSprites, value.visualId))
+            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile static sprite does not exist", "visualId");
     }
     for (const auto& value : pack.attacks) {
         validateAttack(value, report);
@@ -181,6 +304,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::enemy, value.id, "unknown_reference", "attack definition does not exist", "attackIds");
         if (value.rewardProfileId && !contains(rewards, *value.rewardProfileId))
             error(report, ContentKind::enemy, value.id, "unknown_reference", "reward profile does not exist", "rewardProfileId");
+        if (hasVisualSchema && !contains(enemyVisuals, value.visualSetId))
+            error(report, ContentKind::enemy, value.id, "unknown_reference", "enemy visual definition does not exist", "visualSetId");
     }
     for (const auto& value : pack.rewardProfiles) {
         if (value.loot.size() > gameplay::rpg::maximumLootEntriesPerProfile)
@@ -224,8 +349,10 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 value.equipment->modifiers.playerAttackDamageBonus > 1000)
                 error(report, ContentKind::item, value.id, "invalid_equipment", "equipment metadata or modifiers are invalid", "equipment");
         } else if (value.equipment) {
-            error(report, ContentKind::item, value.id, "invalid_equipment", "non-equipment item has equipment metadata", "equipment");
+                error(report, ContentKind::item, value.id, "invalid_equipment", "non-equipment item has equipment metadata", "equipment");
         }
+        if (hasVisualSchema && !contains(staticSprites, value.visualId))
+            error(report, ContentKind::item, value.id, "unknown_reference", "item static sprite does not exist", "visualId");
     }
     for (const auto& value : pack.objects) {
         if (value.id.empty() || value.visualSetId.empty() ||
@@ -253,9 +380,13 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 error(report, ContentKind::object, value.id, "invalid_activation", "unknown object activation mode", "activation.mode");
             }
         }
+        if (hasVisualSchema && !contains(objectVisuals, value.visualSetId))
+            error(report, ContentKind::object, value.id, "unknown_reference", "object visual definition does not exist", "visualSetId");
     }
     for (const auto& value : pack.pickups) {
         if (value.visualId.empty() || value.collectionBounds.width <= 0 || value.collectionBounds.height <= 0) error(report, ContentKind::pickup, value.id, "invalid_value", "pickup visual and collection bounds are invalid", "definition");
+        if (hasVisualSchema && !contains(staticSprites, value.visualId))
+            error(report, ContentKind::pickup, value.id, "unknown_reference", "pickup static sprite does not exist", "visualId");
         if (const auto* item = std::get_if<AuthoredItemPickup>(&value.payload)) {
             if (!contains(items, item->itemId) || item->quantity == 0)
                 error(report, ContentKind::pickup, value.id, "unknown_reference", "item pickup references an invalid item or quantity", "payload");
@@ -269,6 +400,9 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.visualSetId.empty() || value.defaultDialogueId.empty()) error(report, ContentKind::npc, value.id, "invalid_value", "NPC visual and dialogue references are required", "definition");
         if (!contains(npcVisuals, value.visualSetId)) error(report, ContentKind::npc, value.id, "unknown_reference", "NPC visual set does not exist", "visualSetId");
         if (!contains(dialogues, value.defaultDialogueId)) error(report, ContentKind::npc, value.id, "unknown_reference", "dialogue definition does not exist", "defaultDialogueId");
+    }
+    for (const auto& value : pack.npcVisuals) {
+        if (value.idle) validateDirectional(*value.idle, animations, report, ContentKind::npcVisual, value.id, "idle");
     }
     for (const auto& value : pack.dialogues) {
         if (value.entryNodeId.empty() || value.nodes.empty()) error(report, ContentKind::dialogue, value.id, "invalid_value", "dialogue requires an entry node and nodes", "nodes");

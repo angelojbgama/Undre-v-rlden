@@ -1619,10 +1619,10 @@ SimulationEvent / EventBuffer
 
 Regions are spatial data, rules are authored ordered event reactions, doors are an
 optional `WorldObjectDefinition` capability, and encounters monitor authored enemy
-placement IDs. The current implementation deliberately does not add a scripting VM,
-Puzzle Engine, encounter waves, Visual Content Boundary, Content Studio or LLM
-integration. Door and encounter presentation remains constrained by the current
-hardcoded runtime visual capabilities.
+placement IDs. The Phase 14 implementation deliberately did not add a scripting VM,
+Puzzle Engine, encounter waves, Content Studio or LLM integration. The visual
+boundary is documented in the Phase 17 section below; it remains separate from
+authoritative world logic.
 
 ## Presentation Feedback Foundation — Phase 15
 
@@ -1659,8 +1659,8 @@ iteration order.
 
 The existing `EffectSystem` remains the world-space animated VFX system. It is not
 merged with `PresentationEffectSystem`; an impact may consume both systems in the
-future. Content JSON v3 introduced presentation effects and v4 adds object
-activation definitions. Authored UMAP v2/v3 and DMAP 1.3/1.4 regions may bind a
+future. Content JSON v3 introduced presentation effects, v4 added object activation
+definitions and v5 added gameplay visual definitions. Authored UMAP v2/v3 and DMAP 1.3/1.4 regions may bind a
 persistent environment effect and world rules may emit a transient presentation cue.
 DSAV 1.8 remains an authoritative gameplay format and does not persist presentation
 state; presentation state is cleared/rebuilt on map activation and load.
@@ -1777,3 +1777,63 @@ and sales remove exactly one item from a selected Inventory slot and credit Wall
 The Bank is never accessed automatically. Failures are atomic, offers have unlimited
 authored availability, and there is no runtime stock, buyback, Shop state, persistence
 or transaction event in 12E2. Shop access and presentation are deferred to 12E3.
+
+## Visual Content Boundary — Phase 17
+
+Gameplay definitions carry only stable visual IDs. They do not own images, sprite
+sheets, animation clips, animators or filesystem paths:
+
+```text
+Authored Visual Definitions (Content JSON v5)
+        ↓
+ContentWorkspace / ContentValidator / ContentCompiler
+        ↓
+GameContentRegistry
+        ↓
+VisualContentLoader + explicit asset roots
+        ↓
+RuntimeVisualContent
+        ↓
+GamePresentation / per-instance Animator
+```
+
+The boundary contains `VisualImageDefinition`, `StaticSpriteDefinition`,
+`AnimationDefinition`, flexible `EnemyVisualDefinition` and
+`WorldObjectVisualDefinition`. `NpcVisualSet` can use directional idle animations
+or its authored marker-color fallback. Images are resolved once from either the
+licensed game asset root or an explicitly selected external content workspace; a
+workspace path is relative, contained and cannot use symlink path components to
+escape that workspace. Content validation checks authored structure, while the
+loader checks real file resolution, image decoding and frame bounds before rendering.
+
+Creature visual profiles require only `idle`. A profile can bind a single
+non-directional animation, any subset of down/up/side directions, optional
+move/hurt/death/dead states, and zero or more arbitrary visual action IDs such as
+`attack.sword`, `attack.bow`, `defend.shield` or `sleep`. Resolution is exact
+direction, authored default, then the first available direction in deterministic
+down/up/side order. Missing optional states/actions fall back to idle and never
+disable the authoritative gameplay actor. Right-facing side art uses the existing
+horizontal flip policy.
+
+`VisualContentLoader` builds shared immutable runtime `AnimationClip` and static
+sprite catalogs; actors own only mutable playback state. Projectile, pickup and item
+presentation use the common static-sprite catalog with authored source rectangles and
+anchors. Enemy and object runtime visual catalogs are built from definitions, so
+`GameRuntime` contains no Soldier/Skull/chest/crate/pickup/item/projectile visual
+registration. Player animation sheets, HUD/font assets, tileset loading and generic
+arrow-impact VFX remain fixed game presentation assets by explicit Phase 17 scope.
+
+The gameplay/presentation distinction remains:
+
+```text
+authoritative gameplay state/events
+        ↓ visual IDs / readonly state
+VisualContentLoader + visual instances
+        ↓
+GamePresentation
+```
+
+This phase does not add a status-effect system, asset importer, resource packer, hot
+reload, audio engine, shader framework, Content Studio or LLM integration. `EffectSystem`
+continues to own world-space animated VFX, independently from presentation screen
+effects and authored gameplay visuals.

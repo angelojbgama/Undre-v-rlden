@@ -56,6 +56,10 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const WorldObjectDefinition& require(
         const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, WorldObjectDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, WorldObjectDefinition,

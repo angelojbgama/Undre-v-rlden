@@ -16,6 +16,7 @@
 #include "game/gameplay/world_objects.h"
 #include "game/tilesets.h"
 #include "game/presentation/presentation_effects.h"
+#include "game/presentation/visual_content.h"
 
 #include <optional>
 #include <string>
@@ -42,7 +43,15 @@ struct AuthoredCurrencyPickup final { std::uint64_t amount{}; };
 struct AuthoredItemPickup final { simulation::DefinitionId itemId{}; std::uint32_t quantity{}; };
 using AuthoredPickupPayload = std::variant<AuthoredHealthPickup, AuthoredCurrencyPickup, AuthoredItemPickup>;
 struct AuthoredPickup final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; world::AabbI collectionBounds{}; AuthoredPickupPayload payload{}; };
-struct AuthoredNpcVisualSet final { simulation::DefinitionId id{}; core::ColorRGBA8 markerColor{}; };
+struct AuthoredVisualImage final { simulation::DefinitionId id{}; presentation::VisualAssetRoot root{presentation::VisualAssetRoot::gameAssets}; std::string relativePath; };
+struct AuthoredStaticSprite final { simulation::DefinitionId id{}; simulation::DefinitionId imageId{}; std::optional<core::RectI> source; core::PointI anchor{}; };
+struct AuthoredAnimationFrame final { core::RectI source{}; core::PointI anchor{}; core::PointI drawOffset{}; std::uint32_t durationTicks{}; std::vector<std::string> markers; };
+struct AuthoredAnimation final { simulation::DefinitionId id{}; simulation::DefinitionId imageId{}; std::vector<AuthoredAnimationFrame> frames; bool loop{true}; };
+struct AuthoredEnemyAttackVisual final { simulation::DefinitionId visualActionId{}; presentation::DirectionalAnimationRef clips; };
+struct AuthoredEnemyVisual final { simulation::DefinitionId id{}; presentation::DirectionalAnimationRef idle; std::optional<presentation::DirectionalAnimationRef> move; std::optional<presentation::DirectionalAnimationRef> hurt; std::optional<presentation::DirectionalAnimationRef> death; std::optional<presentation::DirectionalAnimationRef> dead; // Keys are arbitrary visual actions, not a rigid attack list.
+    std::vector<AuthoredEnemyAttackVisual> attacks; };
+struct AuthoredWorldObjectVisual final { simulation::DefinitionId id{}; simulation::DefinitionId idleAnimationId{}; std::optional<simulation::DefinitionId> openedAnimationId; std::optional<simulation::DefinitionId> destroyingAnimationId; std::optional<simulation::DefinitionId> activationInactiveAnimationId; std::optional<simulation::DefinitionId> activationActiveAnimationId; std::optional<simulation::DefinitionId> doorLockedAnimationId; std::optional<simulation::DefinitionId> doorClosedAnimationId; std::optional<simulation::DefinitionId> doorOpenAnimationId; };
+struct AuthoredNpcVisualSet final { simulation::DefinitionId id{}; core::ColorRGBA8 markerColor{}; std::optional<presentation::DirectionalAnimationRef> idle; };
 struct AuthoredNpc final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; gameplay::InteractionArea interaction{}; simulation::DefinitionId defaultDialogueId{}; std::vector<std::string> tags; };
 
 struct AuthoredDialogueCondition final { gameplay::dialogue::DialogueConditionKind kind{gameplay::dialogue::DialogueConditionKind::flagSet}; simulation::DefinitionId flagId{}; };
@@ -86,6 +95,11 @@ struct AuthoredContentPack final {
     std::vector<AuthoringDescriptor> authoringDescriptors; std::vector<AuthoredTileSemantic> tileSemantics; std::vector<AuthoredStamp> stamps;
     std::vector<AuthoredPlayerProgression> playerProgressions; std::vector<AuthoredRewardProfile> rewardProfiles; std::vector<AuthoredRewardGrant> rewardGrants; std::vector<AuthoredShop> shops;
     std::vector<AuthoredPresentationEffect> presentationEffects;
+    std::vector<AuthoredVisualImage> visualImages;
+    std::vector<AuthoredStaticSprite> staticSprites;
+    std::vector<AuthoredAnimation> animations;
+    std::vector<AuthoredEnemyVisual> enemyVisuals;
+    std::vector<AuthoredWorldObjectVisual> objectVisuals;
 };
 
 } // namespace underworld::game::content

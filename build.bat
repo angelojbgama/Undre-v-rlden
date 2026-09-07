@@ -142,6 +142,8 @@ cl.exe %COMMON_FLAGS% /Fo"build\obj\presentation_effect_renderer.obj" "src\game\
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\presentation_feedback_controller.obj" "src\game\presentation\presentation_feedback_controller.cpp"
 if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\visual_content_loader.obj" "src\game\presentation\visual_content_loader.cpp"
+if errorlevel 1 goto :build_failed
 
 echo Compiling shared tileset content...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\tilesets.obj" "src\game\tilesets.cpp"
@@ -392,7 +394,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\runtime_visual_sync.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\effect_system.obj" ^
@@ -427,7 +429,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" ^
-    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\runtime_visual_sync.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
@@ -464,7 +466,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
     "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
-    "build\obj\runtime_visual_sync.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\creature_engine.obj" ^
+    "build\obj\runtime_visual_sync.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\creature_engine.obj" ^
     "build\obj\enemy_visual.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" "build\obj\player.obj" ^
     "build\obj\player_visual.obj" "build\obj\game_runtime.obj" ^

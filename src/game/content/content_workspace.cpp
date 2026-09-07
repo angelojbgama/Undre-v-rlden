@@ -37,6 +37,11 @@ std::string categoryOf(ContentKind kind) {
     case ContentKind::rewardGrant: return "rewardGrants";
     case ContentKind::shop: return "shops";
     case ContentKind::presentationEffect: return "presentationEffects";
+    case ContentKind::visualImage: return "visualImages";
+    case ContentKind::staticSprite: return "staticSprites";
+    case ContentKind::animation: return "animations";
+    case ContentKind::enemyVisual: return "enemyVisuals";
+    case ContentKind::objectVisual: return "objectVisuals";
     }
     return {};
 }
@@ -171,6 +176,11 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
         mergeCategory(file, "tileSemantics", file.content.tileSemantics, merged.tileSemantics, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "stamps", file.content.stamps, merged.stamps, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "presentationEffects", file.content.presentationEffects, merged.presentationEffects, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "visualImages", file.content.visualImages, merged.visualImages, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "staticSprites", file.content.staticSprites, merged.staticSprites, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "animations", file.content.animations, merged.animations, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "enemyVisuals", file.content.enemyVisuals, merged.enemyVisuals, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "objectVisuals", file.content.objectVisuals, merged.objectVisuals, sources, result, [](const auto& v) { return v.id; });
     }
     if (!result.diagnostics.empty()) return result;
 

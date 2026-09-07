@@ -69,6 +69,10 @@ public:
     void add(EnemyDefinition definition);
     [[nodiscard]] const EnemyDefinition* find(const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const EnemyDefinition& require(const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, EnemyDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, EnemyDefinition,

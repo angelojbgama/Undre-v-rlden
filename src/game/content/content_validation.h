@@ -10,7 +10,8 @@ namespace underworld::game::content {
 enum class ContentDiagnosticSeverity { error, warning };
 enum class ContentKind {
     tileset, attack, projectile, behavior, enemy, item, object, pickup, npc,
-    dialogue, quest, authoringDescriptor, tileSemantic, stamp, playerProgression, rewardProfile, rewardGrant, shop, npcVisual, presentationEffect
+    dialogue, quest, authoringDescriptor, tileSemantic, stamp, playerProgression, rewardProfile, rewardGrant, shop, npcVisual, presentationEffect,
+    visualImage, staticSprite, animation, enemyVisual, objectVisual
 };
 
 struct ContentDiagnostic final {

@@ -257,7 +257,10 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         return 1;
     }
     GameRuntime runtime(platform.imageDecoder(),
-                    assetRoot, executableDirectory, std::move(source.content->registry), options);
+                    assetRoot, executableDirectory, std::move(source.content->registry), options,
+                    source.content->sourceKind == content::ContentSourceKind::workspaceDirectory
+                        ? std::optional<std::filesystem::path>{source.content->sourceRoot}
+                        : std::nullopt);
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;

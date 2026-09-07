@@ -34,6 +34,10 @@ public:
     void add(ItemDefinition definition);
     [[nodiscard]] const ItemDefinition* find(const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const ItemDefinition& require(const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, ItemDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, ItemDefinition,

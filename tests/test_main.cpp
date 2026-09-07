@@ -86,6 +86,7 @@
 #include "game/presentation/presentation_effect_renderer.h"
 #include "game/presentation/presentation_feedback_controller.h"
 #include "game/presentation/presentation_effects.h"
+#include "game/presentation/visual_content_loader.h"
 #include "tools/map_compile_options.h"
 
 #ifdef _WIN32
@@ -5543,8 +5544,9 @@ void testPhase13AJsonFoundation() {
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5})").content,
-           "content JSON accepts v1-v4 and rejects wrong format identifiers and unsupported versions");
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":6})").content,
+           "content JSON accepts v1-v5 and rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
@@ -5849,6 +5851,16 @@ void testPhase13A3JsonDecoders() {
                  "registry equivalence preserves pickup");
             const auto* av = a.npcVisuals().find({"visual.npc.merchant"}); const auto* bv = b.npcVisuals().find({"visual.npc.merchant"});
             same(av && bv && av->markerColor.r == bv->markerColor.r && av->markerColor.g == bv->markerColor.g && av->markerColor.b == bv->markerColor.b && av->markerColor.a == bv->markerColor.a, "registry equivalence preserves NPC visual");
+            const auto* avi = a.visualImages().find({"image.enemy.soldier.idle"}); const auto* bvi = b.visualImages().find({"image.enemy.soldier.idle"});
+            same(avi && bvi && *avi == *bvi, "registry equivalence preserves visual image");
+            const auto* ass = a.staticSprites().find({"visual.pickup.heart"}); const auto* bss = b.staticSprites().find({"visual.pickup.heart"});
+            same(ass && bss && *ass == *bss, "registry equivalence preserves static sprite");
+            const auto* aan = a.animations().find({"anim.enemy.soldier.idle.down"}); const auto* ban = b.animations().find({"anim.enemy.soldier.idle.down"});
+            same(aan && ban && *aan == *ban, "registry equivalence preserves animation");
+            const auto* aev = a.enemyVisuals().find({"visual.enemy.evil_soldier"}); const auto* bev = b.enemyVisuals().find({"visual.enemy.evil_soldier"});
+            same(aev && bev && *aev == *bev, "registry equivalence preserves flexible enemy visual profile");
+            const auto* aov = a.objectVisuals().find({"visual.object.chest"}); const auto* bov = b.objectVisuals().find({"visual.object.chest"});
+            same(aov && bov && *aov == *bov, "registry equivalence preserves world object visual profile");
             const auto* an = a.npcs().find({"npc.merchant"}); const auto* bn = b.npcs().find({"npc.merchant"});
             same(an && bn && an->interaction.bounds == bn->interaction.bounds && an->defaultDialogueId == bn->defaultDialogueId && an->tags == bn->tags, "registry equivalence preserves NPC");
             const auto* ad = a.dialogues().find({"dialogue.merchant.greeting"}); const auto* bd = b.dialogues().find({"dialogue.merchant.greeting"});
@@ -7170,10 +7182,10 @@ void testPhase16InteractiveWorld() {
                decodedPlate != decodedContent.content->objects.end() && decodedPlate->activation &&
                decodedPlate->activation->mode == gameplay::ObjectActivationMode::playerPressure &&
                decodedPlate->activation->activationBounds.has_value(),
-           "Content JSON v4 roundtrips interact-toggle and player-pressure capabilities");
+           "Content JSON v5 roundtrips interact-toggle and player-pressure capabilities");
     expect(decodedContent.content &&
                content::encodeAuthoredContentJson(*decodedContent.content) == contentJson,
-           "Content JSON v4 has deterministic encode-decode-encode output");
+           "Content JSON v5 has deterministic encode-decode-encode output");
 
     const auto replaceVersion = [](std::string& json, std::uint64_t version) {
         const auto key = json.find("\"version\"");
@@ -7459,6 +7471,193 @@ void testPhase16InteractiveWorld() {
     std::filesystem::remove(dmapPath, fsError);
 }
 
+class SyntheticVisualDecoder final : public underworld::platform::ImageDecoder {
+public:
+    underworld::core::ImageData decode(const std::filesystem::path& path) override {
+        paths.push_back(path);
+        return {64, 64, 64U * 4U, std::vector<std::uint8_t>(64U * 64U * 4U, 255)};
+    }
+
+    std::vector<std::filesystem::path> paths;
+};
+
+underworld::game::content::AuthoredContentPack makePhase17VisualContent() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+    namespace presentation = underworld::game::presentation;
+    namespace core = underworld::core;
+    namespace simulation = underworld::simulation;
+    content::AuthoredContentPack pack;
+    pack.visualImages.push_back({{"image.external.character"},
+                                 presentation::VisualAssetRoot::contentWorkspace,
+                                 "assets/custom-character.png"});
+    const auto animation = [](const char* id, std::uint32_t duration = 2) {
+        content::AuthoredAnimation value;
+        value.id = {id};
+        value.imageId = {"image.external.character"};
+        value.frames.push_back({{0, 0, 16, 16}, {8, 15}, {1, 0}, duration, {"frame"}});
+        value.loop = true;
+        return value;
+    };
+    pack.animations.push_back(animation("anim.external.idle"));
+    pack.animations.push_back(animation("anim.external.move"));
+    pack.animations.push_back(animation("anim.external.attack"));
+    content::AuthoredStaticSprite sprite;
+    sprite.id = {"visual.external.item"};
+    sprite.imageId = {"image.external.character"};
+    sprite.source = core::RectI{16, 16, 16, 16};
+    sprite.anchor = {8, 8};
+    pack.staticSprites.push_back(sprite);
+
+    presentation::DirectionalAnimationRef idle;
+    idle.defaultAnimation = simulation::DefinitionId{"anim.external.idle"};
+    presentation::DirectionalAnimationRef move;
+    move.down = simulation::DefinitionId{"anim.external.move"};
+    presentation::DirectionalAnimationRef attack;
+    attack.defaultAnimation = simulation::DefinitionId{"anim.external.attack"};
+    content::AuthoredEnemyVisual enemyVisual;
+    enemyVisual.id = {"visual.enemy.external"};
+    enemyVisual.idle = idle;
+    enemyVisual.move = move;
+    enemyVisual.attacks.push_back({{"attack.external"}, attack});
+    pack.enemyVisuals.push_back(enemyVisual);
+    pack.behaviors.push_back({{"behavior.external"}, 96, 128, 30, 30});
+    gameplay::DirectionalBoxes externalBoxes{};
+    for (auto& box : externalBoxes.values) box = {0, 0, 1, 1};
+    content::AuthoredAttack externalAttack;
+    externalAttack.id = {"attack.external"};
+    externalAttack.damage = {1, 0};
+    externalAttack.totalTicks = 2;
+    externalAttack.maximumRangePixels = 32;
+    externalAttack.visualActionId = {"attack.external"};
+    externalAttack.meleeHitboxes = externalBoxes;
+    pack.attacks.push_back(externalAttack);
+    pack.enemies.push_back({{"enemy.external"}, {"visual.enemy.external"},
+                            {"behavior.external"}, gameplay::Faction::enemy, 12, 128,
+                            {-4, -8, 8, 8}, {-6, -20, 12, 20}, {{"attack.external"}}, std::nullopt});
+
+    content::AuthoredWorldObjectVisual objectVisual;
+    objectVisual.id = {"visual.object.external"};
+    objectVisual.idleAnimationId = {"anim.external.idle"};
+    objectVisual.activationInactiveAnimationId = {"anim.external.idle"};
+    objectVisual.activationActiveAnimationId = {"anim.external.move"};
+    pack.objectVisuals.push_back(objectVisual);
+
+    content::AuthoredNpcVisualSet npcVisual;
+    npcVisual.id = {"visual.npc.external"};
+    npcVisual.markerColor = {12, 34, 56, 255};
+    npcVisual.idle = idle;
+    pack.npcVisuals.push_back(npcVisual);
+    return pack;
+}
+
+void testPhase17VisualContentBoundary() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+    namespace presentation = underworld::game::presentation;
+    namespace game = underworld::game;
+    namespace simulation = underworld::simulation;
+    const auto authored = makePhase17VisualContent();
+    const auto json = content::encodeAuthoredContentJson(authored);
+    const auto decoded = content::decodeAuthoredContentJson(json);
+    expect(decoded.content && decoded.diagnostics.empty() &&
+               json.find("\"version\": 5") != std::string::npos &&
+               decoded.content->visualImages.size() == 1 &&
+               decoded.content->animations.size() == 3 &&
+               decoded.content->enemyVisuals.front().idle.defaultAnimation &&
+               decoded.content->enemyVisuals.front().move->down,
+           "Content JSON v5 decodes flexible visual definitions and partial directions");
+    expect(decoded.content && content::encodeAuthoredContentJson(*decoded.content) == json,
+           "Content JSON v5 visual content has deterministic roundtrip encoding");
+
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry && compiled.registry->visualImages().find(
+               {"image.external.character"}) && compiled.registry->staticSprites().find(
+               {"visual.external.item"}) && compiled.registry->animations().find(
+               {"anim.external.idle"}) && compiled.registry->enemyVisuals().find(
+               {"visual.enemy.external"}) && compiled.registry->objectVisuals().find(
+               {"visual.object.external"}) &&
+               compiled.registry->enemies().find({"enemy.external"}),
+               "authored visual categories cross validation, compilation and registry catalogs");
+
+    if (!compiled.registry) return;
+    SyntheticVisualDecoder decoder;
+    presentation::VisualContentLoader loader(decoder);
+    const auto workspaceRoot = std::filesystem::temp_directory_path() /
+        "underworld_phase17_visual_workspace";
+    std::error_code fsError;
+    std::filesystem::remove_all(workspaceRoot, fsError);
+    std::filesystem::create_directories(workspaceRoot, fsError);
+    const auto loaded = loader.load(*compiled.registry,
+                                    {workspaceRoot / "game-assets", workspaceRoot});
+    expect(loaded && decoder.paths.size() == 1 &&
+               decoder.paths.front() == workspaceRoot / "assets/custom-character.png" &&
+               loaded.content->staticSprites.find({"visual.external.item"}) &&
+               loaded.content->animations.find({"anim.external.idle"}) &&
+               loaded.content->enemies.find({"visual.enemy.external"}) &&
+               &loaded.content->objects.require({"visual.object.external"}) &&
+               loaded.content->npcs.find({"visual.npc.external"}),
+           "VisualContentLoader resolves an external workspace image once and builds runtime catalogs");
+    if (loaded) {
+        const auto& enemy = loaded.content->enemies.require({"visual.enemy.external"});
+        expect(enemy.walk[0]->id() == "anim.external.move" &&
+                   enemy.walk[1]->id() == "anim.external.move" &&
+                   enemy.death[2]->id() == "anim.external.idle" &&
+                   enemy.attacks.at({"attack.external"})[2]->id() == "anim.external.attack",
+               "visual loader applies default and deterministic directional fallbacks without requiring optional states");
+        simulation::EntityHandlePool handles;
+        gameplay::creatures::EnemyFactory factory(compiled.registry->enemies(),
+            compiled.registry->behaviors(), compiled.registry->attacks(),
+            compiled.registry->projectiles());
+        auto instance = factory.create(handles, {"enemy.external"}, {24, 24});
+        game::EnemyVisualInstance visual(instance.handle(), enemy);
+        visual.update(instance, 0);
+        expect(visual.animator().clip().id() == "anim.external.idle" &&
+                   visual.animator().hasClip(),
+               "external enemy gameplay instance resolves its authored flexible idle visual without GameRuntime changes");
+    }
+
+    auto traversal = authored;
+    traversal.visualImages.front().relativePath = "../outside.png";
+    expect(content::compileContent(traversal).report.hasErrors(),
+           "content validation rejects visual asset path traversal");
+    auto duplicate = authored;
+    duplicate.visualImages.push_back(duplicate.visualImages.front());
+    expect(content::compileContent(duplicate).report.hasErrors(),
+           "content validation rejects duplicate visual image definitions");
+    auto missingItemSprite = authored;
+    missingItemSprite.items.push_back({{"item.external"}, {"visual.missing"},
+                                       gameplay::ItemCategory::misc, 1, std::nullopt,
+                                       std::nullopt});
+    expect(content::compileContent(missingItemSprite).report.hasErrors(),
+           "content validation rejects item references to unavailable static sprites");
+    auto outOfBounds = authored;
+    outOfBounds.animations.front().frames.front().source = {60, 60, 8, 8};
+    const auto outOfBoundsRegistry = content::compileContent(outOfBounds);
+    const auto boundsLoaded = outOfBoundsRegistry.registry ? loader.load(
+        *outOfBoundsRegistry.registry, {workspaceRoot / "game-assets", workspaceRoot}) :
+        presentation::VisualContentLoadResult{};
+    expect(!boundsLoaded && std::any_of(boundsLoaded.diagnostics.begin(),
+               boundsLoaded.diagnostics.end(), [](const auto& value) {
+                   return value.code == "frame_out_of_bounds";
+               }),
+           "VisualContentLoader rejects animation frames outside decoded image bounds");
+    auto missingRoot = authored;
+    missingRoot.visualImages.front().root = presentation::VisualAssetRoot::contentWorkspace;
+    const auto missingRootRegistry = content::compileContent(missingRoot);
+    presentation::VisualContentLoader missingRootLoader(decoder);
+    const auto missingRootResult = missingRootRegistry.registry ? missingRootLoader.load(
+        *missingRootRegistry.registry, {workspaceRoot / "game-assets", std::nullopt}) :
+        presentation::VisualContentLoadResult{};
+    expect(!missingRootResult && std::any_of(missingRootResult.diagnostics.begin(),
+               missingRootResult.diagnostics.end(), [](const auto& value) {
+                   return value.code == "workspace_root_missing";
+               }),
+           "VisualContentLoader reports a missing content workspace root explicitly");
+
+    std::filesystem::remove_all(workspaceRoot, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -7535,6 +7734,7 @@ int main() {
         testPhase14WorldClosure();
         testPhase15PresentationFeedback();
         testPhase16InteractiveWorld();
+        testPhase17VisualContentBoundary();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

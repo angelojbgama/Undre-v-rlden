@@ -95,6 +95,10 @@ public:
     void add(AttackDefinition definition);
     [[nodiscard]] const AttackDefinition* find(const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const AttackDefinition& require(const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, AttackDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, AttackDefinition,
@@ -108,6 +112,10 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const ProjectileDefinition& require(
         const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, ProjectileDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, ProjectileDefinition,

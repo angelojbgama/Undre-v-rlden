@@ -29,8 +29,10 @@ void EnemyVisualCatalog::add(EnemyVisualSet visualSet) {
         throw std::invalid_argument("enemy visual set requires a stable id");
     }
     validateClips(visualSet.idle, "enemy visual set requires idle clips");
-    validateClips(visualSet.walk, "enemy visual set requires walk clips");
-    validateClips(visualSet.death, "enemy visual set requires death clips");
+    validateClips(visualSet.walk, "enemy visual set requires resolved move clips");
+    validateClips(visualSet.death, "enemy visual set requires resolved death clips");
+    if (visualSet.hurt) validateClips(*visualSet.hurt, "enemy visual hurt clips are invalid");
+    if (visualSet.dead) validateClips(*visualSet.dead, "enemy visual dead clips are invalid");
     for (const auto& [actionId, clips] : visualSet.attacks) {
         if (actionId.empty()) {
             throw std::invalid_argument("enemy visual action requires a stable id");
@@ -81,17 +83,14 @@ void EnemyVisualInstance::update(const gameplay::creatures::EnemyInstance& enemy
     simulation::DefinitionId actionId;
     const DirectionalAnimationClips* clips = nullptr;
     if (state == gameplay::creatures::BehaviorState::dead) {
-        clips = &visualSet_->death;
+        clips = visualSet_->dead ? &*visualSet_->dead : &visualSet_->death;
     } else if (state == gameplay::creatures::BehaviorState::attack) {
-        if (!enemy.activeAttack()) {
-            throw std::logic_error("attacking enemy has no active attack runtime");
+        if (enemy.activeAttack()) {
+            actionId = enemy.activeAttack()->definition->visualActionId;
+            const auto found = visualSet_->attacks.find(actionId);
+            if (found != visualSet_->attacks.end()) clips = &found->second;
         }
-        actionId = enemy.activeAttack()->definition->visualActionId;
-        const auto found = visualSet_->attacks.find(actionId);
-        if (found == visualSet_->attacks.end()) {
-            throw std::out_of_range("enemy visual action was not found");
-        }
-        clips = &found->second;
+        if (!clips) clips = &visualSet_->idle;
     } else if (state == gameplay::creatures::BehaviorState::chase ||
                state == gameplay::creatures::BehaviorState::wander) {
         clips = &visualSet_->walk;

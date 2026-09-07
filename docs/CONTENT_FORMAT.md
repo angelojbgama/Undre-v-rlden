@@ -1,21 +1,22 @@
-# External Authored Content — JSON schema v4
+# External Authored Content — JSON schema v5
 
 This is the external representation of `AuthoredContentPack`. It is strict UTF-8
 JSON, identified by `"format": "dungeon-underworld-content"` and
-`"version": 4`. The decoder remains compatible with schema versions 1, 2 and 3;
-the encoder emits v4. Runtime definitions, C++ and DMAP are not authoring formats.
+`"version": 5`. The decoder remains compatible with schema versions 1 through 4;
+the encoder emits v5. Runtime definitions, C++ and DMAP are not authoring formats.
 
 The canonical top-level field order is:
 
 `format`, `version`, `tilesets`, `projectiles`, `attacks`, `behaviors`, `enemies`,
 `items`, `objects`, `pickups`, `npcVisuals`, `npcs`, `dialogues`, `quests`,
 `playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`,
-`authoringDescriptors`, `tileSemantics`, `stamps`, `presentationEffects`.
+`authoringDescriptors`, `tileSemantics`, `stamps`, `presentationEffects`,
+`visualImages`, `staticSprites`, `animations`, `enemyVisuals`, `objectVisuals`.
 
-Each category is an array; an omitted category decodes as empty. The twenty
+Each category is an array; an omitted category decodes as empty. The twenty-five
 categories are merged by the workspace loader after per-file strict decoding.
-Schema v2 added door capabilities, v3 added presentation effects and schema v4
-added object activation capabilities. Unknown fields,
+Schema v2 added door capabilities, v3 added presentation effects, schema v4 added
+object activation capabilities and schema v5 added visual definitions. Unknown fields,
 unknown enum strings, duplicate object keys, comments, trailing commas and future
 versions are errors. Definition IDs are strings. Optional fields may be omitted or
 `null`. Variants use an explicit `kind` string. Integer fields are parsed from their
@@ -26,6 +27,20 @@ The codec preserves UTF-8 and supports JSON escapes, including valid Unicode
 surrogate pairs. Source diagnostics include line, column and logical path. The
 writer uses two-space indentation, a final newline and stable field order while
 preserving authored vector order.
+
+Visual definitions are flexible. A visible creature requires only one `idle`
+directional binding; every binding may be non-directional (`default`), partial
+directional (`down`, `up`, `side`) or fully directional. `move`, `hurt`, `death`,
+`dead` and zero-or-more arbitrary `actions` mappings are optional. At runtime a
+requested direction resolves to its exact binding, then the authored default, then
+the first available binding in deterministic down/up/side order. Missing optional
+states or actions fall back to idle and never disable gameplay. NPCs may continue to
+use their explicit marker-color fallback when no idle sprite binding is authored.
+
+Visual image paths are normalized relative paths rooted explicitly at either
+`gameAssets` or `contentWorkspace`; they cannot traverse outside that root. Content
+validation checks path syntax and authored geometry, while actual file resolution,
+image decoding and frame bounds are checked by the presentation `VisualContentLoader`.
 
 The pipeline is:
 
@@ -61,5 +76,7 @@ Examples:
 `ContentJsonEncoder`/`ContentJsonDecoder` are shared by the builtin-equivalence
 tests, workspace loader, Game, Map Maker and `content_check`. The builtin C++ pack
 remains the transitional default source; an explicit workspace replaces it without
-an overlay. Presentation effects and object activation are data-driven capabilities,
-not authoritative gameplay state. Content Studio and LLM tooling remain future work.
+an overlay. Presentation effects, object activation and visual definitions are
+data-driven capabilities, not authoritative gameplay state. Player visuals, HUD/font
+assets, tileset loading and generic impact VFX remain fixed presentation concerns in
+this phase. Content Studio and LLM tooling remain future work.

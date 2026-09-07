@@ -77,6 +77,17 @@ render::QuarterTurn projectileRotation(gameplay::FacingDirection canonical,
     }
 }
 
+core::PointI rotatedAnchor(core::RectI source, core::PointI anchor,
+                           render::QuarterTurn rotation) noexcept {
+    switch (rotation) {
+    case render::QuarterTurn::r90: return {source.height - anchor.y, anchor.x};
+    case render::QuarterTurn::r180: return {source.width - anchor.x, source.height - anchor.y};
+    case render::QuarterTurn::r270: return {anchor.y, source.width - anchor.x};
+    case render::QuarterTurn::r0: return anchor;
+    }
+    return anchor;
+}
+
 } // namespace
 
 void GamePresentation::followPlayer(core::WorldPointI playerFeet, int worldWidthPixels,
@@ -150,21 +161,25 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
                                  {logical.x, logical.y}, frame.enemyVisuals[actor.index].flipX());
         } else if (actor.kind == ActorKind::npc) {
             const auto& npc = npcs[actor.index].instance;
-            const auto& visualSet = frame.npcVisuals.require(npc.definition().visualSetId);
             const auto logical = toLogical(npc.position(), cameraPosition);
-            renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20}, visualSet.markerColor);
+            const auto& visualSet = frame.npcVisualCatalog.require(npc.definition().visualSetId);
+            if (actor.index < frame.npcVisuals.size() &&
+                frame.npcVisuals[actor.index].hasSprite()) {
+                render::drawAnimator(renderer, frame.npcVisuals[actor.index].animator(),
+                                     {logical.x, logical.y}, frame.npcVisuals[actor.index].flipX());
+            } else {
+                renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20}, visualSet.markerColor);
+            }
         } else if (actor.kind == ActorKind::object) {
             const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);
             render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
                                  {logical.x, logical.y});
         } else {
             const auto& pickup = pickups[actor.index].instance;
-            const auto found = frame.pickupVisuals.find(pickup.definition().visualId);
-            if (found == frame.pickupVisuals.end()) {
-                throw std::runtime_error("pickup visual definition was not registered");
-            }
+            const auto& sprite = frame.staticSprites.require(pickup.definition().visualId);
             const auto logical = toLogical(pickup.position(), cameraPosition);
-            renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
+            render::drawSprite(renderer, *sprite.sheet, sprite.frame,
+                               {logical.x, logical.y});
         }
     }
 }
@@ -174,14 +189,14 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
                                          core::WorldPointI cameraPosition) const {
     for (const auto& projectile : frame.projectiles.projectiles()) {
         if (!projectile.definition) { continue; }
-        const auto found = frame.projectileVisuals.find(projectile.definition->visualId);
-        if (found == frame.projectileVisuals.end()) {
-            throw std::runtime_error("projectile visual definition was not registered");
-        }
+        const auto& sprite = frame.staticSprites.require(projectile.definition->visualId);
+        const auto rotation = projectileRotation(projectile.definition->canonicalFacing,
+                                                  projectile.direction);
+        const auto anchor = rotatedAnchor(sprite.frame.source, sprite.frame.anchor, rotation);
         renderer.drawImageRegionQuarterTurn(
-            found->second->image(), {0, 0, 16, 16}, projectile.position.x - cameraPosition.x - 8,
-            projectile.position.y - cameraPosition.y - 8,
-            projectileRotation(projectile.definition->canonicalFacing, projectile.direction));
+            sprite.sheet->image(), sprite.frame.source,
+            projectile.position.x - cameraPosition.x - anchor.x,
+            projectile.position.y - cameraPosition.y - anchor.y, rotation);
     }
 }
 
@@ -280,8 +295,10 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         renderer.fillRect({x, 197, 34, 23}, {54, 30, 38, 255});
         render::drawText(renderer, frame.font, std::to_string(index + 1), x + 2, 199);
         if (view.quickSlots[index].visualId) {
-            const auto found = frame.itemVisuals.find(*view.quickSlots[index].visualId);
-            if (found != frame.itemVisuals.end()) { renderer.drawImage(*found->second, x + 10, 199); }
+            if (const auto* sprite = frame.staticSprites.find(*view.quickSlots[index].visualId)) {
+                render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                                   {x + 10 + sprite->frame.anchor.x, 199 + sprite->frame.anchor.y});
+            }
             render::drawText(renderer, frame.font, std::to_string(view.quickSlots[index].quantity), x + 22, 209);
         }
     }
@@ -318,8 +335,10 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
                 renderer.fillRect({x, slotY, cell - 2, 13}, highlighted
                     ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
                 if (slots[index].visualId) {
-                    const auto found = frame.itemVisuals.find(*slots[index].visualId);
-                    if (found != frame.itemVisuals.end()) { renderer.drawImage(*found->second, x + 1, slotY); }
+                    if (const auto* sprite = frame.staticSprites.find(*slots[index].visualId)) {
+                        render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                                           {x + 1 + sprite->frame.anchor.x, slotY + sprite->frame.anchor.y});
+                    }
                 }
                 if (slots[index].quantity > 1) {
                     render::drawText(renderer, frame.font, std::to_string(slots[index].quantity), x + 1, slotY + 4);
@@ -350,8 +369,10 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
             ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255};
         renderer.fillRect({x, y, 22, 18}, slotColor);
         if (view.inventory[index].visualId) {
-            const auto found = frame.itemVisuals.find(*view.inventory[index].visualId);
-            if (found != frame.itemVisuals.end()) { renderer.drawImage(*found->second, x + 3, y + 1); }
+            if (const auto* sprite = frame.staticSprites.find(*view.inventory[index].visualId)) {
+                render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                                   {x + 3 + sprite->frame.anchor.x, y + 1 + sprite->frame.anchor.y});
+            }
             if (view.inventory[index].quantity > 1) {
                 render::drawText(renderer, frame.font, std::to_string(view.inventory[index].quantity), x + 10, y + 9);
             }
@@ -366,9 +387,9 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
             ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
         render::drawText(renderer, frame.font, label, x + 3, 141);
         if (item.itemId && item.visualId) {
-            const auto found = frame.itemVisuals.find(*item.visualId);
-            if (found != frame.itemVisuals.end()) {
-                renderer.drawImage(*found->second, x + 55, 140);
+            if (const auto* sprite = frame.staticSprites.find(*item.visualId)) {
+                render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                                   {x + 55 + sprite->frame.anchor.x, 140 + sprite->frame.anchor.y});
             }
         }
     };
@@ -400,8 +421,10 @@ void GamePresentation::renderShopOverlay(render::Renderer2D& renderer,
             const int x = 8 + static_cast<int>(index % 10) * 25, y = 51 + static_cast<int>(index / 10) * 20;
             renderer.fillRect({x, y, 22, 18}, index == view.shopInventorySelection ? core::ColorRGBA8{220, 180, 72, 255} : core::ColorRGBA8{54, 30, 38, 255});
             if (view.inventory[index].visualId) {
-                const auto found = frame.itemVisuals.find(*view.inventory[index].visualId);
-                if (found != frame.itemVisuals.end()) renderer.drawImage(*found->second, x + 3, y + 1);
+                if (const auto* sprite = frame.staticSprites.find(*view.inventory[index].visualId)) {
+                    render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                                       {x + 3 + sprite->frame.anchor.x, y + 1 + sprite->frame.anchor.y});
+                }
             }
         }
         const auto& selected = view.inventory[view.shopInventorySelection];

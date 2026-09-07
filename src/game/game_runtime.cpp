@@ -38,6 +38,7 @@
 #include "game/gameplay/projectile_system.h"
 #include "game/player_visual.h"
 #include "game/presentation/presentation_feedback_controller.h"
+#include "game/presentation/visual_content_loader.h"
 #include "game/world_object_visual.h"
 #include "game/maps/dmap.h"
 #include "game/maps/map_catalog.h"
@@ -123,43 +124,6 @@ std::shared_ptr<const render::AnimationClip> makeImpactClip(
         "effect.arrow_impact", sheet, std::move(frames), false);
 }
 
-std::shared_ptr<const render::AnimationClip> makeObjectClip(
-    std::string id, std::shared_ptr<const render::SpriteSheet> sheet,
-    int frameWidth, int frameHeight, int frameCount, std::uint32_t ticks,
-    core::PointI anchor, bool loop) {
-    std::vector<render::AnimationFrame> frames;
-    frames.reserve(static_cast<std::size_t>(frameCount));
-    for (int column = 0; column < frameCount; ++column) {
-        frames.push_back({{{column * frameWidth, 0, frameWidth, frameHeight}, anchor, {}, false},
-                          ticks, {}});
-    }
-    return std::make_shared<const render::AnimationClip>(
-        std::move(id), std::move(sheet), std::move(frames), loop);
-}
-
-
-EnemyVisualSet makeEnemyVisualSet(
-    const simulation::DefinitionId& id,
-    const simulation::DefinitionId& attackVisualId,
-    const std::shared_ptr<const render::SpriteSheet>& idle,
-    const std::shared_ptr<const render::SpriteSheet>& walk,
-    const std::shared_ptr<const render::SpriteSheet>& attack,
-    const std::shared_ptr<const render::SpriteSheet>& death,
-    int attackFrameSize, int attackFrameCount, std::uint32_t attackFrameTicks,
-    core::PointI attackAnchor, std::vector<std::vector<std::string>> markers) {
-    EnemyVisualSet result;
-    result.id = id;
-    const std::string prefix{id.value()};
-    result.idle = makeClips(prefix + ".idle", idle, 32, 2, 30, {16, 31}, true);
-    result.walk = makeClips(prefix + ".walk", walk, 32, 4, 8, {16, 31}, true);
-    result.death = makeClips(prefix + ".death", death, 32, 2, 8, {16, 31}, false);
-    result.attacks.emplace(
-        attackVisualId,
-        makeClips(prefix + ".attack", attack, attackFrameSize, attackFrameCount,
-                  attackFrameTicks, attackAnchor, false, markers));
-    return result;
-}
-
 } // namespace
 
 struct GameRuntime::State final {
@@ -170,23 +134,8 @@ struct GameRuntime::State final {
           std::shared_ptr<const render::Image> swordImage,
           std::shared_ptr<const render::Image> bowImage,
           std::shared_ptr<const render::Image> hurtImage,
-          std::shared_ptr<const render::Image> arrowImage,
           std::shared_ptr<const render::Image> impactImage,
-          std::shared_ptr<const render::Image> soldierIdleImage,
-          std::shared_ptr<const render::Image> soldierWalkImage,
-          std::shared_ptr<const render::Image> soldierAttackImage,
-          std::shared_ptr<const render::Image> soldierDeathImage,
-          std::shared_ptr<const render::Image> skullIdleImage,
-          std::shared_ptr<const render::Image> skullWalkImage,
-          std::shared_ptr<const render::Image> skullAttackImage,
-          std::shared_ptr<const render::Image> skullDeathImage,
-          std::shared_ptr<const render::Image> skullArrowImage,
-          std::shared_ptr<const render::Image> heartImage,
-          std::shared_ptr<const render::Image> moneyImage,
-          std::shared_ptr<const render::Image> potionImage,
-          std::shared_ptr<const render::Image> chestImage,
-          std::shared_ptr<const render::Image> crateImage,
-          std::shared_ptr<const render::Image> breakingCrateImage,
+          presentation::RuntimeVisualContent runtimeVisualContent,
           std::shared_ptr<const render::Image> hudHeartImage,
           std::shared_ptr<const render::Image> hudMoneyImage,
           GameContentRegistry contentDefinitions,
@@ -200,36 +149,11 @@ struct GameRuntime::State final {
           swordSheet(std::make_shared<const render::SpriteSheet>(std::move(swordImage))),
           bowSheet(std::make_shared<const render::SpriteSheet>(std::move(bowImage))),
           hurtSheet(std::make_shared<const render::SpriteSheet>(std::move(hurtImage))),
-          arrowSheet(std::make_shared<const render::SpriteSheet>(std::move(arrowImage))),
           impactSheet(std::make_shared<const render::SpriteSheet>(std::move(impactImage))),
-          soldierIdleSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(soldierIdleImage))),
-          soldierWalkSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(soldierWalkImage))),
-          soldierAttackSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(soldierAttackImage))),
-          soldierDeathSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(soldierDeathImage))),
-          skullIdleSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(skullIdleImage))),
-          skullWalkSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(skullWalkImage))),
-          skullAttackSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(skullAttackImage))),
-          skullDeathSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(skullDeathImage))),
-          skullArrowSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(skullArrowImage))),
-          heartPickupImage(std::move(heartImage)),
-          moneyPickupImage(std::move(moneyImage)),
-          potionImage(std::move(potionImage)),
-          chestSheet(std::make_shared<const render::SpriteSheet>(std::move(chestImage))),
-          crateSheet(std::make_shared<const render::SpriteSheet>(std::move(crateImage))),
-          breakingCrateSheet(std::make_shared<const render::SpriteSheet>(
-              std::move(breakingCrateImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
           content(std::move(contentDefinitions)),
+          runtimeVisualContent(std::move(runtimeVisualContent)),
           session(localPlayerId, content.progressions().require(
                                       gameplay::rpg::defaultPlayerProgressionId()), {}) {
         const auto& dungeonDefinition = content.tilesets().require(
@@ -237,39 +161,6 @@ struct GameRuntime::State final {
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
-        projectileVisuals.emplace(
-            content.projectiles().require(gameplay::playerArrowProjectileId()).visualId, arrowSheet);
-        projectileVisuals.emplace(
-            projectileCatalog.require(gameplay::creatures::skullArrowProjectileId()).visualId,
-            skullArrowSheet);
-        enemyVisualCatalog.add(makeEnemyVisualSet(
-            gameplay::creatures::soldierVisualId(),
-            attackCatalog.require(gameplay::creatures::soldierSwordAttackId()).visualActionId,
-            soldierIdleSheet, soldierWalkSheet, soldierAttackSheet, soldierDeathSheet,
-            48, 4, 6, {24, 31}, {}));
-        enemyVisualCatalog.add(makeEnemyVisualSet(
-            gameplay::creatures::skullVisualId(),
-            attackCatalog.require(gameplay::creatures::skullArrowAttackId()).visualActionId,
-            skullIdleSheet, skullWalkSheet, skullAttackSheet, skullDeathSheet,
-            32, 2, 8, {16, 31}, {}));
-        itemVisuals.emplace(
-            simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
-
-        pickupVisuals.emplace(simulation::DefinitionId{"visual.pickup.heart"}, heartPickupImage);
-        pickupVisuals.emplace(simulation::DefinitionId{"visual.pickup.money"}, moneyPickupImage);
-        pickupVisuals.emplace(simulation::DefinitionId{"visual.item.life_potion"}, this->potionImage);
-
-        const simulation::DefinitionId chestVisualId{"visual.object.chest"};
-        const simulation::DefinitionId crateVisualId{"visual.object.crate"};
-        objectVisualCatalog.add({chestVisualId,
-            makeObjectClip("chest.closed", chestSheet, 16, 32, 1, 1, {8, 31}, true),
-            makeObjectClip("chest.open", chestSheet, 16, 32, 5, 4, {8, 31}, false),
-            nullptr});
-        objectVisualCatalog.add({crateVisualId,
-            makeObjectClip("crate.idle", crateSheet, 16, 32, 1, 1, {8, 31}, true),
-            nullptr,
-            makeObjectClip("crate.break", breakingCrateSheet, 32, 32, 7, 4,
-                           {16, 31}, false)});
         visual = std::make_unique<PlayerVisual>(
             makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
             makeClips("player.walk", walkSheet, 32, 4, 8, {16, 31}, true),
@@ -487,10 +378,11 @@ struct GameRuntime::State final {
     void rebuildWorldVisuals() {
         const auto result = synchronizeRuntimeWorldVisuals(
             activeWorld(), enemyVisualCatalog, enemyVisuals,
-            objectVisualCatalog, objectVisuals);
+            objectVisualCatalog, objectVisuals, npcCatalogVisuals, npcVisuals);
         if (!result) { throw std::runtime_error(result.error); }
         if (enemyVisuals.size() != activeWorld().enemies().size() ||
-            objectVisuals.size() != activeWorld().objects().size()) {
+            objectVisuals.size() != activeWorld().objects().size() ||
+            npcVisuals.size() != activeWorld().npcs().size()) {
             throw std::logic_error("runtime and visual actor counts are out of sync");
         }
     }
@@ -608,11 +500,16 @@ struct GameRuntime::State final {
         // the remaining systems in this transitional Runtime do not observe a
         // world whose visual instances belong to the previous map.
         commitTransitionIfRequested();
-        if (enemyVisuals.size() != activeWorld().enemies().size()) {
+        if (enemyVisuals.size() != activeWorld().enemies().size() ||
+            objectVisuals.size() != activeWorld().objects().size() ||
+            npcVisuals.size() != activeWorld().npcs().size()) {
             rebuildWorldVisuals();
         }
         for (std::size_t index = 0; index < enemyVisuals.size(); ++index) {
             enemyVisuals[index].update(activeWorld().enemies()[index].instance);
+        }
+        for (std::size_t index = 0; index < npcVisuals.size(); ++index) {
+            npcVisuals[index].update(activeWorld().npcs()[index].instance);
         }
         visual->update(player.motionState(), player.facing(), player.actionState());
         for (std::size_t index = 0; index < objectVisuals.size(); ++index) {
@@ -636,8 +533,8 @@ struct GameRuntime::State final {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
             presentationFrame,
             session.projectiles(),
-            tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
-            projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
+            tilesetVisuals, npcCatalogVisuals, npcVisuals, enemyVisualCatalog, objectVisualCatalog,
+            runtimeVisualContent.staticSprites, font, hudHeartImage, hudMoneyImage,
             session.dialogue(), view, combatDebug, session.activeSword(), lastEvent, collisionOverlay});
     }
 
@@ -650,23 +547,7 @@ struct GameRuntime::State final {
     std::shared_ptr<const render::SpriteSheet> swordSheet;
     std::shared_ptr<const render::SpriteSheet> bowSheet;
     std::shared_ptr<const render::SpriteSheet> hurtSheet;
-    std::shared_ptr<const render::SpriteSheet> arrowSheet;
     std::shared_ptr<const render::SpriteSheet> impactSheet;
-    std::shared_ptr<const render::SpriteSheet> soldierIdleSheet;
-    std::shared_ptr<const render::SpriteSheet> soldierWalkSheet;
-    std::shared_ptr<const render::SpriteSheet> soldierAttackSheet;
-    std::shared_ptr<const render::SpriteSheet> soldierDeathSheet;
-    std::shared_ptr<const render::SpriteSheet> skullIdleSheet;
-    std::shared_ptr<const render::SpriteSheet> skullWalkSheet;
-    std::shared_ptr<const render::SpriteSheet> skullAttackSheet;
-    std::shared_ptr<const render::SpriteSheet> skullDeathSheet;
-    std::shared_ptr<const render::SpriteSheet> skullArrowSheet;
-    std::shared_ptr<const render::Image> heartPickupImage;
-    std::shared_ptr<const render::Image> moneyPickupImage;
-    std::shared_ptr<const render::Image> potionImage;
-    std::shared_ptr<const render::SpriteSheet> chestSheet;
-    std::shared_ptr<const render::SpriteSheet> crateSheet;
-    std::shared_ptr<const render::SpriteSheet> breakingCrateSheet;
     std::shared_ptr<const render::Image> hudHeartImage;
     std::shared_ptr<const render::Image> hudMoneyImage;
     std::unique_ptr<PlayerVisual> visual;
@@ -675,6 +556,7 @@ struct GameRuntime::State final {
     std::filesystem::path savePath;
     GamePresentation presentation;
     GameContentRegistry content;
+    presentation::RuntimeVisualContent runtimeVisualContent;
     presentation::PresentationEffectSystem presentationEffects{content.presentationEffects()};
     presentation::PresentationFeedbackController presentationFeedback;
     GameSession session;
@@ -688,17 +570,11 @@ struct GameRuntime::State final {
     const gameplay::ItemCatalog& itemCatalog{content.items()};
     const gameplay::WorldObjectCatalog& objectCatalog{content.objects()};
     const gameplay::npcs::NpcCatalog& npcCatalog{content.npcs()};
-    const gameplay::npcs::NpcVisualCatalog& npcCatalogVisuals{content.npcVisuals()};
-    std::unordered_map<simulation::DefinitionId,
-                       std::shared_ptr<const render::SpriteSheet>,
-                       simulation::DefinitionIdHash> projectileVisuals;
-    EnemyVisualCatalog enemyVisualCatalog;
+    const presentation::RuntimeNpcVisualCatalog& npcCatalogVisuals{runtimeVisualContent.npcs};
+    std::vector<presentation::RuntimeNpcVisualInstance> npcVisuals;
+    const EnemyVisualCatalog& enemyVisualCatalog{runtimeVisualContent.enemies};
     std::vector<EnemyVisualInstance> enemyVisuals;
-    std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
-                       simulation::DefinitionIdHash> pickupVisuals;
-    std::unordered_map<simulation::DefinitionId, std::shared_ptr<const render::Image>,
-                       simulation::DefinitionIdHash> itemVisuals;
-    WorldObjectVisualCatalog objectVisualCatalog;
+    const WorldObjectVisualCatalog& objectVisualCatalog{runtimeVisualContent.objects};
     std::vector<WorldObjectVisualInstance> objectVisuals;
     std::unique_ptr<gameplay::creatures::EnemyFactory> enemyFactory;
     std::unique_ptr<gameplay::WorldObjectFactory> objectFactory;
@@ -720,7 +596,8 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
                        const std::filesystem::path& assetRoot,
                        const std::filesystem::path& executableDirectory,
                        GameContentRegistry contentDefinitions,
-                       const GameLaunchOptions& launchOptions) {
+                       const GameLaunchOptions& launchOptions,
+                       std::optional<std::filesystem::path> contentWorkspaceRoot) {
     const auto& dungeonDefinition = contentDefinitions.tilesets().require(
         simulation::DefinitionId{"tileset.dungeon"});
     const auto tileset = assets_.loadImage("tileset.dungeon",
@@ -731,57 +608,25 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
     const auto sword = assets_.loadImage("player.sword", assetRoot / "Characters/Player/attacking/player_attacking.png", decoder);
     const auto bow = assets_.loadImage("player.bow", assetRoot / "Characters/Player/attacking/player_attacking_bow.png", decoder);
     const auto hurt = assets_.loadImage("player.hurt", assetRoot / "Characters/Player/death/player_death.png", decoder);
-    const auto arrow = assets_.loadImage("player.arrow", assetRoot / "Characters/Player/attacking/arrow.png", decoder);
     const auto impact = assets_.loadImage("effect.arrow_impact", assetRoot / "Explosion/arrow_hits_dust.png", decoder);
-    const auto soldierIdle = assets_.loadImage(
-        "enemy.soldier.idle",
-        assetRoot / "Characters/Enemies/Evil_soldier/idle/evil_soldier_idle.png", decoder);
-    const auto soldierWalk = assets_.loadImage(
-        "enemy.soldier.walk",
-        assetRoot / "Characters/Enemies/Evil_soldier/walking/evil_soldier_walking.png", decoder);
-    const auto soldierAttack = assets_.loadImage(
-        "enemy.soldier.attack",
-        assetRoot / "Characters/Enemies/Evil_soldier/attacking/evil_soldier_attacking.png", decoder);
-    const auto soldierDeath = assets_.loadImage(
-        "enemy.soldier.death",
-        assetRoot / "Characters/Enemies/Evil_soldier/death/evil_soldier_death.png", decoder);
-    const auto skullIdle = assets_.loadImage(
-        "enemy.skull.idle",
-        assetRoot / "Characters/Enemies/Skull/idle/skull_idle.png", decoder);
-    const auto skullWalk = assets_.loadImage(
-        "enemy.skull.walk",
-        assetRoot / "Characters/Enemies/Skull/walking/skull_walking.png", decoder);
-    const auto skullAttack = assets_.loadImage(
-        "enemy.skull.attack",
-        assetRoot / "Characters/Enemies/Skull/attacking/skull_attacking.png", decoder);
-    const auto skullDeath = assets_.loadImage(
-        "enemy.skull.death",
-        assetRoot / "Characters/Enemies/Skull/death/skull_death.png", decoder);
-    const auto skullArrow = assets_.loadImage(
-        "enemy.skull.arrow",
-        assetRoot / "Characters/Enemies/Skull/attacking/arrow.png", decoder);
-    const auto heart = assets_.loadImage(
-        "pickup.heart", assetRoot / "Objects/heart.png", decoder);
-    const auto money = assets_.loadImage(
-        "pickup.money", assetRoot / "Objects/money.png", decoder);
-    const auto potion = assets_.loadImage(
-        "item.life_potion", assetRoot / "Objects/life_potion.png", decoder);
-    const auto chest = assets_.loadImage(
-        "object.chest", assetRoot / "Tileset/chest.png", decoder);
-    const auto crate = assets_.loadImage(
-        "object.crate", assetRoot / "Tileset/crate.png", decoder);
-    const auto breakingCrate = assets_.loadImage(
-        "object.crate.breaking", assetRoot / "Tileset/breaking_crate.png", decoder);
     const auto hudHeart = assets_.loadImage(
         "hud.heart", assetRoot / "Icons/heart_complete.png", decoder);
     const auto hudMoney = assets_.loadImage(
         "hud.money", assetRoot / "Icons/money.png", decoder);
+    presentation::VisualContentLoader visualLoader(decoder);
+    const auto visualContent = visualLoader.load(
+        contentDefinitions, {assetRoot, std::move(contentWorkspaceRoot)});
+    if (!visualContent) {
+        std::string message = "visual content loading failed";
+        for (const auto& diagnostic : visualContent.diagnostics) {
+            message += " [" + std::string(presentation::visualContentStageName(diagnostic.stage)) +
+                       "/" + diagnostic.code + "] " + diagnostic.message;
+        }
+        throw std::runtime_error(message);
+    }
     state_ = std::make_unique<State>(
-        tileset, font, idle, walk, sword, bow, hurt, arrow, impact,
-        soldierIdle, soldierWalk, soldierAttack, soldierDeath,
-        skullIdle, skullWalk, skullAttack, skullDeath, skullArrow,
-        heart, money, potion, chest, crate, breakingCrate, hudHeart, hudMoney,
-        std::move(contentDefinitions), executableDirectory, launchOptions);
+        tileset, font, idle, walk, sword, bow, hurt, impact, std::move(*visualContent.content),
+        hudHeart, hudMoney, std::move(contentDefinitions), executableDirectory, launchOptions);
     startupSummary_ = state_->startupSummary();
 }
 

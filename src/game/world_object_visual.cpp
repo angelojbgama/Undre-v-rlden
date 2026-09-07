@@ -13,11 +13,16 @@ void WorldObjectVisualCatalog::add(WorldObjectVisualSet set) {
     static_cast<void>(position);
     if (!inserted) { throw std::logic_error("duplicate world object visual set id"); }
 }
+const WorldObjectVisualSet* WorldObjectVisualCatalog::find(
+    const simulation::DefinitionId& id) const noexcept {
+    const auto found = sets_.find(id);
+    return found == sets_.end() ? nullptr : &found->second;
+}
 const WorldObjectVisualSet& WorldObjectVisualCatalog::require(
     const simulation::DefinitionId& id) const {
-    const auto found = sets_.find(id);
-    if (found == sets_.end()) { throw std::out_of_range("world object visual set not found"); }
-    return found->second;
+    const auto* found = find(id);
+    if (!found) { throw std::out_of_range("world object visual set not found"); }
+    return *found;
 }
 
 WorldObjectVisualInstance::WorldObjectVisualInstance(
@@ -32,16 +37,27 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
         throw std::invalid_argument("object visual updated with different handle");
     }
     const auto state = object.state();
-    if (!initialized_ || state != state_) {
+    const auto doorState = object.isDoor() ? std::optional{object.doorState()} : std::nullopt;
+    const auto activation = object.hasActivation() ? std::optional{object.activationActive()} : std::nullopt;
+    if (!initialized_ || state != state_ || doorState != doorState_ || activation != activation_) {
         const auto* clip = &set_->idle;
-        if (state == gameplay::WorldObjectState::opened && set_->opened) {
-            clip = &set_->opened;
-        } else if (state == gameplay::WorldObjectState::destroying && set_->destroying) {
+        if (state == gameplay::WorldObjectState::destroying && set_->destroying) {
             clip = &set_->destroying;
+        } else if (doorState) {
+            if (*doorState == gameplay::DoorState::locked && set_->doorLocked) clip = &set_->doorLocked;
+            else if (*doorState == gameplay::DoorState::closed && set_->doorClosed) clip = &set_->doorClosed;
+            else if (*doorState == gameplay::DoorState::open && set_->doorOpen) clip = &set_->doorOpen;
+        } else if (activation) {
+            if (*activation && set_->activationActive) clip = &set_->activationActive;
+            else if (!*activation && set_->activationInactive) clip = &set_->activationInactive;
+        } else if (state == gameplay::WorldObjectState::opened && set_->opened) {
+            clip = &set_->opened;
         }
         animator_.play(*clip);
         initialized_ = true;
         state_ = state;
+        doorState_ = doorState;
+        activation_ = activation;
     }
     animator_.updateTicks(ticks);
 }

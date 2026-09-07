@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace underworld::platform { class ImageDecoder; }
@@ -23,7 +24,8 @@ public:
     GameRuntime(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
                const std::filesystem::path& executableDirectory,
                GameContentRegistry content,
-               const GameLaunchOptions& launchOptions = {});
+               const GameLaunchOptions& launchOptions = {},
+               std::optional<std::filesystem::path> contentWorkspaceRoot = std::nullopt);
     ~GameRuntime();
 
     void fixedTick(simulation::Tick tick, const platform::InputState& input,

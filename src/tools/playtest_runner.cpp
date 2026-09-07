@@ -13,6 +13,7 @@
 #include "game/gameplay/world_logic.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/presentation_feedback_controller.h"
+#include "game/presentation/visual_content_loader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,7 +38,8 @@ using game::audit::GameAuditSnapshot;
 
 class SyntheticImageDecoder final : public platform::ImageDecoder {
 public:
-    [[nodiscard]] core::ImageData decode(const std::filesystem::path&) override {
+    [[nodiscard]] core::ImageData decode(const std::filesystem::path& path) override {
+        paths.push_back(path);
         constexpr int width = 304;
         constexpr int height = 192;
         constexpr std::size_t stride = static_cast<std::size_t>(width) * 4U;
@@ -45,6 +47,8 @@ public:
                                std::vector<std::uint8_t>(stride * height, 0xffU)};
         return result;
     }
+
+    std::vector<std::filesystem::path> paths;
 };
 
 std::filesystem::path repositoryRoot() {
@@ -814,6 +818,62 @@ bool runPresentationFeedback(ScenarioContext& context) {
     return context.step();
 }
 
+bool runVisualContent(ScenarioContext& context) {
+    namespace content = game::content;
+    namespace presentation = game::presentation;
+    namespace simulation = underworld::simulation;
+    if (!runBaseline(context)) { return false; }
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    authored.visualImages.push_back({{"image.playtest.external"},
+                                      presentation::VisualAssetRoot::contentWorkspace,
+                                      "assets/playtest-character.png"});
+    content::AuthoredAnimation animation;
+    animation.id = {"anim.playtest.external.idle"};
+    animation.imageId = {"image.playtest.external"};
+    animation.frames.push_back({{0, 0, 16, 16}, {8, 15}, {}, 2, {}});
+    animation.loop = true;
+    authored.animations.push_back(animation);
+    presentation::DirectionalAnimationRef idle;
+    idle.defaultAnimation = simulation::DefinitionId{"anim.playtest.external.idle"};
+    authored.enemyVisuals.push_back({{"visual.enemy.playtest.external"}, idle,
+                                     std::nullopt, std::nullopt, std::nullopt,
+                                     std::nullopt, {}});
+    authored.behaviors.push_back({{"behavior.playtest.external"}, 96, 128, 30, 30});
+    authored.enemies.push_back({{"enemy.playtest.external"},
+                                {"visual.enemy.playtest.external"},
+                                {"behavior.playtest.external"}, game::gameplay::Faction::enemy,
+                                12, 128, {-4, -8, 8, 8}, {-6, -20, 12, 20},
+                                {{game::gameplay::creatures::soldierSwordAttackId()}},
+                                std::nullopt});
+    authored.staticSprites.push_back({{"visual.playtest.external.sprite"},
+                                      {"image.playtest.external"},
+                                      std::nullopt, {8, 8}});
+
+    const auto compiled = content::compileContent(authored);
+    if (!context.require(compiled.registry.has_value(),
+                         "external visual playtest content did not compile")) {
+        return false;
+    }
+    SyntheticImageDecoder decoder;
+    presentation::VisualContentLoader loader(decoder);
+    const auto root = std::filesystem::temp_directory_path() /
+                      "underworld_playtest_visual_content";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root, error);
+    const auto loaded = loader.load(*compiled.registry, {root / "game-assets", root});
+    const bool resolved = context.require(
+        loaded && loaded.content->enemies.find({"visual.enemy.playtest.external"}) &&
+        loaded.content->staticSprites.find({"visual.playtest.external.sprite"}) &&
+        decoder.paths.size() == authored.visualImages.size() &&
+        std::find(decoder.paths.begin(), decoder.paths.end(),
+                  root / "assets/playtest-character.png") != decoder.paths.end(),
+        "external visual content resolves an authored enemy and static sprite through the workspace root");
+    std::filesystem::remove_all(root, error);
+    return resolved && context.step();
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -1088,6 +1148,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runWorldLogic(context);
     } else if (name == "presentation_feedback") {
         passed = runPresentationFeedback(context);
+    } else if (name == "visual_content") {
+        passed = runVisualContent(context);
     } else if (name == "interactive_world") {
         passed = runInteractiveWorld(context);
     } else if (name == "rewards_loot") {
@@ -1105,7 +1167,7 @@ const std::vector<std::string> allScenarios{
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "presentation_feedback", "interactive_world", "rewards_loot"};
+        "presentation_feedback", "interactive_world", "visual_content", "rewards_loot"};
 
 } // namespace
 

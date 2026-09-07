@@ -18,6 +18,7 @@
 #include "game/world_object_visual.h"
 #include "game/maps/runtime_world.h"
 #include "game/presentation/presentation_effects.h"
+#include "game/presentation/visual_content_loader.h"
 
 #include <memory>
 #include <string_view>
@@ -38,18 +39,11 @@ struct GamePresentationFrame final {
     const presentation::PresentationEffectFrame& presentationEffects;
     const gameplay::ProjectileSystem& projectiles;
     const TilesetVisualCatalog& tilesetVisuals;
-    const gameplay::npcs::NpcVisualCatalog& npcVisuals;
+    const presentation::RuntimeNpcVisualCatalog& npcVisualCatalog;
+    const std::vector<presentation::RuntimeNpcVisualInstance>& npcVisuals;
     const EnemyVisualCatalog& enemyVisualCatalog;
     const WorldObjectVisualCatalog& objectVisualCatalog;
-    const std::unordered_map<simulation::DefinitionId,
-                             std::shared_ptr<const render::SpriteSheet>,
-                             simulation::DefinitionIdHash>& projectileVisuals;
-    const std::unordered_map<simulation::DefinitionId,
-                             std::shared_ptr<const render::Image>,
-                             simulation::DefinitionIdHash>& pickupVisuals;
-    const std::unordered_map<simulation::DefinitionId,
-                             std::shared_ptr<const render::Image>,
-                             simulation::DefinitionIdHash>& itemVisuals;
+    const presentation::RuntimeStaticSpriteCatalog& staticSprites;
     const render::BitmapFont& font;
     const std::shared_ptr<const render::Image>& hudHeartImage;
     const std::shared_ptr<const render::Image>& hudMoneyImage;

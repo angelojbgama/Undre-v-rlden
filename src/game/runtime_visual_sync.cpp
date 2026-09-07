@@ -38,4 +38,29 @@ RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
     }
 }
 
+RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
+    const maps::RuntimeWorld& world, const EnemyVisualCatalog& enemyCatalog,
+    std::vector<EnemyVisualInstance>& enemyVisuals,
+    const WorldObjectVisualCatalog& objectCatalog,
+    std::vector<WorldObjectVisualInstance>& objectVisuals,
+    const presentation::RuntimeNpcVisualCatalog& npcCatalog,
+    std::vector<presentation::RuntimeNpcVisualInstance>& npcVisuals) {
+    const auto base = synchronizeRuntimeWorldVisuals(
+        world, enemyCatalog, enemyVisuals, objectCatalog, objectVisuals);
+    if (!base) return base;
+    try {
+        std::vector<presentation::RuntimeNpcVisualInstance> rebuilt;
+        rebuilt.reserve(world.npcs().size());
+        for (const auto& persistent : world.npcs()) {
+            const auto& npc = persistent.instance;
+            rebuilt.emplace_back(npc.handle(), npcCatalog.require(npc.definition().visualSetId));
+            rebuilt.back().update(npc, 0);
+        }
+        npcVisuals = std::move(rebuilt);
+        return {true, {}};
+    } catch (const std::exception& exception) {
+        return {false, exception.what()};
+    }
+}
+
 } // namespace underworld::game

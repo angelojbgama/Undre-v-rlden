@@ -54,6 +54,94 @@ void addBuiltinDungeonSemantics(AuthoredContentPack& pack) {
     stamp("stamp.dungeon.top_cap_3x1", "Top Cap", 3, 1, true, {{4,0},{5,0},{6,0}});
 }
 
+void addBuiltinVisualContent(AuthoredContentPack& pack) {
+    const auto image = [&](const char* id, const char* path) {
+        pack.visualImages.push_back({{id}, presentation::VisualAssetRoot::gameAssets, path});
+    };
+    const auto directional = [&](const char* prefix, const char* imageId, int frameWidth,
+                                int frameHeight, int frameCount, std::uint32_t duration,
+                                core::PointI anchor, bool loop) {
+        presentation::DirectionalAnimationRef result;
+        const char* names[] = {"down", "up", "side"};
+        std::optional<simulation::DefinitionId>* ids[] = {
+            &result.down, &result.up, &result.side};
+        for (int row = 0; row < 3; ++row) {
+            const std::string animationId = std::string(prefix) + "." + names[row];
+            *ids[row] = simulation::DefinitionId{animationId};
+            AuthoredAnimation animationValue;
+            animationValue.id = **ids[row];
+            animationValue.imageId = {imageId};
+            animationValue.loop = loop;
+            for (int column = 0; column < frameCount; ++column) {
+                animationValue.frames.push_back({{column * frameWidth, row * frameHeight,
+                                                    frameWidth, frameHeight}, anchor, {}, duration, {}});
+            }
+            pack.animations.push_back(std::move(animationValue));
+        }
+        return result;
+    };
+    const auto objectAnimation = [&](const char* id, const char* imageId, int width, int height,
+                                     int count, std::uint32_t duration, core::PointI anchor,
+                                     bool loop) {
+        AuthoredAnimation value;
+        value.id = {id}; value.imageId = {imageId}; value.loop = loop;
+        for (int column = 0; column < count; ++column)
+            value.frames.push_back({{column * width, 0, width, height}, anchor, {}, duration, {}});
+        pack.animations.push_back(std::move(value));
+    };
+
+    image("image.enemy.soldier.idle", "Characters/Enemies/Evil_soldier/idle/evil_soldier_idle.png");
+    image("image.enemy.soldier.walk", "Characters/Enemies/Evil_soldier/walking/evil_soldier_walking.png");
+    image("image.enemy.soldier.attack", "Characters/Enemies/Evil_soldier/attacking/evil_soldier_attacking.png");
+    image("image.enemy.soldier.death", "Characters/Enemies/Evil_soldier/death/evil_soldier_death.png");
+    image("image.enemy.skull.idle", "Characters/Enemies/Skull/idle/skull_idle.png");
+    image("image.enemy.skull.walk", "Characters/Enemies/Skull/walking/skull_walking.png");
+    image("image.enemy.skull.attack", "Characters/Enemies/Skull/attacking/skull_attacking.png");
+    image("image.enemy.skull.death", "Characters/Enemies/Skull/death/skull_death.png");
+    image("image.projectile.player.arrow", "Characters/Player/attacking/arrow.png");
+    image("image.projectile.skull.arrow", "Characters/Enemies/Skull/attacking/arrow.png");
+    image("image.pickup.heart", "Objects/heart.png");
+    image("image.pickup.money", "Objects/money.png");
+    image("image.item.potion", "Objects/life_potion.png");
+    image("image.object.chest", "Tileset/chest.png");
+    image("image.object.crate", "Tileset/crate.png");
+    image("image.object.breaking_crate", "Tileset/breaking_crate.png");
+
+    const auto addStatic = [&](const char* id, const char* imageId, core::PointI anchor) {
+        pack.staticSprites.push_back({{id}, {imageId}, std::nullopt, anchor});
+    };
+    addStatic("visual.projectile.player.arrow", "image.projectile.player.arrow", {8, 8});
+    addStatic("visual.projectile.skull.arrow", "image.projectile.skull.arrow", {8, 8});
+    addStatic("visual.pickup.heart", "image.pickup.heart", {8, 8});
+    addStatic("visual.pickup.money", "image.pickup.money", {8, 8});
+    addStatic("visual.item.life_potion", "image.item.potion", {8, 8});
+    addStatic("visual.item.training_armor", "image.item.potion", {8, 8});
+    addStatic("visual.item.power_charm", "image.item.potion", {8, 8});
+
+    const auto soldierIdle = directional("anim.enemy.soldier.idle", "image.enemy.soldier.idle", 32, 32, 2, 30, {16, 31}, true);
+    const auto soldierWalk = directional("anim.enemy.soldier.walk", "image.enemy.soldier.walk", 32, 32, 4, 8, {16, 31}, true);
+    const auto soldierDeath = directional("anim.enemy.soldier.death", "image.enemy.soldier.death", 32, 32, 2, 8, {16, 31}, false);
+    const auto soldierAttack = directional("anim.enemy.soldier.attack", "image.enemy.soldier.attack", 48, 48, 4, 6, {24, 31}, false);
+    const auto skullIdle = directional("anim.enemy.skull.idle", "image.enemy.skull.idle", 32, 32, 2, 30, {16, 31}, true);
+    const auto skullWalk = directional("anim.enemy.skull.walk", "image.enemy.skull.walk", 32, 32, 4, 8, {16, 31}, true);
+    const auto skullDeath = directional("anim.enemy.skull.death", "image.enemy.skull.death", 32, 32, 2, 8, {16, 31}, false);
+    const auto skullAttack = directional("anim.enemy.skull.attack", "image.enemy.skull.attack", 32, 32, 2, 8, {16, 31}, false);
+    pack.enemyVisuals.push_back({{"visual.enemy.evil_soldier"}, soldierIdle, soldierWalk,
+                                 std::nullopt, soldierDeath, std::nullopt,
+                                 {{{"visual.action.soldier.sword"}, soldierAttack}}});
+    pack.enemyVisuals.push_back({{"visual.enemy.skull"}, skullIdle, skullWalk,
+                                 std::nullopt, skullDeath, std::nullopt,
+                                 {{{"visual.action.skull.arrow"}, skullAttack}}});
+
+    objectAnimation("anim.object.chest.idle", "image.object.chest", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.chest.opened", "image.object.chest", 16, 32, 5, 4, {8, 31}, false);
+    objectAnimation("anim.object.crate.idle", "image.object.crate", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.crate.destroying", "image.object.breaking_crate", 32, 32, 7, 4, {16, 31}, false);
+    pack.objectVisuals.push_back({{"visual.object.chest"}, {"anim.object.chest.idle"}, {"anim.object.chest.opened"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.crate"}, {"anim.object.crate.idle"}, std::nullopt, {"anim.object.crate.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+}
+
 } // namespace
 
 AuthoredContentPack makeBuiltinAuthoredContent() {
@@ -104,7 +192,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
          std::nullopt,
          presentation::ColorOverlayDefinition{{0, 0, 24, 32}, presentation::PresentationOverlayMode::constant, 0, presentation::PresentationCompositionLayer::world},
          presentation::VisionMaskDefinition{48, 72, 220, {0, 0, 0, 255}}, std::nullopt}};
-    pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}}, {{"visual.npc.merchant"}, {120, 210, 120, 255}}};
+    pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}, {}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}, {}}, {{"visual.npc.merchant"}, {120, 210, 120, 255}, {}}};
     pack.npcs = {
         {{"npc.guard"}, {"visual.npc.guard"}, {{-14, -28, 28, 22}, true}, {"dialogue.guard.greeting"}, {"npc", "guard"}},
         {{"npc.scholar"}, {"visual.npc.scholar"}, {{-14, -28, 28, 22}, true}, {"dialogue.scholar.greeting"}, {"npc", "scholar"}},
@@ -155,6 +243,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"item.power_charm"}, "Power Charm", AuthoringCategory::item, {"item", "equipment"}},
         {{"object.bank_access"}, "Bank Access", AuthoringCategory::object, {"bank", "storage"}}};
     addBuiltinDungeonSemantics(pack);
+    addBuiltinVisualContent(pack);
     return pack;
 }
 

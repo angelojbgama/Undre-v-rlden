@@ -29,8 +29,26 @@ gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) {
             v.bankAccess ? std::optional<gameplay::ObjectBankAccessDefinition>{gameplay::ObjectBankAccessDefinition{}}
                          : std::nullopt, v.door, v.activation};
 }
-gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor}; }
+gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor, v.idle}; }
 gameplay::npcs::NpcDefinition compileNpc(const AuthoredNpc& v) { return {v.id, v.visualSetId, v.interaction, v.defaultDialogueId, v.tags}; }
+
+presentation::VisualImageDefinition compileVisualImage(const AuthoredVisualImage& v) { return {v.id, v.root, v.relativePath}; }
+presentation::StaticSpriteDefinition compileStaticSprite(const AuthoredStaticSprite& v) { return {v.id, v.imageId, v.source, v.anchor}; }
+presentation::AnimationDefinition compileAnimation(const AuthoredAnimation& v) {
+    presentation::AnimationDefinition result{v.id, v.imageId, {}, v.loop};
+    for (const auto& frame : v.frames) result.frames.push_back({frame.source, frame.anchor, frame.drawOffset, frame.durationTicks, frame.markers});
+    return result;
+}
+presentation::EnemyVisualDefinition compileEnemyVisual(const AuthoredEnemyVisual& v) {
+    presentation::EnemyVisualDefinition result{v.id, v.idle, v.move, v.hurt, v.death, v.dead, {}};
+    for (const auto& attack : v.attacks) result.attacks.push_back({attack.visualActionId, attack.clips});
+    return result;
+}
+presentation::WorldObjectVisualDefinition compileObjectVisual(const AuthoredWorldObjectVisual& v) {
+    return {v.id, v.idleAnimationId, v.openedAnimationId, v.destroyingAnimationId,
+            v.activationInactiveAnimationId, v.activationActiveAnimationId,
+            v.doorLockedAnimationId, v.doorClosedAnimationId, v.doorOpenAnimationId};
+}
 
 gameplay::PickupPayload compilePayload(const AuthoredPickupPayload& payload) {
     return std::visit([](const auto& value) -> gameplay::PickupPayload {
@@ -103,6 +121,11 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.tileSemantics) registry.authoringSemantics_.addTile(compileTileSemantic(value));
         for (const auto& value : authored.stamps) registry.authoringSemantics_.addStamp(compileStamp(value));
         for (const auto& value : authored.presentationEffects) registry.presentationEffects_.add(compilePresentationEffect(value));
+        for (const auto& value : authored.visualImages) registry.visualImages_.add(compileVisualImage(value));
+        for (const auto& value : authored.staticSprites) registry.staticSprites_.add(compileStaticSprite(value));
+        for (const auto& value : authored.animations) registry.animations_.add(compileAnimation(value));
+        for (const auto& value : authored.enemyVisuals) registry.enemyVisuals_.add(compileEnemyVisual(value));
+        for (const auto& value : authored.objectVisuals) registry.objectVisuals_.add(compileObjectVisual(value));
         result.registry.emplace(std::move(registry));
     } catch (const std::exception& exception) {
         result.report.diagnostics.push_back({ContentDiagnosticSeverity::error, "catalog_rejected", exception.what(), ContentKind::tileset, {}, "registry"});

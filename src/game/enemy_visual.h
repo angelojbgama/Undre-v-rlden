@@ -7,7 +7,9 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace underworld::game {
@@ -16,10 +18,21 @@ using DirectionalAnimationClips =
     std::array<std::shared_ptr<const render::AnimationClip>, 3>; // down, up, side-left
 
 struct EnemyVisualSet final {
+    EnemyVisualSet() = default;
+    EnemyVisualSet(simulation::DefinitionId visualId, DirectionalAnimationClips idleClips,
+                   DirectionalAnimationClips moveClips, DirectionalAnimationClips deathClips,
+                   std::unordered_map<simulation::DefinitionId, DirectionalAnimationClips,
+                                      simulation::DefinitionIdHash> actionClips)
+        : id(std::move(visualId)), idle(std::move(idleClips)), walk(std::move(moveClips)),
+          death(std::move(deathClips)), attacks(std::move(actionClips)) {}
+
     simulation::DefinitionId id{};
     DirectionalAnimationClips idle{};
+    // Authored optional states are resolved to these runtime fallbacks.
     DirectionalAnimationClips walk{};
     DirectionalAnimationClips death{};
+    std::optional<DirectionalAnimationClips> hurt{};
+    std::optional<DirectionalAnimationClips> dead{};
     std::unordered_map<simulation::DefinitionId, DirectionalAnimationClips,
                        simulation::DefinitionIdHash> attacks{};
 };

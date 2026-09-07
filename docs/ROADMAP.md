@@ -106,6 +106,27 @@ FASE 13 — External Authored Content                   DONE
 13B1 — Multi-file Workspace Core + Deterministic Merge DONE
 13B2 — Workspace Directory Discovery                  DONE
 13B3 — Application/Tooling Integration                DONE
+FASE 14 — Authored World Foundation                   DONE
+14A — Authored Map Source                             DONE
+14B — Runtime Regions                                 DONE
+14C — World Logic Foundation                          DONE
+14D — Stateful Doors                                  DONE
+14E — Encounter Foundation                            DONE
+FASE 15 — Presentation Feedback Foundation             DONE
+15A — Presentation Effect Runtime                     DONE
+15B — Authored Presentation Effects                   DONE
+15C — Presentation Cue Integration                    DONE
+15D — Environment / World Integration                  DONE
+FASE 16 — Interactive World Components                 DONE
+16A — Stateful Object Activation                      DONE
+16B — World Logic Integration                         DONE
+16C — Persistence + Authored Content                  DONE
+16D — Puzzle Vertical Slice                           DONE
+FASE 17 — Visual Content Boundary                     DONE
+17A — Visual Asset Definitions                         DONE
+17B — Authored Animation + Visual Sets                DONE
+17C — Runtime Visual Content Loader                   DONE
+17D — External Visual Content Vertical Slice          DONE
 ```
 
 Baseline validada da Fase 6:
@@ -1327,8 +1348,8 @@ it does not regenerate manual authored geometry after a `.umap` is opened.
 14D — Stateful Doors — DONE.
 14E — Encounter Foundation — DONE.
 
-Content Studio, Visual Content Boundary, Puzzle Engine, encounter waves, boss phases,
-LLM authoring and networking remain future work. The Phase 14 closure suite and
+Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
+networking remain future work. The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
 
 ### Phase 15 — Presentation Feedback Foundation — DONE
@@ -1350,11 +1371,11 @@ GamePresentation / framebuffer
 transient effects, source-tracked persistent effects, deterministic camera shake,
 world/final overlays, player-relative vision masks and linear fades.
 
-15B — Authored Presentation Effects — DONE. Presentation effects are the twentieth
+15B — Authored Presentation Effects — DONE. Presentation effects were the twentieth
 authored content category. Content JSON v3 introduced them; Phase 16 evolved the
-emitted schema to v4 for object activation while readers remain compatible with v1–v3.
-Builtin is still the transitional default source and workspaces may mix all readable
-schema versions.
+emitted schema to v4 for object activation, and Phase 17 evolved it to v5 for visual
+definitions while readers remain compatible with v1–v4. Builtin is still the
+transitional default source and workspaces may mix all readable schema versions.
 
 15C — Presentation Cue Integration — DONE. Player damage and authored world-rule
 presentation cues reach the presentation layer through `SimulationEvent`; the world
@@ -1365,10 +1386,11 @@ environment effects and presentation actions; the current writer emits UMAP v3 a
 DMAP 1.4, while readers retain UMAP v1/v2 and DMAP 1.0–1.3 compatibility. DSAV 1.8
 does not persist transient or derived presentation state.
 
-The next architectural decisions are deliberately deferred in this order:
+The next architectural decisions after Phase 15 were deliberately deferred in this
+order:
 
 ```text
-Phase 17 — Visual Content Boundary
+Phase 17 — Visual Content Boundary (now complete)
 Phase 18 — Content Studio
 Phase 19 — Advanced Semantic Authoring
 Phase 20 — LLM Authoring
@@ -1418,15 +1440,48 @@ activation events, collision changes and toggle save/load without map-specific C
 The next architectural decisions remain deliberately separate:
 
 ```text
-Phase 17 — Visual Content Boundary
+Phase 17 — Visual Content Boundary (now complete)
 Phase 18 — Content Studio
 Phase 19 — Advanced Semantic Authoring
 Phase 20 — LLM Authoring
 ```
 
 Status effects, complex puzzle components, encounter waves, boss phases, audio,
-scripting, Visual Content Boundary work, Content Studio, LLM integration and
-networking remain future work.
+scripting, Content Studio, LLM integration and networking remain future work.
+
+### Phase 17 — Visual Content Boundary — DONE
+
+Phase 17 moves gameplay-owned visual references across the existing authored content
+boundary. Content JSON v5 adds `visualImages`, `staticSprites`, `animations`,
+`enemyVisuals` and `objectVisuals`; readers remain compatible with v1–v4. The
+definitions contain IDs and authored metadata only. `VisualContentLoader` resolves
+explicit `gameAssets` or `contentWorkspace` roots, decodes each image once, validates
+source rectangles and constructs immutable runtime clips/catalogs before rendering.
+External content can therefore supply new enemy, object, NPC, projectile, pickup and
+item visuals without branches in `GameRuntime`.
+
+Creature visual profiles are deliberately flexible. `idle` is the only required
+binding; optional move/hurt/death/dead states and arbitrary visual action IDs support
+single-frame, partial-directional and directional profiles. Exact direction, explicit
+default and deterministic available-direction fallback are applied by the loader;
+missing optional visuals fall back to idle and do not disable gameplay. Runtime
+animators remain per-instance mutable state while clips/images are shared.
+
+`EffectSystem` remains the world-space animated VFX system. The presentation feedback
+system remains responsible for camera/screen effects, and this visual-content loader
+is a separate content-to-runtime asset boundary. Player visuals, HUD/font assets,
+tileset loading and generic impact VFX remain fixed game presentation assets by
+explicit Phase 17 scope; Content Studio, asset importing, hot reload, status effects,
+audio and LLM tooling are future work.
+
+The current format status is:
+
+```text
+Content JSON v5  (reader v1–v5)
+UMAP v3          (unchanged)
+DMAP 1.4         (unchanged)
+DSAV 1.8         (unchanged)
+```
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

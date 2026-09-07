@@ -6,6 +6,7 @@
 #include "game/gameplay/world_objects.h"
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 namespace underworld::game {
@@ -15,11 +16,18 @@ struct WorldObjectVisualSet final {
     std::shared_ptr<const render::AnimationClip> idle{};
     std::shared_ptr<const render::AnimationClip> opened{};
     std::shared_ptr<const render::AnimationClip> destroying{};
+    std::shared_ptr<const render::AnimationClip> activationInactive{};
+    std::shared_ptr<const render::AnimationClip> activationActive{};
+    std::shared_ptr<const render::AnimationClip> doorLocked{};
+    std::shared_ptr<const render::AnimationClip> doorClosed{};
+    std::shared_ptr<const render::AnimationClip> doorOpen{};
 };
 
 class WorldObjectVisualCatalog final {
 public:
     void add(WorldObjectVisualSet set);
+    [[nodiscard]] const WorldObjectVisualSet* find(
+        const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const WorldObjectVisualSet& require(
         const simulation::DefinitionId& id) const;
 
@@ -44,6 +52,8 @@ private:
     simulation::EntityHandle handle_{};
     const WorldObjectVisualSet* set_{};
     gameplay::WorldObjectState state_{gameplay::WorldObjectState::idle};
+    std::optional<gameplay::DoorState> doorState_;
+    std::optional<bool> activation_;
     render::Animator animator_{};
     bool initialized_{};
 };

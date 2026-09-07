@@ -7,6 +7,7 @@
 #include "engine/simulation/persistent_id.h"
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/facing_direction.h"
+#include "game/presentation/visual_content.h"
 
 #include <optional>
 #include <span>
@@ -19,6 +20,7 @@ namespace underworld::game::gameplay::npcs {
 struct NpcVisualSet final {
     simulation::DefinitionId id{};
     core::ColorRGBA8 markerColor{};
+    std::optional<presentation::DirectionalAnimationRef> idle;
 };
 
 class NpcVisualCatalog final {
@@ -28,6 +30,10 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const NpcVisualSet& require(
         const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, NpcVisualSet,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return visuals_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, NpcVisualSet,
@@ -49,6 +55,10 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const NpcDefinition& require(
         const simulation::DefinitionId& id) const;
+    [[nodiscard]] const std::unordered_map<simulation::DefinitionId, NpcDefinition,
+                                           simulation::DefinitionIdHash>& values() const noexcept {
+        return definitions_;
+    }
 
 private:
     std::unordered_map<simulation::DefinitionId, NpcDefinition,
