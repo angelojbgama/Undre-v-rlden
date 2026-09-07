@@ -10,8 +10,8 @@ void PresentationFeedbackController::consume(const simulation::EventBuffer& even
                                               simulation::EntityHandle player,
                                               PresentationEffectSystem& effects) const {
     for (const auto& event : events.events()) {
-        if (const auto* entered = std::get_if<simulation::MapEntered>(&event)) {
-            static_cast<void>(entered);
+        if (const auto* mapEntered = std::get_if<simulation::MapEntered>(&event)) {
+            static_cast<void>(mapEntered);
             // Presentation state is derived from the active map's region events.  A map
             // activation must not carry sources or transients from the previous map.
             effects.clearAll();
@@ -24,10 +24,10 @@ void PresentationFeedbackController::consume(const simulation::EventBuffer& even
             if (requested->mapId.empty() || requested->mapId == map.id) {
                 static_cast<void>(effects.play(requested->effectId));
             }
-        } else if (const auto* entered = std::get_if<simulation::RegionEntered>(&event)) {
-            if (entered->mapId != map.id) continue;
+        } else if (const auto* regionEntered = std::get_if<simulation::RegionEntered>(&event)) {
+            if (regionEntered->mapId != map.id) continue;
             const auto region = std::find_if(map.regions.begin(), map.regions.end(),
-                [&](const auto& value) { return value.id == entered->regionId; });
+                [&](const auto& value) { return value.id == regionEntered->regionId; });
             if (region != map.regions.end() && region->environmentEffectId) {
                 static_cast<void>(effects.activatePersistent(
                     *region->environmentEffectId,

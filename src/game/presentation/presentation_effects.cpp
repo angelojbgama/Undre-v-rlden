@@ -181,14 +181,14 @@ PresentationEffectFrame PresentationEffectSystem::resolveFrame() const {
     int shakeY = 0;
     for (const auto* effect : effects) {
         std::uint32_t elapsed = 0;
-        if (const auto found = std::find_if(transients_.begin(), transients_.end(),
+        if (const auto transient = std::find_if(transients_.begin(), transients_.end(),
                 [&](const auto& value) { return value.effectId == effect->id; });
-            found != transients_.end()) {
-            elapsed = found->elapsedTicks;
-        } else if (const auto found = std::find_if(persistent_.begin(), persistent_.end(),
+            transient != transients_.end()) {
+            elapsed = transient->elapsedTicks;
+        } else if (const auto persistent = std::find_if(persistent_.begin(), persistent_.end(),
                        [&](const auto& value) { return value.effectId == effect->id; });
-                   found != persistent_.end()) {
-            elapsed = found->elapsedTicks;
+                   persistent != persistent_.end()) {
+            elapsed = persistent->elapsedTicks;
         }
 
         if (effect->cameraShake) {

@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commdlg.h>
+#include <shellapi.h>
 
 #include "editor/editor_app.h"
 #include "editor/editor_launch.h"
@@ -64,7 +65,7 @@ private:
         case WM_KEYUP:if(wp==VK_SPACE)input_.space=false;modifiers();return 0;
         case WM_KILLFOCUS:if(GetCapture()==window_)ReleaseCapture();input_.pointer.leftDown=false;input_.pointer.middleDown=false;input_.space=false;input_.focusLost=true;InvalidateRect(window_,nullptr,FALSE);return 0;
         case WM_COMMAND:menuCommand(LOWORD(wp));InvalidateRect(window_,nullptr,FALSE);return 0;
-        case WM_TIMER:if(wp==autosaveTimerId){std::string error;app_.autosave(error);InvalidateRect(window_,nullptr,FALSE);}else if(wp==previewTimerId){++input_.previewTicks;InvalidateRect(window_,nullptr,FALSE);}return 0;
+        case WM_TIMER:if(wp==autosaveTimerId){std::string error;static_cast<void>(app_.autosave(error));InvalidateRect(window_,nullptr,FALSE);}else if(wp==previewTimerId){++input_.previewTicks;InvalidateRect(window_,nullptr,FALSE);}return 0;
         case WM_CLOSE:if(confirmUnsaved())DestroyWindow(window_);return 0;
         case WM_DESTROY:window_=nullptr;PostQuitMessage(0);return 0;
         default:return DefWindowProcW(window_,message,wp,lp);}
@@ -92,7 +93,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){try{
     for(int i=0;i<argc;++i)argv.push_back(raw[i]); std::string error;
     const auto options=underworld::editor::parseEditorLaunchOptions(argc,argv.data(),error); LocalFree(raw);
     if(!options) throw std::runtime_error(error);
-    const auto assetRoot=options->assetRoot.value_or(findAssetRoot());
+    const auto assetRoot=options->assetRoot.value_or(underworld::editor::findAssetRoot());
     std::optional<underworld::editor::ContentWorkspaceDocument> document;
     underworld::game::GameContentRegistry registry;
     if (options->contentRoot) {
