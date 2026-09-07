@@ -938,6 +938,174 @@ bool runContentStudioVisuals(ScenarioContext& context) {
     return resolved && math && playback && profile && context.step();
 }
 
+bool runContentStudioGameplay(ScenarioContext& context) {
+    namespace content = game::content;
+    namespace editor = underworld::editor;
+    namespace gameplay = game::gameplay;
+    namespace presentation = game::presentation;
+    namespace simulation = underworld::simulation;
+    namespace creatures = game::gameplay::creatures;
+    namespace dialogue = game::gameplay::dialogue;
+    namespace quests = game::gameplay::quests;
+    if (!runBaseline(context)) { return false; }
+
+    const auto root = std::filesystem::temp_directory_path() /
+                      "underworld_playtest_content_studio_gameplay";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+    const auto source = root / "studio-gameplay.json";
+    std::string error;
+    if (!context.require(content::writeAuthoredContentJsonFile(
+            source, content::makeBuiltinAuthoredContent(), error),
+                         "content studio gameplay could not write its source fixture")) {
+        std::filesystem::remove_all(root, fsError);
+        return false;
+    }
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    if (!context.require(document && document->valid(),
+                         "content studio gameplay opened its authored workspace")) {
+        std::filesystem::remove_all(root, fsError);
+        return false;
+    }
+
+    content::AuthoredBehaviorProfile behavior{{"behavior.studio.playtest"}, 96, 144, 20, 30};
+    content::AuthoredAttack attack;
+    attack.id = {"attack.studio.playtest"};
+    attack.kind = gameplay::AttackKind::meleeHitbox;
+    attack.damage = {2, 1};
+    attack.totalTicks = 8;
+    attack.cooldownTicks = 12;
+    attack.maximumRangePixels = 32;
+    attack.visualActionId = {"attack.sword"};
+    attack.meleeHitboxes = gameplay::DirectionalBoxes{};
+    for (auto& box : attack.meleeHitboxes->values) box = {-8, -8, 16, 16};
+    attack.timeline = {{1, gameplay::AttackTimelineEventKind::activateHitbox},
+                       {4, gameplay::AttackTimelineEventKind::deactivateHitbox}};
+    content::AuthoredItem item;
+    item.id = {"item.studio.playtest"};
+    item.visualId = {"visual.item.life_potion"};
+    item.category = gameplay::ItemCategory::consumable;
+    item.stackLimit = 10;
+    item.use = gameplay::ItemUseDefinition{gameplay::ItemUseKind::restoreHealth, 3};
+    content::AuthoredPickup pickup;
+    pickup.id = {"pickup.studio.playtest"};
+    pickup.visualId = {"visual.pickup.heart"};
+    pickup.collectionBounds = {-5, -5, 10, 10};
+    pickup.payload = content::AuthoredItemPickup{item.id, 1};
+    content::AuthoredRewardProfile profile;
+    profile.id = {"reward.studio.playtest"};
+    profile.experience = 15;
+    profile.loot.push_back({pickup.id, 5000, 1, 1});
+    content::AuthoredEnemy enemy;
+    enemy.id = {"enemy.studio.playtest"};
+    enemy.visualSetId = creatures::soldierVisualId();
+    enemy.behaviorProfileId = behavior.id;
+    enemy.maximumHealth = 6;
+    enemy.movementSpeedSubpixelsPerTick = 128;
+    enemy.collisionBody = {0, -8, 12, 8};
+    enemy.hurtbox = {-6, -20, 12, 20};
+    enemy.attackIds = {attack.id};
+    enemy.rewardProfileId = profile.id;
+    content::AuthoredWorldObject object;
+    object.id = {"object.studio.playtest"};
+    object.visualSetId = {"visual.object.chest"};
+    object.interactable = gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}};
+    object.activation = gameplay::ObjectActivationDefinition{
+        gameplay::ObjectActivationMode::interactToggle, false, std::nullopt};
+    content::AuthoredRewardGrant grant;
+    grant.id = {"reward.grant.studio.playtest"};
+    grant.experience = 20;
+    grant.gold = 3;
+    grant.items.push_back({item.id, 1});
+    content::AuthoredQuest quest;
+    quest.id = {"quest.studio.playtest"};
+    quest.title = "Studio quest";
+    quest.rewardGrantId = grant.id;
+    quest.objectives.push_back({{"objective.studio.playtest"}, quests::QuestObjectiveKind::kill,
+                                enemy.id, 1, "Defeat the authored creature"});
+    content::AuthoredDialogue conversation;
+    conversation.id = {"dialogue.studio.playtest"};
+    conversation.entryNodeId = {"entry"};
+    content::AuthoredDialogueNode node;
+    node.id = {"entry"};
+    node.speaker = "Studio NPC";
+    node.pages = {"The content pipeline is editable."};
+    node.choices.push_back({"Accept", {"entry"}, {},
+                            {{dialogue::DialogueActionKind::startQuest, quest.id}}});
+    conversation.nodes.push_back(node);
+    content::AuthoredNpc npc;
+    npc.id = {"npc.studio.playtest"};
+    npc.visualSetId = {"visual.npc.scholar"};
+    npc.interaction = gameplay::InteractionArea{{-8, -8, 16, 16}, true};
+    npc.defaultDialogueId = conversation.id;
+    npc.tags = {"studio"};
+    content::AuthoredShop shop;
+    shop.id = {"shop.studio.playtest"};
+    shop.offers.push_back({item.id, 12, 4});
+    content::AuthoredPlayerProgression progression;
+    progression.id = {"progression.studio.playtest"};
+    progression.baseStats.maximumHealth = 8;
+    progression.cumulativeExperienceThresholds = {0, 25, 70};
+    content::AuthoredPresentationEffect effect;
+    effect.id = {"effect.studio.playtest"};
+    effect.durationTicks = 6;
+    effect.overlay = presentation::ColorOverlayDefinition{{255, 255, 255, 48},
+        presentation::PresentationOverlayMode::linearFadeOut, 0,
+        presentation::PresentationCompositionLayer::final};
+
+    bool authored = document->addBehavior(source, behavior, error) &&
+        document->addAttack(source, attack, error) &&
+        document->addItem(source, item, error) &&
+        document->addPickup(source, pickup, error) &&
+        document->addRewardProfile(source, profile, error) &&
+        document->addEnemy(source, enemy, error) &&
+        document->addObject(source, object, error) &&
+        document->addRewardGrant(source, grant, error) &&
+        document->addQuest(source, quest, error) &&
+        document->addDialogue(source, conversation, error) &&
+        document->addNpc(source, npc, error) &&
+        document->addShop(source, shop, error) &&
+        document->addPlayerProgression(source, progression, error) &&
+        document->addPresentationEffect(source, effect, error);
+    if (!context.require(authored && document->valid(),
+                         "content studio gameplay authored all typed relationships")) {
+        std::filesystem::remove_all(root, fsError);
+        return false;
+    }
+    if (!context.require(document->saveAll(error),
+                         "content studio gameplay saved its authored DTOs")) {
+        std::filesystem::remove_all(root, fsError);
+        return false;
+    }
+    auto reloaded = editor::ContentWorkspaceDocument::open(root, error);
+    const bool relationships = context.require(
+        reloaded && reloaded->valid() && reloaded->enemy(enemy.id) &&
+        reloaded->attack(attack.id) && reloaded->item(item.id) &&
+        reloaded->pickup(pickup.id) && reloaded->object(object.id) &&
+        reloaded->dialogue(conversation.id) && reloaded->quest(quest.id) &&
+        reloaded->shop(shop.id) && reloaded->presentationEffect(effect.id),
+        "content studio gameplay save/reload preserves cross-category references");
+    bool runtime = false;
+    if (relationships && reloaded->compiledRegistry()) {
+        simulation::EntityHandlePool handles;
+        creatures::EnemyFactory factory(handles, reloaded->compiledRegistry()->enemies(),
+                                        reloaded->compiledRegistry()->behaviors(),
+                                        reloaded->compiledRegistry()->attacks(),
+                                        reloaded->compiledRegistry()->projectiles());
+        auto enemyInstance = factory.create(handles, enemy.id, {32, 32}, gameplay::FacingDirection::down);
+        gameplay::WorldObjectFactory objectFactory(handles, reloaded->compiledRegistry()->objects(),
+                                                   reloaded->compiledRegistry()->items());
+        auto objectInstance = objectFactory.create(handles, object.id, {16, 16});
+        runtime = enemyInstance.definition().id == enemy.id &&
+            objectInstance.definition().id == object.id && objectInstance.hasActivation();
+    }
+    const bool runtimeCheck = context.require(runtime,
+        "content studio gameplay definitions instantiate through existing runtime factories");
+    std::filesystem::remove_all(root, fsError);
+    return relationships && runtimeCheck && context.step();
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -1216,6 +1384,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runVisualContent(context);
     } else if (name == "content_studio_visuals") {
         passed = runContentStudioVisuals(context);
+    } else if (name == "content_studio_gameplay") {
+        passed = runContentStudioGameplay(context);
     } else if (name == "interactive_world") {
         passed = runInteractiveWorld(context);
     } else if (name == "rewards_loot") {
@@ -1233,7 +1403,8 @@ const std::vector<std::string> allScenarios{
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "presentation_feedback", "interactive_world", "visual_content", "content_studio_visuals", "rewards_loot"};
+        "presentation_feedback", "interactive_world", "visual_content", "content_studio_visuals",
+        "content_studio_gameplay", "rewards_loot"};
 
 } // namespace
 

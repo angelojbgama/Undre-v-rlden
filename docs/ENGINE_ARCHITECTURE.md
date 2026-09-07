@@ -1913,3 +1913,36 @@ order, and no automatic slicing, asset import, timeline/curve system or image
 preview database is introduced. Flexible character profiles continue to require only
 `idle`; optional move/hurt/death/dead states and arbitrary visual action IDs use the
 same exact/default/deterministic-direction fallback as runtime.
+
+## Content Studio gameplay authoring
+
+The single MAP/CONTENT shell now exposes typed gameplay authoring without a
+reflection or property-generation framework:
+
+```text
+typed inspector
+      ↓
+ContentWorkspaceDocument mutation API
+      ↓
+individual AuthoredContentPack source file
+      ↓
+workspace merge + provenance
+      ↓
+ContentValidator
+      ↓
+ContentCompiler
+      ↓
+GameContentRegistry
+      ↓
+existing runtime factories and systems
+```
+
+Reference pickers consume the authored `ContentDefinitionIndex` in lexical ID
+order and remain usable while a workspace is semantically invalid. Missing
+references are displayed and preserved so the user can repair them incrementally.
+The typed inspectors cover projectiles, attacks and fixed-tick timelines, behavior
+profiles, enemies, items, pickups, world-object capabilities, NPCs, structured
+dialogue, quests, rewards, shops, progression and presentation effects. Dialogue
+and quest authoring use ordered lists rather than a node graph. Tilesets,
+authoring descriptors, tile semantics and stamps remain read-only until the 18D
+MAP/content workflow.

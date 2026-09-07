@@ -105,6 +105,9 @@ private:
     [[nodiscard]] bool runVisualValidation();
     void drawContentPreview(EditorUiContext& ui, const EditorInputState& input,
                             core::RectI canvas);
+    void drawGameplayContentInspector(EditorUiContext& ui, const EditorInputState& input,
+                                      core::RectI panel, const ContentDefinitionKey& key,
+                                      int inspectorY);
     void resetContentPreviewState() noexcept;
     void handleContentPreview(EditorUiContext& ui, const EditorInputState& input,
                               core::RectI canvas);
@@ -144,16 +147,21 @@ private:
     ContentDefinitionKind selectedContentCategory_{ContentDefinitionKind::visualImage};
     std::optional<ContentDefinitionKey> selectedContentDefinition_;
     std::optional<ContentDefinitionKey> contentEditKey_;
-    std::array<std::string, 40> contentEditValues_{};
+    std::array<std::string, 160> contentEditValues_{};
     std::size_t selectedAnimationFrameIndex_{};
     std::size_t selectedAnimationMarkerIndex_{};
     std::size_t contentEditFrame_{static_cast<std::size_t>(-1)};
     std::size_t contentEditMarker_{static_cast<std::size_t>(-1)};
+    std::size_t contentDialogueConditionIndex_{static_cast<std::size_t>(-1)};
+    std::size_t contentDialogueActionIndex_{static_cast<std::size_t>(-1)};
     int contentFocusedField_{-1};
     bool contentStaticSourceEnabled_{};
     int contentCategoryScroll_{};
     int contentFrameScroll_{};
     int contentMarkerScroll_{};
+    int contentInspectorScroll_{};
+    std::string newContentDefinitionId_;
+    std::string newContentDefinitionFile_;
     PreviewClipState previewClipState_{PreviewClipState::idle};
     simulation::DefinitionId previewActionId_{};
     PreviewClipState contentBindingState_{PreviewClipState::idle};

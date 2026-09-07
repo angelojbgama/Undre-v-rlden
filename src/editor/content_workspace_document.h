@@ -93,6 +93,36 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const game::content::AuthoredNpcVisualSet* npcVisual(
         const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredProjectile* projectile(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredAttack* attack(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredBehaviorProfile* behavior(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredEnemy* enemy(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredItem* item(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredWorldObject* object(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredPickup* pickup(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredNpc* npc(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredDialogue* dialogue(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredQuest* quest(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredPlayerProgression* playerProgression(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredRewardProfile* rewardProfile(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredRewardGrant* rewardGrant(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredShop* shop(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredPresentationEffect* presentationEffect(
+        const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] static const std::vector<ContentDefinitionKind>& categoryOrder() noexcept;
     [[nodiscard]] static const char* categoryName(ContentDefinitionKind kind) noexcept;
     [[nodiscard]] static std::optional<ContentDefinitionKind> categoryFromName(
@@ -173,6 +203,96 @@ public:
                                        game::content::AuthoredNpcVisualSet value,
                                        std::string& error);
     [[nodiscard]] bool removeNpcVisual(const simulation::DefinitionId& id, std::string& error);
+
+    [[nodiscard]] bool addProjectile(const std::filesystem::path& file,
+                                     game::content::AuthoredProjectile value,
+                                     std::string& error);
+    [[nodiscard]] bool updateProjectile(const simulation::DefinitionId& id,
+                                        game::content::AuthoredProjectile value,
+                                        std::string& error);
+    [[nodiscard]] bool removeProjectile(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addAttack(const std::filesystem::path& file,
+                                 game::content::AuthoredAttack value, std::string& error);
+    [[nodiscard]] bool updateAttack(const simulation::DefinitionId& id,
+                                    game::content::AuthoredAttack value, std::string& error);
+    [[nodiscard]] bool removeAttack(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addBehavior(const std::filesystem::path& file,
+                                   game::content::AuthoredBehaviorProfile value,
+                                   std::string& error);
+    [[nodiscard]] bool updateBehavior(const simulation::DefinitionId& id,
+                                      game::content::AuthoredBehaviorProfile value,
+                                      std::string& error);
+    [[nodiscard]] bool removeBehavior(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addEnemy(const std::filesystem::path& file,
+                                game::content::AuthoredEnemy value, std::string& error);
+    [[nodiscard]] bool updateEnemy(const simulation::DefinitionId& id,
+                                   game::content::AuthoredEnemy value, std::string& error);
+    [[nodiscard]] bool removeEnemy(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addItem(const std::filesystem::path& file,
+                               game::content::AuthoredItem value, std::string& error);
+    [[nodiscard]] bool updateItem(const simulation::DefinitionId& id,
+                                  game::content::AuthoredItem value, std::string& error);
+    [[nodiscard]] bool removeItem(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addPickup(const std::filesystem::path& file,
+                                 game::content::AuthoredPickup value, std::string& error);
+    [[nodiscard]] bool updatePickup(const simulation::DefinitionId& id,
+                                    game::content::AuthoredPickup value, std::string& error);
+    [[nodiscard]] bool removePickup(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addObject(const std::filesystem::path& file,
+                                 game::content::AuthoredWorldObject value, std::string& error);
+    [[nodiscard]] bool updateObject(const simulation::DefinitionId& id,
+                                    game::content::AuthoredWorldObject value, std::string& error);
+    [[nodiscard]] bool removeObject(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addNpc(const std::filesystem::path& file,
+                              game::content::AuthoredNpc value, std::string& error);
+    [[nodiscard]] bool updateNpc(const simulation::DefinitionId& id,
+                                 game::content::AuthoredNpc value, std::string& error);
+    [[nodiscard]] bool removeNpc(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addDialogue(const std::filesystem::path& file,
+                                   game::content::AuthoredDialogue value, std::string& error);
+    [[nodiscard]] bool updateDialogue(const simulation::DefinitionId& id,
+                                      game::content::AuthoredDialogue value, std::string& error);
+    [[nodiscard]] bool removeDialogue(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addQuest(const std::filesystem::path& file,
+                                game::content::AuthoredQuest value, std::string& error);
+    [[nodiscard]] bool updateQuest(const simulation::DefinitionId& id,
+                                   game::content::AuthoredQuest value, std::string& error);
+    [[nodiscard]] bool removeQuest(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addPlayerProgression(const std::filesystem::path& file,
+                                             game::content::AuthoredPlayerProgression value,
+                                             std::string& error);
+    [[nodiscard]] bool updatePlayerProgression(const simulation::DefinitionId& id,
+                                                game::content::AuthoredPlayerProgression value,
+                                                std::string& error);
+    [[nodiscard]] bool removePlayerProgression(const simulation::DefinitionId& id,
+                                               std::string& error);
+    [[nodiscard]] bool addRewardProfile(const std::filesystem::path& file,
+                                        game::content::AuthoredRewardProfile value,
+                                        std::string& error);
+    [[nodiscard]] bool updateRewardProfile(const simulation::DefinitionId& id,
+                                           game::content::AuthoredRewardProfile value,
+                                           std::string& error);
+    [[nodiscard]] bool removeRewardProfile(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addRewardGrant(const std::filesystem::path& file,
+                                      game::content::AuthoredRewardGrant value,
+                                      std::string& error);
+    [[nodiscard]] bool updateRewardGrant(const simulation::DefinitionId& id,
+                                         game::content::AuthoredRewardGrant value,
+                                         std::string& error);
+    [[nodiscard]] bool removeRewardGrant(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addShop(const std::filesystem::path& file,
+                               game::content::AuthoredShop value, std::string& error);
+    [[nodiscard]] bool updateShop(const simulation::DefinitionId& id,
+                                  game::content::AuthoredShop value, std::string& error);
+    [[nodiscard]] bool removeShop(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addPresentationEffect(const std::filesystem::path& file,
+                                             game::content::AuthoredPresentationEffect value,
+                                             std::string& error);
+    [[nodiscard]] bool updatePresentationEffect(const simulation::DefinitionId& id,
+                                                game::content::AuthoredPresentationEffect value,
+                                                std::string& error);
+    [[nodiscard]] bool removePresentationEffect(const simulation::DefinitionId& id,
+                                                std::string& error);
 
     [[nodiscard]] bool removeDefinition(const ContentDefinitionKey& key, std::string& error);
 

@@ -130,7 +130,7 @@ FASE 17 — Visual Content Boundary                     DONE
 FASE 18 — Content Studio                              IN PROGRESS
 18A — Content Studio Foundation                       DONE
 18B — Visual Asset + Animation Authoring              DONE
-18C — Gameplay Content Editors                        FUTURE
+18C — Gameplay Content Editors                        DONE
 18D — Unified Content/Map Workflow                    FUTURE
 ```
 
@@ -1354,7 +1354,8 @@ it does not regenerate manual authored geometry after a `.umap` is opened.
 14E — Encounter Foundation — DONE.
 
 The full Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
-networking remain future work. Content Studio 18A is now the active foundation slice.
+networking remain future work. Content Studio 18A, 18B and 18C are now closed; 18D is
+the remaining Studio slice for unified MAP/content authoring.
 The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
 
@@ -1519,12 +1520,14 @@ object and NPC visual profiles have typed binding/state inspectors, including
 optional states, arbitrary visual actions, directional fallback and NPC marker
 fallback. Preview ticks come from a dedicated editor timer and are never driven by
 paint frequency. Grid/viewport state is editor-only and is not serialized.
-18C — Gameplay Content Editors — FUTURE.
+18C — Gameplay Content Editors — DONE. Typed gameplay inspectors now cover the
+runtime-content categories while map-semantic categories remain read-only.
 18D — Unified Content/Map Workflow — FUTURE.
 
 The next phase is not started here. Asset import, automatic slicing, complex timeline
-editing, hot reload, gameplay inspectors, node graphs, LLM authoring, scripting and
-networking remain deferred.
+editing, hot reload, node graphs, LLM authoring, scripting and networking remain
+deferred. Tileset/semantic/stamp editors and the unified MAP/content workflow remain
+for 18D.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

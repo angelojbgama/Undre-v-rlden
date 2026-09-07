@@ -82,8 +82,9 @@ assets, tileset loading and generic impact VFX remain fixed presentation concern
 this phase. Content Studio 18A provides the typed workspace-document shell and 18B
 adds editor-only spritesheet selection, grid/pan/zoom and AnimationClip/Animator
 playback through the same secure asset resolver used by runtime. Preview state is not
-serialized. Asset import, automatic slicing, complex timelines and gameplay
-definition inspectors remain future work.
+serialized. Asset import, automatic slicing and complex timeline tooling remain
+future work; gameplay inspectors are provided by 18C while map-semantic inspectors
+remain deferred.
 
 ## Content Studio source ownership
 
@@ -103,7 +104,24 @@ static sprites (including optional source rectangles and anchors), animations
 (including complete frame/marker data) and flexible enemy visual profiles. Phase 18B
 adds editor-only spritesheet selection, grid/pan/zoom and playback; these settings
 are not serialized. The preview uses the same secure asset resolver and immutable
-animation-clip construction as runtime, while asset import, automatic slicing,
-complex timelines and gameplay definition inspectors remain future work. Explicit
+animation-clip construction as runtime, while asset import, automatic slicing and
+complex timeline tooling remain future work. Explicit
 workspace validation continues to run `VisualContentLoader` against the selected
 asset roots without changing the authored JSON format.
+
+## Content Studio gameplay authoring
+
+Content Studio 18C adds typed inspectors and document mutations for projectiles,
+attacks, behaviors, enemies, items, pickups, objects, NPCs, dialogues, quests,
+player progressions, reward profiles, reward grants, shops and presentation
+effects. Reference pickers use the authored workspace index in lexical ID order;
+broken references remain editable and are never silently replaced. Definition IDs
+are stable during editing, so a rename is expressed as create/update references/
+delete.
+
+Attack timelines remain fixed-tick gameplay data, dialogue remains a structured
+node/page/choice list rather than a graph, reward profiles remain probabilistic,
+reward grants remain guaranteed, and shops deliberately have no stock system.
+Tilesets, authoring descriptors, tile semantics and stamps remain read-only until
+18D integrates content authoring with the MAP workflow. Semantic-invalid documents
+remain structurally saveable while compilation is unavailable.

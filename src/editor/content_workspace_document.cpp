@@ -268,6 +268,30 @@ const game::content::AuthoredNpcVisualSet* ContentWorkspaceDocument::npcVisual(
     return mergedAuthored_ ? findId(mergedAuthored_->npcVisuals, id) : nullptr;
 }
 
+#define UNDERWORLD_CONTENT_GETTER(name, member, type) \
+const game::content::type* ContentWorkspaceDocument::name( \
+    const simulation::DefinitionId& id) const noexcept { \
+    return mergedAuthored_ ? findId(mergedAuthored_->member, id) : nullptr; \
+}
+
+UNDERWORLD_CONTENT_GETTER(projectile, projectiles, AuthoredProjectile)
+UNDERWORLD_CONTENT_GETTER(attack, attacks, AuthoredAttack)
+UNDERWORLD_CONTENT_GETTER(behavior, behaviors, AuthoredBehaviorProfile)
+UNDERWORLD_CONTENT_GETTER(enemy, enemies, AuthoredEnemy)
+UNDERWORLD_CONTENT_GETTER(item, items, AuthoredItem)
+UNDERWORLD_CONTENT_GETTER(object, objects, AuthoredWorldObject)
+UNDERWORLD_CONTENT_GETTER(pickup, pickups, AuthoredPickup)
+UNDERWORLD_CONTENT_GETTER(npc, npcs, AuthoredNpc)
+UNDERWORLD_CONTENT_GETTER(dialogue, dialogues, AuthoredDialogue)
+UNDERWORLD_CONTENT_GETTER(quest, quests, AuthoredQuest)
+UNDERWORLD_CONTENT_GETTER(playerProgression, playerProgressions, AuthoredPlayerProgression)
+UNDERWORLD_CONTENT_GETTER(rewardProfile, rewardProfiles, AuthoredRewardProfile)
+UNDERWORLD_CONTENT_GETTER(rewardGrant, rewardGrants, AuthoredRewardGrant)
+UNDERWORLD_CONTENT_GETTER(shop, shops, AuthoredShop)
+UNDERWORLD_CONTENT_GETTER(presentationEffect, presentationEffects, AuthoredPresentationEffect)
+
+#undef UNDERWORLD_CONTENT_GETTER
+
 std::filesystem::path ContentWorkspaceDocument::resolveDocumentPath(
     const std::filesystem::path& path) const {
     if (path.is_absolute()) return absoluteNormal(path);
@@ -403,12 +427,29 @@ bool ContentWorkspaceDocument::addDefinition(
     if ([&] {
         const auto* local = file;
         const auto category = categoryName(kind);
+        if (std::string_view(category) == "tilesets") return containsId(local->authored.tilesets, id);
+        if (std::string_view(category) == "projectiles") return containsId(local->authored.projectiles, id);
+        if (std::string_view(category) == "attacks") return containsId(local->authored.attacks, id);
+        if (std::string_view(category) == "behaviors") return containsId(local->authored.behaviors, id);
+        if (std::string_view(category) == "enemies") return containsId(local->authored.enemies, id);
+        if (std::string_view(category) == "items") return containsId(local->authored.items, id);
+        if (std::string_view(category) == "objects") return containsId(local->authored.objects, id);
+        if (std::string_view(category) == "pickups") return containsId(local->authored.pickups, id);
+        if (std::string_view(category) == "npcs") return containsId(local->authored.npcs, id);
+        if (std::string_view(category) == "npcVisuals") return containsId(local->authored.npcVisuals, id);
+        if (std::string_view(category) == "dialogues") return containsId(local->authored.dialogues, id);
+        if (std::string_view(category) == "quests") return containsId(local->authored.quests, id);
+        if (std::string_view(category) == "playerProgressions") return containsId(local->authored.playerProgressions, id);
+        if (std::string_view(category) == "rewardProfiles") return containsId(local->authored.rewardProfiles, id);
+        if (std::string_view(category) == "rewardGrants") return containsId(local->authored.rewardGrants, id);
+        if (std::string_view(category) == "shops") return containsId(local->authored.shops, id);
+        if (std::string_view(category) == "presentationEffects") return containsId(local->authored.presentationEffects, id);
         if (std::string_view(category) == "visualImages") return containsId(local->authored.visualImages, id);
         if (std::string_view(category) == "staticSprites") return containsId(local->authored.staticSprites, id);
         if (std::string_view(category) == "animations") return containsId(local->authored.animations, id);
         if (std::string_view(category) == "enemyVisuals") return containsId(local->authored.enemyVisuals, id);
         if (std::string_view(category) == "objectVisuals") return containsId(local->authored.objectVisuals, id);
-        return containsId(local->authored.npcVisuals, id);
+        return false;
     }()) { error = "definition ID already exists"; return false; }
     return mutateFile(path, [&](AuthoredContentPack& pack) { mutation(pack); return true; }, error);
 }
@@ -657,6 +698,43 @@ bool ContentWorkspaceDocument::removeNpcVisual(const simulation::DefinitionId& i
     return removeDefinition({ContentDefinitionKind::npcVisual, id}, error);
 }
 
+#define UNDERWORLD_CONTENT_EDITORS(methodName, kindName, memberName, typeName) \
+bool ContentWorkspaceDocument::add##methodName(const std::filesystem::path& file, \
+                                             game::content::typeName value, std::string& error) { \
+    const auto id = value.id; \
+    return addDefinition(ContentDefinitionKind::kindName, file, id, \
+        [value = std::move(value)](AuthoredContentPack& pack) { pack.memberName.push_back(value); }, error); \
+} \
+bool ContentWorkspaceDocument::update##methodName(const simulation::DefinitionId& id, \
+                                                game::content::typeName value, std::string& error) { \
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; } \
+    return mutateDefinition(ContentDefinitionKind::kindName, id, \
+        [value = std::move(value), id](AuthoredContentPack& pack) { \
+            auto* current = findId(pack.memberName, id); if (!current) return false; *current = value; return true; \
+        }, error); \
+} \
+bool ContentWorkspaceDocument::remove##methodName(const simulation::DefinitionId& id, std::string& error) { \
+    return removeDefinition({ContentDefinitionKind::kindName, id}, error); \
+}
+
+UNDERWORLD_CONTENT_EDITORS(Projectile, projectile, projectiles, AuthoredProjectile)
+UNDERWORLD_CONTENT_EDITORS(Attack, attack, attacks, AuthoredAttack)
+UNDERWORLD_CONTENT_EDITORS(Behavior, behavior, behaviors, AuthoredBehaviorProfile)
+UNDERWORLD_CONTENT_EDITORS(Enemy, enemy, enemies, AuthoredEnemy)
+UNDERWORLD_CONTENT_EDITORS(Item, item, items, AuthoredItem)
+UNDERWORLD_CONTENT_EDITORS(Pickup, pickup, pickups, AuthoredPickup)
+UNDERWORLD_CONTENT_EDITORS(Object, object, objects, AuthoredWorldObject)
+UNDERWORLD_CONTENT_EDITORS(Npc, npc, npcs, AuthoredNpc)
+UNDERWORLD_CONTENT_EDITORS(Dialogue, dialogue, dialogues, AuthoredDialogue)
+UNDERWORLD_CONTENT_EDITORS(Quest, quest, quests, AuthoredQuest)
+UNDERWORLD_CONTENT_EDITORS(PlayerProgression, playerProgression, playerProgressions, AuthoredPlayerProgression)
+UNDERWORLD_CONTENT_EDITORS(RewardProfile, rewardProfile, rewardProfiles, AuthoredRewardProfile)
+UNDERWORLD_CONTENT_EDITORS(RewardGrant, rewardGrant, rewardGrants, AuthoredRewardGrant)
+UNDERWORLD_CONTENT_EDITORS(Shop, shop, shops, AuthoredShop)
+UNDERWORLD_CONTENT_EDITORS(PresentationEffect, presentationEffect, presentationEffects, AuthoredPresentationEffect)
+
+#undef UNDERWORLD_CONTENT_EDITORS
+
 bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key, std::string& error) {
     return mutateDefinition(key.kind, key.id,
         [key](AuthoredContentPack& pack) {
@@ -673,6 +751,21 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
             case ContentDefinitionKind::enemyVisual: return erase(pack.enemyVisuals);
             case ContentDefinitionKind::objectVisual: return erase(pack.objectVisuals);
             case ContentDefinitionKind::npcVisual: return erase(pack.npcVisuals);
+            case ContentDefinitionKind::projectile: return erase(pack.projectiles);
+            case ContentDefinitionKind::attack: return erase(pack.attacks);
+            case ContentDefinitionKind::behavior: return erase(pack.behaviors);
+            case ContentDefinitionKind::enemy: return erase(pack.enemies);
+            case ContentDefinitionKind::item: return erase(pack.items);
+            case ContentDefinitionKind::object: return erase(pack.objects);
+            case ContentDefinitionKind::pickup: return erase(pack.pickups);
+            case ContentDefinitionKind::npc: return erase(pack.npcs);
+            case ContentDefinitionKind::dialogue: return erase(pack.dialogues);
+            case ContentDefinitionKind::quest: return erase(pack.quests);
+            case ContentDefinitionKind::playerProgression: return erase(pack.playerProgressions);
+            case ContentDefinitionKind::rewardProfile: return erase(pack.rewardProfiles);
+            case ContentDefinitionKind::rewardGrant: return erase(pack.rewardGrants);
+            case ContentDefinitionKind::shop: return erase(pack.shops);
+            case ContentDefinitionKind::presentationEffect: return erase(pack.presentationEffects);
             default: return false;
             }
         }, error);

@@ -73,7 +73,48 @@ enum ContentEditField : int {
     fieldNpcIdleUp,
     fieldNpcIdleSide,
     fieldPreviewGridOrigin,
-    fieldPreviewGridCell
+    fieldPreviewGridCell,
+    fieldNewDefinitionId,
+    fieldNewDefinitionFile,
+    fieldProjectileVisual, fieldProjectileFacing, fieldProjectileSpeed,
+    fieldProjectileLifetime, fieldProjectileHitbox, fieldProjectileOffsetsDown,
+    fieldProjectileOffsetsUp, fieldProjectileOffsetsLeft, fieldProjectileOffsetsRight,
+    fieldAttackKind, fieldAttackDamage, fieldAttackKnockback, fieldAttackTotal,
+    fieldAttackCooldown, fieldAttackMinimum, fieldAttackMaximum, fieldAttackVisual,
+    fieldAttackProjectile, fieldAttackMeleeDown, fieldAttackMeleeUp,
+    fieldAttackMeleeLeft, fieldAttackMeleeRight, fieldAttackTimelineTick,
+    fieldAttackTimelineKind,
+    fieldBehaviorDetection, fieldBehaviorDisengage, fieldBehaviorIdle, fieldBehaviorWander,
+    fieldEnemyVisual, fieldEnemyBehavior, fieldEnemyFaction, fieldEnemyHealth,
+    fieldEnemySpeed, fieldEnemyCollision, fieldEnemyHurtbox, fieldEnemyReward,
+    fieldEnemyAttack,
+    fieldItemVisual, fieldItemCategory, fieldItemStack, fieldItemUseAmount,
+    fieldItemEquipmentSlot, fieldItemEquipmentHealth, fieldItemEquipmentAttack,
+    fieldPickupVisual, fieldPickupBounds, fieldPickupPayload, fieldPickupAmount,
+    fieldPickupItem, fieldPickupQuantity,
+    fieldObjectVisual, fieldObjectInteractBounds, fieldObjectCapacity,
+    fieldObjectDestructibleHealth, fieldObjectDestructibleHurtbox,
+    fieldObjectDestructibleDuration, fieldObjectDoorState, fieldObjectDoorBounds,
+    fieldObjectActivationMode, fieldObjectActivationInitial, fieldObjectActivationBounds,
+    fieldNpcVisual, fieldNpcInteractionBounds, fieldNpcDialogue, fieldNpcTag,
+    fieldDialogueEntry, fieldDialogueNodeId, fieldDialogueSpeaker, fieldDialoguePage,
+    fieldDialogueNext, fieldDialogueChoiceLabel, fieldDialogueChoiceTarget,
+    fieldDialogueFlag, fieldDialogueActionTarget, fieldDialogueConditionKind,
+    fieldDialogueActionKind,
+    fieldQuestTitle, fieldQuestTag, fieldQuestReward, fieldQuestObjectiveId,
+    fieldQuestObjectiveKind, fieldQuestObjectiveTarget, fieldQuestObjectiveCount,
+    fieldQuestObjectiveDescription,
+    fieldRewardProfileExperience, fieldRewardPickup, fieldRewardChance,
+    fieldRewardMinimum, fieldRewardMaximum,
+    fieldRewardGrantExperience, fieldRewardGrantGold, fieldRewardGrantItem,
+    fieldRewardGrantQuantity,
+    fieldShopItem, fieldShopBuyPrice, fieldShopSellPrice,
+    fieldProgressionHealth, fieldProgressionThreshold,
+    fieldPresentationLifetime, fieldPresentationDuration, fieldPresentationPriority,
+    fieldPresentationShake, fieldPresentationOverlay, fieldPresentationOverlayMode,
+    fieldPresentationOverlayPulse, fieldPresentationOverlayLayer, fieldPresentationVision,
+    fieldPresentationFade,
+    contentEditFieldCount
 };
 
 int parsePositive(const std::string& value) {
@@ -325,6 +366,11 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         return;
     }
     (void)ui.button({left.x + 92, 8, 82, 20}, "CONTENT", true);
+    if (ui.pointerInside({right.x, right.y + 118, right.width, right.height - 260}) &&
+        input.pointer.wheelDelta != 0) {
+        contentInspectorScroll_ = std::clamp(
+            contentInspectorScroll_ - (input.pointer.wheelDelta / 120) * 36, 0, 2200);
+    }
     ui.label("CATEGORIES", left.x + 8, 38);
     const auto& order = ContentWorkspaceDocument::categoryOrder();
     const int listTop = 54;
@@ -369,12 +415,80 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                        {center.x + 8, previewTop, center.width - 16,
                         std::max(1, center.height - previewTop - 8)});
 
+    const auto createDefinition = [&]() {
+        if (!contentWorkspace_->writable()) { status_ = "Builtin content is read-only"; return; }
+        if (newContentDefinitionId_.empty() || newContentDefinitionFile_.empty()) {
+            status_ = "Enter a definition ID and destination .json file"; return;
+        }
+        const auto file = std::filesystem::path{newContentDefinitionFile_};
+        const auto id = simulation::DefinitionId{newContentDefinitionId_};
+        std::string error;
+        bool created = false;
+        switch (selectedContentCategory_) {
+        case ContentDefinitionKind::projectile: { game::content::AuthoredProjectile value; value.id=id; created = contentWorkspace_->addProjectile(file, value, error); break; }
+        case ContentDefinitionKind::attack: { game::content::AuthoredAttack value; value.id=id; created = contentWorkspace_->addAttack(file, value, error); break; }
+        case ContentDefinitionKind::behavior: { game::content::AuthoredBehaviorProfile value; value.id=id; created = contentWorkspace_->addBehavior(file, value, error); break; }
+        case ContentDefinitionKind::enemy: { game::content::AuthoredEnemy value; value.id=id; value.maximumHealth=1; value.collisionBody={0,0,16,16}; value.hurtbox={0,0,16,16}; created=contentWorkspace_->addEnemy(file,value,error); break; }
+        case ContentDefinitionKind::item: { game::content::AuthoredItem value; value.id=id; value.stackLimit=1; created=contentWorkspace_->addItem(file,value,error); break; }
+        case ContentDefinitionKind::object: { game::content::AuthoredWorldObject value; value.id=id; created=contentWorkspace_->addObject(file,value,error); break; }
+        case ContentDefinitionKind::pickup: { game::content::AuthoredPickup value; value.id=id; value.collectionBounds={0,0,16,16}; created=contentWorkspace_->addPickup(file,value,error); break; }
+        case ContentDefinitionKind::npc: { game::content::AuthoredNpc value; value.id=id; value.interaction.bounds={0,0,16,16}; created=contentWorkspace_->addNpc(file,value,error); break; }
+        case ContentDefinitionKind::dialogue: { game::content::AuthoredDialogue value; value.id=id; created=contentWorkspace_->addDialogue(file,value,error); break; }
+        case ContentDefinitionKind::quest: { game::content::AuthoredQuest value; value.id=id; created=contentWorkspace_->addQuest(file,value,error); break; }
+        case ContentDefinitionKind::playerProgression: { game::content::AuthoredPlayerProgression value; value.id=id; value.baseStats.maximumHealth=1; created=contentWorkspace_->addPlayerProgression(file,value,error); break; }
+        case ContentDefinitionKind::rewardProfile: { game::content::AuthoredRewardProfile value; value.id=id; created=contentWorkspace_->addRewardProfile(file,value,error); break; }
+        case ContentDefinitionKind::rewardGrant: { game::content::AuthoredRewardGrant value; value.id=id; created=contentWorkspace_->addRewardGrant(file,value,error); break; }
+        case ContentDefinitionKind::shop: { game::content::AuthoredShop value; value.id=id; created=contentWorkspace_->addShop(file,value,error); break; }
+        case ContentDefinitionKind::presentationEffect: { game::content::AuthoredPresentationEffect value; value.id=id; created=contentWorkspace_->addPresentationEffect(file,value,error); break; }
+        case ContentDefinitionKind::visualImage: { game::content::AuthoredVisualImage value; value.id=id; created=contentWorkspace_->addVisualImage(file,value,error); break; }
+        case ContentDefinitionKind::staticSprite: { game::content::AuthoredStaticSprite value; value.id=id; created=contentWorkspace_->addStaticSprite(file,value,error); break; }
+        case ContentDefinitionKind::animation: { game::content::AuthoredAnimation value; value.id=id; created=contentWorkspace_->addAnimation(file,value,error); break; }
+        case ContentDefinitionKind::enemyVisual: { game::content::AuthoredEnemyVisual value; value.id=id; created=contentWorkspace_->addEnemyVisual(file,value,error); break; }
+        case ContentDefinitionKind::objectVisual: { game::content::AuthoredWorldObjectVisual value; value.id=id; created=contentWorkspace_->addObjectVisual(file,value,error); break; }
+        case ContentDefinitionKind::npcVisual: { game::content::AuthoredNpcVisualSet value; value.id=id; created=contentWorkspace_->addNpcVisual(file,value,error); break; }
+        default: error = "This category is reserved for the unified map workflow (18D)"; break;
+        }
+        if (!created) { status_ = error; return; }
+        selectedContentDefinition_ = ContentDefinitionKey{selectedContentCategory_, id};
+        refreshContentRegistry();
+        selectedContentDefinition_ = ContentDefinitionKey{selectedContentCategory_, id};
+        status_ = "Definition created";
+    };
+
     ui.label("INSPECTOR", right.x + 8, 10);
     if (!selectedContentDefinition_) {
         ui.label("Select a definition", right.x + 8, 30);
+        if (contentWorkspace_->writable()) {
+            if (newContentDefinitionFile_.empty() && !contentWorkspace_->files().empty()) {
+                std::error_code relativeError;
+                newContentDefinitionFile_ = std::filesystem::relative(
+                    contentWorkspace_->files().front().path, contentWorkspace_->root(), relativeError).generic_string();
+            }
+            ui.label("NEW DEFINITION", right.x + 8, 58);
+            if (ui.textField({right.x + 8, 72, right.width - 16, 20}, newContentDefinitionId_,
+                             contentFocusedField_ == fieldNewDefinitionId)) contentFocusedField_ = fieldNewDefinitionId;
+            if (ui.textField({right.x + 8, 108, right.width - 16, 20}, newContentDefinitionFile_,
+                             contentFocusedField_ == fieldNewDefinitionFile)) contentFocusedField_ = fieldNewDefinitionFile;
+            ui.label("id / destination .json", right.x + 8, 132);
+            if (ui.button({right.x + 8, 150, right.width - 16, 20}, "CREATE DEFINITION")) createDefinition();
+            if (ui.button({right.x + 8, 174, right.width - 16, 20}, "CREATE CONTENT FILE") &&
+                contentWorkspace_->writable()) {
+                std::string fileError;
+                if (contentWorkspace_->createContentFile(newContentDefinitionFile_, fileError)) {
+                    status_ = "Content JSON v5 file created";
+                } else status_ = fileError;
+            }
+        }
     } else {
         const auto& key = *selectedContentDefinition_;
         ui.label(std::string(key.id.value()), right.x + 8, 30);
+        if (contentWorkspace_->writable() &&
+            ui.button({right.x + right.width - 86, 30, 78, 20}, "NEW")) {
+            selectedContentDefinition_.reset();
+            resetContentEditState();
+            status_ = "New definition";
+            return;
+        }
         if (const auto* source = contentWorkspace_->sourceFor(key)) {
             ui.label("Source:", right.x + 8, 52);
             ui.label(source->sourcePath.filename().string(), right.x + 8, 66);
@@ -382,8 +496,29 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         }
         ui.label(contentWorkspace_->writable() ? "Typed document API: editable" : "Builtin content - read only",
                  right.x + 8, 104);
-        int inspectorY = 124;
-        if (key.kind == ContentDefinitionKind::visualImage) {
+        if (contentWorkspace_->writable() && ui.button({right.x + right.width - 86, 102, 78, 20}, "DELETE")) {
+            std::string removeError;
+            if (contentWorkspace_->removeDefinition(key, removeError)) {
+                selectedContentDefinition_.reset();
+                resetContentEditState();
+                refreshContentRegistry();
+                status_ = "Definition deleted";
+                return;
+            }
+            status_ = removeError;
+        }
+        int inspectorY = 124 - contentInspectorScroll_;
+        const bool gameplayCategory = key.kind == ContentDefinitionKind::projectile ||
+            key.kind == ContentDefinitionKind::attack || key.kind == ContentDefinitionKind::behavior ||
+            key.kind == ContentDefinitionKind::enemy || key.kind == ContentDefinitionKind::item ||
+            key.kind == ContentDefinitionKind::pickup || key.kind == ContentDefinitionKind::object ||
+            key.kind == ContentDefinitionKind::npc || key.kind == ContentDefinitionKind::dialogue ||
+            key.kind == ContentDefinitionKind::quest || key.kind == ContentDefinitionKind::playerProgression ||
+            key.kind == ContentDefinitionKind::rewardProfile || key.kind == ContentDefinitionKind::rewardGrant ||
+            key.kind == ContentDefinitionKind::shop || key.kind == ContentDefinitionKind::presentationEffect;
+        if (gameplayCategory) {
+            drawGameplayContentInspector(ui, input, right, key, inspectorY);
+        } else if (key.kind == ContentDefinitionKind::visualImage) {
             const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
             if (pack) {
                 const auto authored = std::find_if(pack->visualImages.begin(), pack->visualImages.end(),
@@ -1124,6 +1259,1207 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
     }
 }
 
+void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorInputState& input,
+                                              core::RectI panel, const ContentDefinitionKey& key,
+                                              int inspectorY) {
+    if (!contentWorkspace_) return;
+    const bool writable = contentWorkspace_->writable();
+    auto field = [&](std::string_view label, int id, int y, int width = -1) {
+        ui.label(label, panel.x + 8, y);
+        if (ui.textField({panel.x + 8, y + 12, width < 0 ? panel.width - 16 : width, 20},
+                         contentEditValues_[id], contentFocusedField_ == id)) {
+            contentFocusedField_ = id;
+        }
+    };
+    auto reference = [&](std::string_view label, ContentDefinitionKind kind, int id, int y) {
+        field(label, id, y, panel.width - 82);
+        const auto ids = [&] {
+            std::vector<simulation::DefinitionId> result;
+            for (const auto& candidate : contentWorkspace_->index()) {
+                if (candidate.kind == kind) result.push_back(candidate.id);
+            }
+            std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+                return left.value() < right.value();
+            });
+            return result;
+        }();
+        if (ui.button({panel.x + panel.width - 68, y + 12, 20, 20}, "<") && !ids.empty()) {
+            const auto it = std::find(ids.begin(), ids.end(), simulation::DefinitionId{contentEditValues_[id]});
+            const auto index = it == ids.begin() || it == ids.end()
+                ? ids.size() - 1 : static_cast<std::size_t>(it - ids.begin() - 1);
+            contentEditValues_[id] = std::string(ids[index].value());
+            contentFocusedField_ = id;
+        }
+        if (ui.button({panel.x + panel.width - 46, y + 12, 20, 20}, ">") && !ids.empty()) {
+            const auto it = std::find(ids.begin(), ids.end(), simulation::DefinitionId{contentEditValues_[id]});
+            const auto index = it == ids.end() ? 0 : (static_cast<std::size_t>(it - ids.begin() + 1) % ids.size());
+            contentEditValues_[id] = std::string(ids[index].value());
+            contentFocusedField_ = id;
+        }
+        if (ui.button({panel.x + panel.width - 24, y + 12, 16, 20}, "O") && !ids.empty()) {
+            const auto it = std::find(ids.begin(), ids.end(), simulation::DefinitionId{contentEditValues_[id]});
+            if (it != ids.end()) {
+                selectedContentCategory_ = kind;
+                selectedContentDefinition_ = ContentDefinitionKey{kind, *it};
+                resetContentEditState();
+            }
+        }
+        if (!contentEditValues_[id].empty() &&
+            std::find(ids.begin(), ids.end(), simulation::DefinitionId{contentEditValues_[id]}) == ids.end()) {
+            ui.label("MISSING", panel.x + panel.width - 68, y + 34);
+        }
+    };
+    auto enumButton = [&](std::string_view label, int id, int y,
+                          std::span<const std::string_view> values) {
+        ui.label(label, panel.x + 8, y);
+        if (ui.button({panel.x + 8, y + 12, panel.width - 16, 20}, contentEditValues_[id], false)) {
+            auto it = std::find(values.begin(), values.end(), contentEditValues_[id]);
+            const auto next = it == values.end() ? 0 : (static_cast<std::size_t>(it - values.begin() + 1) % values.size());
+            contentEditValues_[id] = std::string(values[next]);
+            contentFocusedField_ = id;
+            return true;
+        }
+        return false;
+    };
+    auto rectText = [](const world::AabbI& value) {
+        return std::to_string(value.x) + "," + std::to_string(value.y) + "," +
+               std::to_string(value.width) + "," + std::to_string(value.height);
+    };
+    auto parseRect = [](std::string_view value) -> std::optional<world::AabbI> {
+        const auto parsed = parseIntegerList<4>(value);
+        if (!parsed) return std::nullopt;
+        return world::AabbI{(*parsed)[0], (*parsed)[1], (*parsed)[2], (*parsed)[3]};
+    };
+    auto boxText = [](const game::gameplay::DirectionalBoxDefinition& value) {
+        return std::to_string(value.offsetX) + "," + std::to_string(value.offsetY) + "," +
+               std::to_string(value.width) + "," + std::to_string(value.height);
+    };
+    auto parseBox = [](std::string_view value) -> std::optional<game::gameplay::DirectionalBoxDefinition> {
+        const auto parsed = parseIntegerList<4>(value);
+        if (!parsed) return std::nullopt;
+        return game::gameplay::DirectionalBoxDefinition{(*parsed)[0], (*parsed)[1],
+                                                        (*parsed)[2], (*parsed)[3]};
+    };
+    auto parseOffset = [](std::string_view value) -> std::optional<core::WorldPointI> {
+        const auto parsed = parseIntegerList<2>(value);
+        if (!parsed) return std::nullopt;
+        return core::WorldPointI{(*parsed)[0], (*parsed)[1]};
+    };
+    auto parseU64 = [](std::string_view value) -> std::optional<std::uint64_t> {
+        if (value.empty()) return std::nullopt;
+        std::uint64_t result{};
+        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
+        return error == std::errc{} && end == value.data() + value.size()
+            ? std::optional<std::uint64_t>{result} : std::nullopt;
+    };
+    auto refresh = [&](std::string_view message) {
+        refreshContentRegistry();
+        status_ = std::string(message);
+    };
+    const auto facingNames = std::array<std::string_view, 4>{"down", "up", "left", "right"};
+    const auto attackKinds = std::array<std::string_view, 2>{"meleeHitbox", "projectile"};
+    const auto factions = std::array<std::string_view, 4>{"player", "enemy", "environment", "neutral"};
+    const auto itemCategories = std::array<std::string_view, 4>{"consumable", "equipment", "key", "misc"};
+    const auto doorStates = std::array<std::string_view, 3>{"locked", "closed", "open"};
+    const auto activationModes = std::array<std::string_view, 2>{"interactToggle", "playerPressure"};
+    const auto lifetimeNames = std::array<std::string_view, 2>{"transient", "persistent"};
+    const auto equipmentSlots = std::array<std::string_view, 2>{"armor", "accessory"};
+    const auto overlayModes = std::array<std::string_view, 3>{"constant", "linearFadeOut", "pulse"};
+    const auto compositionLayers = std::array<std::string_view, 2>{"world", "final"};
+
+    if (key.kind == ContentDefinitionKind::projectile) {
+        const auto* value = contentWorkspace_->projectile(key.id);
+        if (!value) return;
+        if (contentEditKey_ != key) {
+            resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldProjectileVisual] = std::string(value->visualId.value());
+            contentEditValues_[fieldProjectileFacing] = std::string(facingNames[static_cast<int>(value->canonicalFacing)]);
+            contentEditValues_[fieldProjectileSpeed] = std::to_string(value->speedPixelsPerTick);
+            contentEditValues_[fieldProjectileLifetime] = std::to_string(value->lifetimeTicks);
+            contentEditValues_[fieldProjectileHitbox] = std::to_string(value->hitboxWidth) + "," + std::to_string(value->hitboxHeight);
+            const auto offsetText = [](core::WorldPointI point) { return std::to_string(point.x) + "," + std::to_string(point.y); };
+            contentEditValues_[fieldProjectileOffsetsDown] = offsetText(value->spawnOffsets.values[0]);
+            contentEditValues_[fieldProjectileOffsetsUp] = offsetText(value->spawnOffsets.values[1]);
+            contentEditValues_[fieldProjectileOffsetsLeft] = offsetText(value->spawnOffsets.values[2]);
+            contentEditValues_[fieldProjectileOffsetsRight] = offsetText(value->spawnOffsets.values[3]);
+        }
+        reference("visualId (StaticSprite)", ContentDefinitionKind::staticSprite, fieldProjectileVisual, inspectorY);
+        const bool facingChanged = enumButton("canonicalFacing", fieldProjectileFacing, inspectorY + 52, facingNames);
+        field("speedPixelsPerTick", fieldProjectileSpeed, inspectorY + 102);
+        field("lifetimeTicks", fieldProjectileLifetime, inspectorY + 150);
+        field("hitbox width,height", fieldProjectileHitbox, inspectorY + 198);
+        field("spawn down x,y", fieldProjectileOffsetsDown, inspectorY + 246);
+        field("spawn up x,y", fieldProjectileOffsetsUp, inspectorY + 294);
+        field("spawn left x,y", fieldProjectileOffsetsLeft, inspectorY + 342);
+        field("spawn right x,y", fieldProjectileOffsetsRight, inspectorY + 390);
+        if (writable && (input.enterPressed || facingChanged) &&
+            (contentFocusedField_ >= fieldProjectileVisual && contentFocusedField_ <= fieldProjectileOffsetsRight)) {
+            auto updated = *value; std::string error; bool accepted = false;
+            if (contentFocusedField_ == fieldProjectileVisual) { updated.visualId = simulation::DefinitionId{contentEditValues_[fieldProjectileVisual]}; accepted = true; }
+            else if (contentFocusedField_ == fieldProjectileFacing) {
+                const auto it = std::find(facingNames.begin(), facingNames.end(), contentEditValues_[fieldProjectileFacing]);
+                if (it != facingNames.end()) { updated.canonicalFacing = static_cast<game::gameplay::FacingDirection>(it - facingNames.begin()); accepted = true; }
+            } else if (contentFocusedField_ == fieldProjectileSpeed) { if (const auto p = parseIntegerList<1>(contentEditValues_[fieldProjectileSpeed])) { updated.speedPixelsPerTick = (*p)[0]; accepted = true; } }
+            else if (contentFocusedField_ == fieldProjectileLifetime) { if (const auto p = parseUnsigned(contentEditValues_[fieldProjectileLifetime])) { updated.lifetimeTicks = *p; accepted = true; } }
+            else if (contentFocusedField_ == fieldProjectileHitbox) { if (const auto p = parseIntegerList<2>(contentEditValues_[fieldProjectileHitbox])) { updated.hitboxWidth = (*p)[0]; updated.hitboxHeight = (*p)[1]; accepted = true; } }
+            else { const auto p = parseOffset(contentEditValues_[contentFocusedField_]); if (p) { updated.spawnOffsets.values[contentFocusedField_ - fieldProjectileOffsetsDown] = *p; accepted = true; } }
+            if (!accepted && error.empty()) error = "projectile field has an invalid value";
+            if (accepted && contentWorkspace_->updateProjectile(key.id, updated, error)) refresh("Projectile updated"); else if (!accepted || !error.empty()) status_ = error;
+        }
+        return;
+    }
+
+    if (key.kind == ContentDefinitionKind::behavior) {
+        const auto* value = contentWorkspace_->behavior(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldBehaviorDetection] = std::to_string(value->detectionRangePixels);
+            contentEditValues_[fieldBehaviorDisengage] = std::to_string(value->disengageRangePixels);
+            contentEditValues_[fieldBehaviorIdle] = std::to_string(value->idleDurationTicks);
+            contentEditValues_[fieldBehaviorWander] = std::to_string(value->wanderDurationTicks); }
+        field("detectionRangePixels", fieldBehaviorDetection, inspectorY);
+        field("disengageRangePixels", fieldBehaviorDisengage, inspectorY + 48);
+        field("idleDurationTicks", fieldBehaviorIdle, inspectorY + 96);
+        field("wanderDurationTicks", fieldBehaviorWander, inspectorY + 144);
+        if (writable && input.enterPressed && contentFocusedField_ >= fieldBehaviorDetection && contentFocusedField_ <= fieldBehaviorWander) {
+            auto updated = *value; std::string error; bool ok = false;
+            if (contentFocusedField_ == fieldBehaviorDetection) { if (auto p = parseIntegerList<1>(contentEditValues_[contentFocusedField_])) { updated.detectionRangePixels = (*p)[0]; ok = true; } }
+            else if (contentFocusedField_ == fieldBehaviorDisengage) { if (auto p = parseIntegerList<1>(contentEditValues_[contentFocusedField_])) { updated.disengageRangePixels = (*p)[0]; ok = true; } }
+            else if (contentFocusedField_ == fieldBehaviorIdle) { if (auto p = parseUnsigned(contentEditValues_[contentFocusedField_])) { updated.idleDurationTicks = *p; ok = true; } }
+            else if (auto p = parseUnsigned(contentEditValues_[contentFocusedField_])) { updated.wanderDurationTicks = *p; ok = true; }
+            if (!ok) error = "behavior field has an invalid value";
+            if (ok && contentWorkspace_->updateBehavior(key.id, updated, error)) refresh("Behavior updated"); else status_ = error;
+        }
+        return;
+    }
+
+    if (key.kind == ContentDefinitionKind::item) {
+        const auto* value = contentWorkspace_->item(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldItemVisual] = std::string(value->visualId.value());
+            contentEditValues_[fieldItemCategory] = std::array<std::string_view,4>{"consumable","equipment","key","misc"}[static_cast<int>(value->category)];
+            contentEditValues_[fieldItemStack] = std::to_string(value->stackLimit);
+            contentEditValues_[fieldItemUseAmount] = value->use ? std::to_string(value->use->amount) : "0";
+            contentEditValues_[fieldItemEquipmentSlot] = value->equipment ? (value->equipment->slot == game::content::AuthoredEquipmentSlot::armor ? "armor" : "accessory") : "armor";
+            contentEditValues_[fieldItemEquipmentHealth] = value->equipment ? std::to_string(value->equipment->modifiers.maximumHealthBonus) : "0";
+            contentEditValues_[fieldItemEquipmentAttack] = value->equipment ? std::to_string(value->equipment->modifiers.playerAttackDamageBonus) : "0"; }
+        reference("visualId (StaticSprite)", ContentDefinitionKind::staticSprite, fieldItemVisual, inspectorY);
+        const bool categoryChanged = enumButton("category", fieldItemCategory, inspectorY + 52, itemCategories);
+        field("stackLimit", fieldItemStack, inspectorY + 102);
+        const bool useToggle = ui.button({panel.x + 8, inspectorY + 150, panel.width - 16, 20}, value->use ? "USE ENABLED" : "USE DISABLED", value->use.has_value());
+        field("use restoreHealth amount", fieldItemUseAmount, inspectorY + 178);
+        const bool equipmentToggle = ui.button({panel.x + 8, inspectorY + 226, panel.width - 16, 20}, value->equipment ? "EQUIPMENT ENABLED" : "EQUIPMENT DISABLED", value->equipment.has_value());
+        const bool slotChanged = enumButton("equipment slot", fieldItemEquipmentSlot, inspectorY + 254, equipmentSlots);
+        field("maximumHealthBonus", fieldItemEquipmentHealth, inspectorY + 304);
+        field("playerAttackDamageBonus", fieldItemEquipmentAttack, inspectorY + 352);
+        if (writable && (input.enterPressed || categoryChanged || useToggle || equipmentToggle || slotChanged) && contentFocusedField_ >= fieldItemVisual && contentFocusedField_ <= fieldItemEquipmentAttack) {
+            auto updated = *value; std::string error; bool ok = true;
+            if (contentFocusedField_ == fieldItemVisual) updated.visualId = simulation::DefinitionId{contentEditValues_[fieldItemVisual]};
+            else if (contentFocusedField_ == fieldItemCategory) { const auto it = std::find(itemCategories.begin(), itemCategories.end(), contentEditValues_[fieldItemCategory]); if (it == itemCategories.end()) ok=false; else updated.category = static_cast<game::gameplay::ItemCategory>(it-itemCategories.begin()); }
+            else if (contentFocusedField_ == fieldItemStack) { if (auto p=parseUnsigned(contentEditValues_[fieldItemStack])) updated.stackLimit=*p; else ok=false; }
+            else if (contentFocusedField_ == fieldItemUseAmount || useToggle) { if (useToggle) { if (updated.use) updated.use.reset(); else updated.use = game::gameplay::ItemUseDefinition{}; } else if (auto p=parseIntegerList<1>(contentEditValues_[fieldItemUseAmount])) { if (!updated.use) updated.use = game::gameplay::ItemUseDefinition{}; updated.use->amount=(*p)[0]; } else ok=false; }
+            else if ((contentFocusedField_ >= fieldItemEquipmentSlot && contentFocusedField_ <= fieldItemEquipmentAttack) || equipmentToggle) { if (equipmentToggle) { if (updated.equipment) updated.equipment.reset(); else updated.equipment = game::content::AuthoredEquipment{}; } else { if (!updated.equipment) updated.equipment = game::content::AuthoredEquipment{}; if (contentFocusedField_ == fieldItemEquipmentSlot) { const auto it=std::find(equipmentSlots.begin(),equipmentSlots.end(),contentEditValues_[fieldItemEquipmentSlot]); if(it==equipmentSlots.end()) ok=false; else updated.equipment->slot=static_cast<game::content::AuthoredEquipmentSlot>(it-equipmentSlots.begin()); } else if (auto p=parseIntegerList<1>(contentEditValues_[contentFocusedField_])) { if(contentFocusedField_==fieldItemEquipmentHealth) updated.equipment->modifiers.maximumHealthBonus=(*p)[0]; else updated.equipment->modifiers.playerAttackDamageBonus=(*p)[0]; } else ok=false; } }
+            if (!ok) error = "item field has an invalid value";
+            if (ok && contentWorkspace_->updateItem(key.id, updated, error)) refresh("Item updated"); else if (!ok || !error.empty()) status_ = error;
+        }
+        return;
+    }
+
+    if (key.kind == ContentDefinitionKind::presentationEffect) {
+        const auto* value = contentWorkspace_->presentationEffect(key.id); if (!value) return;
+        auto colorText = [](const core::ColorRGBA8& c) { return std::to_string(c.r)+","+std::to_string(c.g)+","+std::to_string(c.b)+","+std::to_string(c.a); };
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldPresentationLifetime] = value->lifetime == game::presentation::PresentationEffectLifetime::transient ? "transient" : "persistent";
+            contentEditValues_[fieldPresentationDuration] = std::to_string(value->durationTicks);
+            contentEditValues_[fieldPresentationPriority] = std::to_string(value->priority);
+            contentEditValues_[fieldPresentationShake] = value->cameraShake ? std::to_string(value->cameraShake->amplitudePixels) : "";
+            contentEditValues_[fieldPresentationOverlay] = value->overlay ? colorText(value->overlay->color) : "";
+            contentEditValues_[fieldPresentationOverlayMode] = value->overlay ?
+                std::string(overlayModes[static_cast<int>(value->overlay->mode)]) : "constant";
+            contentEditValues_[fieldPresentationOverlayPulse] = value->overlay ?
+                std::to_string(value->overlay->pulsePeriodTicks) : "0";
+            contentEditValues_[fieldPresentationOverlayLayer] = value->overlay ?
+                std::string(compositionLayers[static_cast<int>(value->overlay->layer)]) : "world";
+            contentEditValues_[fieldPresentationVision] = value->visionMask ? std::to_string(value->visionMask->innerRadiusPixels)+","+std::to_string(value->visionMask->outerRadiusPixels)+","+std::to_string(value->visionMask->outsideAlpha)+","+colorText(value->visionMask->color) : "";
+            contentEditValues_[fieldPresentationFade] = value->fade ? colorText(value->fade->color)+","+std::to_string(value->fade->startAlpha)+","+std::to_string(value->fade->endAlpha) : ""; }
+        const bool lifeChanged = enumButton("lifetime", fieldPresentationLifetime, inspectorY, lifetimeNames);
+        field("durationTicks", fieldPresentationDuration, inspectorY + 48);
+        field("priority", fieldPresentationPriority, inspectorY + 96);
+        const bool shake = ui.button({panel.x + 8, inspectorY + 144, panel.width - 16, 20}, value->cameraShake ? "CAMERA SHAKE ON" : "CAMERA SHAKE OFF", value->cameraShake.has_value());
+        field("shake amplitude", fieldPresentationShake, inspectorY + 172);
+        const bool overlay = ui.button({panel.x + 8, inspectorY + 220, panel.width - 16, 20}, value->overlay ? "OVERLAY ON" : "OVERLAY OFF", value->overlay.has_value());
+        field("overlay color r,g,b,a", fieldPresentationOverlay, inspectorY + 248);
+        const bool overlayModeChanged = enumButton("overlay mode", fieldPresentationOverlayMode, inspectorY + 276, overlayModes);
+        field("overlay pulsePeriodTicks", fieldPresentationOverlayPulse, inspectorY + 324);
+        const bool overlayLayerChanged = enumButton("overlay layer", fieldPresentationOverlayLayer, inspectorY + 372, compositionLayers);
+        const bool vision = ui.button({panel.x + 8, inspectorY + 420, panel.width - 16, 20}, value->visionMask ? "VISION MASK ON" : "VISION MASK OFF", value->visionMask.has_value());
+        field("vision inner,outer,alpha,r,g,b,a", fieldPresentationVision, inspectorY + 448);
+        const bool fade = ui.button({panel.x + 8, inspectorY + 496, panel.width - 16, 20}, value->fade ? "FADE ON" : "FADE OFF", value->fade.has_value());
+        field("fade r,g,b,a,start,end", fieldPresentationFade, inspectorY + 524);
+        if (writable && (input.enterPressed || lifeChanged || shake || overlay || overlayModeChanged || overlayLayerChanged || vision || fade) && contentFocusedField_ >= fieldPresentationLifetime && contentFocusedField_ <= fieldPresentationFade) {
+            auto updated=*value; std::string error; bool ok=true;
+            if (contentFocusedField_==fieldPresentationLifetime || lifeChanged) { const auto it=std::find(lifetimeNames.begin(),lifetimeNames.end(),contentEditValues_[fieldPresentationLifetime]); if(it==lifetimeNames.end())ok=false; else updated.lifetime=static_cast<game::presentation::PresentationEffectLifetime>(it-lifetimeNames.begin()); }
+            if (contentFocusedField_==fieldPresentationDuration) { if(auto p=parseUnsigned(contentEditValues_[fieldPresentationDuration]))updated.durationTicks=*p;else ok=false; }
+            else if(contentFocusedField_==fieldPresentationPriority){if(auto p=parseIntegerList<1>(contentEditValues_[fieldPresentationPriority]))updated.priority=(*p)[0];else ok=false;}
+            else if(shake){if(updated.cameraShake)updated.cameraShake.reset();else updated.cameraShake=game::presentation::CameraShakeDefinition{};}
+            else if(contentFocusedField_==fieldPresentationShake){if(auto p=parseIntegerList<1>(contentEditValues_[fieldPresentationShake])){if(!updated.cameraShake)updated.cameraShake={};updated.cameraShake->amplitudePixels=(*p)[0];}else ok=false;}
+            else if(overlay){if(updated.overlay)updated.overlay.reset();else updated.overlay=game::presentation::ColorOverlayDefinition{};}
+            else if(contentFocusedField_==fieldPresentationOverlay){if(auto p=parseIntegerList<4>(contentEditValues_[fieldPresentationOverlay])){if(!updated.overlay)updated.overlay={};updated.overlay->color={static_cast<std::uint8_t>((*p)[0]),static_cast<std::uint8_t>((*p)[1]),static_cast<std::uint8_t>((*p)[2]),static_cast<std::uint8_t>((*p)[3])};}else ok=false;}
+            else if(contentFocusedField_==fieldPresentationOverlayMode||overlayModeChanged){const auto it=std::find(overlayModes.begin(),overlayModes.end(),contentEditValues_[fieldPresentationOverlayMode]);if(it==overlayModes.end())ok=false;else{if(!updated.overlay)updated.overlay={};updated.overlay->mode=static_cast<game::presentation::PresentationOverlayMode>(it-overlayModes.begin());}}
+            else if(contentFocusedField_==fieldPresentationOverlayPulse){if(auto p=parseUnsigned(contentEditValues_[fieldPresentationOverlayPulse])){if(!updated.overlay)updated.overlay={};updated.overlay->pulsePeriodTicks=*p;}else ok=false;}
+            else if(contentFocusedField_==fieldPresentationOverlayLayer||overlayLayerChanged){const auto it=std::find(compositionLayers.begin(),compositionLayers.end(),contentEditValues_[fieldPresentationOverlayLayer]);if(it==compositionLayers.end())ok=false;else{if(!updated.overlay)updated.overlay={};updated.overlay->layer=static_cast<game::presentation::PresentationCompositionLayer>(it-compositionLayers.begin());}}
+            else if(vision){if(updated.visionMask)updated.visionMask.reset();else updated.visionMask=game::presentation::VisionMaskDefinition{};}
+            else if(contentFocusedField_==fieldPresentationVision){const auto p=parseIntegerList<7>(contentEditValues_[fieldPresentationVision]);if(p){if(!updated.visionMask)updated.visionMask={};updated.visionMask->innerRadiusPixels=(*p)[0];updated.visionMask->outerRadiusPixels=(*p)[1];updated.visionMask->outsideAlpha=static_cast<std::uint8_t>((*p)[2]);updated.visionMask->color={static_cast<std::uint8_t>((*p)[3]),static_cast<std::uint8_t>((*p)[4]),static_cast<std::uint8_t>((*p)[5]),static_cast<std::uint8_t>((*p)[6])};}else ok=false;}
+            else if(fade){if(updated.fade)updated.fade.reset();else updated.fade=game::presentation::FadeDefinition{};}
+            else if(contentFocusedField_==fieldPresentationFade){const auto p=parseIntegerList<6>(contentEditValues_[fieldPresentationFade]);if(p){if(!updated.fade)updated.fade={};updated.fade->color={static_cast<std::uint8_t>((*p)[0]),static_cast<std::uint8_t>((*p)[1]),static_cast<std::uint8_t>((*p)[2]),static_cast<std::uint8_t>((*p)[3])};updated.fade->startAlpha=static_cast<std::uint8_t>((*p)[4]);updated.fade->endAlpha=static_cast<std::uint8_t>((*p)[5]);}else ok=false;}
+            if(!ok)error="presentation effect field has an invalid value";
+            if(ok&&contentWorkspace_->updatePresentationEffect(key.id,updated,error))refresh("Presentation effect updated");else if(!ok||!error.empty())status_=error;
+        }
+        return;
+    }
+
+    // The remaining inspectors use the same typed document boundary. They expose
+    // the scalar fields and list mutation entry points; detailed nested records
+    // remain editable through the full typed DTO update API used by tests/tools.
+    auto showReadOnlyFields = [&](std::string_view title, std::initializer_list<std::pair<std::string_view, std::string>> values) {
+        ui.label(title, panel.x + 8, inspectorY);
+        int y = inspectorY + 24;
+        for (const auto& [name, value] : values) { ui.label(name, panel.x + 8, y); ui.label(value, panel.x + 104, y); y += 18; }
+    };
+    if (key.kind == ContentDefinitionKind::attack) {
+        const auto* value = contentWorkspace_->attack(key.id);
+        if (!value) return;
+        const auto timelineKinds = std::array<std::string_view, 3>{
+            "activateHitbox", "deactivateHitbox", "spawnProjectile"};
+        if (contentEditKey_ != key) {
+            resetContentEditState();
+            contentEditKey_ = key;
+            selectedAnimationFrameIndex_ = 0;
+            contentEditValues_[fieldAttackKind] = value->kind == game::gameplay::AttackKind::meleeHitbox
+                ? "meleeHitbox" : "projectile";
+            contentEditValues_[fieldAttackDamage] = std::to_string(value->damage.amount);
+            contentEditValues_[fieldAttackKnockback] = std::to_string(value->damage.knockbackPixels);
+            contentEditValues_[fieldAttackTotal] = std::to_string(value->totalTicks);
+            contentEditValues_[fieldAttackCooldown] = std::to_string(value->cooldownTicks);
+            contentEditValues_[fieldAttackMinimum] = std::to_string(value->minimumRangePixels);
+            contentEditValues_[fieldAttackMaximum] = std::to_string(value->maximumRangePixels);
+            contentEditValues_[fieldAttackVisual] = std::string(value->visualActionId.value());
+            contentEditValues_[fieldAttackProjectile] = value->projectileDefinitionId
+                ? std::string(value->projectileDefinitionId->value()) : std::string{};
+            if (value->meleeHitboxes) {
+                contentEditValues_[fieldAttackMeleeDown] = boxText(value->meleeHitboxes->values[0]);
+                contentEditValues_[fieldAttackMeleeUp] = boxText(value->meleeHitboxes->values[1]);
+                contentEditValues_[fieldAttackMeleeLeft] = boxText(value->meleeHitboxes->values[2]);
+                contentEditValues_[fieldAttackMeleeRight] = boxText(value->meleeHitboxes->values[3]);
+            }
+        }
+        const bool kindChanged = enumButton("kind", fieldAttackKind, inspectorY, attackKinds);
+        field("damage", fieldAttackDamage, inspectorY + 48);
+        field("knockbackPixels", fieldAttackKnockback, inspectorY + 96);
+        field("totalTicks", fieldAttackTotal, inspectorY + 144);
+        field("cooldownTicks", fieldAttackCooldown, inspectorY + 192);
+        field("minimumRangePixels", fieldAttackMinimum, inspectorY + 240);
+        field("maximumRangePixels", fieldAttackMaximum, inspectorY + 288);
+        field("visualActionId", fieldAttackVisual, inspectorY + 336);
+        if (value->kind == game::gameplay::AttackKind::projectile) {
+            reference("projectileDefinitionId", ContentDefinitionKind::projectile,
+                      fieldAttackProjectile, inspectorY + 384);
+        } else {
+            const bool boxesEnabled = ui.button(
+                {panel.x + 8, inspectorY + 384, panel.width - 16, 20},
+                value->meleeHitboxes ? "MELEE HITBOXES ON" : "MELEE HITBOXES OFF",
+                value->meleeHitboxes.has_value());
+            field("down offsetX,offsetY,w,h", fieldAttackMeleeDown, inspectorY + 412);
+            field("up offsetX,offsetY,w,h", fieldAttackMeleeUp, inspectorY + 460);
+            field("left offsetX,offsetY,w,h", fieldAttackMeleeLeft, inspectorY + 508);
+            field("right offsetX,offsetY,w,h", fieldAttackMeleeRight, inspectorY + 556);
+            if (boxesEnabled && writable) {
+                auto updated = *value;
+                if (updated.meleeHitboxes) updated.meleeHitboxes.reset();
+                else updated.meleeHitboxes = game::gameplay::DirectionalBoxes{};
+                std::string editError;
+                if (contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                    refresh("Attack melee hitboxes toggled"); return;
+                }
+                status_ = editError;
+            }
+        }
+        const int timelineY = inspectorY + (value->kind == game::gameplay::AttackKind::projectile ? 432 : 604);
+        ui.label("TIMELINE (fixed gameplay ticks)", panel.x + 8, timelineY);
+        const std::size_t eventIndex = value->timeline.empty() ? noContentIndex :
+            std::min(selectedAnimationFrameIndex_, value->timeline.size() - 1);
+        const int rows = 4;
+        for (int row = 0; row < rows; ++row) {
+            const auto index = static_cast<std::size_t>(row);
+            if (index >= value->timeline.size()) break;
+            if (ui.button({panel.x + 8, timelineY + 16 + row * 18, panel.width - 16, 16},
+                          "event " + std::to_string(index) + " @" +
+                              std::to_string(value->timeline[index].tick), index == eventIndex)) {
+                selectedAnimationFrameIndex_ = index;
+                contentFocusedField_ = -1;
+                contentEditKey_ = key;
+            }
+        }
+        const int eventButtonsY = timelineY + 16 + rows * 18 + 2;
+        if (ui.button({panel.x + 8, eventButtonsY, 72, 18}, "ADD EVENT") && writable) {
+            auto updated = *value;
+            updated.timeline.push_back({1, game::gameplay::AttackTimelineEventKind::activateHitbox});
+            std::string editError;
+            if (contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                selectedAnimationFrameIndex_ = updated.timeline.size() - 1;
+                refresh("Attack timeline event added"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 84, eventButtonsY, 72, 18}, "REMOVE") &&
+            writable && eventIndex != noContentIndex) {
+            auto updated = *value;
+            updated.timeline.erase(updated.timeline.begin() + static_cast<std::ptrdiff_t>(eventIndex));
+            std::string editError;
+            if (contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                selectedAnimationFrameIndex_ = eventIndex == 0 ? 0 : eventIndex - 1;
+                refresh("Attack timeline event removed"); return;
+            }
+            status_ = editError;
+        }
+        if (eventIndex != noContentIndex) {
+            if (ui.button({panel.x + 160, eventButtonsY, 32, 18}, "UP") &&
+                writable && eventIndex > 0) {
+                auto updated = *value;
+                std::swap(updated.timeline[eventIndex], updated.timeline[eventIndex - 1]);
+                std::string editError;
+                if (contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                    --selectedAnimationFrameIndex_; refresh("Attack timeline event moved"); return;
+                }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 196, eventButtonsY, 44, 18}, "DOWN") &&
+                writable && eventIndex + 1 < value->timeline.size()) {
+                auto updated = *value;
+                std::swap(updated.timeline[eventIndex], updated.timeline[eventIndex + 1]);
+                std::string editError;
+                if (contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                    ++selectedAnimationFrameIndex_; refresh("Attack timeline event moved"); return;
+                }
+                status_ = editError;
+            }
+            const auto& event = value->timeline[eventIndex];
+            if (contentEditFrame_ != eventIndex) {
+                contentEditFrame_ = eventIndex;
+                contentEditValues_[fieldAttackTimelineTick] = std::to_string(event.tick);
+                contentEditValues_[fieldAttackTimelineKind] = std::string(timelineKinds[static_cast<int>(event.kind)]);
+            }
+            field("selected event tick", fieldAttackTimelineTick, eventButtonsY + 24);
+            const bool eventKindChanged = enumButton("selected event kind", fieldAttackTimelineKind,
+                                                      eventButtonsY + 72, timelineKinds);
+            if (writable && (input.enterPressed || eventKindChanged) &&
+                (contentFocusedField_ == fieldAttackTimelineTick ||
+                 contentFocusedField_ == fieldAttackTimelineKind)) {
+                auto updated = *value;
+                bool accepted = true;
+                if (contentFocusedField_ == fieldAttackTimelineTick) {
+                    if (const auto parsed = parseUnsigned(contentEditValues_[fieldAttackTimelineTick])) {
+                        updated.timeline[eventIndex].tick = *parsed;
+                    } else accepted = false;
+                } else {
+                    const auto it = std::find(timelineKinds.begin(), timelineKinds.end(),
+                                              contentEditValues_[fieldAttackTimelineKind]);
+                    if (it == timelineKinds.end()) accepted = false;
+                    else updated.timeline[eventIndex].kind =
+                        static_cast<game::gameplay::AttackTimelineEventKind>(it - timelineKinds.begin());
+                }
+                std::string editError;
+                if (accepted && contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                    refresh("Attack timeline event updated"); return;
+                }
+                status_ = accepted ? editError : "attack timeline event has an invalid value";
+            }
+        }
+        if (writable && (input.enterPressed || kindChanged) &&
+            ((contentFocusedField_ >= fieldAttackKind && contentFocusedField_ <= fieldAttackProjectile) ||
+             (contentFocusedField_ >= fieldAttackMeleeDown && contentFocusedField_ <= fieldAttackMeleeRight))) {
+            auto updated = *value;
+            std::string editError;
+            bool accepted = true;
+            if (contentFocusedField_ == fieldAttackKind) {
+                const auto it = std::find(attackKinds.begin(), attackKinds.end(),
+                                          contentEditValues_[fieldAttackKind]);
+                if (it == attackKinds.end()) accepted = false;
+                else updated.kind = static_cast<game::gameplay::AttackKind>(it - attackKinds.begin());
+            } else if (contentFocusedField_ == fieldAttackDamage) {
+                if (const auto p = parseIntegerList<1>(contentEditValues_[fieldAttackDamage])) updated.damage.amount = (*p)[0]; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackKnockback) {
+                if (const auto p = parseIntegerList<1>(contentEditValues_[fieldAttackKnockback])) updated.damage.knockbackPixels = (*p)[0]; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackTotal) {
+                if (const auto p = parseUnsigned(contentEditValues_[fieldAttackTotal])) updated.totalTicks = *p; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackCooldown) {
+                if (const auto p = parseUnsigned(contentEditValues_[fieldAttackCooldown])) updated.cooldownTicks = *p; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackMinimum) {
+                if (const auto p = parseIntegerList<1>(contentEditValues_[fieldAttackMinimum])) updated.minimumRangePixels = (*p)[0]; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackMaximum) {
+                if (const auto p = parseIntegerList<1>(contentEditValues_[fieldAttackMaximum])) updated.maximumRangePixels = (*p)[0]; else accepted = false;
+            } else if (contentFocusedField_ == fieldAttackVisual) {
+                updated.visualActionId = simulation::DefinitionId{contentEditValues_[fieldAttackVisual]};
+            } else if (contentFocusedField_ == fieldAttackProjectile) {
+                if (contentEditValues_[fieldAttackProjectile].empty()) updated.projectileDefinitionId.reset();
+                else updated.projectileDefinitionId = simulation::DefinitionId{contentEditValues_[fieldAttackProjectile]};
+            }
+            if (contentFocusedField_ >= fieldAttackMeleeDown && contentFocusedField_ <= fieldAttackMeleeRight) {
+                if (!updated.meleeHitboxes) updated.meleeHitboxes = game::gameplay::DirectionalBoxes{};
+                if (const auto parsed = parseBox(contentEditValues_[contentFocusedField_])) {
+                    updated.meleeHitboxes->values[contentFocusedField_ - fieldAttackMeleeDown] = *parsed;
+                } else accepted = false;
+            }
+            if (!accepted) editError = "attack field has an invalid value";
+            if (accepted && contentWorkspace_->updateAttack(key.id, updated, editError)) {
+                refresh("Attack updated"); return;
+            }
+            if (!editError.empty()) status_ = editError;
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::enemy) {
+        const auto* value=contentWorkspace_->enemy(key.id);if(!value)return;
+        if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldEnemyVisual]=std::string(value->visualSetId.value());contentEditValues_[fieldEnemyBehavior]=std::string(value->behaviorProfileId.value());contentEditValues_[fieldEnemyFaction]=std::array<std::string_view,4>{"player","enemy","environment","neutral"}[static_cast<int>(value->faction)];contentEditValues_[fieldEnemyHealth]=std::to_string(value->maximumHealth);contentEditValues_[fieldEnemySpeed]=std::to_string(value->movementSpeedSubpixelsPerTick);contentEditValues_[fieldEnemyCollision]=std::to_string(value->collisionBody.offsetX)+","+std::to_string(value->collisionBody.offsetY)+","+std::to_string(value->collisionBody.width)+","+std::to_string(value->collisionBody.height);contentEditValues_[fieldEnemyHurtbox]=std::to_string(value->hurtbox.offsetX)+","+std::to_string(value->hurtbox.offsetY)+","+std::to_string(value->hurtbox.width)+","+std::to_string(value->hurtbox.height);contentEditValues_[fieldEnemyReward]=value->rewardProfileId?std::string(value->rewardProfileId->value()):"";}
+        reference("visualSetId",ContentDefinitionKind::enemyVisual,fieldEnemyVisual,inspectorY);reference("behaviorProfileId",ContentDefinitionKind::behavior,fieldEnemyBehavior,inspectorY+48);const bool factionChanged=enumButton("faction",fieldEnemyFaction,inspectorY+96,factions);field("maximumHealth",fieldEnemyHealth,inspectorY+144);field("movementSpeedSubpixelsPerTick",fieldEnemySpeed,inspectorY+192);field("collision offsetX,offsetY,w,h",fieldEnemyCollision,inspectorY+240);field("hurtbox offsetX,offsetY,w,h",fieldEnemyHurtbox,inspectorY+288);reference("rewardProfileId (optional)",ContentDefinitionKind::rewardProfile,fieldEnemyReward,inspectorY+336);reference("new attack ID",ContentDefinitionKind::attack,fieldEnemyAttack,inspectorY+384);
+        if(ui.button({panel.x+8,inspectorY+432,panel.width/2-12,20},"ADD ATTACK")&&writable&&!contentEditValues_[fieldEnemyAttack].empty()){auto u=*value;u.attackIds.push_back(simulation::DefinitionId{contentEditValues_[fieldEnemyAttack]});std::string e;if(contentWorkspace_->updateEnemy(key.id,u,e))refresh("Enemy attack added");else status_=e;return;}if(ui.button({panel.x+panel.width/2,inspectorY+432,panel.width/2-8,20},"REMOVE")&&writable&&!value->attackIds.empty()){auto u=*value;u.attackIds.pop_back();std::string e;if(contentWorkspace_->updateEnemy(key.id,u,e))refresh("Enemy attack removed");else status_=e;return;}
+        ui.label("ATTACKS", panel.x + 8, inspectorY + 456);
+        for (std::size_t index = 0; index < value->attackIds.size() && index < 4; ++index) {
+            if (ui.button({panel.x + 8, inspectorY + 472 + static_cast<int>(index) * 18,
+                           panel.width - 16, 16}, value->attackIds[index].value(),
+                          index == selectedAnimationFrameIndex_)) {
+                selectedAnimationFrameIndex_ = index; contentEditFrame_ = noContentIndex;
+            }
+        }
+        const auto attackIndex = value->attackIds.empty() ? noContentIndex :
+            std::min(selectedAnimationFrameIndex_, value->attackIds.size() - 1);
+        const int attackListButtons = inspectorY + 548;
+        if (ui.button({panel.x + 8, attackListButtons, 32, 18}, "UP") && writable && attackIndex > 0) {
+            auto updated = *value; std::swap(updated.attackIds[attackIndex], updated.attackIds[attackIndex - 1]);
+            std::string editError; if (contentWorkspace_->updateEnemy(key.id, updated, editError)) { --selectedAnimationFrameIndex_; refresh("Enemy attack moved"); return; } status_ = editError;
+        }
+        if (ui.button({panel.x + 44, attackListButtons, 44, 18}, "DOWN") && writable && attackIndex != noContentIndex && attackIndex + 1 < value->attackIds.size()) {
+            auto updated = *value; std::swap(updated.attackIds[attackIndex], updated.attackIds[attackIndex + 1]);
+            std::string editError; if (contentWorkspace_->updateEnemy(key.id, updated, editError)) { ++selectedAnimationFrameIndex_; refresh("Enemy attack moved"); return; } status_ = editError;
+        }
+        if(writable&&(input.enterPressed||factionChanged)&&contentFocusedField_>=fieldEnemyVisual&&contentFocusedField_<=fieldEnemyReward){auto u=*value;std::string e;bool ok=true;if(contentFocusedField_==fieldEnemyVisual)u.visualSetId=simulation::DefinitionId{contentEditValues_[fieldEnemyVisual]};else if(contentFocusedField_==fieldEnemyBehavior)u.behaviorProfileId=simulation::DefinitionId{contentEditValues_[fieldEnemyBehavior]};else if(contentFocusedField_==fieldEnemyFaction){auto it=std::find(factions.begin(),factions.end(),contentEditValues_[fieldEnemyFaction]);if(it==factions.end())ok=false;else u.faction=static_cast<game::gameplay::Faction>(it-factions.begin());}else if(contentFocusedField_==fieldEnemyHealth){if(auto p=parseIntegerList<1>(contentEditValues_[fieldEnemyHealth]))u.maximumHealth=(*p)[0];else ok=false;}else if(contentFocusedField_==fieldEnemySpeed){if(auto p=parseIntegerList<1>(contentEditValues_[fieldEnemySpeed]))u.movementSpeedSubpixelsPerTick=(*p)[0];else ok=false;}else if(contentFocusedField_==fieldEnemyCollision){if(auto p=parseIntegerList<4>(contentEditValues_[fieldEnemyCollision])){u.collisionBody={(*p)[0],(*p)[1],(*p)[2],(*p)[3]};}else ok=false;}else if(contentFocusedField_==fieldEnemyHurtbox){if(auto p=parseIntegerList<4>(contentEditValues_[fieldEnemyHurtbox]))u.hurtbox={(*p)[0],(*p)[1],(*p)[2],(*p)[3]};else ok=false;}else if(contentEditValues_[fieldEnemyReward].empty())u.rewardProfileId.reset();else u.rewardProfileId=simulation::DefinitionId{contentEditValues_[fieldEnemyReward]};if(!ok)e="enemy field has an invalid value";if(ok&&contentWorkspace_->updateEnemy(key.id,u,e))refresh("Enemy updated");else if(!ok||!e.empty())status_=e;}
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::quest) {
+        const auto* value = contentWorkspace_->quest(key.id);
+        if (!value) return;
+        const auto objectiveKinds = std::array<std::string_view, 6>{
+            "talk", "kill", "pickup", "enter", "open", "deliver"};
+        if (contentEditKey_ != key) {
+            resetContentEditState(); contentEditKey_ = key; selectedAnimationFrameIndex_ = 0;
+            contentEditValues_[fieldQuestTitle] = value->title;
+            contentEditValues_[fieldQuestReward] = value->rewardGrantId
+                ? std::string(value->rewardGrantId->value()) : std::string{};
+            contentEditValues_[fieldQuestTag] = value->tags.empty() ? "tag" : value->tags.front();
+            contentEditMarker_ = value->tags.empty() ? noContentIndex : 0;
+            contentEditValues_[fieldQuestObjectiveId] = "objective.1";
+            contentEditValues_[fieldQuestObjectiveTarget] = {};
+            contentEditValues_[fieldQuestObjectiveDescription] = "Objective";
+            contentEditValues_[fieldQuestObjectiveCount] = "1";
+        }
+        field("title", fieldQuestTitle, inspectorY);
+        reference("rewardGrantId", ContentDefinitionKind::rewardGrant, fieldQuestReward, inspectorY + 48);
+        field("new tag", fieldQuestTag, inspectorY + 96);
+        if (ui.button({panel.x + 8, inspectorY + 144, panel.width / 2 - 12, 20}, "ADD TAG") &&
+            writable && !contentEditValues_[fieldQuestTag].empty()) {
+            auto updated = *value; updated.tags.push_back(contentEditValues_[fieldQuestTag]);
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { refresh("Quest tag added"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + panel.width / 2, inspectorY + 144, panel.width / 2 - 8, 20}, "REMOVE TAG") &&
+            writable && !value->tags.empty()) {
+            auto updated = *value; updated.tags.pop_back(); std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { refresh("Quest tag removed"); return; }
+            status_ = editError;
+        }
+        const auto tagIndex = value->tags.empty() ? noContentIndex :
+            std::min(contentEditMarker_, value->tags.size() - 1);
+        ui.label("TAGS", panel.x + 8, inspectorY + 168);
+        for (int row = 0; row < 3; ++row) {
+            const auto index = static_cast<std::size_t>(row);
+            if (index >= value->tags.size()) break;
+            if (ui.button({panel.x + 8, inspectorY + 184 + row * 18, panel.width - 16, 16},
+                          value->tags[index], index == tagIndex)) {
+                contentEditMarker_ = index;
+                contentEditValues_[fieldQuestTag] = value->tags[index];
+                contentFocusedField_ = -1;
+            }
+        }
+        const int tagButtonsY = inspectorY + 240;
+        if (ui.button({panel.x + 8, tagButtonsY, 54, 18}, "ADD") && writable &&
+            !contentEditValues_[fieldQuestTag].empty()) {
+            auto updated = *value; updated.tags.push_back(contentEditValues_[fieldQuestTag]);
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) {
+                contentEditMarker_ = updated.tags.size() - 1; refresh("Quest tag added"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 66, tagButtonsY, 54, 18}, "EDIT") && writable && tagIndex != noContentIndex) {
+            auto updated = *value; updated.tags[tagIndex] = contentEditValues_[fieldQuestTag];
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { refresh("Quest tag updated"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 124, tagButtonsY, 64, 18}, "REMOVE") && writable && tagIndex != noContentIndex) {
+            auto updated = *value; updated.tags.erase(updated.tags.begin() + static_cast<std::ptrdiff_t>(tagIndex));
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) {
+                contentEditMarker_ = tagIndex == 0 ? noContentIndex : tagIndex - 1; refresh("Quest tag removed"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 192, tagButtonsY, 32, 18}, "UP") && writable && tagIndex > 0) {
+            auto updated = *value; std::swap(updated.tags[tagIndex], updated.tags[tagIndex - 1]);
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { --contentEditMarker_; refresh("Quest tag moved"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 228, tagButtonsY, 44, 18}, "DOWN") && writable &&
+            tagIndex != noContentIndex && tagIndex + 1 < value->tags.size()) {
+            auto updated = *value; std::swap(updated.tags[tagIndex], updated.tags[tagIndex + 1]);
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { ++contentEditMarker_; refresh("Quest tag moved"); return; }
+            status_ = editError;
+        }
+        if (writable && input.enterPressed &&
+            (contentFocusedField_ == fieldQuestTitle || contentFocusedField_ == fieldQuestReward ||
+             contentFocusedField_ == fieldQuestTag)) {
+            auto updated = *value; std::string editError;
+            if (contentFocusedField_ == fieldQuestTitle) updated.title = contentEditValues_[fieldQuestTitle];
+            else if (contentFocusedField_ == fieldQuestReward) {
+                if (contentEditValues_[fieldQuestReward].empty()) updated.rewardGrantId.reset();
+                else updated.rewardGrantId = simulation::DefinitionId{contentEditValues_[fieldQuestReward]};
+            }
+            else if (tagIndex != noContentIndex) updated.tags[tagIndex] = contentEditValues_[fieldQuestTag];
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) { refresh("Quest updated"); return; }
+            status_ = editError;
+        }
+        const int listY = inspectorY + 270;
+        ui.label("OBJECTIVES", panel.x + 8, listY);
+        const auto objectiveIndex = value->objectives.empty() ? noContentIndex :
+            std::min(selectedAnimationFrameIndex_, value->objectives.size() - 1);
+        for (int row = 0; row < 4; ++row) {
+            const auto index = static_cast<std::size_t>(row);
+            if (index >= value->objectives.size()) break;
+            if (ui.button({panel.x + 8, listY + 16 + row * 18, panel.width - 16, 16},
+                          value->objectives[index].id.value(), index == objectiveIndex)) {
+                selectedAnimationFrameIndex_ = index; contentEditFrame_ = noContentIndex; contentFocusedField_ = -1;
+            }
+        }
+        const int objectiveButtonsY = listY + 90;
+        if (ui.button({panel.x + 8, objectiveButtonsY, 64, 18}, "ADD") && writable) {
+            auto updated = *value;
+            updated.objectives.push_back({simulation::DefinitionId{contentEditValues_[fieldQuestObjectiveId]},
+                game::gameplay::quests::QuestObjectiveKind::kill,
+                simulation::DefinitionId{contentEditValues_[fieldQuestObjectiveTarget]},
+                parseUnsigned(contentEditValues_[fieldQuestObjectiveCount]).value_or(1),
+                contentEditValues_[fieldQuestObjectiveDescription]});
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) {
+                selectedAnimationFrameIndex_ = updated.objectives.size() - 1; contentEditFrame_ = noContentIndex;
+                refresh("Quest objective added"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 76, objectiveButtonsY, 64, 18}, "REMOVE") && writable && objectiveIndex != noContentIndex) {
+            auto updated = *value;
+            updated.objectives.erase(updated.objectives.begin() + static_cast<std::ptrdiff_t>(objectiveIndex));
+            std::string editError;
+            if (contentWorkspace_->updateQuest(key.id, updated, editError)) {
+                selectedAnimationFrameIndex_ = objectiveIndex == 0 ? 0 : objectiveIndex - 1; contentEditFrame_ = noContentIndex;
+                refresh("Quest objective removed"); return;
+            }
+            status_ = editError;
+        }
+        if (objectiveIndex != noContentIndex) {
+            if (ui.button({panel.x + 144, objectiveButtonsY, 32, 18}, "UP") && writable && objectiveIndex > 0) {
+                auto updated = *value; std::swap(updated.objectives[objectiveIndex], updated.objectives[objectiveIndex - 1]);
+                std::string editError;
+                if (contentWorkspace_->updateQuest(key.id, updated, editError)) { --selectedAnimationFrameIndex_; contentEditFrame_ = noContentIndex; refresh("Quest objective moved"); return; }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 180, objectiveButtonsY, 44, 18}, "DOWN") && writable && objectiveIndex + 1 < value->objectives.size()) {
+                auto updated = *value; std::swap(updated.objectives[objectiveIndex], updated.objectives[objectiveIndex + 1]);
+                std::string editError;
+                if (contentWorkspace_->updateQuest(key.id, updated, editError)) { ++selectedAnimationFrameIndex_; contentEditFrame_ = noContentIndex; refresh("Quest objective moved"); return; }
+                status_ = editError;
+            }
+        }
+        if (objectiveIndex != noContentIndex) {
+            const auto& objective = value->objectives[objectiveIndex];
+            if (contentEditFrame_ != objectiveIndex) {
+                contentEditFrame_ = objectiveIndex;
+                contentEditValues_[fieldQuestObjectiveId] = std::string(objective.id.value());
+                contentEditValues_[fieldQuestObjectiveKind] = std::string(objectiveKinds[static_cast<int>(objective.kind)]);
+                contentEditValues_[fieldQuestObjectiveTarget] = std::string(objective.targetId.value());
+                contentEditValues_[fieldQuestObjectiveCount] = std::to_string(objective.requiredCount);
+                contentEditValues_[fieldQuestObjectiveDescription] = objective.description;
+            }
+            const bool objectiveKindChanged = enumButton("objective kind", fieldQuestObjectiveKind,
+                                                          objectiveButtonsY + 24, objectiveKinds);
+            const auto targetKind = [&]() -> std::optional<ContentDefinitionKind> {
+                switch (objective.kind) {
+                case game::gameplay::quests::QuestObjectiveKind::talk: return ContentDefinitionKind::npc;
+                case game::gameplay::quests::QuestObjectiveKind::kill: return ContentDefinitionKind::enemy;
+                case game::gameplay::quests::QuestObjectiveKind::pickup: return ContentDefinitionKind::pickup;
+                case game::gameplay::quests::QuestObjectiveKind::open: return ContentDefinitionKind::object;
+                case game::gameplay::quests::QuestObjectiveKind::deliver: return ContentDefinitionKind::item;
+                case game::gameplay::quests::QuestObjectiveKind::enter: return std::nullopt;
+                }
+                return std::nullopt;
+            }();
+            if (targetKind) reference("targetId", *targetKind, fieldQuestObjectiveTarget, objectiveButtonsY + 72);
+            else field("targetId (map scoped)", fieldQuestObjectiveTarget, objectiveButtonsY + 72);
+            field("requiredCount", fieldQuestObjectiveCount, objectiveButtonsY + 120);
+            field("description", fieldQuestObjectiveDescription, objectiveButtonsY + 168);
+            if (writable && (input.enterPressed || objectiveKindChanged) && contentFocusedField_ >= fieldQuestObjectiveKind &&
+                contentFocusedField_ <= fieldQuestObjectiveDescription) {
+                auto updated = *value; auto& target = updated.objectives[objectiveIndex];
+                bool accepted = true;
+                if (contentFocusedField_ == fieldQuestObjectiveKind) {
+                    const auto it = std::find(objectiveKinds.begin(), objectiveKinds.end(), contentEditValues_[fieldQuestObjectiveKind]);
+                    if (it == objectiveKinds.end()) accepted = false;
+                    else target.kind = static_cast<game::gameplay::quests::QuestObjectiveKind>(it - objectiveKinds.begin());
+                } else if (contentFocusedField_ == fieldQuestObjectiveTarget) target.targetId = simulation::DefinitionId{contentEditValues_[fieldQuestObjectiveTarget]};
+                else if (contentFocusedField_ == fieldQuestObjectiveCount) { if (const auto parsed = parseUnsigned(contentEditValues_[fieldQuestObjectiveCount])) target.requiredCount = *parsed; else accepted = false; }
+                else if (contentFocusedField_ == fieldQuestObjectiveDescription) target.description = contentEditValues_[fieldQuestObjectiveDescription];
+                std::string editError;
+                if (accepted && contentWorkspace_->updateQuest(key.id, updated, editError)) { refresh("Quest objective updated"); return; }
+                status_ = accepted ? editError : "quest objective has an invalid value";
+            }
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::dialogue) {
+        const auto* value = contentWorkspace_->dialogue(key.id);
+        if (!value) return;
+        const auto conditionKinds = std::array<std::string_view, 2>{"flagSet", "flagNotSet"};
+        const auto actionKinds = std::array<std::string_view, 4>{"setFlag", "clearFlag", "startQuest", "openShop"};
+        if (contentEditKey_ != key) {
+            resetContentEditState(); contentEditKey_ = key; selectedAnimationFrameIndex_ = 0;
+            contentEditValues_[fieldDialogueEntry] = std::string(value->entryNodeId.value());
+            contentEditValues_[fieldDialogueNodeId] = "node.1";
+            contentEditValues_[fieldDialogueSpeaker] = "Speaker";
+            contentEditValues_[fieldDialoguePage] = "Page";
+            contentEditValues_[fieldDialogueNext] = {};
+            contentEditValues_[fieldDialogueChoiceLabel] = "Choice";
+            contentEditValues_[fieldDialogueChoiceTarget] = {};
+            contentEditValues_[fieldDialogueFlag] = "flag.example";
+            contentEditValues_[fieldDialogueActionTarget] = {};
+            contentEditValues_[fieldDialogueConditionKind] = "flagSet";
+            contentEditValues_[fieldDialogueActionKind] = "setFlag";
+        }
+        const auto localNodeReference = [&](std::string_view label, int id, int y) {
+            field(label, id, y, panel.width - 82);
+            const auto current = simulation::DefinitionId{contentEditValues_[id]};
+            if (ui.button({panel.x + panel.width - 68, y + 12, 20, 20}, "<") && !value->nodes.empty()) {
+                const auto it = std::find_if(value->nodes.begin(), value->nodes.end(),
+                                             [&](const auto& node) { return node.id == current; });
+                const auto index = it == value->nodes.begin() || it == value->nodes.end()
+                    ? value->nodes.size() - 1
+                    : static_cast<std::size_t>(it - value->nodes.begin() - 1);
+                contentEditValues_[id] = std::string(value->nodes[index].id.value());
+                contentFocusedField_ = id;
+            }
+            if (ui.button({panel.x + panel.width - 46, y + 12, 20, 20}, ">") && !value->nodes.empty()) {
+                const auto it = std::find_if(value->nodes.begin(), value->nodes.end(),
+                                             [&](const auto& node) { return node.id == current; });
+                const auto index = it == value->nodes.end() ? 0 :
+                    (static_cast<std::size_t>(it - value->nodes.begin() + 1) % value->nodes.size());
+                contentEditValues_[id] = std::string(value->nodes[index].id.value());
+                contentFocusedField_ = id;
+            }
+            if (!contentEditValues_[id].empty() &&
+                std::none_of(value->nodes.begin(), value->nodes.end(),
+                             [&](const auto& node) { return node.id.value() == contentEditValues_[id]; })) {
+                ui.label("MISSING", panel.x + panel.width - 68, y + 34);
+            }
+        };
+        localNodeReference("entryNodeId", fieldDialogueEntry, inspectorY);
+        if (writable && input.enterPressed && contentFocusedField_ == fieldDialogueEntry) {
+            auto updated = *value; updated.entryNodeId = simulation::DefinitionId{contentEditValues_[fieldDialogueEntry]};
+            std::string editError;
+            if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue entry updated"); return; }
+            status_ = editError;
+        }
+        const int nodeY = inspectorY + 48;
+        ui.label("NODES", panel.x + 8, nodeY);
+        const auto nodeIndex = value->nodes.empty() ? noContentIndex :
+            std::min(selectedAnimationFrameIndex_, value->nodes.size() - 1);
+        for (int row = 0; row < 4; ++row) {
+            const auto index = static_cast<std::size_t>(row);
+            if (index >= value->nodes.size()) break;
+            if (ui.button({panel.x + 8, nodeY + 16 + row * 18, panel.width - 16, 16},
+                          value->nodes[index].id.value(), index == nodeIndex)) {
+                selectedAnimationFrameIndex_ = index; contentEditFrame_ = noContentIndex;
+                contentEditMarker_ = noContentIndex;
+                contentDialogueConditionIndex_ = noContentIndex;
+                contentDialogueActionIndex_ = noContentIndex;
+                contentFocusedField_ = -1;
+            }
+        }
+        const int nodeButtonsY = nodeY + 90;
+        if (ui.button({panel.x + 8, nodeButtonsY, 64, 18}, "ADD NODE") && writable &&
+            !contentEditValues_[fieldDialogueNodeId].empty()) {
+            auto updated = *value;
+            game::content::AuthoredDialogueNode node;
+            node.id = simulation::DefinitionId{contentEditValues_[fieldDialogueNodeId]};
+            node.speaker = contentEditValues_[fieldDialogueSpeaker];
+            node.pages = {contentEditValues_[fieldDialoguePage]};
+            node.nextNodeId = simulation::DefinitionId{contentEditValues_[fieldDialogueNext]};
+            updated.nodes.push_back(std::move(node));
+            if (updated.entryNodeId.empty()) updated.entryNodeId = updated.nodes.back().id;
+            std::string editError;
+            if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { selectedAnimationFrameIndex_ = updated.nodes.size() - 1; contentEditFrame_ = noContentIndex; refresh("Dialogue node added"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 76, nodeButtonsY, 64, 18}, "REMOVE") && writable && nodeIndex != noContentIndex) {
+            auto updated = *value; updated.nodes.erase(updated.nodes.begin() + static_cast<std::ptrdiff_t>(nodeIndex));
+            std::string editError;
+            if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { selectedAnimationFrameIndex_ = nodeIndex == 0 ? 0 : nodeIndex - 1; contentEditFrame_ = noContentIndex; refresh("Dialogue node removed"); return; }
+            status_ = editError;
+        }
+        if (nodeIndex != noContentIndex) {
+            if (ui.button({panel.x + 144, nodeButtonsY, 32, 18}, "UP") && writable && nodeIndex > 0) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex], updated.nodes[nodeIndex - 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { --selectedAnimationFrameIndex_; contentEditFrame_ = noContentIndex; refresh("Dialogue node moved"); return; } status_ = editError;
+            }
+            if (ui.button({panel.x + 180, nodeButtonsY, 44, 18}, "DOWN") && writable && nodeIndex + 1 < value->nodes.size()) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex], updated.nodes[nodeIndex + 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { ++selectedAnimationFrameIndex_; contentEditFrame_ = noContentIndex; refresh("Dialogue node moved"); return; } status_ = editError;
+            }
+            auto& node = value->nodes[nodeIndex];
+            if (contentEditFrame_ != nodeIndex) {
+                contentEditFrame_ = nodeIndex;
+                contentEditValues_[fieldDialogueSpeaker] = node.speaker;
+                contentEditValues_[fieldDialogueNext] = std::string(node.nextNodeId.value());
+                selectedAnimationMarkerIndex_ = node.pages.empty() ? 0 : 0;
+                contentEditMarker_ = node.choices.empty() ? noContentIndex : 0;
+            }
+            const int nodeEditY = nodeButtonsY + 24;
+            field("speaker", fieldDialogueSpeaker, nodeEditY);
+            localNodeReference("nextNodeId (local)", fieldDialogueNext, nodeEditY + 48);
+            if (writable && input.enterPressed &&
+                (contentFocusedField_ == fieldDialogueSpeaker || contentFocusedField_ == fieldDialogueNext)) {
+                auto updated = *value; auto& selected = updated.nodes[nodeIndex];
+                if (contentFocusedField_ == fieldDialogueSpeaker) selected.speaker = contentEditValues_[fieldDialogueSpeaker];
+                else selected.nextNodeId = simulation::DefinitionId{contentEditValues_[fieldDialogueNext]};
+                std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue node updated"); return; }
+                status_ = editError;
+            }
+            const int pageY = nodeEditY + 96;
+            ui.label("PAGES", panel.x + 8, pageY);
+            const auto pageIndex = node.pages.empty() ? noContentIndex :
+                std::min(selectedAnimationMarkerIndex_, node.pages.size() - 1);
+            for (int row = 0; row < 4; ++row) {
+                const auto index = static_cast<std::size_t>(row);
+                if (index >= node.pages.size()) break;
+                if (ui.button({panel.x + 8, pageY + 16 + row * 18, panel.width - 16, 16},
+                              "Page " + std::to_string(index), index == pageIndex)) {
+                    selectedAnimationMarkerIndex_ = index;
+                    contentFocusedField_ = -1;
+                }
+            }
+            const int pageButtonsY = pageY + 90;
+            if (ui.button({panel.x + 8, pageButtonsY, 58, 18}, "ADD PAGE") && writable) {
+                auto updated = *value; updated.nodes[nodeIndex].pages.push_back("Page"); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                    selectedAnimationMarkerIndex_ = updated.nodes[nodeIndex].pages.size() - 1;
+                    refresh("Dialogue page added"); return;
+                }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 70, pageButtonsY, 58, 18}, "REMOVE") && writable && pageIndex != noContentIndex) {
+                auto updated = *value; updated.nodes[nodeIndex].pages.erase(updated.nodes[nodeIndex].pages.begin() + static_cast<std::ptrdiff_t>(pageIndex)); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                    selectedAnimationMarkerIndex_ = pageIndex == 0 ? 0 : pageIndex - 1;
+                    refresh("Dialogue page removed"); return;
+                }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 132, pageButtonsY, 32, 18}, "UP") && writable && pageIndex > 0) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex].pages[pageIndex], updated.nodes[nodeIndex].pages[pageIndex - 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { --selectedAnimationMarkerIndex_; refresh("Dialogue page moved"); return; }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 168, pageButtonsY, 44, 18}, "DOWN") && writable && pageIndex != noContentIndex && pageIndex + 1 < node.pages.size()) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex].pages[pageIndex], updated.nodes[nodeIndex].pages[pageIndex + 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { ++selectedAnimationMarkerIndex_; refresh("Dialogue page moved"); return; }
+                status_ = editError;
+            }
+            if (pageIndex != noContentIndex) {
+                if (contentFocusedField_ != fieldDialoguePage) {
+                    contentEditValues_[fieldDialoguePage] = node.pages[pageIndex];
+                }
+                field("selected page", fieldDialoguePage, pageButtonsY + 24);
+                if (writable && input.enterPressed && contentFocusedField_ == fieldDialoguePage) {
+                    auto updated = *value; updated.nodes[nodeIndex].pages[pageIndex] = contentEditValues_[fieldDialoguePage]; std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue page updated"); return; }
+                    status_ = editError;
+                }
+            }
+            const int choiceY = pageButtonsY + 72;
+            ui.label("CHOICES", panel.x + 8, choiceY);
+            const auto choiceIndex = node.choices.empty() ? noContentIndex :
+                std::min(contentEditMarker_, node.choices.size() - 1);
+            for (int row = 0; row < 4; ++row) {
+                const auto index = static_cast<std::size_t>(row);
+                if (index >= node.choices.size()) break;
+                if (ui.button({panel.x + 8, choiceY + 16 + row * 18, panel.width - 16, 16},
+                              "Choice " + std::to_string(index), index == choiceIndex)) {
+                    contentEditMarker_ = index;
+                    contentDialogueConditionIndex_ = noContentIndex;
+                    contentDialogueActionIndex_ = noContentIndex;
+                    contentFocusedField_ = -1;
+                }
+            }
+            field("new choice label", fieldDialogueChoiceLabel, choiceY + 90);
+            field("new choice target", fieldDialogueChoiceTarget, choiceY + 138);
+            const int choiceButtonsY = choiceY + 186;
+            if (ui.button({panel.x + 8, choiceButtonsY, 96, 18}, "ADD CHOICE") && writable) {
+                auto updated = *value;
+                updated.nodes[nodeIndex].choices.push_back({contentEditValues_[fieldDialogueChoiceLabel], simulation::DefinitionId{contentEditValues_[fieldDialogueChoiceTarget]}, {}, {}});
+                std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                    contentEditMarker_ = updated.nodes[nodeIndex].choices.size() - 1;
+                    contentDialogueConditionIndex_ = noContentIndex;
+                    contentDialogueActionIndex_ = noContentIndex;
+                    refresh("Dialogue choice added"); return;
+                }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 110, choiceButtonsY, 58, 18}, "REMOVE") && writable && choiceIndex != noContentIndex) {
+                auto updated = *value; updated.nodes[nodeIndex].choices.erase(updated.nodes[nodeIndex].choices.begin() + static_cast<std::ptrdiff_t>(choiceIndex)); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                    contentEditMarker_ = choiceIndex == 0 ? noContentIndex : choiceIndex - 1;
+                    contentDialogueConditionIndex_ = noContentIndex;
+                    contentDialogueActionIndex_ = noContentIndex;
+                    refresh("Dialogue choice removed"); return;
+                }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 172, choiceButtonsY, 32, 18}, "UP") && writable && choiceIndex > 0) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex].choices[choiceIndex], updated.nodes[nodeIndex].choices[choiceIndex - 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { --contentEditMarker_; refresh("Dialogue choice moved"); return; }
+                status_ = editError;
+            }
+            if (ui.button({panel.x + 208, choiceButtonsY, 44, 18}, "DOWN") && writable && choiceIndex != noContentIndex && choiceIndex + 1 < node.choices.size()) {
+                auto updated = *value; std::swap(updated.nodes[nodeIndex].choices[choiceIndex], updated.nodes[nodeIndex].choices[choiceIndex + 1]); std::string editError;
+                if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { ++contentEditMarker_; refresh("Dialogue choice moved"); return; }
+                status_ = editError;
+            }
+            if (choiceIndex != noContentIndex) {
+                const auto& choice = node.choices[choiceIndex];
+                if (contentFocusedField_ != fieldDialogueChoiceLabel &&
+                    contentFocusedField_ != fieldDialogueChoiceTarget) {
+                    contentEditValues_[fieldDialogueChoiceLabel] = choice.label;
+                    contentEditValues_[fieldDialogueChoiceTarget] = std::string(choice.targetNodeId.value());
+                }
+                field("choice label", fieldDialogueChoiceLabel, choiceButtonsY + 24);
+                localNodeReference("choice target", fieldDialogueChoiceTarget, choiceButtonsY + 72);
+                if (writable && input.enterPressed && (contentFocusedField_ == fieldDialogueChoiceLabel || contentFocusedField_ == fieldDialogueChoiceTarget)) {
+                    auto updated = *value; auto& selected = updated.nodes[nodeIndex].choices[choiceIndex];
+                    if (contentFocusedField_ == fieldDialogueChoiceLabel) selected.label = contentEditValues_[fieldDialogueChoiceLabel];
+                    else selected.targetNodeId = simulation::DefinitionId{contentEditValues_[fieldDialogueChoiceTarget]};
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue choice updated"); return; } status_ = editError;
+                }
+                const int conditionY = choiceButtonsY + 120;
+                ui.label("CONDITIONS", panel.x + 8, conditionY);
+                const auto conditionIndex = choice.conditions.empty() ? noContentIndex :
+                    std::min(contentDialogueConditionIndex_, choice.conditions.size() - 1);
+                for (int row = 0; row < 3; ++row) {
+                    const auto index = static_cast<std::size_t>(row);
+                    if (index >= choice.conditions.size()) break;
+                    if (ui.button({panel.x + 8, conditionY + 16 + row * 18, panel.width - 16, 16},
+                                  "condition " + std::to_string(index), index == conditionIndex)) {
+                        contentDialogueConditionIndex_ = index; contentFocusedField_ = -1;
+                    }
+                }
+                const int conditionButtonsY = conditionY + 72;
+                if (ui.button({panel.x + 8, conditionButtonsY, 54, 18}, "ADD") && writable) {
+                    auto updated = *value;
+                    const auto kind = std::find(conditionKinds.begin(), conditionKinds.end(), contentEditValues_[fieldDialogueConditionKind]);
+                    updated.nodes[nodeIndex].choices[choiceIndex].conditions.push_back({
+                        kind == conditionKinds.end() ? game::gameplay::dialogue::DialogueConditionKind::flagSet :
+                            static_cast<game::gameplay::dialogue::DialogueConditionKind>(kind - conditionKinds.begin()),
+                        simulation::DefinitionId{contentEditValues_[fieldDialogueFlag]}});
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                        contentDialogueConditionIndex_ = updated.nodes[nodeIndex].choices[choiceIndex].conditions.size() - 1;
+                        refresh("Dialogue condition added"); return;
+                    }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 66, conditionButtonsY, 54, 18}, "EDIT") && writable && conditionIndex != noContentIndex) {
+                    auto updated = *value;
+                    const auto kind = std::find(conditionKinds.begin(), conditionKinds.end(), contentEditValues_[fieldDialogueConditionKind]);
+                    if (kind == conditionKinds.end()) status_ = "invalid dialogue condition kind";
+                    else {
+                        updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex] = {
+                            static_cast<game::gameplay::dialogue::DialogueConditionKind>(kind - conditionKinds.begin()),
+                            simulation::DefinitionId{contentEditValues_[fieldDialogueFlag]}};
+                        std::string editError;
+                        if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue condition updated"); return; }
+                        status_ = editError;
+                    }
+                }
+                if (ui.button({panel.x + 124, conditionButtonsY, 64, 18}, "REMOVE") && writable && conditionIndex != noContentIndex) {
+                    auto updated = *value;
+                    updated.nodes[nodeIndex].choices[choiceIndex].conditions.erase(updated.nodes[nodeIndex].choices[choiceIndex].conditions.begin() + static_cast<std::ptrdiff_t>(conditionIndex));
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                        contentDialogueConditionIndex_ = conditionIndex == 0 ? noContentIndex : conditionIndex - 1;
+                        refresh("Dialogue condition removed"); return;
+                    }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 192, conditionButtonsY, 32, 18}, "UP") && writable && conditionIndex > 0) {
+                    auto updated = *value;
+                    std::swap(updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex], updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex - 1]);
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { --contentDialogueConditionIndex_; refresh("Dialogue condition moved"); return; }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 228, conditionButtonsY, 44, 18}, "DOWN") && writable &&
+                    conditionIndex != noContentIndex && conditionIndex + 1 < choice.conditions.size()) {
+                    auto updated = *value;
+                    std::swap(updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex], updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex + 1]);
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { ++contentDialogueConditionIndex_; refresh("Dialogue condition moved"); return; }
+                    status_ = editError;
+                }
+                if (conditionIndex != noContentIndex) {
+                    const auto& condition = choice.conditions[conditionIndex];
+                    if (contentFocusedField_ != fieldDialogueConditionKind && contentFocusedField_ != fieldDialogueFlag) {
+                        contentEditValues_[fieldDialogueConditionKind] = std::string(conditionKinds[static_cast<int>(condition.kind)]);
+                        contentEditValues_[fieldDialogueFlag] = std::string(condition.flagId.value());
+                    }
+                }
+                const bool conditionKindChanged = enumButton("condition kind", fieldDialogueConditionKind, conditionButtonsY + 24, conditionKinds);
+                field("condition flag", fieldDialogueFlag, conditionButtonsY + 72);
+
+                const int actionY = conditionButtonsY + 120;
+                ui.label("ACTIONS", panel.x + 8, actionY);
+                const auto actionIndex = choice.actions.empty() ? noContentIndex :
+                    std::min(contentDialogueActionIndex_, choice.actions.size() - 1);
+                for (int row = 0; row < 3; ++row) {
+                    const auto index = static_cast<std::size_t>(row);
+                    if (index >= choice.actions.size()) break;
+                    if (ui.button({panel.x + 8, actionY + 16 + row * 18, panel.width - 16, 16},
+                                  "action " + std::to_string(index), index == actionIndex)) {
+                        contentDialogueActionIndex_ = index; contentFocusedField_ = -1;
+                    }
+                }
+                const int actionButtonsY = actionY + 72;
+                if (ui.button({panel.x + 8, actionButtonsY, 54, 18}, "ADD") && writable) {
+                    auto updated = *value;
+                    const auto kind = std::find(actionKinds.begin(), actionKinds.end(), contentEditValues_[fieldDialogueActionKind]);
+                    updated.nodes[nodeIndex].choices[choiceIndex].actions.push_back({
+                        kind == actionKinds.end() ? game::gameplay::dialogue::DialogueActionKind::setFlag :
+                            static_cast<game::gameplay::dialogue::DialogueActionKind>(kind - actionKinds.begin()),
+                        simulation::DefinitionId{contentEditValues_[fieldDialogueActionTarget]}});
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                        contentDialogueActionIndex_ = updated.nodes[nodeIndex].choices[choiceIndex].actions.size() - 1;
+                        refresh("Dialogue action added"); return;
+                    }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 66, actionButtonsY, 54, 18}, "EDIT") && writable && actionIndex != noContentIndex) {
+                    auto updated = *value;
+                    const auto kind = std::find(actionKinds.begin(), actionKinds.end(), contentEditValues_[fieldDialogueActionKind]);
+                    if (kind == actionKinds.end()) status_ = "invalid dialogue action kind";
+                    else {
+                        updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex] = {
+                            static_cast<game::gameplay::dialogue::DialogueActionKind>(kind - actionKinds.begin()),
+                            simulation::DefinitionId{contentEditValues_[fieldDialogueActionTarget]}};
+                        std::string editError;
+                        if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue action updated"); return; }
+                        status_ = editError;
+                    }
+                }
+                if (ui.button({panel.x + 124, actionButtonsY, 64, 18}, "REMOVE") && writable && actionIndex != noContentIndex) {
+                    auto updated = *value;
+                    updated.nodes[nodeIndex].choices[choiceIndex].actions.erase(updated.nodes[nodeIndex].choices[choiceIndex].actions.begin() + static_cast<std::ptrdiff_t>(actionIndex));
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) {
+                        contentDialogueActionIndex_ = actionIndex == 0 ? noContentIndex : actionIndex - 1;
+                        refresh("Dialogue action removed"); return;
+                    }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 192, actionButtonsY, 32, 18}, "UP") && writable && actionIndex > 0) {
+                    auto updated = *value;
+                    std::swap(updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex], updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex - 1]);
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { --contentDialogueActionIndex_; refresh("Dialogue action moved"); return; }
+                    status_ = editError;
+                }
+                if (ui.button({panel.x + 228, actionButtonsY, 44, 18}, "DOWN") && writable &&
+                    actionIndex != noContentIndex && actionIndex + 1 < choice.actions.size()) {
+                    auto updated = *value;
+                    std::swap(updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex], updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex + 1]);
+                    std::string editError;
+                    if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { ++contentDialogueActionIndex_; refresh("Dialogue action moved"); return; }
+                    status_ = editError;
+                }
+                if (actionIndex != noContentIndex) {
+                    const auto& action = choice.actions[actionIndex];
+                    if (contentFocusedField_ != fieldDialogueActionKind && contentFocusedField_ != fieldDialogueActionTarget) {
+                        contentEditValues_[fieldDialogueActionKind] = std::string(actionKinds[static_cast<int>(action.kind)]);
+                        contentEditValues_[fieldDialogueActionTarget] = std::string(action.targetId.value());
+                    }
+                }
+                const bool actionKindChanged = enumButton("action kind", fieldDialogueActionKind, actionButtonsY + 24, actionKinds);
+                field("action target", fieldDialogueActionTarget, actionButtonsY + 72);
+                if (writable && (input.enterPressed || conditionKindChanged) && conditionIndex != noContentIndex &&
+                    (contentFocusedField_ == fieldDialogueConditionKind || contentFocusedField_ == fieldDialogueFlag)) {
+                    auto updated = *value; auto& selected = updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex];
+                    const auto kind = std::find(conditionKinds.begin(), conditionKinds.end(), contentEditValues_[fieldDialogueConditionKind]);
+                    if (kind == conditionKinds.end()) status_ = "invalid dialogue condition kind";
+                    else {
+                        selected.kind = static_cast<game::gameplay::dialogue::DialogueConditionKind>(kind - conditionKinds.begin());
+                        selected.flagId = simulation::DefinitionId{contentEditValues_[fieldDialogueFlag]};
+                        std::string editError;
+                        if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue condition updated"); return; }
+                        status_ = editError;
+                    }
+                }
+                if (writable && (input.enterPressed || actionKindChanged) && actionIndex != noContentIndex &&
+                    (contentFocusedField_ == fieldDialogueActionKind || contentFocusedField_ == fieldDialogueActionTarget)) {
+                    auto updated = *value; auto& selected = updated.nodes[nodeIndex].choices[choiceIndex].actions[actionIndex];
+                    const auto kind = std::find(actionKinds.begin(), actionKinds.end(), contentEditValues_[fieldDialogueActionKind]);
+                    if (kind == actionKinds.end()) status_ = "invalid dialogue action kind";
+                    else {
+                        selected.kind = static_cast<game::gameplay::dialogue::DialogueActionKind>(kind - actionKinds.begin());
+                        selected.targetId = simulation::DefinitionId{contentEditValues_[fieldDialogueActionTarget]};
+                        std::string editError;
+                        if (contentWorkspace_->updateDialogue(key.id, updated, editError)) { refresh("Dialogue action updated"); return; }
+                        status_ = editError;
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::npc) {
+        const auto* value = contentWorkspace_->npc(key.id);
+        if (!value) return;
+        if (contentEditKey_ != key) {
+            resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldNpcVisual] = std::string(value->visualSetId.value());
+            contentEditValues_[fieldNpcInteractionBounds] = rectText(value->interaction.bounds);
+            contentEditValues_[fieldNpcDialogue] = std::string(value->defaultDialogueId.value());
+            contentEditValues_[fieldNpcTag] = value->tags.empty() ? "tag" : value->tags.front();
+            selectedAnimationMarkerIndex_ = value->tags.empty() ? noContentIndex : 0;
+        }
+        reference("visualSetId", ContentDefinitionKind::npcVisual, fieldNpcVisual, inspectorY);
+        field("interaction x,y,w,h", fieldNpcInteractionBounds, inspectorY + 48);
+        reference("defaultDialogueId", ContentDefinitionKind::dialogue, fieldNpcDialogue, inspectorY + 96);
+        const bool interactionChanged = ui.button(
+            {panel.x + 8, inspectorY + 144, panel.width - 16, 20},
+            value->interaction.enabled ? "INTERACTION ENABLED" : "INTERACTION DISABLED",
+            value->interaction.enabled);
+        field("tag (selected/new)", fieldNpcTag, inspectorY + 172);
+        ui.label("TAGS", panel.x + 8, inspectorY + 210);
+        const auto tagIndex = value->tags.empty() ? noContentIndex :
+            std::min(selectedAnimationMarkerIndex_, value->tags.size() - 1);
+        for (int row = 0; row < 4; ++row) {
+            const auto index = static_cast<std::size_t>(row);
+            if (index >= value->tags.size()) break;
+            if (ui.button({panel.x + 8, inspectorY + 226 + row * 18, panel.width - 16, 16},
+                          value->tags[index], index == tagIndex)) {
+                selectedAnimationMarkerIndex_ = index;
+                contentEditValues_[fieldNpcTag] = value->tags[index];
+                contentFocusedField_ = -1;
+            }
+        }
+        const int tagButtonsY = inspectorY + 300;
+        if (ui.button({panel.x + 8, tagButtonsY, 54, 18}, "ADD") && writable &&
+            !contentEditValues_[fieldNpcTag].empty()) {
+            auto updated = *value;
+            updated.tags.push_back(contentEditValues_[fieldNpcTag]);
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) {
+                selectedAnimationMarkerIndex_ = updated.tags.size() - 1;
+                refresh("NPC tag added"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 66, tagButtonsY, 54, 18}, "EDIT") && writable && tagIndex != noContentIndex) {
+            auto updated = *value;
+            updated.tags[tagIndex] = contentEditValues_[fieldNpcTag];
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) { refresh("NPC tag updated"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 124, tagButtonsY, 64, 18}, "REMOVE") && writable && tagIndex != noContentIndex) {
+            auto updated = *value;
+            updated.tags.erase(updated.tags.begin() + static_cast<std::ptrdiff_t>(tagIndex));
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) {
+                selectedAnimationMarkerIndex_ = tagIndex == 0 ? noContentIndex : tagIndex - 1;
+                refresh("NPC tag removed"); return;
+            }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 192, tagButtonsY, 32, 18}, "UP") && writable && tagIndex > 0) {
+            auto updated = *value; std::swap(updated.tags[tagIndex], updated.tags[tagIndex - 1]);
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) { --selectedAnimationMarkerIndex_; refresh("NPC tag moved"); return; }
+            status_ = editError;
+        }
+        if (ui.button({panel.x + 228, tagButtonsY, 44, 18}, "DOWN") && writable &&
+            tagIndex != noContentIndex && tagIndex + 1 < value->tags.size()) {
+            auto updated = *value; std::swap(updated.tags[tagIndex], updated.tags[tagIndex + 1]);
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) { ++selectedAnimationMarkerIndex_; refresh("NPC tag moved"); return; }
+            status_ = editError;
+        }
+        if (writable && input.enterPressed &&
+            (contentFocusedField_ == fieldNpcVisual || contentFocusedField_ == fieldNpcInteractionBounds ||
+             contentFocusedField_ == fieldNpcDialogue || contentFocusedField_ == fieldNpcTag)) {
+            auto updated = *value; std::string editError; bool ok = true;
+            if (contentFocusedField_ == fieldNpcVisual) updated.visualSetId = simulation::DefinitionId{contentEditValues_[fieldNpcVisual]};
+            else if (contentFocusedField_ == fieldNpcInteractionBounds) {
+                const auto parsed = parseRect(contentEditValues_[fieldNpcInteractionBounds]);
+                if (!parsed) ok = false; else updated.interaction.bounds = *parsed;
+            } else if (contentFocusedField_ == fieldNpcDialogue) {
+                updated.defaultDialogueId = simulation::DefinitionId{contentEditValues_[fieldNpcDialogue]};
+            } else if (tagIndex != noContentIndex) {
+                updated.tags[tagIndex] = contentEditValues_[fieldNpcTag];
+            }
+            if (!ok) editError = "NPC field has an invalid rectangle";
+            if (ok && contentWorkspace_->updateNpc(key.id, updated, editError)) refresh("NPC updated");
+            else if (!ok || !editError.empty()) status_ = editError;
+        }
+        if (interactionChanged && writable) {
+            auto updated = *value; updated.interaction.enabled = !updated.interaction.enabled;
+            std::string editError;
+            if (contentWorkspace_->updateNpc(key.id, updated, editError)) refresh("NPC interaction toggled");
+            else status_ = editError;
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::rewardProfile) { const auto* value=contentWorkspace_->rewardProfile(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldRewardProfileExperience]=std::to_string(value->experience);contentEditValues_[fieldRewardPickup]="pickup";contentEditValues_[fieldRewardChance]="10000";contentEditValues_[fieldRewardMinimum]="1";contentEditValues_[fieldRewardMaximum]="1";}field("experience",fieldRewardProfileExperience,inspectorY);reference("new pickupDefinitionId",ContentDefinitionKind::pickup,fieldRewardPickup,inspectorY+48);field("chanceBasisPoints",fieldRewardChance,inspectorY+96);field("minimumCount",fieldRewardMinimum,inspectorY+144);field("maximumCount",fieldRewardMaximum,inspectorY+192);if(ui.button({panel.x+8,inspectorY+240,panel.width-16,20},"ADD LOOT ENTRY")&&writable){auto u=*value;game::content::AuthoredLootEntry e;e.pickupDefinitionId=simulation::DefinitionId{contentEditValues_[fieldRewardPickup]};e.chanceBasisPoints=parseUnsigned(contentEditValues_[fieldRewardChance]).value_or(0);e.minimumCount=parseUnsigned(contentEditValues_[fieldRewardMinimum]).value_or(0);e.maximumCount=parseUnsigned(contentEditValues_[fieldRewardMaximum]).value_or(0);u.loot.push_back(e);std::string error;if(contentWorkspace_->updateRewardProfile(key.id,u,error))refresh("Reward loot added");else status_=error;return;}ui.label("loot entries: "+std::to_string(value->loot.size()),panel.x+8,inspectorY+268);if(ui.button({panel.x+8,inspectorY+288,92,18},"REMOVE LOOT")&&writable&&!value->loot.empty()){auto u=*value;u.loot.pop_back();std::string error;if(contentWorkspace_->updateRewardProfile(key.id,u,error))refresh("Reward loot removed");else status_=error;return;}if(writable&&input.enterPressed&&contentFocusedField_==fieldRewardProfileExperience){auto u=*value;u.experience=parseU64(contentEditValues_[fieldRewardProfileExperience]).value_or(value->experience);std::string e;if(contentWorkspace_->updateRewardProfile(key.id,u,e))refresh("Reward profile updated");else status_=e;}return; }
+    if (key.kind == ContentDefinitionKind::rewardGrant) { const auto* value=contentWorkspace_->rewardGrant(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldRewardGrantExperience]=std::to_string(value->experience);contentEditValues_[fieldRewardGrantGold]=std::to_string(value->gold);contentEditValues_[fieldRewardGrantItem]="item";contentEditValues_[fieldRewardGrantQuantity]="1";}field("experience",fieldRewardGrantExperience,inspectorY);field("gold",fieldRewardGrantGold,inspectorY+48);reference("new itemId",ContentDefinitionKind::item,fieldRewardGrantItem,inspectorY+96);field("quantity",fieldRewardGrantQuantity,inspectorY+144);if(ui.button({panel.x+8,inspectorY+192,panel.width-16,20},"ADD ITEM GRANT")&&writable){auto u=*value;u.items.push_back({simulation::DefinitionId{contentEditValues_[fieldRewardGrantItem]},parseUnsigned(contentEditValues_[fieldRewardGrantQuantity]).value_or(0)});std::string e;if(contentWorkspace_->updateRewardGrant(key.id,u,e))refresh("Reward item grant added");else status_=e;return;}ui.label("items: "+std::to_string(value->items.size()),panel.x+8,inspectorY+216);if(ui.button({panel.x+8,inspectorY+236,100,18},"REMOVE ITEM")&&writable&&!value->items.empty()){auto u=*value;u.items.pop_back();std::string e;if(contentWorkspace_->updateRewardGrant(key.id,u,e))refresh("Reward item grant removed");else status_=e;return;}if(writable&&input.enterPressed&&(contentFocusedField_==fieldRewardGrantExperience||contentFocusedField_==fieldRewardGrantGold)){auto u=*value;std::string e;if(contentFocusedField_==fieldRewardGrantExperience)u.experience=parseU64(contentEditValues_[fieldRewardGrantExperience]).value_or(value->experience);else u.gold=parseU64(contentEditValues_[fieldRewardGrantGold]).value_or(value->gold);if(contentWorkspace_->updateRewardGrant(key.id,u,e))refresh("Reward grant updated");else status_=e;}return; }
+    if (key.kind == ContentDefinitionKind::shop) { const auto* value=contentWorkspace_->shop(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldShopItem]="item";contentEditValues_[fieldShopBuyPrice]="";contentEditValues_[fieldShopSellPrice]="";}reference("new itemId",ContentDefinitionKind::item,fieldShopItem,inspectorY);field("playerBuyPrice optional",fieldShopBuyPrice,inspectorY+48);field("playerSellPrice optional",fieldShopSellPrice,inspectorY+96);if(ui.button({panel.x+8,inspectorY+144,panel.width-16,20},"ADD OFFER")&&writable){auto u=*value;game::content::AuthoredShopOffer offer;offer.itemId=simulation::DefinitionId{contentEditValues_[fieldShopItem]};offer.playerBuyPrice=parseU64(contentEditValues_[fieldShopBuyPrice]);offer.playerSellPrice=parseU64(contentEditValues_[fieldShopSellPrice]);u.offers.push_back(offer);std::string e;if(contentWorkspace_->updateShop(key.id,u,e))refresh("Shop offer added");else status_=e;return;}ui.label("offers: "+std::to_string(value->offers.size())+" (no stock system)",panel.x+8,inspectorY+192);if(ui.button({panel.x+8,inspectorY+216,100,18},"REMOVE OFFER")&&writable&&!value->offers.empty()){auto u=*value;u.offers.pop_back();std::string e;if(contentWorkspace_->updateShop(key.id,u,e))refresh("Shop offer removed");else status_=e;return;}return; }
+    if (key.kind == ContentDefinitionKind::playerProgression) {const auto* value=contentWorkspace_->playerProgression(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldProgressionHealth]=std::to_string(value->baseStats.maximumHealth);contentEditValues_[fieldProgressionThreshold]="0";}field("baseStats.maximumHealth",fieldProgressionHealth,inspectorY);field("new threshold",fieldProgressionThreshold,inspectorY+48);if(ui.button({panel.x+8,inspectorY+96,panel.width-16,20},"ADD THRESHOLD")&&writable){auto u=*value;u.cumulativeExperienceThresholds.push_back(parseU64(contentEditValues_[fieldProgressionThreshold]).value_or(0));std::string e;if(contentWorkspace_->updatePlayerProgression(key.id,u,e))refresh("Progression threshold added");else status_=e;return;}ui.label("thresholds: "+std::to_string(value->cumulativeExperienceThresholds.size()),panel.x+8,inspectorY+144);if(ui.button({panel.x+8,inspectorY+164,110,18},"REMOVE THRESHOLD")&&writable&&!value->cumulativeExperienceThresholds.empty()){auto u=*value;u.cumulativeExperienceThresholds.pop_back();std::string e;if(contentWorkspace_->updatePlayerProgression(key.id,u,e))refresh("Progression threshold removed");else status_=e;return;}if(writable&&input.enterPressed&&contentFocusedField_==fieldProgressionHealth){auto u=*value;u.baseStats.maximumHealth=parseIntegerList<1>(contentEditValues_[fieldProgressionHealth]).value_or(std::array<int,1>{value->baseStats.maximumHealth})[0];std::string e;if(contentWorkspace_->updatePlayerProgression(key.id,u,e))refresh("Progression updated");else status_=e;}return;}
+    if (key.kind == ContentDefinitionKind::pickup) {const auto* value=contentWorkspace_->pickup(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldPickupVisual]=std::string(value->visualId.value());contentEditValues_[fieldPickupBounds]=rectText(value->collectionBounds);contentEditValues_[fieldPickupPayload]=std::holds_alternative<game::content::AuthoredHealthPickup>(value->payload)?"health":std::holds_alternative<game::content::AuthoredCurrencyPickup>(value->payload)?"currency":"item";contentEditValues_[fieldPickupAmount]="0";contentEditValues_[fieldPickupItem]="";contentEditValues_[fieldPickupQuantity]="1";}reference("visualId",ContentDefinitionKind::staticSprite,fieldPickupVisual,inspectorY);field("collection x,y,w,h",fieldPickupBounds,inspectorY+48);const bool payloadChanged=enumButton("payload",fieldPickupPayload,inspectorY+96,std::array<std::string_view,3>{"health","currency","item"});field("health/currency amount",fieldPickupAmount,inspectorY+144);reference("itemId",ContentDefinitionKind::item,fieldPickupItem,inspectorY+192);field("item quantity",fieldPickupQuantity,inspectorY+240);if(writable&&(input.enterPressed||payloadChanged)&&contentFocusedField_>=fieldPickupVisual&&contentFocusedField_<=fieldPickupQuantity){auto u=*value;std::string e;bool ok=true;if(contentFocusedField_==fieldPickupVisual)u.visualId=simulation::DefinitionId{contentEditValues_[fieldPickupVisual]};else if(contentFocusedField_==fieldPickupBounds){auto p=parseRect(contentEditValues_[fieldPickupBounds]);if(!p)ok=false;else u.collectionBounds=*p;}else if(contentFocusedField_==fieldPickupPayload||payloadChanged){if(contentEditValues_[fieldPickupPayload]=="health")u.payload=game::content::AuthoredHealthPickup{};else if(contentEditValues_[fieldPickupPayload]=="currency")u.payload=game::content::AuthoredCurrencyPickup{};else u.payload=game::content::AuthoredItemPickup{};}else if(contentFocusedField_==fieldPickupAmount){auto p=parseIntegerList<1>(contentEditValues_[fieldPickupAmount]);if(!p)ok=false;else if(auto h=std::get_if<game::content::AuthoredHealthPickup>(&u.payload))h->amount=(*p)[0];else if(auto c=std::get_if<game::content::AuthoredCurrencyPickup>(&u.payload))c->amount=static_cast<std::uint64_t>((*p)[0]);}else if(contentFocusedField_==fieldPickupItem){if(auto i=std::get_if<game::content::AuthoredItemPickup>(&u.payload))i->itemId=simulation::DefinitionId{contentEditValues_[fieldPickupItem]};}else if(auto i=std::get_if<game::content::AuthoredItemPickup>(&u.payload))i->quantity=parseUnsigned(contentEditValues_[fieldPickupQuantity]).value_or(i->quantity);if(!ok)e="pickup field has an invalid value";if(ok&&contentWorkspace_->updatePickup(key.id,u,e))refresh("Pickup updated");else if(!ok||!e.empty())status_=e;}return;}
+    if (key.kind == ContentDefinitionKind::object) {const auto* value=contentWorkspace_->object(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldObjectVisual]=std::string(value->visualSetId.value());contentEditValues_[fieldObjectInteractBounds]=value->interactable?rectText(value->interactable->bounds):"0,0,16,16";contentEditValues_[fieldObjectCapacity]=value->container?std::to_string(value->container->capacity):"1";contentEditValues_[fieldObjectDestructibleHealth]=value->destructible?std::to_string(value->destructible->maximumHealth):"1";contentEditValues_[fieldObjectDestructibleHurtbox]=value->destructible?rectText(value->destructible->hurtbox):"0,0,16,16";contentEditValues_[fieldObjectDestructibleDuration]=value->destructible?std::to_string(value->destructible->destructionDurationTicks):"1";contentEditValues_[fieldObjectDoorState]=value->door?std::array<std::string_view,3>{"locked","closed","open"}[static_cast<int>(value->door->initialState)]:"closed";contentEditValues_[fieldObjectDoorBounds]=value->door?rectText(value->door->blockingBounds):"0,0,16,16";contentEditValues_[fieldObjectActivationMode]=value->activation?(value->activation->mode==game::gameplay::ObjectActivationMode::interactToggle?"interactToggle":"playerPressure"):"interactToggle";contentEditValues_[fieldObjectActivationBounds]=value->activation&&value->activation->activationBounds?rectText(*value->activation->activationBounds):"0,0,16,16";}
+        reference("visualSetId",ContentDefinitionKind::objectVisual,fieldObjectVisual,inspectorY);const bool interact=ui.button({panel.x+8,inspectorY+48,panel.width-16,20},value->interactable?"INTERACTABLE ON":"INTERACTABLE OFF",value->interactable.has_value());field("interactable bounds",fieldObjectInteractBounds,inspectorY+72);const bool container=ui.button({panel.x+8,inspectorY+120,panel.width-16,20},value->container?"CONTAINER ON":"CONTAINER OFF",value->container.has_value());field("container capacity",fieldObjectCapacity,inspectorY+144);const bool destructible=ui.button({panel.x+8,inspectorY+192,panel.width-16,20},value->destructible?"DESTRUCTIBLE ON":"DESTRUCTIBLE OFF",value->destructible.has_value());field("destructible health",fieldObjectDestructibleHealth,inspectorY+216);field("destructible hurtbox",fieldObjectDestructibleHurtbox,inspectorY+264);field("destruction duration",fieldObjectDestructibleDuration,inspectorY+312);const bool bank=ui.button({panel.x+8,inspectorY+360,panel.width-16,20},value->bankAccess?"BANK ACCESS ON":"BANK ACCESS OFF",value->bankAccess.has_value());const bool door=ui.button({panel.x+8,inspectorY+384,panel.width-16,20},value->door?"DOOR ON":"DOOR OFF",value->door.has_value());const bool doorStateChanged=enumButton("door initial state",fieldObjectDoorState,inspectorY+408,doorStates);field("door blocking x,y,w,h",fieldObjectDoorBounds,inspectorY+456);const bool activation=ui.button({panel.x+8,inspectorY+504,panel.width-16,20},value->activation?"ACTIVATION ON":"ACTIVATION OFF",value->activation.has_value());const bool activationInitial=ui.button({panel.x+8,inspectorY+528,panel.width-16,20},value->activation&&value->activation->initialActive?"INITIAL ACTIVE":"INITIAL INACTIVE",value->activation&&value->activation->initialActive);const bool modeChanged=enumButton("activation mode",fieldObjectActivationMode,inspectorY+552,activationModes);field("activation bounds",fieldObjectActivationBounds,inspectorY+600);if(writable&&(input.enterPressed||interact||container||destructible||bank||door||doorStateChanged||activation||activationInitial||modeChanged)){auto u=*value;std::string e;bool ok=true;if(interact){if(u.interactable)u.interactable.reset();else u.interactable=game::gameplay::ObjectInteractionDefinition{};}else if(container){if(u.container)u.container.reset();else u.container=game::gameplay::ObjectContainerDefinition{};}else if(destructible){if(u.destructible)u.destructible.reset();else u.destructible=game::gameplay::ObjectDestructibleDefinition{};}else if(bank){if(u.bankAccess)u.bankAccess.reset();else u.bankAccess=game::content::AuthoredObjectBankAccess{};}else if(door){if(u.door)u.door.reset();else u.door=game::gameplay::ObjectDoorDefinition{};}else if(activation){if(u.activation)u.activation.reset();else u.activation=game::gameplay::ObjectActivationDefinition{};}else if(activationInitial){if(!u.activation)u.activation=game::gameplay::ObjectActivationDefinition{};u.activation->initialActive=!u.activation->initialActive;}else if(contentFocusedField_==fieldObjectVisual)u.visualSetId=simulation::DefinitionId{contentEditValues_[fieldObjectVisual]};else if(contentFocusedField_==fieldObjectInteractBounds){auto p=parseRect(contentEditValues_[fieldObjectInteractBounds]);if(!p)ok=false;else{if(!u.interactable)u.interactable={};u.interactable->bounds=*p;}}else if(contentFocusedField_==fieldObjectCapacity){if(auto p=parseUnsigned(contentEditValues_[fieldObjectCapacity])){if(!u.container)u.container={};u.container->capacity=*p;}else ok=false;}else if(contentFocusedField_==fieldObjectDestructibleHealth){if(auto p=parseIntegerList<1>(contentEditValues_[fieldObjectDestructibleHealth])){if(!u.destructible)u.destructible={};u.destructible->maximumHealth=(*p)[0];}else ok=false;}else if(contentFocusedField_==fieldObjectDestructibleHurtbox){auto p=parseRect(contentEditValues_[fieldObjectDestructibleHurtbox]);if(!p)ok=false;else{if(!u.destructible)u.destructible={};u.destructible->hurtbox=*p;}}else if(contentFocusedField_==fieldObjectDestructibleDuration){if(auto p=parseUnsigned(contentEditValues_[fieldObjectDestructibleDuration])){if(!u.destructible)u.destructible={};u.destructible->destructionDurationTicks=*p;}else ok=false;}else if(contentFocusedField_==fieldObjectDoorState||doorStateChanged){auto it=std::find(doorStates.begin(),doorStates.end(),contentEditValues_[fieldObjectDoorState]);if(it==doorStates.end())ok=false;else{if(!u.door)u.door={};u.door->initialState=static_cast<game::gameplay::DoorState>(it-doorStates.begin());}}else if(contentFocusedField_==fieldObjectDoorBounds){auto p=parseRect(contentEditValues_[fieldObjectDoorBounds]);if(!p)ok=false;else{if(!u.door)u.door={};u.door->blockingBounds=*p;}}else if(contentFocusedField_==fieldObjectActivationMode||modeChanged){auto it=std::find(activationModes.begin(),activationModes.end(),contentEditValues_[fieldObjectActivationMode]);if(it==activationModes.end())ok=false;else{if(!u.activation)u.activation={};u.activation->mode=static_cast<game::gameplay::ObjectActivationMode>(it-activationModes.begin());}}else if(contentFocusedField_==fieldObjectActivationBounds){auto p=parseRect(contentEditValues_[fieldObjectActivationBounds]);if(!p)ok=false;else{if(!u.activation)u.activation={};u.activation->activationBounds=*p;}}if(!ok)e="object field has an invalid value";if(ok&&contentWorkspace_->updateObject(key.id,u,e))refresh("World object updated");else if(!ok||!e.empty())status_=e;}return;}
+    if (key.kind == ContentDefinitionKind::staticSprite || key.kind == ContentDefinitionKind::animation || key.kind == ContentDefinitionKind::visualImage || key.kind == ContentDefinitionKind::enemyVisual || key.kind == ContentDefinitionKind::objectVisual || key.kind == ContentDefinitionKind::npcVisual) return;
+    showReadOnlyFields("Typed editor", {{"category", ContentWorkspaceDocument::categoryName(key.kind)}, {"id", std::string(key.id.value())}});
+}
+
 void EditorApp::drawContentPreview(EditorUiContext& ui, const EditorInputState& input,
                                     core::RectI canvas) {
     const auto isVisual = selectedContentDefinition_ &&
@@ -1707,7 +3043,10 @@ void EditorApp::resetContentEditState() noexcept {
     contentEditValues_.fill({});
     contentEditFrame_ = noContentIndex;
     contentEditMarker_ = noContentIndex;
+    contentDialogueConditionIndex_ = noContentIndex;
+    contentDialogueActionIndex_ = noContentIndex;
     contentFocusedField_ = -1;
+    contentInspectorScroll_ = 0;
     contentStaticSourceEnabled_ = false;
     contentBindingState_ = PreviewClipState::idle;
     contentBindingAction_ = {};

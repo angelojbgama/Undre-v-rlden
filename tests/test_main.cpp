@@ -8151,6 +8151,191 @@ void testPhase18BVisualPreview() {
     std::filesystem::remove_all(root, fsError);
 }
 
+void testPhase18CGameplayContentEditors() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace gameplay = underworld::game::gameplay;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace dialogue = underworld::game::gameplay::dialogue;
+    namespace quests = underworld::game::gameplay::quests;
+    const auto root = std::filesystem::temp_directory_path() / "underworld_phase18c_gameplay_editors";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+    const auto source = root / "gameplay.json";
+    std::string error;
+    expect(content::writeAuthoredContentJsonFile(source, content::makeBuiltinAuthoredContent(), error),
+           "18C writes a gameplay editor workspace fixture");
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && document->valid(), "18C opens the gameplay editor workspace through the existing pipeline");
+    if (!document) { std::filesystem::remove_all(root, fsError); return; }
+
+    content::AuthoredProjectile projectile;
+    projectile.id = {"projectile.studio.gel"};
+    projectile.visualId = {"visual.projectile.player.arrow"};
+    projectile.canonicalFacing = gameplay::FacingDirection::right;
+    projectile.speedPixelsPerTick = 3;
+    projectile.lifetimeTicks = 30;
+    projectile.hitboxWidth = projectile.hitboxHeight = 6;
+    projectile.spawnOffsets.values = {{{0, 0}, {0, 0}, {-2, 0}, {2, 0}}};
+    expect(document->addProjectile(source, projectile, error) && document->projectile(projectile.id),
+           "18C creates a typed Projectile with visual, facing, timing, hitbox and offsets");
+
+    content::AuthoredAttack attack;
+    attack.id = {"attack.studio.gel"};
+    attack.kind = gameplay::AttackKind::projectile;
+    attack.damage = {2, 1};
+    attack.totalTicks = 8;
+    attack.cooldownTicks = 12;
+    attack.maximumRangePixels = 96;
+    attack.visualActionId = {"special.gel"};
+    attack.projectileDefinitionId = projectile.id;
+    attack.timeline = {{1, gameplay::AttackTimelineEventKind::spawnProjectile}};
+    expect(document->addAttack(source, attack, error) && document->attack(attack.id),
+           "18C creates a typed Attack with projectile reference and authored timeline");
+
+    content::AuthoredBehaviorProfile behavior{{"behavior.studio.gel"}, 96, 144, 20, 30};
+    expect(document->addBehavior(source, behavior, error) && document->behavior(behavior.id),
+           "18C creates a typed Behavior profile");
+
+    content::AuthoredItem item;
+    item.id = {"item.studio.gel"};
+    item.visualId = {"visual.item.life_potion"};
+    item.category = gameplay::ItemCategory::consumable;
+    item.stackLimit = 10;
+    item.use = gameplay::ItemUseDefinition{gameplay::ItemUseKind::restoreHealth, 3};
+    expect(document->addItem(source, item, error) && document->item(item.id),
+           "18C creates an Item with use and stack data");
+
+    content::AuthoredPickup pickup;
+    pickup.id = {"pickup.studio.gel"};
+    pickup.visualId = {"visual.pickup.heart"};
+    pickup.collectionBounds = {-5, -5, 10, 10};
+    pickup.payload = content::AuthoredItemPickup{item.id, 2};
+    expect(document->addPickup(source, pickup, error) && document->pickup(pickup.id),
+           "18C creates an item Pickup variant");
+
+    content::AuthoredRewardProfile rewardProfile;
+    rewardProfile.id = {"reward.studio.gel"};
+    rewardProfile.experience = 12;
+    rewardProfile.loot.push_back({pickup.id, 5000, 1, 2});
+    expect(document->addRewardProfile(source, rewardProfile, error) && document->rewardProfile(rewardProfile.id),
+           "18C creates a probabilistic RewardProfile with ordered loot");
+
+    content::AuthoredEnemy enemy;
+    enemy.id = {"enemy.studio.gel"};
+    enemy.visualSetId = creatures::soldierVisualId();
+    enemy.behaviorProfileId = behavior.id;
+    enemy.faction = gameplay::Faction::enemy;
+    enemy.maximumHealth = 7;
+    enemy.movementSpeedSubpixelsPerTick = 128;
+    enemy.collisionBody = {0, -8, 12, 8};
+    enemy.hurtbox = {-6, -24, 12, 24};
+    enemy.attackIds = {attack.id};
+    enemy.rewardProfileId = rewardProfile.id;
+    expect(document->addEnemy(source, enemy, error) && document->enemy(enemy.id),
+           "18C creates a custom Enemy linking visual, behavior, attack and reward");
+
+    content::AuthoredWorldObject object;
+    object.id = {"object.studio.switch"};
+    object.visualSetId = {"visual.object.chest"};
+    object.interactable = gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}};
+    object.activation = gameplay::ObjectActivationDefinition{gameplay::ObjectActivationMode::interactToggle, false, std::nullopt};
+    expect(document->addObject(source, object, error) && document->object(object.id),
+           "18C creates an interactive World Object through capability data");
+
+    content::AuthoredRewardGrant grant;
+    grant.id = {"reward.studio.quest"};
+    grant.experience = 20;
+    grant.gold = 5;
+    grant.items.push_back({item.id, 1});
+    expect(document->addRewardGrant(source, grant, error) && document->rewardGrant(grant.id),
+           "18C creates a guaranteed RewardGrant");
+
+    content::AuthoredQuest quest;
+    quest.id = {"quest.studio.gel"};
+    quest.title = "Gel lesson";
+    quest.tags = {"studio", "combat"};
+    quest.rewardGrantId = grant.id;
+    quest.objectives.push_back({{"objective.gel"}, quests::QuestObjectiveKind::kill, enemy.id, 2, "Defeat gel"});
+    expect(document->addQuest(source, quest, error) && document->quest(quest.id),
+           "18C creates a Quest objective and reward reference");
+
+    content::AuthoredDialogue authoredDialogue;
+    authoredDialogue.id = {"dialogue.studio.scholar"};
+    authoredDialogue.entryNodeId = {"entry"};
+    content::AuthoredDialogueNode node;
+    node.id = {"entry"}; node.speaker = "Scholar"; node.pages = {"Welcome."};
+    node.choices.push_back({"Accept", {"entry"}, {}, {{dialogue::DialogueActionKind::startQuest, quest.id}}});
+    authoredDialogue.nodes.push_back(node);
+    expect(document->addDialogue(source, authoredDialogue, error) && document->dialogue(authoredDialogue.id),
+           "18C creates structured Dialogue nodes, pages, choices and actions");
+
+    content::AuthoredNpc npc;
+    npc.id = {"npc.studio.scholar"}; npc.visualSetId = {"visual.npc.scholar"};
+    npc.interaction = gameplay::InteractionArea{{-8, -8, 16, 16}, true};
+    npc.defaultDialogueId = authoredDialogue.id; npc.tags = {"teacher"};
+    expect(document->addNpc(source, npc, error) && document->npc(npc.id),
+           "18C creates an NPC with dialogue, interaction and tags");
+
+    content::AuthoredShop shop;
+    shop.id = {"shop.studio"}; shop.offers.push_back({item.id, 12, 4});
+    expect(document->addShop(source, shop, error) && document->shop(shop.id),
+           "18C creates a Shop offer with optional buy and sell prices");
+
+    content::AuthoredPlayerProgression progression;
+    progression.id = {"progression.studio"}; progression.baseStats.maximumHealth = 8;
+    progression.cumulativeExperienceThresholds = {0, 25, 70};
+    expect(document->addPlayerProgression(source, progression, error) && document->playerProgression(progression.id),
+           "18C creates Player Progression thresholds");
+
+    content::AuthoredPresentationEffect presentationEffect;
+    presentationEffect.id = {"effect.studio.gel"};
+    presentationEffect.durationTicks = 6;
+    presentationEffect.priority = 10;
+    presentationEffect.overlay = presentation::ColorOverlayDefinition{{40, 220, 80, 64}, presentation::PresentationOverlayMode::pulse, 6, presentation::PresentationCompositionLayer::world};
+    expect(document->addPresentationEffect(source, presentationEffect, error) && document->presentationEffect(presentationEffect.id),
+           "18C creates a PresentationEffect with authored overlay data");
+
+    const auto index = document->index();
+    expect(std::any_of(index.begin(), index.end(), [&](const auto& key) { return key.kind == editor::ContentDefinitionKind::enemy && key.id == enemy.id; }) &&
+               std::any_of(index.begin(), index.end(), [&](const auto& key) { return key.kind == editor::ContentDefinitionKind::presentationEffect && key.id == presentationEffect.id; }),
+           "18C content browser index includes typed gameplay categories deterministically");
+
+    auto brokenAttack = attack;
+    const bool removedAttack = document->removeAttack(attack.id, error);
+    expect(removedAttack && !document->valid() && document->enemy(enemy.id) &&
+               std::any_of(document->diagnostics().begin(), document->diagnostics().end(), [](const auto& value) {
+                   return value.code == "unknown_reference" && value.message.find("attack") != std::string::npos;
+               }), "18C delete has no cascade and exposes a broken reference diagnostic");
+    const bool restoredAttack = document->addAttack(source, brokenAttack, error);
+    expect(restoredAttack && document->valid(),
+           "18C restoring a referenced definition repairs the workspace through the same document APIs");
+    expect(document->saveAll(error), "18C saves all typed gameplay edits as canonical Content JSON v5");
+    auto reloaded = editor::ContentWorkspaceDocument::open(root, error);
+    expect(reloaded && reloaded->valid() && reloaded->enemy(enemy.id) && reloaded->dialogue(authoredDialogue.id) &&
+               reloaded->quest(quest.id) && reloaded->shop(shop.id) && reloaded->presentationEffect(presentationEffect.id),
+           "18C save/reload preserves the gameplay registry relationships");
+    if (reloaded && reloaded->compiledRegistry()) {
+        simulation::EntityHandlePool handles;
+        creatures::EnemyFactory factory(handles, reloaded->compiledRegistry()->enemies(),
+                                        reloaded->compiledRegistry()->behaviors(),
+                                        reloaded->compiledRegistry()->attacks(),
+                                        reloaded->compiledRegistry()->projectiles());
+        auto instance = factory.create(handles, enemy.id, {32, 32}, gameplay::FacingDirection::down);
+        expect(instance.definition().id == enemy.id && instance.definition().attackIds.front() == attack.id,
+               "18C compiled custom Enemy instantiates through the existing runtime factory");
+        gameplay::WorldObjectFactory objectFactory(handles, reloaded->compiledRegistry()->objects(),
+                                                   reloaded->compiledRegistry()->items());
+        auto objectInstance = objectFactory.create(handles, object.id, {16, 16});
+        expect(objectInstance.hasActivation() && objectInstance.definition().id == object.id,
+               "18C compiled interactive object instantiates through the existing factory");
+    }
+    std::filesystem::remove_all(root, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -8231,6 +8416,7 @@ int main() {
         testPhase18ContentStudioFoundation();
         testPhase18StudioVisualValidation();
         testPhase18BVisualPreview();
+        testPhase18CGameplayContentEditors();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';
