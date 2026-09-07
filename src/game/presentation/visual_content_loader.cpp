@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -14,9 +15,10 @@ namespace {
 
 void diagnostic(VisualContentLoadResult& result, VisualContentDiagnosticStage stage,
                 std::string code, simulation::DefinitionId id, std::string path,
-                std::string message) {
-    result.diagnostics.push_back({stage, std::move(code), std::move(id), std::move(path),
-                                  std::move(message)});
+                std::string message,
+                std::optional<VisualAssetRoot> assetRoot = std::nullopt) {
+    result.diagnostics.push_back({stage, std::move(code), std::move(id), std::move(assetRoot),
+                                  std::move(path), std::move(message)});
 }
 
 bool contained(const std::filesystem::path& root, const std::filesystem::path& candidate) {
@@ -56,18 +58,19 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
     } else {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "workspace_root_missing",
                    definition.id, definition.relativePath,
-                   "contentWorkspace visual asset requires a workspace root");
+                   "contentWorkspace visual asset requires a workspace root", definition.root);
         return {};
     }
     if (root->empty()) {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "asset_root_missing",
-                   definition.id, definition.relativePath, "visual asset root is empty");
+                   definition.id, definition.relativePath, "visual asset root is empty",
+                   definition.root);
         return {};
     }
     if (!safeRelativePath(definition.relativePath)) {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "invalid_asset_path",
                    definition.id, definition.relativePath,
-                   "visual asset path must be a normalized relative path");
+                   "visual asset path must be a normalized relative path", definition.root);
         return {};
     }
     const auto absoluteRoot = std::filesystem::absolute(*root).lexically_normal();
@@ -75,7 +78,7 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
     if (!contained(absoluteRoot, candidate)) {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "asset_path_escape",
                    definition.id, definition.relativePath,
-                   "visual asset path escapes its selected asset root");
+                   "visual asset path escapes its selected asset root", definition.root);
         return {};
     }
     if (definition.root == VisualAssetRoot::contentWorkspace) {
@@ -85,7 +88,8 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
             diagnostic(result, VisualContentDiagnosticStage::resolve,
                        "asset_symlink_rejected", definition.id,
                        definition.relativePath,
-                       "content workspace visual assets may not use a symlink workspace root");
+                       "content workspace visual assets may not use a symlink workspace root",
+                       definition.root);
             return {};
         }
         error.clear();
@@ -97,7 +101,8 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
                 diagnostic(result, VisualContentDiagnosticStage::resolve,
                            "asset_symlink_rejected", definition.id,
                            definition.relativePath,
-                           "content workspace visual assets may not use symlink path components");
+                           "content workspace visual assets may not use symlink path components",
+                           definition.root);
                 return {};
             }
             error.clear();
@@ -188,6 +193,36 @@ const char* visualContentStageName(VisualContentDiagnosticStage stage) noexcept 
     case VisualContentDiagnosticStage::compile: return "compile";
     }
     return "unknown";
+}
+
+const char* visualAssetRootName(VisualAssetRoot root) noexcept {
+    switch (root) {
+    case VisualAssetRoot::gameAssets: return "gameAssets";
+    case VisualAssetRoot::contentWorkspace: return "contentWorkspace";
+    }
+    return "unknown";
+}
+
+std::string formatVisualContentDiagnostic(const VisualContentDiagnostic& diagnostic) {
+    std::ostringstream output;
+    output << '[' << visualContentStageName(diagnostic.stage) << '/'
+           << diagnostic.code << ']';
+    bool hasContext = false;
+    if (!diagnostic.definitionId.empty()) {
+        output << ' ' << diagnostic.definitionId.value();
+        hasContext = true;
+    }
+    if (diagnostic.assetRoot) {
+        output << " root=" << visualAssetRootName(*diagnostic.assetRoot);
+        hasContext = true;
+    }
+    if (!diagnostic.relativePath.empty()) {
+        output << " path=" << diagnostic.relativePath;
+        hasContext = true;
+    }
+    if (hasContext) output << ':';
+    output << ' ' << diagnostic.message;
+    return output.str();
 }
 
 void RuntimeStaticSpriteCatalog::add(RuntimeStaticSprite sprite) {
@@ -294,7 +329,8 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
             sheets.emplace(entry->first, std::make_shared<const render::SpriteSheet>(image));
         } catch (const std::exception& exception) {
             diagnostic(result, VisualContentDiagnosticStage::decode, "image_decode_failed",
-                       entry->first, entry->second.relativePath, exception.what());
+                       entry->first, entry->second.relativePath, exception.what(),
+                       entry->second.root);
         }
     }
     for (const auto* entry : orderedEntries(registry.animations().values())) {

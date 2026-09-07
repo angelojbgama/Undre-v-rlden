@@ -27,6 +27,7 @@ struct VisualContentDiagnostic final {
     VisualContentDiagnosticStage stage{VisualContentDiagnosticStage::resolve};
     std::string code;
     simulation::DefinitionId definitionId{};
+    std::optional<VisualAssetRoot> assetRoot;
     std::string relativePath;
     std::string message;
 };
@@ -121,5 +122,8 @@ private:
 };
 
 [[nodiscard]] const char* visualContentStageName(VisualContentDiagnosticStage stage) noexcept;
+[[nodiscard]] const char* visualAssetRootName(VisualAssetRoot root) noexcept;
+[[nodiscard]] std::string formatVisualContentDiagnostic(
+    const VisualContentDiagnostic& diagnostic);
 
 } // namespace underworld::game::presentation

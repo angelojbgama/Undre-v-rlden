@@ -619,8 +619,7 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
     if (!visualContent) {
         std::string message = "visual content loading failed";
         for (const auto& diagnostic : visualContent.diagnostics) {
-            message += " [" + std::string(presentation::visualContentStageName(diagnostic.stage)) +
-                       "/" + diagnostic.code + "] " + diagnostic.message;
+            message += "\n" + presentation::formatVisualContentDiagnostic(diagnostic);
         }
         throw std::runtime_error(message);
     }

@@ -7481,6 +7481,13 @@ public:
     std::vector<std::filesystem::path> paths;
 };
 
+class FailingVisualDecoder final : public underworld::platform::ImageDecoder {
+public:
+    underworld::core::ImageData decode(const std::filesystem::path&) override {
+        throw std::runtime_error("bad png");
+    }
+};
+
 underworld::game::content::AuthoredContentPack makePhase17VisualContent() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -7557,6 +7564,35 @@ void testPhase17VisualContentBoundary() {
     namespace presentation = underworld::game::presentation;
     namespace game = underworld::game;
     namespace simulation = underworld::simulation;
+    const presentation::VisualContentDiagnostic formattedDiagnostic{
+        presentation::VisualContentDiagnosticStage::decode,
+        "image_decode_failed",
+        {"image.enemy.custom"},
+        presentation::VisualAssetRoot::contentWorkspace,
+        "assets/enemy/custom.png",
+        "bad png"};
+    const auto formatted = presentation::formatVisualContentDiagnostic(formattedDiagnostic);
+    expect(formatted.find("decode") != std::string::npos &&
+               formatted.find("image_decode_failed") != std::string::npos &&
+               formatted.find("image.enemy.custom") != std::string::npos &&
+               formatted.find("contentWorkspace") != std::string::npos &&
+               formatted.find("assets/enemy/custom.png") != std::string::npos &&
+               formatted.find("bad png") != std::string::npos,
+           "visual diagnostic formatter preserves stage, code, definition, root, path and message");
+    const presentation::VisualContentDiagnostic invalidPathDiagnostic{
+        presentation::VisualContentDiagnosticStage::resolve,
+        "invalid_asset_path",
+        {"image.enemy.custom"},
+        presentation::VisualAssetRoot::contentWorkspace,
+        "../outside.png",
+        "visual asset path must be a normalized relative path"};
+    const auto invalidPathFormatted = presentation::formatVisualContentDiagnostic(
+        invalidPathDiagnostic);
+    expect(invalidPathFormatted.find("invalid_asset_path") != std::string::npos &&
+               invalidPathFormatted.find("image.enemy.custom") != std::string::npos &&
+               invalidPathFormatted.find("contentWorkspace") != std::string::npos &&
+               invalidPathFormatted.find("../outside.png") != std::string::npos,
+           "visual diagnostic formatter preserves invalid asset path context");
     const auto authored = makePhase17VisualContent();
     const auto json = content::encodeAuthoredContentJson(authored);
     const auto decoded = content::decodeAuthoredContentJson(json);
@@ -7642,6 +7678,21 @@ void testPhase17VisualContentBoundary() {
                    return value.code == "frame_out_of_bounds";
                }),
            "VisualContentLoader rejects animation frames outside decoded image bounds");
+    FailingVisualDecoder failingDecoder;
+    presentation::VisualContentLoader failingLoader(failingDecoder);
+    const auto decodeFailure = failingLoader.load(
+        *compiled.registry, {workspaceRoot / "game-assets", workspaceRoot});
+    const auto* decodeDiagnostic = decodeFailure.diagnostics.empty()
+        ? nullptr : &decodeFailure.diagnostics.front();
+    expect(!decodeFailure && decodeDiagnostic &&
+               decodeDiagnostic->code == "image_decode_failed" &&
+               decodeDiagnostic->definitionId == simulation::DefinitionId{"image.external.character"} &&
+               decodeDiagnostic->assetRoot &&
+               *decodeDiagnostic->assetRoot == presentation::VisualAssetRoot::contentWorkspace &&
+               decodeDiagnostic->relativePath == "assets/custom-character.png" &&
+               presentation::formatVisualContentDiagnostic(*decodeDiagnostic).find("bad png") !=
+                   std::string::npos,
+           "VisualContentLoader preserves external image context on decoder failure");
     auto missingRoot = authored;
     missingRoot.visualImages.front().root = presentation::VisualAssetRoot::contentWorkspace;
     const auto missingRootRegistry = content::compileContent(missingRoot);
@@ -7649,11 +7700,21 @@ void testPhase17VisualContentBoundary() {
     const auto missingRootResult = missingRootRegistry.registry ? missingRootLoader.load(
         *missingRootRegistry.registry, {workspaceRoot / "game-assets", std::nullopt}) :
         presentation::VisualContentLoadResult{};
+    const auto* missingRootDiagnostic = missingRootResult.diagnostics.empty()
+        ? nullptr : &missingRootResult.diagnostics.front();
     expect(!missingRootResult && std::any_of(missingRootResult.diagnostics.begin(),
                missingRootResult.diagnostics.end(), [](const auto& value) {
                    return value.code == "workspace_root_missing";
                }),
            "VisualContentLoader reports a missing content workspace root explicitly");
+    expect(missingRootDiagnostic && missingRootDiagnostic->definitionId ==
+               simulation::DefinitionId{"image.external.character"} &&
+               missingRootDiagnostic->assetRoot &&
+               *missingRootDiagnostic->assetRoot == presentation::VisualAssetRoot::contentWorkspace &&
+               missingRootDiagnostic->relativePath == "assets/custom-character.png" &&
+               presentation::formatVisualContentDiagnostic(*missingRootDiagnostic).find(
+                   "workspace_root_missing") != std::string::npos,
+           "missing workspace diagnostic retains visual definition context");
 
     std::filesystem::remove_all(workspaceRoot, fsError);
 }
