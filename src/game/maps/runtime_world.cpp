@@ -37,6 +37,47 @@ bool RuntimeWorld::interactDoor(simulation::PersistentInstanceId id) noexcept {
     return setDoorState(id, gameplay::DoorState::open);
 }
 
+bool RuntimeWorld::setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept {
+    const auto found = std::find_if(objects_.begin(), objects_.end(),
+        [&](const PersistentObject& object) { return object.persistentId == id; });
+    return found != objects_.end() && found->instance.setActivationActive(active);
+}
+
+std::optional<bool> RuntimeWorld::objectActivation(
+    simulation::PersistentInstanceId id) const noexcept {
+    const auto found = std::find_if(objects_.begin(), objects_.end(),
+        [&](const PersistentObject& object) { return object.persistentId == id; });
+    if (found == objects_.end() || !found->instance.hasActivation()) return std::nullopt;
+    return found->instance.activationActive();
+}
+
+bool RuntimeWorld::toggleObjectActivation(simulation::PersistentInstanceId id) noexcept {
+    const auto found = std::find_if(objects_.begin(), objects_.end(),
+        [&](const PersistentObject& object) { return object.persistentId == id; });
+    return found != objects_.end() && found->instance.toggleActivation();
+}
+
+void RuntimeWorld::updatePressureActivations(core::WorldPointI playerFeet,
+                                             simulation::EventBuffer& events) noexcept {
+    for (auto& object : objects_) {
+        const auto& activation = object.instance.definition().activation;
+        if (!activation || activation->mode != gameplay::ObjectActivationMode::playerPressure ||
+            !activation->activationBounds) continue;
+        const auto bounds = *activation->activationBounds;
+        const auto left = static_cast<std::int64_t>(object.instance.position().x) + bounds.x;
+        const auto top = static_cast<std::int64_t>(object.instance.position().y) + bounds.y;
+        const auto right = left + bounds.width;
+        const auto bottom = top + bounds.height;
+        const bool active = static_cast<std::int64_t>(playerFeet.x) >= left &&
+            static_cast<std::int64_t>(playerFeet.x) < right &&
+            static_cast<std::int64_t>(playerFeet.y) >= top &&
+            static_cast<std::int64_t>(playerFeet.y) < bottom;
+        if (object.instance.setActivationActive(active)) {
+            events.emit(simulation::ObjectActivationChanged{id_, object.persistentId, active});
+        }
+    }
+}
+
 RuntimeWorldBuildResult RuntimeWorldBuilder::build(
     const MapData& data, simulation::EntityHandlePool& handles,
     const simulation::SpawnId& spawnId) const {

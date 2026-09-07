@@ -7,7 +7,9 @@
 namespace underworld::game::maps {
 namespace {
 
-MapValidationResult failure(std::string error) { return {false, std::move(error)}; }
+MapValidationResult failure(std::string error, std::string path = {}) {
+    return {false, std::move(error), std::move(path)};
+}
 
 bool validFacing(gameplay::FacingDirection facing) noexcept {
     return facing == gameplay::FacingDirection::down || facing == gameplay::FacingDirection::up ||
@@ -139,6 +141,16 @@ MapValidationResult validateMapData(const MapData& data,
         if (!object.initialContents.empty() && definition && !definition->container) {
             return failure("non-container object placement has initial contents");
         }
+        if (definition && definition->activation &&
+            definition->activation->mode == gameplay::ObjectActivationMode::playerPressure) {
+            const auto bounds = *definition->activation->activationBounds;
+            const auto worldBounds = world::AabbI{
+                object.position.x + bounds.x, object.position.y + bounds.y,
+                bounds.width, bounds.height};
+            if (!areaInsideMap(data, worldBounds)) {
+                return failure("pressure activation bounds are outside the map");
+            }
+        }
         for (const auto& stack : object.initialContents) {
             if (stack.itemId.empty() || stack.quantity == 0) {
                 return failure("object placement contains an invalid item stack");
@@ -184,16 +196,20 @@ MapValidationResult validateMapData(const MapData& data,
         }
     }
     std::unordered_set<std::string> regionIds;
-    for (const auto& region : data.regions) {
+    for (std::size_t regionIndex = 0; regionIndex < data.regions.size(); ++regionIndex) {
+        const auto& region = data.regions[regionIndex];
+        const auto regionPath = std::string("regions[") + std::to_string(regionIndex) + "]";
         if (region.id.empty() || !regionIds.emplace(std::string(region.id.value())).second ||
             !areaInsideMap(data, region.bounds)) {
-            return failure("map region id or bounds are invalid or outside the map");
+            return failure("map region id or bounds are invalid or outside the map",
+                           regionPath + ".bounds");
         }
         if (region.environmentEffectId) {
             if (catalogs && catalogs->presentationEffects) {
                 const auto* effect = catalogs->presentationEffects->find(*region.environmentEffectId);
                 if (!effect || effect->lifetime != presentation::PresentationEffectLifetime::persistent) {
-                    return failure("map region environment effect is unknown or not persistent");
+                    return failure("map region environment effect is unknown or not persistent",
+                                   regionPath + ".environmentEffectId");
                 }
             }
         }
@@ -211,107 +227,144 @@ MapValidationResult validateMapData(const MapData& data,
         return std::any_of(data.encounters.begin(), data.encounters.end(),
                            [&](const auto& value) { return value.id == id; });
     };
-    for (const auto& rule : data.worldRules) {
+    for (std::size_t ruleIndex = 0; ruleIndex < data.worldRules.size(); ++ruleIndex) {
+        const auto& rule = data.worldRules[ruleIndex];
+        const auto rulePath = std::string("worldRules[") + std::to_string(ruleIndex) + "]";
+        const auto triggerPath = rulePath + ".trigger";
         if (rule.id.empty() || !ruleIds.emplace(std::string(rule.id.value())).second) {
-            return failure("world rule id is empty or duplicate");
+            return failure("world rule id is empty or duplicate", rulePath + ".id");
         }
         const auto& triggerTarget = rule.trigger.definitionTarget;
         switch (rule.trigger.kind) {
         case WorldTriggerKind::mapEntered:
             if (!triggerTarget.empty() || rule.trigger.instanceTarget) {
-                return failure("map-entered trigger cannot have a target");
+                return failure("map-entered trigger cannot have a target", triggerPath);
             }
             break;
         case WorldTriggerKind::regionEntered:
         case WorldTriggerKind::regionExited:
             if (triggerTarget.empty() || rule.trigger.instanceTarget || !regionExists(triggerTarget)) {
-                return failure("world rule references an unknown region");
+                return failure("world rule references an unknown region", triggerPath);
             }
             break;
         case WorldTriggerKind::encounterStarted:
         case WorldTriggerKind::encounterCompleted:
             if (triggerTarget.empty() || rule.trigger.instanceTarget || !encounterExists(triggerTarget)) {
-                return failure("world rule references an unknown encounter");
+                return failure("world rule references an unknown encounter", triggerPath);
             }
             break;
         case WorldTriggerKind::objectOpened:
+        case WorldTriggerKind::objectActivated:
+        case WorldTriggerKind::objectDeactivated:
             if (!triggerTarget.empty() || !rule.trigger.instanceTarget ||
                 objectById(rule.trigger.instanceTarget) == data.objects.end()) {
-                return failure("world rule references an unknown object instance");
+                return failure("world rule references an unknown object instance", triggerPath);
+            }
+            if (rule.trigger.kind != WorldTriggerKind::objectOpened && catalogs && catalogs->objects) {
+                const auto object = objectById(rule.trigger.instanceTarget);
+                const auto* definition = catalogs->objects->find(object->definitionId);
+                if (!definition || !definition->activation) {
+                    return failure("world rule activation target is not activation-capable", triggerPath);
+                }
             }
             break;
         }
-        for (const auto& condition : rule.conditions) {
+        for (std::size_t conditionIndex = 0; conditionIndex < rule.conditions.size(); ++conditionIndex) {
+            const auto& condition = rule.conditions[conditionIndex];
+            const auto conditionPath = rulePath + ".conditions[" + std::to_string(conditionIndex) + "]";
             const auto& target = condition.definitionTarget;
             switch (condition.kind) {
             case WorldConditionKind::flagSet:
             case WorldConditionKind::flagNotSet:
                 if (target.empty() || condition.instanceTarget) {
-                    return failure("world rule flag condition has an invalid target");
+                    return failure("world rule flag condition has an invalid target", conditionPath);
                 }
                 break;
             case WorldConditionKind::encounterCompleted:
             case WorldConditionKind::encounterNotCompleted:
                 if (target.empty() || condition.instanceTarget || !encounterExists(target)) {
-                    return failure("world rule condition references an unknown encounter");
+                    return failure("world rule condition references an unknown encounter", conditionPath);
                 }
                 break;
             case WorldConditionKind::doorState: {
                 if (!target.empty() || !condition.instanceTarget || !validDoorState(condition.doorState)) {
-                    return failure("door condition has an invalid object instance target or state");
+                    return failure("door condition has an invalid object instance target or state",
+                                   conditionPath);
                 }
                 const auto object = objectById(condition.instanceTarget);
                 if (object == data.objects.end()) {
-                    return failure("door condition references an unknown object instance");
+                    return failure("door condition references an unknown object instance", conditionPath);
                 }
                 if (catalogs != nullptr && catalogs->objects != nullptr) {
                     const auto* definition = catalogs->objects->find(object->definitionId);
                     if (definition == nullptr || !definition->door) {
-                        return failure("door condition target is not door-capable");
+                        return failure("door condition target is not door-capable", conditionPath);
+                    }
+                }
+                break;
+            }
+            case WorldConditionKind::objectActive:
+            case WorldConditionKind::objectInactive: {
+                if (!target.empty() || !condition.instanceTarget) {
+                    return failure("object activation condition has an invalid target", conditionPath);
+                }
+                const auto object = objectById(condition.instanceTarget);
+                if (object == data.objects.end()) {
+                    return failure("object activation condition references an unknown object instance",
+                                   conditionPath);
+                }
+                if (catalogs && catalogs->objects) {
+                    const auto* definition = catalogs->objects->find(object->definitionId);
+                    if (!definition || !definition->activation) {
+                        return failure("object activation condition target is not activation-capable",
+                                       conditionPath);
                     }
                 }
                 break;
             }
             }
         }
-        for (const auto& action : rule.actions) {
+        for (std::size_t actionIndex = 0; actionIndex < rule.actions.size(); ++actionIndex) {
+            const auto& action = rule.actions[actionIndex];
+            const auto actionPath = rulePath + ".actions[" + std::to_string(actionIndex) + "]";
             const auto& target = action.definitionTarget;
             switch (action.kind) {
             case WorldActionKind::setFlag:
             case WorldActionKind::clearFlag:
                 if (target.empty() || action.instanceTarget) {
-                    return failure("world rule flag action has an invalid target");
+                    return failure("world rule flag action has an invalid target", actionPath);
                 }
                 break;
             case WorldActionKind::startEncounter:
                 if (target.empty() || action.instanceTarget || !encounterExists(target)) {
-                    return failure("world rule action references an unknown encounter");
+                    return failure("world rule action references an unknown encounter", actionPath);
                 }
                 break;
             case WorldActionKind::setDoorState: {
                 if (!target.empty() || !action.instanceTarget || !validDoorState(action.doorState)) {
-                    return failure("door action has an invalid object instance target or state");
+                    return failure("door action has an invalid object instance target or state", actionPath);
                 }
                 const auto object = objectById(action.instanceTarget);
                 if (object == data.objects.end()) {
-                    return failure("door action references an unknown object instance");
+                    return failure("door action references an unknown object instance", actionPath);
                 }
                 if (catalogs != nullptr && catalogs->objects != nullptr) {
                     const auto* definition = catalogs->objects->find(object->definitionId);
                     if (definition == nullptr || !definition->door) {
-                        return failure("door action target is not door-capable");
+                        return failure("door action target is not door-capable", actionPath);
                     }
                 }
                 break;
             }
             case WorldActionKind::playPresentationEffect: {
                 if (target.empty() || action.instanceTarget) {
-                    return failure("presentation effect action has an invalid target");
+                    return failure("presentation effect action has an invalid target", actionPath);
                 }
                 if (catalogs && catalogs->presentationEffects) {
                     const auto* effect = catalogs->presentationEffects->find(target);
                     if (!effect || effect->lifetime != presentation::PresentationEffectLifetime::transient) {
-                        return failure("presentation effect action references an unknown or persistent effect");
+                        return failure("presentation effect action references an unknown or persistent effect",
+                                       actionPath);
                     }
                 }
                 break;
@@ -321,22 +374,27 @@ MapValidationResult validateMapData(const MapData& data,
     }
     std::unordered_set<std::string> encounterIds;
     std::unordered_set<std::uint64_t> encounterParticipants;
-    for (const auto& encounter : data.encounters) {
+    for (std::size_t encounterIndex = 0; encounterIndex < data.encounters.size(); ++encounterIndex) {
+        const auto& encounter = data.encounters[encounterIndex];
+        const auto encounterPath = std::string("encounters[") + std::to_string(encounterIndex) + "]";
         if (encounter.id.empty() || !encounterIds.emplace(std::string(encounter.id.value())).second ||
             encounter.participants.empty()) {
-            return failure("encounter id is duplicate or has no participants");
+            return failure("encounter id is duplicate or has no participants", encounterPath);
         }
         if (encounter.rewardGrantId && catalogs && catalogs->rewardGrants &&
             !catalogs->rewardGrants->find(*encounter.rewardGrantId)) {
-            return failure("encounter references an unknown reward grant");
+            return failure("encounter references an unknown reward grant", encounterPath + ".rewardGrantId");
         }
         std::unordered_set<std::uint64_t> localParticipants;
-        for (const auto participant : encounter.participants) {
+        for (std::size_t participantIndex = 0; participantIndex < encounter.participants.size();
+             ++participantIndex) {
+            const auto participant = encounter.participants[participantIndex];
             if (!participant || !localParticipants.emplace(participant.value).second ||
                 !std::any_of(data.enemies.begin(), data.enemies.end(),
                              [&](const auto& enemy) { return enemy.id == participant; }) ||
                 !encounterParticipants.emplace(participant.value).second) {
-                return failure("encounter participant is invalid, duplicated, or shared");
+                return failure("encounter participant is invalid, duplicated, or shared",
+                               encounterPath + ".participants[" + std::to_string(participantIndex) + "]");
             }
         }
     }
@@ -366,7 +424,7 @@ MapValidationResult validateMapData(const MapData& data,
             }
         }
     }
-    return {true, {}};
+    return {true, {}, {}};
 }
 
 bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {

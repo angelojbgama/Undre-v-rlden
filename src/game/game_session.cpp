@@ -470,6 +470,15 @@ void GameSession::interactWithWorld() {
         bankOverlay_.toggle();
         return;
     }
+    if (object.definition().activation &&
+        object.definition().activation->mode == gameplay::ObjectActivationMode::interactToggle) {
+        if (!mapSession_->world()->toggleObjectActivation(selected->persistentId)) { return; }
+        events_.emit(simulation::ObjectActivationChanged{
+            mapSession_->world()->id(), selected->persistentId,
+            object.activationActive()});
+        captureWorldState();
+        return;
+    }
     if (object.isDoor()) {
         if (!mapSession_->world()->interactDoor(selected->persistentId)) { return; }
         // Doors have their own state transition and must not masquerade as
@@ -644,6 +653,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     player_.update(command, map.collision(), map.tileSize());
     regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                           player_.feetPosition(), events_);
+    mapSession_->world()->updatePressureActivations(player_.feetPosition(), events_);
     // Combat is optional for the small logical map fixtures used by Session
     // tests. A fully bootstrapped game configures it before the first tick.
     if (projectiles_ && attackCatalog_ && projectileCatalog_ && behaviorCatalog_ &&
@@ -689,6 +699,9 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         },
         [&](simulation::PersistentInstanceId id) {
             return mapSession_->world()->doorState(id);
+        },
+        [&](simulation::PersistentInstanceId id) {
+            return mapSession_->world()->objectActivation(id);
         }};
     worldLogic_.consume(mapSession_->data()->worldRules, mapSession_->world()->id(),
                         dialogueFlags_, events_, worldState_.worldRules, runtime);
@@ -704,6 +717,10 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             events_.emit(simulation::MapEntered{mapSession_->world()->id()});
             regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                                   player_.feetPosition(), events_);
+            // Pressure activation is derived from the newly spawned player position.
+            // Evaluate it before the same world-logic pass so a plate at a map
+            // entry can drive authored rules without a one-tick delay.
+            mapSession_->world()->updatePressureActivations(player_.feetPosition(), events_);
             std::vector<simulation::PersistentInstanceId> newMapAlive;
             newMapAlive.reserve(mapSession_->world()->enemies().size());
             for (const auto& enemy : mapSession_->world()->enemies()) {
@@ -726,6 +743,9 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
                 },
                 [&](simulation::PersistentInstanceId id) {
                     return mapSession_->world()->doorState(id);
+                },
+                [&](simulation::PersistentInstanceId id) {
+                    return mapSession_->world()->objectActivation(id);
                 }};
             static_cast<void>(worldLogic_.consume(mapSession_->data()->worldRules,
                                                    mapSession_->world()->id(), dialogueFlags_,

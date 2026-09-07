@@ -156,6 +156,7 @@ struct WorldLogicFixture final {
 };
 
 WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root);
+WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root);
 
 class ScenarioContext final {
 public:
@@ -173,12 +174,15 @@ public:
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
         game::GameContentRegistry content = game::content::compileBuiltinContentOrThrow();
-        if (scenario_ == "world_logic") {
-            const auto fixture = makeWorldLogicFixture(root_);
-            const auto fixtureMap = executableDirectory_ / "world_logic.dmap";
+        if (scenario_ == "world_logic" || scenario_ == "interactive_world") {
+            const auto fixture = scenario_ == "world_logic"
+                ? makeWorldLogicFixture(root_)
+                : makeInteractiveWorldFixture(root_);
+            const auto fixtureMap = executableDirectory_ /
+                (scenario_ == "world_logic" ? "world_logic.dmap" : "interactive_world.dmap");
             std::string writeError;
             if (!game::maps::writeDmap(fixtureMap, fixture.map, writeError)) {
-                throw std::runtime_error("could not write world logic playtest map: " + writeError);
+                throw std::runtime_error("could not write interactive playtest map: " + writeError);
             }
             launch.mapPath = fixtureMap;
             content = fixture.content;
@@ -544,6 +548,185 @@ WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
     return {std::move(*compiled.registry), std::move(map)};
 }
 
+WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root) {
+    auto authored = game::content::makeBuiltinAuthoredContent();
+    const auto addToggle = [&](std::string id) {
+        game::content::AuthoredWorldObject object;
+        object.id = simulation::DefinitionId{std::move(id)};
+        object.visualSetId = {"visual.object.crate"};
+        object.interactable = game::gameplay::ObjectInteractionDefinition{{-16, -16, 32, 32}};
+        object.activation = game::gameplay::ObjectActivationDefinition{
+            game::gameplay::ObjectActivationMode::interactToggle, false, std::nullopt};
+        authored.objects.push_back(std::move(object));
+    };
+    addToggle("object.playtest.lever.a");
+    addToggle("object.playtest.lever.b");
+
+    game::content::AuthoredWorldObject plate;
+    plate.id = {"object.playtest.plate"};
+    plate.visualSetId = {"visual.object.crate"};
+    plate.activation = game::gameplay::ObjectActivationDefinition{
+        game::gameplay::ObjectActivationMode::playerPressure, false,
+        world::AabbI{-8, -8, 16, 16}};
+    authored.objects.push_back(std::move(plate));
+
+    const auto addDoor = [&](std::string id) {
+        game::content::AuthoredWorldObject object;
+        object.id = simulation::DefinitionId{std::move(id)};
+        object.visualSetId = {"visual.object.crate"};
+        object.door = game::gameplay::ObjectDoorDefinition{
+            game::gameplay::DoorState::closed, {-8, -24, 16, 24}};
+        authored.objects.push_back(std::move(object));
+    };
+    addDoor("object.playtest.door.main");
+    addDoor("object.playtest.door.exit");
+
+    const auto compiled = game::content::compileContent(authored);
+    if (!compiled) {
+        throw std::runtime_error("could not compile interactive world playtest content");
+    }
+    const auto loaded = game::maps::readDmap(mapPath(root, "map.dungeon.02"));
+    if (!loaded || loaded.data.playerSpawns.empty()) {
+        throw std::runtime_error("could not load interactive world playtest map");
+    }
+    auto map = std::move(loaded.data);
+    map.id = simulation::MapId{"map.playtest.interactive"};
+    map.enemies.clear();
+    map.npcs.clear();
+    map.pickups.clear();
+    map.links.clear();
+    map.objects.clear();
+    map.regions.clear();
+    map.worldRules.clear();
+    map.encounters.clear();
+    map.collision.assign(static_cast<std::size_t>(map.width) * map.height, 0);
+
+    const auto spawn = map.playerSpawns.front().position;
+    const auto positionAt = [&](int dx, int dy) {
+        const int maxX = static_cast<int>(map.width * map.tileSize) - 16;
+        const int maxY = static_cast<int>(map.height * map.tileSize) - 16;
+        return core::WorldPointI{std::clamp(spawn.x + dx, 16, maxX),
+                                 std::clamp(spawn.y + dy, 32, maxY)};
+    };
+    map.objects.push_back({101, {"object.playtest.lever.a"}, positionAt(0, 0), {}});
+    map.objects.push_back({102, {"object.playtest.lever.b"}, positionAt(0, 32), {}});
+    map.objects.push_back({103, {"object.playtest.plate"}, positionAt(48, 0), {}});
+    map.objects.push_back({104, {"object.playtest.door.main"}, positionAt(64, 0), {}});
+    map.objects.push_back({105, {"object.playtest.door.exit"}, positionAt(96, 0), {}});
+
+    const simulation::DefinitionId leverA{"object.playtest.lever.a"};
+    const simulation::DefinitionId leverB{"object.playtest.lever.b"};
+    const simulation::PersistentInstanceId mainDoor{104};
+    const simulation::PersistentInstanceId exitDoor{105};
+    const simulation::PersistentInstanceId plateId{103};
+    const auto addMainDoorRule = [&](simulation::DefinitionId triggerId,
+                                     simulation::PersistentInstanceId conditionId) {
+        game::maps::WorldRuleDefinition rule;
+        rule.id = simulation::DefinitionId{
+            std::string("rule.playtest.main.") + std::string(triggerId.value())};
+        rule.trigger = {game::maps::WorldTriggerKind::objectActivated, {}, triggerId == leverA ?
+                        simulation::PersistentInstanceId{101} : simulation::PersistentInstanceId{102}};
+        rule.conditions.push_back({game::maps::WorldConditionKind::objectActive, {}, conditionId,
+                                   game::gameplay::DoorState::closed});
+        rule.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, mainDoor,
+                                game::gameplay::DoorState::open});
+        map.worldRules.push_back(std::move(rule));
+    };
+    addMainDoorRule(leverA, simulation::PersistentInstanceId{102});
+    addMainDoorRule(leverB, simulation::PersistentInstanceId{101});
+
+    const auto addCloseRule = [&](std::string id, simulation::PersistentInstanceId target) {
+        game::maps::WorldRuleDefinition rule;
+        rule.id = simulation::DefinitionId{std::move(id)};
+        rule.trigger = {game::maps::WorldTriggerKind::objectDeactivated, {}, target};
+        rule.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, mainDoor,
+                                game::gameplay::DoorState::closed});
+        map.worldRules.push_back(std::move(rule));
+    };
+    addCloseRule("rule.playtest.main.a.closed", simulation::PersistentInstanceId{101});
+    addCloseRule("rule.playtest.main.b.closed", simulation::PersistentInstanceId{102});
+
+    game::maps::WorldRuleDefinition plateOpen;
+    plateOpen.id = {"rule.playtest.plate.open"};
+    plateOpen.trigger = {game::maps::WorldTriggerKind::objectActivated, {}, plateId};
+    plateOpen.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, exitDoor,
+                                 game::gameplay::DoorState::open});
+    map.worldRules.push_back(std::move(plateOpen));
+    game::maps::WorldRuleDefinition plateClose;
+    plateClose.id = {"rule.playtest.plate.closed"};
+    plateClose.trigger = {game::maps::WorldTriggerKind::objectDeactivated, {}, plateId};
+    plateClose.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, exitDoor,
+                                  game::gameplay::DoorState::closed});
+    map.worldRules.push_back(std::move(plateClose));
+
+    return {std::move(*compiled.registry), std::move(map)};
+}
+
+const game::audit::AuditActor* findObject(const GameAuditSnapshot& snapshot, std::uint64_t id) {
+    const auto found = std::find_if(snapshot.objects.begin(), snapshot.objects.end(),
+                                    [&](const auto& object) { return object.instanceId == id; });
+    return found == snapshot.objects.end() ? nullptr : &*found;
+}
+
+bool runInteractiveWorld(ScenarioContext& context) {
+    if (!runBaseline(context)) { return false; }
+    const auto interact = [&](PointTarget target) {
+        if (!moveTo(context, target, 120, false)) { return false; }
+        platform::InputState input;
+        input.interactPressed = true;
+        return context.step(input);
+    };
+    const auto initially = context.snapshot();
+    const auto* leverA = findObject(initially, 101);
+    const auto* leverB = findObject(initially, 102);
+    const auto* plate = findObject(initially, 103);
+    const auto* mainDoor = findObject(initially, 104);
+    const auto* exitDoor = findObject(initially, 105);
+    if (!context.require(leverA && leverB && plate && mainDoor && exitDoor,
+                         "interactive playtest objects are incomplete")) { return false; }
+    const PointTarget leverAPosition{leverA->x, leverA->y};
+    const PointTarget leverBPosition{leverB->x, leverB->y};
+    const PointTarget platePosition{plate->x, plate->y};
+    if (!interact(leverAPosition)) { return false; }
+    if (!context.require(findObject(context.snapshot(), 101)->activation.value_or(false) &&
+                         context.snapshot().lastEvent == "OBJECT ACTIVATED",
+                         "first lever did not toggle through interaction")) { return false; }
+    if (!interact(leverBPosition)) { return false; }
+    if (!context.require(findObject(context.snapshot(), 102)->activation.value_or(false) &&
+                         findObject(context.snapshot(), 104)->doorState == "open",
+                         "authored two-switch rule did not open the main door")) { return false; }
+    if (!interact(leverAPosition)) { return false; }
+    if (!context.require(!findObject(context.snapshot(), 101)->activation.value_or(true) &&
+                         findObject(context.snapshot(), 104)->doorState == "closed",
+                         "lever deactivation did not close the main door")) { return false; }
+    if (!moveTo(context, platePosition, 120, false)) { return false; }
+    const auto& pressed = context.snapshot();
+    if (!context.require(findObject(pressed, 103)->activation.value_or(false) &&
+                         findObject(pressed, 105)->doorState == "open",
+                         "pressure plate did not open its authored door rule")) { return false; }
+    if (!moveTo(context, leverAPosition, 120, false)) { return false; }
+    const auto& released = context.snapshot();
+    if (!context.require(!findObject(released, 103)->activation.value_or(true) &&
+                         findObject(released, 105)->doorState == "closed",
+                         "pressure plate did not release its authored door rule")) { return false; }
+    // B is still active after the earlier A-off check; toggle A back on to
+    // restore the solved two-switch state before saving.
+    if (!interact(leverAPosition)) { return false; }
+    if (!context.require(findObject(context.snapshot(), 104)->doorState == "open",
+                         "main door did not reopen before save")) { return false; }
+    platform::InputState save;
+    save.saveGamePressed = true;
+    if (!context.step(save) || !interact(leverAPosition)) { return false; }
+    platform::InputState load;
+    load.loadGamePressed = true;
+    if (!context.step(load)) { return false; }
+    const auto& restored = context.snapshot();
+    return context.require(findObject(restored, 101)->activation.value_or(false) &&
+                           findObject(restored, 102)->activation.value_or(false) &&
+                           findObject(restored, 104)->doorState == "open",
+                           "toggle activation or door state did not survive save/load");
+}
+
 bool runWorldLogic(ScenarioContext& context) {
     if (!runBaseline(context)) { return false; }
     if (!context.step()) { return false; }
@@ -905,6 +1088,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runWorldLogic(context);
     } else if (name == "presentation_feedback") {
         passed = runPresentationFeedback(context);
+    } else if (name == "interactive_world") {
+        passed = runInteractiveWorld(context);
     } else if (name == "rewards_loot") {
         passed = runRewards(context);
     } else {
@@ -920,7 +1105,7 @@ const std::vector<std::string> allScenarios{
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "presentation_feedback", "rewards_loot"};
+        "presentation_feedback", "interactive_world", "rewards_loot"};
 
 } // namespace
 

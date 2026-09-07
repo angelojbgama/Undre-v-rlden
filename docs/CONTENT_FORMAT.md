@@ -1,20 +1,21 @@
-# External Authored Content — JSON schema v1
+# External Authored Content — JSON schema v4
 
 This is the external representation of `AuthoredContentPack`. It is strict UTF-8
 JSON, identified by `"format": "dungeon-underworld-content"` and
-`"version": 1`. Runtime definitions, C++ and DMAP are not authoring formats.
+`"version": 4`. The decoder remains compatible with schema versions 1, 2 and 3;
+the encoder emits v4. Runtime definitions, C++ and DMAP are not authoring formats.
 
 The canonical top-level field order is:
 
 `format`, `version`, `tilesets`, `projectiles`, `attacks`, `behaviors`, `enemies`,
 `items`, `objects`, `pickups`, `npcVisuals`, `npcs`, `dialogues`, `quests`,
 `playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`,
-`authoringDescriptors`, `tileSemantics`, `stamps`.
+`authoringDescriptors`, `tileSemantics`, `stamps`, `presentationEffects`.
 
-Each category is an array; an omitted category decodes as empty. In 13A1, the
-decoder foundation covers tilesets, behaviors, items, NPC visuals, progressions,
-reward profiles, reward grants, shops and authoring descriptors; the remaining
-authored categories are staged for 13A2/13A3. Unknown fields,
+Each category is an array; an omitted category decodes as empty. The twenty
+categories are merged by the workspace loader after per-file strict decoding.
+Schema v2 added door capabilities, v3 added presentation effects and schema v4
+added object activation capabilities. Unknown fields,
 unknown enum strings, duplicate object keys, comments, trailing commas and future
 versions are errors. Definition IDs are strings. Optional fields may be omitted or
 `null`. Variants use an explicit `kind` string. Integer fields are parsed from their
@@ -29,8 +30,8 @@ preserving authored vector order.
 The pipeline is:
 
 ```text
-LLM or author JSON -> decoder -> AuthoredContentPack -> ContentValidator
-                   -> ContentCompiler -> GameContentRegistry
+author JSON -> strict decoder -> workspace merge -> AuthoredContentPack
+            -> ContentValidator -> ContentCompiler -> GameContentRegistry
 ```
 
 Examples:
@@ -57,9 +58,8 @@ Examples:
  "playerBuyPrice":25,"playerSellPrice":10}]}
 ```
 
-`ContentJsonEncoder`/`ContentJsonDecoder` are reusable by the future Content Studio.
-The builtin C++ pack remains the runtime source in 13A; this document defines the
-codec boundary, not runtime external-content selection. Workspace loading and
-multi-file merge are deferred to 13B.
-This slice does not scan workspaces, merge files, replace builtin runtime content or
-implement Studio/LLM tooling; those belong to later phases.
+`ContentJsonEncoder`/`ContentJsonDecoder` are shared by the builtin-equivalence
+tests, workspace loader, Game, Map Maker and `content_check`. The builtin C++ pack
+remains the transitional default source; an explicit workspace replaces it without
+an overlay. Presentation effects and object activation are data-driven capabilities,
+not authoritative gameplay state. Content Studio and LLM tooling remain future work.

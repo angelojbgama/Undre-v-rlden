@@ -229,7 +229,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.objects) {
         if (value.id.empty() || value.visualSetId.empty() ||
-            (!value.interactable && !value.container && !value.destructible && !value.door))
+            (!value.interactable && !value.container && !value.destructible && !value.door && !value.activation))
             error(report, ContentKind::object, value.id, "invalid_value", "object must have valid visual and capability data", "definition");
         if (value.interactable && (value.interactable->bounds.width <= 0 || value.interactable->bounds.height <= 0)) error(report, ContentKind::object, value.id, "invalid_value", "interaction bounds are invalid", "interactable");
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
@@ -239,6 +239,20 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::object, value.id, "invalid_value", "door blocking bounds must be positive", "door.blockingBounds");
         if (value.bankAccess && (!value.interactable || value.container || value.destructible))
             error(report, ContentKind::object, value.id, "invalid_bank_access", "bank access requires interaction and cannot be a container or destructible", "bankAccess");
+        if (value.activation) {
+            if (value.activation->mode == gameplay::ObjectActivationMode::interactToggle) {
+                if (!value.interactable || value.activation->activationBounds) {
+                    error(report, ContentKind::object, value.id, "invalid_activation", "interact-toggle activation requires interactable and no pressure bounds", "activation");
+                }
+            } else if (value.activation->mode == gameplay::ObjectActivationMode::playerPressure) {
+                if (!value.activation->activationBounds || value.activation->activationBounds->width <= 0 ||
+                    value.activation->activationBounds->height <= 0 || value.activation->initialActive) {
+                    error(report, ContentKind::object, value.id, "invalid_activation", "player-pressure activation requires positive bounds and inactive initial state", "activation");
+                }
+            } else {
+                error(report, ContentKind::object, value.id, "invalid_activation", "unknown object activation mode", "activation.mode");
+            }
+        }
     }
     for (const auto& value : pack.pickups) {
         if (value.visualId.empty() || value.collectionBounds.width <= 0 || value.collectionBounds.height <= 0) error(report, ContentKind::pickup, value.id, "invalid_value", "pickup visual and collection bounds are invalid", "definition");

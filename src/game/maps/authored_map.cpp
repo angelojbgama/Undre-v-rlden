@@ -361,6 +361,8 @@ const char* triggerName(WorldTriggerKind value) {
     case WorldTriggerKind::encounterStarted: return "encounterStarted";
     case WorldTriggerKind::encounterCompleted: return "encounterCompleted";
     case WorldTriggerKind::objectOpened: return "objectOpened";
+    case WorldTriggerKind::objectActivated: return "objectActivated";
+    case WorldTriggerKind::objectDeactivated: return "objectDeactivated";
     }
     return "mapEntered";
 }
@@ -371,6 +373,8 @@ const char* conditionName(WorldConditionKind value) {
     case WorldConditionKind::encounterCompleted: return "encounterCompleted";
     case WorldConditionKind::encounterNotCompleted: return "encounterNotCompleted";
     case WorldConditionKind::doorState: return "doorState";
+    case WorldConditionKind::objectActive: return "objectActive";
+    case WorldConditionKind::objectInactive: return "objectInactive";
     }
     return "flagSet";
 }
@@ -432,12 +436,16 @@ bool decodeTrigger(const JsonValue& value, Reader& reader, std::string_view path
     else if (good && text == "encounterStarted") output.kind = WorldTriggerKind::encounterStarted;
     else if (good && text == "encounterCompleted") output.kind = WorldTriggerKind::encounterCompleted;
     else if (good && text == "objectOpened") output.kind = WorldTriggerKind::objectOpened;
+    else if (good && text == "objectActivated") output.kind = WorldTriggerKind::objectActivated;
+    else if (good && text == "objectDeactivated") output.kind = WorldTriggerKind::objectDeactivated;
     else if (good) {
         reader.error(*kind, std::string(path) + ".kind", "unknown_enum",
                      "unknown world trigger");
         good = false;
     }
-    const bool wantsInstance = output.kind == WorldTriggerKind::objectOpened;
+    const bool wantsInstance = output.kind == WorldTriggerKind::objectOpened ||
+                               output.kind == WorldTriggerKind::objectActivated ||
+                               output.kind == WorldTriggerKind::objectDeactivated;
     const auto* target = field(*objectValue, "target");
     const auto* instance = field(*objectValue, "instanceTarget");
     if (target != nullptr && instance != nullptr) {
@@ -470,12 +478,16 @@ bool decodeCondition(const JsonValue& value, Reader& reader, std::string_view pa
     else if (good && text == "encounterCompleted") output.kind = WorldConditionKind::encounterCompleted;
     else if (good && text == "encounterNotCompleted") output.kind = WorldConditionKind::encounterNotCompleted;
     else if (good && text == "doorState") output.kind = WorldConditionKind::doorState;
+    else if (good && text == "objectActive") output.kind = WorldConditionKind::objectActive;
+    else if (good && text == "objectInactive") output.kind = WorldConditionKind::objectInactive;
     else if (good) {
         reader.error(*kind, std::string(path) + ".kind", "unknown_enum",
                      "unknown world condition");
         good = false;
     }
-    const bool wantsInstance = output.kind == WorldConditionKind::doorState;
+    const bool wantsInstance = output.kind == WorldConditionKind::doorState ||
+                               output.kind == WorldConditionKind::objectActive ||
+                               output.kind == WorldConditionKind::objectInactive;
     const auto* target = field(*objectValue, "target");
     const auto* instance = field(*objectValue, "instanceTarget");
     if (target != nullptr && instance != nullptr) {
@@ -1001,7 +1013,7 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
     const auto& geometry = source.geometry;
     JsonObject root;
     put(root, "format", stringValue("dungeon-underworld-map-source"));
-    put(root, "version", unsignedValue(2));
+    put(root, "version", unsignedValue(3));
     put(root, "id", idValue(geometry.id.value()));
     put(root, "width", unsignedValue(geometry.width));
     put(root, "height", unsignedValue(geometry.height));
@@ -1106,7 +1118,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     }
     std::uint64_t schemaVersion{};
     if (version == nullptr || !parseUnsigned(*version, schemaVersion) ||
-        (schemaVersion != 1 && schemaVersion != 2)) {
+        (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3)) {
         if (version != nullptr) reader.error(*version, "version", "unsupported_version",
                                               "unsupported map schema version");
         good = false;
@@ -1149,6 +1161,50 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
                             good = false;
                         }
                     }
+                }
+            }
+        }
+    }
+    if (schemaVersion >= 1 && schemaVersion < 3) {
+        if (const auto* rulesValue = field(*root, "worldRules")) {
+            if (const auto* rules = std::get_if<JsonArray>(&rulesValue->value)) {
+                for (std::size_t ruleIndex = 0; ruleIndex < rules->size(); ++ruleIndex) {
+                    const auto* rule = std::get_if<JsonObject>(&(*rules)[ruleIndex].value);
+                    if (rule == nullptr) continue;
+                    const auto rejectArrayKind = [&](std::string_view arrayName, std::string_view kindName,
+                                                     std::string_view path) {
+                        const auto* arrayValue = field(*rule, arrayName);
+                        const auto* values = arrayValue == nullptr ? nullptr :
+                            std::get_if<JsonArray>(&arrayValue->value);
+                        if (values == nullptr) return;
+                        for (std::size_t index = 0; index < values->size(); ++index) {
+                            const auto* entry = std::get_if<JsonObject>(&(*values)[index].value);
+                            if (entry == nullptr) continue;
+                            const auto* kind = field(*entry, "kind");
+                            const auto* text = kind == nullptr ? nullptr :
+                                std::get_if<std::string>(&kind->value);
+                            if (text != nullptr && *text == kindName) {
+                                reader.error(*kind, std::string(path) + "[" + std::to_string(index) + "].kind",
+                                              "unsupported_version", "object activation rules require map schema version 3");
+                                good = false;
+                            }
+                        }
+                    };
+                    const auto triggerPath = "worldRules[" + std::to_string(ruleIndex) + "].trigger";
+                    if (const auto* triggerValue = field(*rule, "trigger")) {
+                        if (const auto* trigger = std::get_if<JsonObject>(&triggerValue->value)) {
+                            if (const auto* kind = field(*trigger, "kind")) {
+                                const auto* text = std::get_if<std::string>(&kind->value);
+                                if (text && (*text == "objectActivated" || *text == "objectDeactivated")) {
+                                    reader.error(*kind, triggerPath + ".kind", "unsupported_version",
+                                                 "object activation rules require map schema version 3");
+                                    good = false;
+                                }
+                            }
+                        }
+                    }
+                    rejectArrayKind("conditions", "objectActive", "worldRules[" + std::to_string(ruleIndex) + "].conditions");
+                    rejectArrayKind("conditions", "objectInactive", "worldRules[" + std::to_string(ruleIndex) + "].conditions");
                 }
             }
         }
@@ -1347,7 +1403,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
         } else {
             const auto validation = validateMapData(mapDataFromAuthored(source));
             if (!validation) reader.diagnostics.push_back({AuthoredMapDiagnosticStage::validation,
-                "invalid_map", validation.error, "", 1, 1});
+                "invalid_map", validation.error, validation.path, 1, 1});
         }
     }
     result.diagnostics = std::move(reader.diagnostics);
@@ -1426,7 +1482,7 @@ MapCompileResult compileAuthoredMap(const AuthoredMapSource& source,
     const auto validation = validateMapData(compiled, &catalogs);
     if (!validation) {
         return {{}, {{AuthoredMapDiagnosticStage::validation, "invalid_map",
-                      validation.error, "", 1, 1}}};
+                      validation.error, validation.path, 1, 1}}};
     }
     return {compiled, {}};
 }

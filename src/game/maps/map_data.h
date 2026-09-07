@@ -104,9 +104,11 @@ struct MapRegionDefinition final {
 };
 
 enum class WorldTriggerKind { mapEntered, regionEntered, regionExited, encounterStarted,
-                              encounterCompleted, objectOpened };
+                              encounterCompleted, objectOpened, objectActivated,
+                              objectDeactivated };
 enum class WorldConditionKind { flagSet, flagNotSet, encounterCompleted,
-                                encounterNotCompleted, doorState };
+                                encounterNotCompleted, doorState, objectActive,
+                                objectInactive };
 enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState,
                              playPresentationEffect };
 struct WorldTrigger final {
@@ -176,6 +178,7 @@ struct MapValidationCatalogs final {
 struct MapValidationResult final {
     bool valid{};
     std::string error;
+    std::string path;
     [[nodiscard]] explicit operator bool() const noexcept { return valid; }
 };
 

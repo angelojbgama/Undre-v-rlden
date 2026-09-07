@@ -86,6 +86,7 @@
 #include "game/presentation/presentation_effect_renderer.h"
 #include "game/presentation/presentation_feedback_controller.h"
 #include "game/presentation/presentation_effects.h"
+#include "tools/map_compile_options.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -3268,8 +3269,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 7 && encoded[7] == 0,
-           "world state persistence advances DSAV to minor version 7");
+    expect(encoded.size() > 7 && encoded[6] == 8 && encoded[7] == 0,
+           "world state persistence advances DSAV to minor version 8");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
@@ -4381,6 +4382,30 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     const wchar_t* wideEditorMissing[] = {L"editor", L"--content"};
     expect(!editor::parseEditorLaunchOptions(2, wideEditorMissing, optionError),
            "wide editor startup options reject content without a value");
+    const char* mapCompileContent[] = {"map_compile", "--content=content", "source.umap",
+                                       "output.dmap"};
+    const auto mapCompileOptions = underworld::tools::parseMapCompileOptions(
+        4, mapCompileContent, optionError);
+    expect(mapCompileOptions && mapCompileOptions->contentRoot &&
+               mapCompileOptions->contentRoot->generic_string() == "content" &&
+               mapCompileOptions->source == "source.umap" &&
+               mapCompileOptions->output == "output.dmap",
+           "map_compile parser accepts content= and authored source/output paths");
+    const char* mapCompileMissingContent[] = {"map_compile", "--content"};
+    expect(!underworld::tools::parseMapCompileOptions(
+               2, mapCompileMissingContent, optionError) &&
+               optionError.find("requires") != std::string::npos,
+           "map_compile parser rejects a missing content directory value");
+    const char* mapCompileDuplicate[] = {"map_compile", "--content=a", "--content=b",
+                                         "source.umap", "output.dmap"};
+    expect(!underworld::tools::parseMapCompileOptions(
+               5, mapCompileDuplicate, optionError) &&
+               optionError.find("duplicate") != std::string::npos,
+           "map_compile parser rejects duplicate content sources");
+    const char* mapCompileMissingPositionals[] = {"map_compile", "--content=content"};
+    expect(!underworld::tools::parseMapCompileOptions(
+               2, mapCompileMissingPositionals, optionError),
+           "map_compile parser requires both source and output paths");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
@@ -5517,8 +5542,9 @@ void testPhase13AJsonFoundation() {
     expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content,
-           "content JSON accepts v1-v3 and rejects wrong format identifiers and unsupported versions");
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5})").content,
+           "content JSON accepts v1-v4 and rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
@@ -6454,7 +6480,7 @@ void testPhase14WorldClosure() {
     expect(loadedWorldSave && loadedWorldSave.data.world.worldRules == worldSave.world.worldRules &&
                loadedWorldSave.data.world.encounters == worldSave.world.encounters &&
                worldSaveBytes == save::serializeSave(loadedWorldSave.data),
-           "DSAV 1.7 roundtrips persistent once-rule and completed encounter state deterministically");
+           "DSAV 1.8 roundtrips persistent once-rule and completed encounter state deterministically");
     auto invalidDoorSave = worldSave;
     invalidDoorSave.world.objects.push_back({{map.id, {3}}, false, false, {},
                                              static_cast<gameplay::DoorState>(99)});
@@ -6951,13 +6977,13 @@ void testPhase15PresentationFeedback() {
         maps::authoredMapFromMapData(makeSyntheticMap("map.presentation.legacy", "map.presentation.legacy")));
     const auto legacyVersion = legacyUmap.find("\"version\"");
     const auto legacyValue = legacyVersion == std::string::npos
-        ? std::string::npos : legacyUmap.find('2', legacyVersion);
+        ? std::string::npos : legacyUmap.find('3', legacyVersion);
     if (legacyValue != std::string::npos) legacyUmap.replace(legacyValue, 1, "1");
     const auto legacyDecoded = maps::decodeAuthoredMapJson(legacyUmap);
     auto incompatibleUmap = authoredJson;
     const auto incompatibleVersion = incompatibleUmap.find("\"version\"");
     const auto incompatibleValue = incompatibleVersion == std::string::npos
-        ? std::string::npos : incompatibleUmap.find('2', incompatibleVersion);
+        ? std::string::npos : incompatibleUmap.find('3', incompatibleVersion);
     if (incompatibleValue != std::string::npos) incompatibleUmap.replace(incompatibleValue, 1, "1");
     const auto incompatibleDecoded = maps::decodeAuthoredMapJson(incompatibleUmap);
     expect(legacyDecoded.source.has_value(), "UMAP v1 remains readable");
@@ -7014,6 +7040,423 @@ void testPhase15PresentationFeedback() {
                mixed.workspace->authored.presentationEffects.size() == 1,
            "content workspace merges v1, v2 and v3 files without reinterpretation");
     std::filesystem::remove_all(mixedRoot, mixedError);
+}
+
+underworld::game::content::AuthoredContentPack makePhase16Content() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+    namespace world = underworld::world;
+    auto authored = content::makeBuiltinAuthoredContent();
+
+    content::AuthoredWorldObject leverA;
+    leverA.id = {"object.phase16.lever.a"};
+    leverA.visualSetId = {"visual.object.crate"};
+    leverA.interactable = gameplay::ObjectInteractionDefinition{{-12, -12, 24, 24}};
+    leverA.activation = gameplay::ObjectActivationDefinition{
+        gameplay::ObjectActivationMode::interactToggle, false, std::nullopt};
+    authored.objects.push_back(leverA);
+
+    content::AuthoredWorldObject leverB = leverA;
+    leverB.id = {"object.phase16.lever.b"};
+    authored.objects.push_back(leverB);
+
+    content::AuthoredWorldObject plate;
+    plate.id = {"object.phase16.plate"};
+    plate.visualSetId = {"visual.object.crate"};
+    plate.activation = gameplay::ObjectActivationDefinition{
+        gameplay::ObjectActivationMode::playerPressure, false,
+        world::AabbI{-8, -8, 16, 16}};
+    authored.objects.push_back(plate);
+
+    content::AuthoredWorldObject door;
+    door.id = {"object.phase16.door"};
+    door.visualSetId = {"visual.object.crate"};
+    door.door = gameplay::ObjectDoorDefinition{gameplay::DoorState::closed,
+                                                {0, 0, 16, 16}};
+    authored.objects.push_back(door);
+
+    return authored;
+}
+
+underworld::game::maps::MapData makePhase16Map() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    auto map = makeSyntheticMap("map.phase16.puzzle", "map.phase16.puzzle");
+    map.enemies.clear();
+    map.npcs.clear();
+    map.pickups.clear();
+    map.links.clear();
+    map.objects.clear();
+    map.playerSpawns.resize(1);
+    map.playerSpawns.front().position = {16, 24};
+    map.objects.push_back({{101}, {"object.phase16.lever.a"}, {16, 24}, {}});
+    map.objects.push_back({{102}, {"object.phase16.lever.b"}, {16, 8}, {}});
+    map.objects.push_back({{103}, {"object.phase16.plate"}, {48, 24}, {}});
+    map.objects.push_back({{104}, {"object.phase16.door"}, {32, 16}, {}});
+    map.objects.push_back({{105}, {"object.phase16.door"}, {0, 16}, {}});
+
+    const auto objectTrigger = [](maps::WorldTriggerKind kind,
+                                  simulation::PersistentInstanceId id) {
+        return maps::WorldTrigger{kind, {}, id};
+    };
+    const auto objectCondition = [](maps::WorldConditionKind kind,
+                                    simulation::PersistentInstanceId id) {
+        return maps::WorldCondition{kind, {}, id, gameplay::DoorState::closed};
+    };
+    const auto doorAction = [](simulation::PersistentInstanceId id,
+                               gameplay::DoorState state) {
+        return maps::WorldAction{maps::WorldActionKind::setDoorState, {}, id, state};
+    };
+    maps::WorldRuleDefinition rule;
+    rule.id = {"rule.phase16.a.opens"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectActivated, {101});
+    rule.conditions.push_back(objectCondition(maps::WorldConditionKind::objectActive, {102}));
+    rule.actions.push_back(doorAction({104}, gameplay::DoorState::open));
+    map.worldRules.push_back(rule);
+    rule = {};
+    rule.id = {"rule.phase16.b.opens"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectActivated, {102});
+    rule.conditions.push_back(objectCondition(maps::WorldConditionKind::objectActive, {101}));
+    rule.actions.push_back(doorAction({104}, gameplay::DoorState::open));
+    map.worldRules.push_back(rule);
+    rule = {};
+    rule.id = {"rule.phase16.a.closes"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectDeactivated, {101});
+    rule.actions.push_back(doorAction({104}, gameplay::DoorState::closed));
+    map.worldRules.push_back(rule);
+    rule = {};
+    rule.id = {"rule.phase16.b.closes"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectDeactivated, {102});
+    rule.actions.push_back(doorAction({104}, gameplay::DoorState::closed));
+    map.worldRules.push_back(rule);
+    rule = {};
+    rule.id = {"rule.phase16.plate.opens"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectActivated, {103});
+    rule.actions.push_back(doorAction({105}, gameplay::DoorState::open));
+    map.worldRules.push_back(rule);
+    rule = {};
+    rule.id = {"rule.phase16.plate.closes"};
+    rule.trigger = objectTrigger(maps::WorldTriggerKind::objectDeactivated, {103});
+    rule.conditions.push_back(objectCondition(maps::WorldConditionKind::objectInactive, {103}));
+    rule.actions.push_back(doorAction({105}, gameplay::DoorState::closed));
+    map.worldRules.push_back(rule);
+    return map;
+}
+
+void testPhase16InteractiveWorld() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
+    namespace simulation = underworld::simulation;
+
+    auto authoredContent = makePhase16Content();
+    const auto contentJson = content::encodeAuthoredContentJson(authoredContent);
+    const auto decodedContent = content::decodeAuthoredContentJson(contentJson);
+    const auto decodedLever = decodedContent.content ? std::find_if(
+        decodedContent.content->objects.begin(), decodedContent.content->objects.end(),
+        [](const auto& value) { return value.id == simulation::DefinitionId{"object.phase16.lever.a"}; }) :
+        std::vector<content::AuthoredWorldObject>::const_iterator{};
+    const auto decodedPlate = decodedContent.content ? std::find_if(
+        decodedContent.content->objects.begin(), decodedContent.content->objects.end(),
+        [](const auto& value) { return value.id == simulation::DefinitionId{"object.phase16.plate"}; }) :
+        std::vector<content::AuthoredWorldObject>::const_iterator{};
+    expect(decodedContent.content && decodedContent.diagnostics.empty() &&
+               contentJson.find("\"version\"") != std::string::npos &&
+               decodedLever != decodedContent.content->objects.end() && decodedLever->activation &&
+               decodedLever->activation->mode == gameplay::ObjectActivationMode::interactToggle &&
+               decodedPlate != decodedContent.content->objects.end() && decodedPlate->activation &&
+               decodedPlate->activation->mode == gameplay::ObjectActivationMode::playerPressure &&
+               decodedPlate->activation->activationBounds.has_value(),
+           "Content JSON v4 roundtrips interact-toggle and player-pressure capabilities");
+    expect(decodedContent.content &&
+               content::encodeAuthoredContentJson(*decodedContent.content) == contentJson,
+           "Content JSON v4 has deterministic encode-decode-encode output");
+
+    const auto replaceVersion = [](std::string& json, std::uint64_t version) {
+        const auto key = json.find("\"version\"");
+        const auto colon = key == std::string::npos ? std::string::npos : json.find(':', key);
+        const auto digit = colon == std::string::npos ? std::string::npos :
+            json.find_first_of("0123456789", colon + 1);
+        if (digit != std::string::npos) json.replace(digit, 1, std::to_string(version));
+    };
+    auto contentV3 = contentJson;
+    replaceVersion(contentV3, 3);
+    expect(!content::decodeAuthoredContentJson(contentV3).content,
+           "Content v3 rejects the activation capability instead of reinterpreting it");
+    const auto phase16Object = [](auto& objects, std::string_view id) -> auto* {
+        const auto found = std::find_if(objects.begin(), objects.end(), [&](const auto& value) {
+            return value.id == simulation::DefinitionId{std::string{id}};
+        });
+        return found == objects.end() ? nullptr : &*found;
+    };
+    auto invalidContent = authoredContent;
+    if (auto* plate = phase16Object(invalidContent.objects, "object.phase16.plate")) {
+        plate->activation->activationBounds.reset();
+    }
+    expect(!content::compileContent(invalidContent).registry,
+           "content validation rejects a pressure plate without activation bounds");
+    invalidContent = authoredContent;
+    if (auto* lever = phase16Object(invalidContent.objects, "object.phase16.lever.a")) {
+        lever->activation->mode = static_cast<gameplay::ObjectActivationMode>(99);
+    }
+    expect(!content::compileContent(invalidContent).registry,
+           "content validation rejects an unknown activation mode");
+    invalidContent = authoredContent;
+    if (auto* lever = phase16Object(invalidContent.objects, "object.phase16.lever.a")) {
+        lever->interactable.reset();
+    }
+    expect(!content::compileContent(invalidContent).registry,
+           "content validation rejects an interact-toggle without interaction capability");
+    auto unknownModeJson = contentJson;
+    const auto modeToken = unknownModeJson.find("interactToggle");
+    if (modeToken != std::string::npos) {
+        unknownModeJson.replace(modeToken, std::string{"interactToggle"}.size(), "unknownMode");
+    }
+    expect(!content::decodeAuthoredContentJson(unknownModeJson).content,
+           "content decoder rejects an unknown activation mode");
+
+    const auto mixedRoot = std::filesystem::temp_directory_path() / "underworld_phase16_content";
+    std::error_code fsError;
+    std::filesystem::remove_all(mixedRoot, fsError);
+    std::filesystem::create_directories(mixedRoot, fsError);
+    std::ofstream v1(mixedRoot / "legacy-v1.json", std::ios::binary);
+    v1 << R"({"format":"dungeon-underworld-content","version":1,"items":[]})";
+    std::ofstream v4(mixedRoot / "activation-v4.json", std::ios::binary);
+    v4 << contentJson;
+    v1.close();
+    v4.close();
+    const auto mixed = content::loadContentWorkspaceDirectory(mixedRoot);
+    expect(mixed.workspace && mixed.diagnostics.empty() && mixed.sourceFileCount == 2 &&
+               mixed.workspace->sources.find("objects", {"object.phase16.lever.a"}) != nullptr,
+           "workspace merge accepts legacy and v4 content while retaining activation provenance");
+    std::filesystem::remove_all(mixedRoot, fsError);
+
+    const auto compiledContent = content::compileContent(authoredContent);
+    if (!compiledContent.registry) {
+        expect(false, "Phase 16 content fixture compiles");
+        return;
+    }
+    const auto decodedCompiled = decodedContent.content
+        ? content::compileContent(*decodedContent.content)
+        : content::ContentCompileResult{};
+    const auto* directLever = compiledContent.registry->objects().find(
+        simulation::DefinitionId{"object.phase16.lever.a"});
+    const auto* decodedLeverDefinition = decodedCompiled.registry
+        ? decodedCompiled.registry->objects().find(
+              simulation::DefinitionId{"object.phase16.lever.a"})
+        : nullptr;
+    expect(decodedCompiled.registry && directLever && decodedLeverDefinition &&
+               directLever->activation == decodedLeverDefinition->activation,
+           "direct and decoded registries preserve activation capability equivalence");
+    const auto map = makePhase16Map();
+    const auto source = maps::authoredMapFromMapData(map);
+    const auto mapJson = maps::encodeAuthoredMapJson(source);
+    const auto decodedMap = maps::decodeAuthoredMapJson(mapJson);
+    const auto objectPlacementsEqual = [](const auto& left, const auto& right) {
+        if (left.size() != right.size()) return false;
+        for (std::size_t index = 0; index < left.size(); ++index) {
+            const auto& a = left[index];
+            const auto& b = right[index];
+            if (!(a.id == b.id) || !(a.definitionId == b.definitionId) ||
+                !(a.position == b.position) || a.initialContents.size() != b.initialContents.size()) {
+                return false;
+            }
+            for (std::size_t stackIndex = 0; stackIndex < a.initialContents.size(); ++stackIndex) {
+                if (!(a.initialContents[stackIndex].itemId == b.initialContents[stackIndex].itemId) ||
+                    a.initialContents[stackIndex].quantity != b.initialContents[stackIndex].quantity) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    expect(decodedMap.source && decodedMap.diagnostics.empty() &&
+               maps::encodeAuthoredMapJson(*decodedMap.source) == mapJson &&
+               objectPlacementsEqual(decodedMap.source->geometry.objects, source.geometry.objects) &&
+               decodedMap.source->worldRules == source.worldRules,
+           "UMAP v3 roundtrips activation placements and rules deterministically");
+    auto legacyMapJson = mapJson;
+    replaceVersion(legacyMapJson, 2);
+    expect(!maps::decodeAuthoredMapJson(legacyMapJson).source,
+           "UMAP v2 rejects object activation rule kinds without reinterpretation");
+
+    const auto& registry = *compiledContent.registry;
+    const auto validation = game::mapValidationCatalogs(registry);
+    auto invalidActivationMap = source;
+    invalidActivationMap.worldRules.front().trigger.instanceTarget = {999};
+    const auto invalidActivationCompile = maps::compileAuthoredMap(invalidActivationMap, registry);
+    expect(!invalidActivationCompile.map && !invalidActivationCompile.diagnostics.empty() &&
+               invalidActivationCompile.diagnostics.front().path == "worldRules[0].trigger",
+           "map activation validation reports the authored world-rule trigger path");
+    const auto compiledMap = maps::compileAuthoredMap(*decodedMap.source, registry);
+    expect(compiledMap.map && maps::semanticallyEqual(*compiledMap.map, map) &&
+               compiledMap.map->objects.data() != map.objects.data(),
+           "MapCompiler constructs a fresh MapData from the authored activation source");
+    if (!compiledMap.map) return;
+    const auto dmapBytes = maps::serializeDmap(*compiledMap.map);
+    const auto loadedDmap = maps::deserializeDmap(dmapBytes, &validation);
+    expect(loadedDmap && loadedDmap.data.worldRules == map.worldRules &&
+               maps::semanticallyEqual(loadedDmap.data, map),
+           "DMAP 1.4 roundtrips activation rules and preserves the compiled map");
+    auto legacyDmap = dmapBytes;
+    if (legacyDmap.size() >= 8) { legacyDmap[6] = 3; legacyDmap[7] = 0; }
+    expect(!maps::deserializeDmap(legacyDmap, &validation),
+           "DMAP 1.3 rejects newer activation rule kinds explicitly");
+
+    simulation::EntityHandlePool handles;
+    const std::array visuals{gameplay::creatures::soldierVisualId(),
+                             gameplay::creatures::skullVisualId()};
+    gameplay::creatures::EnemyFactory enemies(handles, registry.enemies(), registry.behaviors(),
+                                              registry.attacks(), registry.projectiles(), visuals);
+    gameplay::WorldObjectFactory objects(handles, registry.objects(), registry.items());
+    game::RuntimeTilesetCatalog runtimeTilesets(registry.tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+    const auto world = builder.build(map, simulation::SpawnId{"entry.start"});
+    expect(world && world.world->objectActivation({101}) == std::optional<bool>{false} &&
+               world.world->objectActivation({103}) == std::optional<bool>{false},
+           "RuntimeWorld creates activation-capable instances with deterministic initial state");
+    if (world) {
+        simulation::EventBuffer activationEvents;
+        world.world->updatePressureActivations({48, 24}, activationEvents);
+        expect(activationEvents.size() == 1 &&
+                   std::get<simulation::ObjectActivationChanged>(activationEvents.events().front()).objectInstanceId ==
+                       simulation::PersistentInstanceId{103},
+               "pressure evaluation emits one ordered activation on the first inside tick");
+        activationEvents.clear();
+        world.world->updatePressureActivations({48, 24}, activationEvents);
+        expect(activationEvents.size() == 0, "pressure activation does not emit duplicate events while stationary");
+        world.world->updatePressureActivations({16, 24}, activationEvents);
+        expect(activationEvents.size() == 1 &&
+                   !std::get<simulation::ObjectActivationChanged>(activationEvents.events().front()).active,
+               "pressure activation emits one deactivation after the player leaves");
+    }
+
+    const auto dmapPath = std::filesystem::temp_directory_path() / "underworld_phase16_puzzle.dmap";
+    std::filesystem::remove(dmapPath, fsError);
+    std::string ioError;
+    const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
+    maps::MapCatalog mapCatalog;
+    if (dmapWritten) mapCatalog.add(map.id, dmapPath);
+    game::GameSession session({0}, testProgression());
+    session.configureItems(registry.items());
+    session.configureNarrative(registry.dialogues(), registry.quests());
+    session.configureRewards(registry.rewardProfiles(), registry.pickups());
+    session.configureRewardGrants(registry.rewardGrants());
+    std::string sessionError;
+    const bool initialized = dmapWritten &&
+        session.initializeMap(mapCatalog, validation, builder, map.id,
+                              simulation::SpawnId{"entry.start"}, sessionError);
+    expect(initialized, "GameSession initializes the compiled activation puzzle map");
+    if (initialized) {
+        session.tick(movementCommand(1, 0, 0));
+        auto interact = movementCommand(2, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        const auto activationEventCount = std::count_if(
+            session.events().events().begin(), session.events().events().end(),
+            [](const auto& event) {
+                const auto* activation = std::get_if<simulation::ObjectActivationChanged>(&event);
+                return activation != nullptr && activation->objectInstanceId == simulation::PersistentInstanceId{101};
+            });
+        expect(session.world().objectActivation({101}) == std::optional<bool>{true} &&
+                   session.world().doorState({104}) == gameplay::DoorState::closed &&
+                   activationEventCount == 1,
+               "first lever interaction toggles once and keeps the AND door closed");
+
+        session.relocatePlayer({16, 8}, gameplay::FacingDirection::down);
+        interact = movementCommand(3, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        expect(session.world().objectActivation({102}) == std::optional<bool>{true} &&
+                   session.world().doorState({104}) == gameplay::DoorState::open &&
+                   !session.world().map().collision().isSolid(2, 1),
+               "second lever satisfies the authored AND rules and opens the main door collision");
+
+        session.relocatePlayer({16, 24}, gameplay::FacingDirection::down);
+        interact = movementCommand(4, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        expect(session.world().objectActivation({101}) == std::optional<bool>{false} &&
+                   session.world().doorState({104}) == gameplay::DoorState::closed &&
+                   session.world().map().collision().isSolid(2, 1),
+               "deactivating one lever closes the door through objectDeactivated World Logic");
+
+        session.relocatePlayer({48, 24}, gameplay::FacingDirection::left);
+        session.tick(movementCommand(5, 0, 0));
+        expect(session.world().objectActivation({103}) == std::optional<bool>{true} &&
+                   session.world().doorState({105}) == gameplay::DoorState::open,
+               "player pressure activates its authored exit-door rule");
+        session.relocatePlayer({16, 24}, gameplay::FacingDirection::down);
+        session.tick(movementCommand(6, 0, 0));
+        expect(session.world().objectActivation({103}) == std::optional<bool>{false} &&
+                   session.world().doorState({105}) == gameplay::DoorState::closed,
+               "leaving a pressure plate closes its authored door without repeated events");
+
+        // Return both persistent switches to active and prove that a prior
+        // activation delta is removed when a toggle returns to its authored state.
+        interact = movementCommand(7, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        session.relocatePlayer({16, 8}, gameplay::FacingDirection::down);
+        interact = movementCommand(8, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        auto toggledOff = session.captureSaveData();
+        session.relocatePlayer({16, 24}, gameplay::FacingDirection::down);
+        interact = movementCommand(9, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        const auto afterToggleOff = session.captureSaveData();
+        expect(!afterToggleOff.world.findObject({map.id, {101}}),
+               "returning a toggle to its authored state removes its stale save delta");
+
+        // Reactivate A so the saved state represents the completed two-switch
+        // puzzle, while the pressure plate remains derived and unsaved.
+        interact = movementCommand(10, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        session.relocatePlayer({16, 8}, gameplay::FacingDirection::down);
+        interact = movementCommand(11, 0, 0);
+        interact.actions.interactPressed = true;
+        session.tick(interact);
+        const auto saved = session.captureSaveData();
+        const auto savedLever = saved.world.findObject({map.id, {101}});
+        const auto savedPlate = saved.world.findObject({map.id, {103}});
+        const auto saveCatalogs = save::SaveValidationCatalogs{
+            &registry.items(), {&map}, &registry.quests(), &registry.progressions(), &registry.objects()};
+        const auto savedBytes = save::serializeSave(saved);
+        const auto loadedSave = save::deserializeSave(savedBytes, saveCatalogs);
+        expect(savedLever && savedLever->activationState == std::optional<bool>{true} &&
+                   savedPlate == nullptr && loadedSave && savedBytes == save::serializeSave(loadedSave.data),
+               "DSAV 1.8 persists toggle activation but never persists derived pressure state");
+        auto legacySave = saved;
+        legacySave.world.objects.clear();
+        auto legacyBytes = save::serializeSave(legacySave);
+        if (legacyBytes.size() >= 8) { legacyBytes[6] = 7; legacyBytes[7] = 0; }
+        expect(static_cast<bool>(save::deserializeSave(legacyBytes, saveCatalogs)),
+               "DSAV 1.7 remains readable when no activation delta is present");
+
+        if (loadedSave) {
+            game::GameSession restored({0}, testProgression());
+            restored.configureItems(registry.items());
+            restored.configureNarrative(registry.dialogues(), registry.quests());
+            restored.configureRewards(registry.rewardProfiles(), registry.pickups());
+            restored.configureRewardGrants(registry.rewardGrants());
+            std::string restoreError;
+            const bool restoredOk = restored.initializeMap(
+                mapCatalog, validation, builder, map.id, simulation::SpawnId{"entry.start"}, restoreError) &&
+                restored.restoreSaveData(loadedSave.data, restoreError);
+            expect(restoredOk && restored.world().objectActivation({101}) == std::optional<bool>{true} &&
+                       restored.world().objectActivation({102}) == std::optional<bool>{true} &&
+                       restored.world().doorState({104}) == gameplay::DoorState::open &&
+                       restored.world().objectActivation({103}) == std::optional<bool>{false},
+                   "save/load restores persistent switches and door state while recalculating pressure state");
+        }
+    }
+    std::filesystem::remove(dmapPath, fsError);
 }
 
 int main() {
@@ -7091,6 +7534,7 @@ int main() {
         testPhase14AuthoredMapFoundation();
         testPhase14WorldClosure();
         testPhase15PresentationFeedback();
+        testPhase16InteractiveWorld();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

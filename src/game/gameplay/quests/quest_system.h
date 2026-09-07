@@ -30,6 +30,7 @@ private:
     void consume(const simulation::EncounterStarted&) noexcept {}
     void consume(const simulation::EncounterCompleted&) noexcept {}
     void consume(const simulation::ObjectOpened& event);
+    void consume(const simulation::ObjectActivationChanged&) noexcept {}
     void consume(const simulation::ItemDelivered& event);
     void consume(const simulation::ExperienceGranted&) noexcept {}
     void consume(const simulation::PresentationEffectRequested&) noexcept {}

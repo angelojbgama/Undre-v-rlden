@@ -143,7 +143,7 @@ bool enemy(const JsonValue&v,std::string_view p,Context&c,AuthoredEnemy&out){con
 bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWorldObject& out) {
     const JsonObject* o = nullptr;
     if (!object(v, p, c, o)) return false;
-    allowed(*o, {"id", "visualSetId", "interactable", "container", "destructible", "bankAccess", "door"}, p, c);
+    allowed(*o, {"id", "visualSetId", "interactable", "container", "destructible", "bankAccess", "door", "activation"}, p, c);
     AuthoredWorldObject d{};
     bool ok = idField(v, *o, "id", p, c, d.id);
     ok = idField(v, *o, "visualSetId", p, c, d.visualSetId) && ok;
@@ -205,6 +205,43 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
             ok = bounds && aabb(*bounds, pathOf(doorPath, "blockingBounds"), c,
                                 decoded.blockingBounds) && ok;
             if (ok) d.door = decoded;
+        }
+    }
+    if (const auto* x = findField(*o, "activation"); x) {
+        const auto activationPath = pathOf(p, "activation");
+        if (c.schemaVersion < 4) {
+            c.error(*x, activationPath, "activation capability requires content schema version 4");
+            ok = false;
+        }
+        const JsonObject* q = nullptr;
+        if (!object(*x, activationPath, c, q)) ok = false;
+        else {
+            allowed(*q, {"mode", "initialActive", "bounds"}, activationPath, c);
+            gameplay::ObjectActivationDefinition decoded{};
+            const auto* mode = required(*x, *q, "mode", activationPath, c);
+            std::string modeName;
+            if (!mode || !stringValue(*mode, pathOf(activationPath, "mode"), c, modeName)) ok = false;
+            else if (modeName == "interactToggle") decoded.mode = gameplay::ObjectActivationMode::interactToggle;
+            else if (modeName == "playerPressure") decoded.mode = gameplay::ObjectActivationMode::playerPressure;
+            else { c.error(*mode, pathOf(activationPath, "mode"), "unknown ObjectActivationMode"); ok = false; }
+            const auto* initial = findField(*q, "initialActive");
+            if (decoded.mode == gameplay::ObjectActivationMode::interactToggle) {
+                if (!initial || !boolValue(*initial, pathOf(activationPath, "initialActive"), c, decoded.initialActive)) ok = false;
+                if (findField(*q, "bounds")) {
+                    c.error(*findField(*q, "bounds"), pathOf(activationPath, "bounds"), "interact-toggle activation cannot have pressure bounds");
+                    ok = false;
+                }
+            } else if (decoded.mode == gameplay::ObjectActivationMode::playerPressure) {
+                if (initial) {
+                    c.error(*initial, pathOf(activationPath, "initialActive"), "player-pressure activation does not have an authored initial state");
+                    ok = false;
+                }
+                const auto* bounds = required(*x, *q, "bounds", activationPath, c);
+                world::AabbI parsed{};
+                if (!bounds || !aabb(*bounds, pathOf(activationPath, "bounds"), c, parsed)) ok = false;
+                else decoded.activationBounds = parsed;
+            }
+            if (ok) d.activation = decoded;
         }
     }
     if (ok) out = std::move(d);
@@ -354,5 +391,5 @@ template<class T> void category(const JsonObject&r,std::string_view n,Decoder<T>
 }}
 
 namespace underworld::game::content {
-ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps","presentationEffects"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)){c.schemaVersion=x;if(x!=1&&x!=2&&x!=3)c.error(*v,"version","unsupported schema version");if(x<3&&findField(*root,"presentationEffects"))c.error(*v,"version","presentationEffects require schema version 3");}}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"dialogues",dialogue,out.dialogues,c);category(*root,"quests",quest,out.quests,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);category(*root,"tileSemantics",tileSemantic,out.tileSemantics,c);category(*root,"stamps",stamp,out.stamps,c);category(*root,"presentationEffects",presentationEffect,out.presentationEffects,c);r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());r.origins=std::move(c.origins);if(r.diagnostics.empty())r.content=std::move(out);else r.origins.clear();return r;}
+ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps","presentationEffects"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)){c.schemaVersion=x;if(x<1||x>4)c.error(*v,"version","unsupported schema version");if(x<3&&findField(*root,"presentationEffects"))c.error(*v,"version","presentationEffects require schema version 3");}}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"dialogues",dialogue,out.dialogues,c);category(*root,"quests",quest,out.quests,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);category(*root,"tileSemantics",tileSemantic,out.tileSemantics,c);category(*root,"stamps",stamp,out.stamps,c);category(*root,"presentationEffects",presentationEffect,out.presentationEffects,c);r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());r.origins=std::move(c.origins);if(r.diagnostics.empty())r.content=std::move(out);else r.origins.clear();return r;}
 }

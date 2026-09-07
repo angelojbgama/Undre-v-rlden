@@ -1,53 +1,12 @@
 #include "game/content/content_source.h"
 #include "game/maps/authored_map.h"
 #include "game/maps/dmap.h"
+#include "tools/map_compile_options.h"
 
-#include <filesystem>
 #include <iostream>
-#include <optional>
 #include <string>
 
 namespace {
-
-struct Options final {
-    std::optional<std::filesystem::path> contentRoot;
-    std::filesystem::path source;
-    std::filesystem::path output;
-};
-
-std::optional<Options> parse(int argc, char** argv, std::string& error) {
-    Options result;
-    for (int index = 1; index < argc; ++index) {
-        const std::string argument = argv[index];
-        if (argument == "--content" || argument.rfind("--content=", 0) == 0) {
-            if (result.contentRoot) { error = "duplicate --content option"; return std::nullopt; }
-            std::string value;
-            if (argument == "--content") {
-                if (++index >= argc) { error = "--content requires a directory"; return std::nullopt; }
-                value = argv[index];
-            } else {
-                value = argument.substr(std::string{"--content="}.size());
-            }
-            if (value.empty()) { error = "--content requires a non-empty directory"; return std::nullopt; }
-            result.contentRoot = std::filesystem::path{value};
-        } else if (!argument.empty() && argument[0] == '-') {
-            error = "unknown option: " + argument;
-            return std::nullopt;
-        } else if (result.source.empty()) {
-            result.source = argument;
-        } else if (result.output.empty()) {
-            result.output = argument;
-        } else {
-            error = "too many positional arguments";
-            return std::nullopt;
-        }
-    }
-    if (result.source.empty() || result.output.empty()) {
-        error = "source and output paths are required";
-        return std::nullopt;
-    }
-    return result;
-}
 
 const char* stageName(underworld::game::maps::AuthoredMapDiagnosticStage stage) {
     using Stage = underworld::game::maps::AuthoredMapDiagnosticStage;
@@ -75,7 +34,7 @@ void printDiagnostic(const underworld::game::maps::AuthoredMapDiagnostic& diagno
 
 int main(int argc, char** argv) {
     std::string parseError;
-    const auto options = parse(argc, argv, parseError);
+    const auto options = underworld::tools::parseMapCompileOptions(argc, argv, parseError);
     if (!options) {
         std::cerr << "usage: map_compile [--content <workspace>] <source.umap> <output.dmap>\n";
         std::cerr << parseError << '\n';

@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace underworld::game::save {
@@ -48,11 +49,20 @@ struct SavedPlayerBank final {
 };
 
 struct ObjectDelta final {
+    ObjectDelta() = default;
+    ObjectDelta(simulation::PersistentEntityKey objectKey, bool objectOpened,
+                bool objectDestroyed, std::vector<gameplay::ItemStack> contents,
+                std::optional<gameplay::DoorState> door = std::nullopt,
+                std::optional<bool> activation = std::nullopt)
+        : key(objectKey), opened(objectOpened), destroyed(objectDestroyed),
+          remainingContents(std::move(contents)), doorState(door),
+          activationState(activation) {}
     simulation::PersistentEntityKey key{};
     bool opened{};
     bool destroyed{};
     std::vector<gameplay::ItemStack> remainingContents;
     std::optional<gameplay::DoorState> doorState;
+    std::optional<bool> activationState;
 };
 
 struct PickupDelta final {
@@ -68,6 +78,7 @@ struct SessionWorldState final {
     std::vector<gameplay::EncounterRuntimeState> encounters;
     void set(ObjectDelta delta);
     void set(PickupDelta delta);
+    void eraseObject(const simulation::PersistentEntityKey& key) noexcept;
     [[nodiscard]] const ObjectDelta* findObject(const simulation::PersistentEntityKey& key) const noexcept;
     [[nodiscard]] const PickupDelta* findPickup(const simulation::PersistentEntityKey& key) const noexcept;
 };
@@ -100,8 +111,8 @@ struct SaveResult final {
 inline constexpr std::uint16_t saveMajorVersion = 1;
 // Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP;
 // minor 5 added BANK; minor 6 added quest reward claims; minor 7 adds world rules
-// and encounter runtime state.
-inline constexpr std::uint16_t saveMinorVersion = 7;
+// and encounter runtime state; minor 8 adds persistent object activation.
+inline constexpr std::uint16_t saveMinorVersion = 8;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

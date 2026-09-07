@@ -1583,7 +1583,7 @@ Não há manifest, hot reload, mutação de registry ou autoria visual genérica
 
 ## Authored World Source Boundary
 
-`UMAP v2` is the authored map source and `DMAP 1.3` is the compiled/runtime map
+`UMAP v3` is the authored map source and `DMAP 1.4` is the compiled/runtime map
 serialization. The production boundary is:
 
 ```text
@@ -1595,7 +1595,7 @@ MapCompiler
        ↓
 MapData
        ↓
-DMAP 1.3
+DMAP 1.4
        ↓
 RuntimeWorld
 ```
@@ -1659,10 +1659,70 @@ iteration order.
 
 The existing `EffectSystem` remains the world-space animated VFX system. It is not
 merged with `PresentationEffectSystem`; an impact may consume both systems in the
-future. Content JSON v3 supplies presentation effect definitions, while authored UMAP
-v2/DMAP 1.3 regions may bind a persistent environment effect and world rules may emit
-a transient presentation cue. DSAV 1.7 remains unchanged: presentation state is
-cleared/rebuilt on map activation and load rather than persisted.
+future. Content JSON v3 introduced presentation effects and v4 adds object
+activation definitions. Authored UMAP v2/v3 and DMAP 1.3/1.4 regions may bind a
+persistent environment effect and world rules may emit a transient presentation cue.
+DSAV 1.8 remains an authoritative gameplay format and does not persist presentation
+state; presentation state is cleared/rebuilt on map activation and load.
+
+## Interactive World Components — Phase 16
+
+Interactive objects are capabilities on the existing authored/compiled world-object
+definition. They are not a separate puzzle engine or a second event bus:
+
+```text
+WorldObjectDefinition
+        ↓ optional activation capability
+WorldObjectInstance
+        ↓ concrete transition
+ObjectActivationChanged(MapId, PersistentInstanceId, active)
+        ↓
+WorldLogicSystem
+        ↓
+Door / Flag / Encounter / Presentation
+```
+
+`interactToggle` is the shared capability for lever/switch-like objects. Its state is
+authoritative and persistent. `playerPressure` is a distinct capability evaluated by
+`GameSession` using only the Player feet position; its bounds are local to the object
+placement, events are emitted in authored object order, and its state is derived rather
+than saved. The current pressure source is Player-only; blocks, weights, enemies and
+multi-actor occupancy are future work.
+
+The existing interaction selection remains the single input path. A logical interact
+command selects the nearest eligible object deterministically, toggles its capability,
+and appends `ObjectActivationChanged` to the shared `simulation::EventBuffer`. The
+fixed-tick pressure pass does the equivalent only on real inside/outside transitions.
+World Logic consumes the appendable event sequence with a bounded cursor, so an
+activation can drive a door rule in the same logical cycle without recursive event
+loops. Object activation is intentionally independent from `DoorState` and from
+`WorldObjectState` (`idle`, `opened`, `destroying`, `destroyed`).
+
+Authored maps continue to cross the compiled boundary as:
+
+```text
+Human / Map Maker / future author
+        ↓
+AuthoredMapSource (.umap v3)
+        ↓
+MapCompiler
+        ↓
+MapData
+        ↓
+DMAP 1.4
+        ↓
+RuntimeWorld / GameSession
+```
+
+Content JSON v4 carries the activation capability while readers remain compatible
+with v1–v3. UMAP v3 carries object activation triggers and conditions while readers
+remain compatible with v1–v2. DMAP 1.4 retains readers for 1.0–1.3. DSAV 1.8 stores
+only persistent toggle activation deltas; pressure activation is reconstructed from
+the restored Player position. Existing `EffectSystem` and the Phase 15
+`PresentationEffectSystem` remain separate from these authoritative gameplay
+components. No PuzzleEngine, expression language, push-block system or visual
+authoring boundary is introduced here.
+
 ## Equipment and derived player stats
 
 Equipment is Player-owned gameplay state. Equipment items remain normal

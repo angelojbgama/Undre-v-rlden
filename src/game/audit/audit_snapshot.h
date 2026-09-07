@@ -30,6 +30,9 @@ struct AuditActor final {
     int health{};
     int maximumHealth{};
     std::string state;
+    // Optional capability state exposed for deterministic diagnostics only.
+    std::optional<bool> activation{};
+    std::optional<std::string> doorState{};
 };
 
 struct AuditPickup final {

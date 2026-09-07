@@ -401,7 +401,8 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         for (std::uint32_t i = 0; i < count; ++i) {
             WorldRuleDefinition rule; std::uint8_t kind{}, once{}; std::uint32_t conditionCount{}, actionCount{};
             std::uint8_t instanceTarget{}; std::uint64_t instanceValue{};
-            if (!readId(in, strings, rule.id) || !in.readU8(kind) || kind > 5 ||
+            if (!readId(in, strings, rule.id) || !in.readU8(kind) || kind > 7 ||
+                (kind >= 6 && minor < 4) ||
                 !in.readU8(instanceTarget) || instanceTarget > 2) return fail("invalid WRLD rule");
             bool targetValid = true;
             if (instanceTarget == 2) targetValid = in.readU64(instanceValue) && instanceValue != 0;
@@ -412,7 +413,8 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             rule.trigger.kind = static_cast<WorldTriggerKind>(kind); rule.once = once != 0;
             for (std::uint32_t j = 0; j < conditionCount; ++j) {
                 WorldCondition condition; std::uint8_t state{};
-                if (!in.readU8(kind) || kind > 4 || !in.readU8(instanceTarget) || instanceTarget > 2) {
+                if (!in.readU8(kind) || kind > 6 || (kind >= 5 && minor < 4) ||
+                    !in.readU8(instanceTarget) || instanceTarget > 2) {
                     return fail("invalid WRLD condition");
                 }
                 targetValid = true;

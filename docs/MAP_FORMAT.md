@@ -1,4 +1,4 @@
-# UMAP v2 / DMAP 1.3 — formatos de mapa implementados
+# UMAP v3 / DMAP 1.4 — formatos de mapa implementados
 
 `UMAP` is the strict UTF-8 JSON authored source. `DMAP` is the bounded compiled
 runtime format; it is not the editor document and it is not a savegame. The authored
@@ -13,7 +13,7 @@ The UMAP root is:
 ```json
 {
   "format": "dungeon-underworld-map-source",
-  "version": 2
+  "version": 3
 }
 ```
 
@@ -27,9 +27,11 @@ previous authored document. Legacy `.dmap` files remain importable by the Map Ma
 the resulting document is saved as `.umap`, while DMAP output is an explicit compile/
 export operation.
 
-`UMAP v1` continua legível; o writer atual emite UMAP v2. UMAP v2 adiciona o binding
-opcional `regions[].environmentEffectId` e a action `playPresentationEffect`; UMAP v1
-não pode conter esses campos. `DMAP` é a serialização compilada/runtime de um mapa,
+`UMAP v1` e `UMAP v2` continuam legíveis; o writer atual emite UMAP v3. UMAP v2
+adiciona o binding opcional `regions[].environmentEffectId` e a action
+`playPresentationEffect`; UMAP v3 adiciona os triggers/conditions de activation de
+objects. UMAP v1 não pode conter campos de environment/presentation e UMAP v1/v2 não
+podem conter activation rules. `DMAP` é a serialização compilada/runtime de um mapa,
 não o documento authored e não é savegame. O reader produz `MapData`, valida o documento inteiro e somente então
 `RuntimeWorldBuilder` cria handles e estado runtime.
 
@@ -43,12 +45,12 @@ NUL. Nenhuma estrutura C++, ponteiro, `EntityHandle`, animator ou estado transit
 |---:|---|---|
 | 0 | `char[4]` | magic `DMAP` |
 | 4 | `u16` | major = 1 |
-| 6 | `u16` | minor = 3 |
+| 6 | `u16` | minor = 4 |
 | 8 | `u16` | flags = 0 |
 | 10 | `u16` | header size = 20 |
 | 12 | `u64` | tamanho total declarado |
 
-Major diferente de 1 e minor maior que 3 são rejeitados. DMAP 1.0 continua legível;
+Major diferente de 1 e minor maior que 4 são rejeitados. DMAP 1.0 continua legível;
 DMAP 1.1 adiciona o chunk opcional `NPCS` para placements authored de NPC. DMAP 1.2
 adiciona os chunks opcionais `REGN`, `WRLD` e `ENCT` para regiões, ordered world
 rules and encounter definitions. Para DMAP 1.0/1.1 esses dados são vazios. A extensão
@@ -194,7 +196,7 @@ O reader aceita arquivos DMAP 1.0 sem `NPCS` como mapas sem NPCs. NPCs usam a me
 namespace de `PersistentInstanceId` dos demais placements e são validados pelo
 `NpcCatalog` antes de `RuntimeWorldBuilder`.
 
-### `REGN`, `WRLD` e `ENCT` (DMAP 1.2/1.3)
+### `REGN`, `WRLD` e `ENCT` (DMAP 1.2/1.3/1.4)
 
 `REGN` contém regiões authored em ordem estável:
 
@@ -208,7 +210,9 @@ repeat count:
 ```
 
 `WRLD` contém regras ordered. Cada regra grava seu ID, trigger, `once`, condições e
-ações na ordem authored. Targets de definição usam `stringIndex`; targets de
+ações na ordem authored. DMAP 1.4 inclui os triggers `objectActivated`/
+`objectDeactivated` e conditions `objectActive`/`objectInactive`; seus targets usam
+`PersistentInstanceId`. Targets de definição usam `stringIndex`; targets de
 placement usam `PersistentInstanceId` e são distinguidos por um tag de target:
 
 ```text
@@ -217,7 +221,9 @@ target tag u8: 0 = none, 1 = DefinitionId/stringIndex, 2 = PersistentInstanceId/
 
 DMAP 1.3 adiciona a action `playPresentationEffect`, cujo target é um
 `PresentationEffectDefinition` transient. Kinds e estados são enums bounded e são
-rejeitados quando saem do vocabulário atual.
+rejeitados quando saem do vocabulário atual. DMAP 1.4 mantém esses chunks e adiciona
+somente o vocabulário de activation; o layout de campos dos chunks permanece
+versionado e bounded.
 `doorState` usa `locked`, `closed` e `open`.
 
 `ENCT` contém encounters e o reward opcional:
@@ -240,11 +246,13 @@ versão.
 
 ### Save relacionado
 
-`DSAV 1.7` é o formato de estado separado do mapa e permanece inalterado nesta fase. Seu reader continua aceitando
-`DSAV 1.6`; saves antigos defaultam regras como não disparadas, encounters como
-inativos e portas no estado inicial authored. O save novo persiste apenas estado
+`DSAV 1.8` é o formato de estado separado do mapa. Seu reader continua aceitando
+`DSAV 1.6` e `DSAV 1.7`; saves antigos defaultam regras como não disparadas,
+encounters como inativos, portas no estado inicial authored e pressure plates como
+estado derivado. O save novo persiste apenas estado
 mutável: `mapId + ruleId` para regras `once`, `mapId + encounterId` para state/reward
-claim e deltas de portas por `mapId + PersistentInstanceId`. O mapa compilado continua
+claim, deltas de portas e activation toggles por `mapId + PersistentInstanceId`.
+Pressure activation nunca é persistida. O mapa compilado continua
 sendo carregado do DMAP, nunca copiado para o save.
 
 O estado de encounter `active` é monitorado sobre placements authored já existentes;

@@ -1,0 +1,35 @@
+{
+  "format": "dungeon-underworld-map-source",
+  "version": 3,
+  "id": "map.tool.invalid-activation",
+  "width": 1,
+  "height": 1,
+  "tileSize": 16,
+  "tileReferences": [],
+  "layers": [
+    { "name": "ground", "visible": true, "cells": [null] }
+  ],
+  "collision": [0],
+  "playerSpawns": [
+    { "id": "entry.start", "position": { "x": 8, "y": 8 }, "facing": "down" }
+  ],
+  "enemies": [],
+  "npcs": [],
+  "objects": [
+    { "id": 1, "definitionId": "object.tool.lever", "position": { "x": 8, "y": 8 }, "initialContents": [] }
+  ],
+  "pickups": [],
+  "links": [],
+  "regions": [],
+  "worldRules": [
+    {
+      "id": "rule.tool.invalid-activation",
+      "once": false,
+      "trigger": { "kind": "objectActivated", "instanceTarget": 99 },
+      "conditions": [],
+      "actions": []
+    }
+  ],
+  "encounters": [],
+  "placementOverrides": []
+}

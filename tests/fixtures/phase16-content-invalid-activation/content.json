@@ -1,0 +1,11 @@
+{
+  "format": "dungeon-underworld-content",
+  "version": 4,
+  "objects": [
+    {
+      "id": "object.tool.plate.invalid",
+      "visualSetId": "visual.object.crate",
+      "activation": { "mode": "playerPressure" }
+    }
+  ]
+}

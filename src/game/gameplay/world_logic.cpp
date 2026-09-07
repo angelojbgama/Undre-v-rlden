@@ -38,6 +38,12 @@ bool WorldLogicSystem::matches(const maps::WorldRuleDefinition& rule,
             trigger = rule.trigger.kind == maps::WorldTriggerKind::objectOpened &&
                 (value.mapId.empty() || value.mapId == mapId) &&
                 value.objectInstanceId == rule.trigger.instanceTarget;
+        } else if constexpr (std::is_same_v<T, simulation::ObjectActivationChanged>) {
+            trigger = (rule.trigger.kind == maps::WorldTriggerKind::objectActivated ||
+                       rule.trigger.kind == maps::WorldTriggerKind::objectDeactivated) &&
+                value.mapId == mapId && value.objectInstanceId == rule.trigger.instanceTarget &&
+                ((rule.trigger.kind == maps::WorldTriggerKind::objectActivated && value.active) ||
+                 (rule.trigger.kind == maps::WorldTriggerKind::objectDeactivated && !value.active));
         }
     }, event);
     if (!trigger) return false;
@@ -52,6 +58,17 @@ bool WorldLogicSystem::matches(const maps::WorldRuleDefinition& rule,
         if (condition.kind == maps::WorldConditionKind::doorState &&
             (!runtime.doorState || !condition.instanceTarget ||
              runtime.doorState(condition.instanceTarget) != condition.doorState)) return false;
+        if ((condition.kind == maps::WorldConditionKind::objectActive ||
+             condition.kind == maps::WorldConditionKind::objectInactive) &&
+            (!runtime.objectActivation || !condition.instanceTarget)) return false;
+        if (condition.kind == maps::WorldConditionKind::objectActive) {
+            const auto value = runtime.objectActivation(condition.instanceTarget);
+            if (!value || !*value) return false;
+        }
+        if (condition.kind == maps::WorldConditionKind::objectInactive) {
+            const auto value = runtime.objectActivation(condition.instanceTarget);
+            if (!value || *value) return false;
+        }
     }
     return true;
 }

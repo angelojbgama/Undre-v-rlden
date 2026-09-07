@@ -1312,12 +1312,12 @@ manifest is required at this stage.
 
 ### Authored world source boundary
 
-`UMAP v1` is the authored map source. It is decoded strictly into an
-`AuthoredMapSource`, compiled into a fresh `MapData`, and serialized as `DMAP 1.2`.
-`REGN`, `WRLD` and `ENCT` are compiled runtime chunks. `DSAV 1.7` persists the
-session-side door, world-rule and encounter state while remaining compatible with
-DSAV 1.6. The Map Composer remains an initial-map generator; it does not regenerate
-manual authored geometry after a `.umap` is opened.
+`UMAP v3` is the authored map source. It is decoded strictly into an
+`AuthoredMapSource`, compiled into a fresh `MapData`, and serialized as `DMAP 1.4`.
+`REGN`, `WRLD` and `ENCT` are compiled runtime chunks. `DSAV 1.8` persists the
+session-side door, world-rule, encounter and persistent-toggle state while remaining
+compatible with DSAV 1.6 and 1.7. The Map Composer remains an initial-map generator;
+it does not regenerate manual authored geometry after a `.umap` is opened.
 
 ### Phase 14 — Authored World Foundation — DONE
 
@@ -1351,23 +1351,23 @@ transient effects, source-tracked persistent effects, deterministic camera shake
 world/final overlays, player-relative vision masks and linear fades.
 
 15B — Authored Presentation Effects — DONE. Presentation effects are the twentieth
-authored content category. Content JSON v3 is emitted while readers remain compatible
-with v1/v2; builtin is still the transitional default source and workspaces may mix
-v1, v2 and v3 files.
+authored content category. Content JSON v3 introduced them; Phase 16 evolved the
+emitted schema to v4 for object activation while readers remain compatible with v1–v3.
+Builtin is still the transitional default source and workspaces may mix all readable
+schema versions.
 
 15C — Presentation Cue Integration — DONE. Player damage and authored world-rule
 presentation cues reach the presentation layer through `SimulationEvent`; the world
 `EffectSystem` remains responsible for world-space animated VFX.
 
-15D — Environment / World Integration — DONE. UMAP v2 and DMAP 1.3 preserve optional
-region environment effects and presentation actions, while readers retain UMAP v1 and
-DMAP 1.0/1.1/1.2 compatibility. DSAV remains 1.7 and does not persist transient or
-derived presentation state.
+15D — Environment / World Integration — DONE. UMAP v2 introduced optional region
+environment effects and presentation actions; the current writer emits UMAP v3 and
+DMAP 1.4, while readers retain UMAP v1/v2 and DMAP 1.0–1.3 compatibility. DSAV 1.8
+does not persist transient or derived presentation state.
 
 The next architectural decisions are deliberately deferred in this order:
 
 ```text
-Phase 16 — Puzzle / Interactive World Expansion
 Phase 17 — Visual Content Boundary
 Phase 18 — Content Studio
 Phase 19 — Advanced Semantic Authoring
@@ -1376,6 +1376,57 @@ Phase 20 — LLM Authoring
 
 Status effects, poison/blindness gameplay, audio, scripting, GPU post-processing,
 networking and multiplayer remain out of scope.
+
+### Phase 16 — Interactive World Components — DONE
+
+Phase 16 extends the authored world foundation with reusable object activation
+capabilities. It does not create a Puzzle Engine: `WorldObjectDefinition` provides
+the capability, `GameSession` evaluates the concrete interaction/occupancy, and the
+existing `EventBuffer` and `WorldLogicSystem` compose the result into doors, flags,
+encounters and presentation cues.
+
+```text
+WorldObjectDefinition
+        ↓ activation capability
+WorldObjectInstance
+        ↓
+ObjectActivationChanged
+        ↓
+WorldLogicSystem
+        ↓
+door / flag / encounter / presentation
+```
+
+16A — Stateful Object Activation — DONE. `interactToggle` is shared by lever and
+switch-like objects, while `playerPressure` uses only the Player feet position in
+authored object order. Toggle state is persistent; pressure state is derived and is
+not saved. No pushable blocks, weights or other actors activate plates yet.
+
+16B — World Logic Integration — DONE. `objectActivated`/`objectDeactivated` triggers
+and `objectActive`/`objectInactive` conditions target persistent object instances and
+are processed in the same bounded event cycle as the existing world rules.
+
+16C — Persistence + Authored Content — DONE. Content JSON v4, UMAP v3, DMAP 1.4 and
+DSAV 1.8 carry activation definitions, authored rules and persistent toggle deltas;
+readers retain the preceding compatible versions. Pressure activation remains a
+runtime derivation from the restored Player position.
+
+16D — Puzzle Vertical Slice — DONE. The headless interactive-world scenario proves a
+two-switch authored AND composition, a pressure-controlled door, deterministic
+activation events, collision changes and toggle save/load without map-specific C++.
+
+The next architectural decisions remain deliberately separate:
+
+```text
+Phase 17 — Visual Content Boundary
+Phase 18 — Content Studio
+Phase 19 — Advanced Semantic Authoring
+Phase 20 — LLM Authoring
+```
+
+Status effects, complex puzzle components, encounter waves, boss phases, audio,
+scripting, Visual Content Boundary work, Content Studio, LLM integration and
+networking remain future work.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

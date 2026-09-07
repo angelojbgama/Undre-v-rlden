@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/simulation/persistent_id.h"
+#include "engine/simulation/events.h"
 #include "engine/world/runtime_map.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/npcs/npc_engine.h"
@@ -67,6 +68,12 @@ public:
     [[nodiscard]] std::optional<gameplay::DoorState> doorState(
         simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] bool interactDoor(simulation::PersistentInstanceId id) noexcept;
+    [[nodiscard]] bool setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept;
+    [[nodiscard]] std::optional<bool> objectActivation(
+        simulation::PersistentInstanceId id) const noexcept;
+    [[nodiscard]] bool toggleObjectActivation(simulation::PersistentInstanceId id) noexcept;
+    void updatePressureActivations(core::WorldPointI playerFeet,
+                                   simulation::EventBuffer& events) noexcept;
     [[nodiscard]] const std::vector<RuntimeDoor>& doors() const noexcept { return doors_; }
 
 private:

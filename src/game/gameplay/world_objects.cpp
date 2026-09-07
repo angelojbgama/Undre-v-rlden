@@ -13,7 +13,7 @@ namespace {
 void validate(const WorldObjectDefinition& definition) {
     if (definition.id.empty() || definition.visualSetId.empty() ||
         (!definition.interactable && !definition.container && !definition.destructible &&
-         !definition.door)) {
+         !definition.door && !definition.activation)) {
         throw std::invalid_argument("world object definition is incomplete");
     }
     if (definition.interactable && (definition.interactable->bounds.width <= 0 ||
@@ -36,6 +36,22 @@ void validate(const WorldObjectDefinition& definition) {
     if (definition.door && (definition.door->blockingBounds.width <= 0 ||
                             definition.door->blockingBounds.height <= 0)) {
         throw std::invalid_argument("door blocking bounds must be positive");
+    }
+    if (definition.activation) {
+        if (definition.activation->mode == ObjectActivationMode::interactToggle) {
+            if (!definition.interactable || definition.activation->activationBounds) {
+                throw std::invalid_argument("interact-toggle activation requires an interactable object and no pressure bounds");
+            }
+        } else if (definition.activation->mode == ObjectActivationMode::playerPressure) {
+            if (!definition.activation->activationBounds ||
+                definition.activation->activationBounds->width <= 0 ||
+                definition.activation->activationBounds->height <= 0 ||
+                definition.activation->initialActive) {
+                throw std::invalid_argument("player-pressure activation requires positive bounds and inactive initial state");
+            }
+        } else {
+            throw std::invalid_argument("unknown object activation mode");
+        }
     }
 }
 
@@ -93,6 +109,9 @@ WorldObjectInstance::WorldObjectInstance(
             false, definition.id});
     }
     if (definition.door) { doorState_ = definition.door->initialState; }
+    if (definition.activation && definition.activation->mode == ObjectActivationMode::interactToggle) {
+        activationActive_ = definition.activation->initialActive;
+    }
 }
 
 bool WorldObjectInstance::setDoorState(DoorState state) noexcept {
@@ -104,6 +123,21 @@ bool WorldObjectInstance::setDoorState(DoorState state) noexcept {
 bool WorldObjectInstance::interactDoor() noexcept {
     if (!definition_->door || doorState_ == DoorState::locked) { return false; }
     return setDoorState(DoorState::open);
+}
+
+bool WorldObjectInstance::setActivationActive(bool active) noexcept {
+    if (!definition_->activation || activationActive_ == active) {
+        return false;
+    }
+    activationActive_ = active;
+    return true;
+}
+
+bool WorldObjectInstance::toggleActivation() noexcept {
+    if (!definition_->activation || definition_->activation->mode != ObjectActivationMode::interactToggle) {
+        return false;
+    }
+    return setActivationActive(!activationActive_);
 }
 
 std::optional<world::AabbI> WorldObjectInstance::interactionArea() const noexcept {

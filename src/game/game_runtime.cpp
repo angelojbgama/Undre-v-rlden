@@ -423,10 +423,19 @@ struct GameRuntime::State final {
                 health = combatant->health.current;
                 maximumHealth = combatant->health.maximum;
             }
-            snapshot.objects.push_back({
+            audit::AuditActor actor{
                 persistent.persistentId.value, std::string(object.definition().id.value()),
                 object.position().x, object.position().y, health, maximumHealth,
-                objectStateName(object.state())});
+                objectStateName(object.state())};
+            if (object.hasActivation()) { actor.activation = object.activationActive(); }
+            if (object.isDoor()) {
+                switch (object.doorState()) {
+                case gameplay::DoorState::locked: actor.doorState = "locked"; break;
+                case gameplay::DoorState::closed: actor.doorState = "closed"; break;
+                case gameplay::DoorState::open: actor.doorState = "open"; break;
+                }
+            }
+            snapshot.objects.push_back(std::move(actor));
         }
         for (const auto& persistent : activeWorld().pickups()) {
             const auto& pickup = persistent.instance;
@@ -523,6 +532,9 @@ struct GameRuntime::State final {
                 lastEvent = "ENCOUNTER COMPLETED";
             } else if (std::holds_alternative<simulation::ObjectOpened>(event)) {
                 lastEvent = "OBJECT OPENED";
+            } else if (const auto* activation =
+                           std::get_if<simulation::ObjectActivationChanged>(&event)) {
+                lastEvent = activation->active ? "OBJECT ACTIVATED" : "OBJECT DEACTIVATED";
             }
         }
     }

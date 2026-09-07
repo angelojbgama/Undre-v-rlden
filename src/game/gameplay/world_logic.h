@@ -21,6 +21,7 @@ struct WorldLogicRuntime final {
     std::function<bool(const simulation::DefinitionId&, simulation::EventBuffer&)> startEncounter;
     std::function<bool(simulation::PersistentInstanceId, maps::DoorState)> setDoorState;
     std::function<std::optional<maps::DoorState>(simulation::PersistentInstanceId)> doorState;
+    std::function<std::optional<bool>(simulation::PersistentInstanceId)> objectActivation{};
 };
 
 class WorldLogicSystem final {

@@ -18,7 +18,14 @@ void writeActorArray(std::ostringstream& out, const char* name,
             << "\",\"x\":" << actor.x << ",\"y\":" << actor.y
             << ",\"health\":" << actor.health
             << ",\"maximumHealth\":" << actor.maximumHealth
-            << ",\"state\":\"" << escapeJsonString(actor.state) << "\"}";
+            << ",\"state\":\"" << escapeJsonString(actor.state) << "\"";
+        if (actor.activation) {
+            out << ",\"active\":" << (*actor.activation ? "true" : "false");
+        }
+        if (actor.doorState) {
+            out << ",\"doorState\":\"" << escapeJsonString(*actor.doorState) << "\"";
+        }
+        out << '}';
     }
     out << ']';
 }

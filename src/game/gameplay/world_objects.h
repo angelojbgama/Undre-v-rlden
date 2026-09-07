@@ -30,6 +30,13 @@ struct ObjectDoorDefinition final {
     DoorState initialState{DoorState::closed};
     world::AabbI blockingBounds{};
 };
+enum class ObjectActivationMode { interactToggle, playerPressure };
+struct ObjectActivationDefinition final {
+    ObjectActivationMode mode{ObjectActivationMode::interactToggle};
+    bool initialActive{};
+    std::optional<world::AabbI> activationBounds{};
+    [[nodiscard]] bool operator==(const ObjectActivationDefinition&) const noexcept = default;
+};
 
 struct WorldObjectDefinition final {
     simulation::DefinitionId id{};
@@ -39,6 +46,7 @@ struct WorldObjectDefinition final {
     std::optional<ObjectDestructibleDefinition> destructible{};
     std::optional<ObjectBankAccessDefinition> bankAccess{};
     std::optional<ObjectDoorDefinition> door{};
+    std::optional<ObjectActivationDefinition> activation{};
 };
 
 class WorldObjectCatalog final {
@@ -73,6 +81,10 @@ public:
     [[nodiscard]] DoorState doorState() const noexcept { return doorState_; }
     [[nodiscard]] bool setDoorState(DoorState state) noexcept;
     [[nodiscard]] bool interactDoor() noexcept;
+    [[nodiscard]] bool hasActivation() const noexcept { return definition_->activation.has_value(); }
+    [[nodiscard]] bool activationActive() const noexcept { return activationActive_; }
+    [[nodiscard]] bool setActivationActive(bool active) noexcept;
+    [[nodiscard]] bool toggleActivation() noexcept;
     [[nodiscard]] std::optional<world::AabbI> interactionArea() const noexcept;
     [[nodiscard]] ItemContainer* contents() noexcept;
     [[nodiscard]] const ItemContainer* contents() const noexcept;
@@ -101,6 +113,7 @@ private:
     std::optional<CombatantState> combatant_{};
     std::uint32_t destructionTicksRemaining_{};
     DoorState doorState_{DoorState::closed};
+    bool activationActive_{};
 };
 
 class WorldObjectFactory final {

@@ -70,6 +70,11 @@ struct ObjectOpened final {
     PersistentInstanceId objectInstanceId{};
     MapId mapId{};
 };
+struct ObjectActivationChanged final {
+    MapId mapId{};
+    PersistentInstanceId objectInstanceId{};
+    bool active{};
+};
 
 struct ItemDelivered final {
     EntityHandle player{};
@@ -89,6 +94,7 @@ struct ExperienceGranted final {
 using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
                                      PickupCollected, NpcTalked, MapEntered, RegionEntered,
                                      RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
+                                     ObjectActivationChanged,
                                      ItemDelivered, ExperienceGranted, PresentationEffectRequested>;
 
 class EventBuffer final {

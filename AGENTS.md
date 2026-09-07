@@ -1908,12 +1908,27 @@ dependentes do host Windows.
 
 Phase 15 está concluída no checkpoint atual. Presentation feedback é derivado de
 `SimulationEvent` e nunca é autoridade de gameplay. Use `PresentationEffectDefinition`
-via `AuthoredContentPack`/Content JSON v3, `PresentationEffectSystem` para efeitos de
+via `AuthoredContentPack`/Content JSON v4, `PresentationEffectSystem` para efeitos de
 tela/câmera e `PresentationEffectRenderer` para composição no framebuffer. O
 `EffectSystem` existente continua reservado a VFX em coordenadas de mundo.
 
-UMAP v2 e DMAP 1.3 podem associar efeitos persistentes a regiões e emitir cues
+UMAP v3 e DMAP 1.4 podem associar efeitos persistentes a regiões e emitir cues
 transientes por World Logic; UMAP/DMAP readers preservam compatibilidade anterior e
-DSAV 1.7 não persiste estado de apresentação. Não introduzir StatusEffectSystem,
+DSAV 1.8 não persiste estado de apresentação. Não introduzir StatusEffectSystem,
 poison/blindness gameplay, audio, scripting, GPU post-processing, Content Studio,
 Visual Content Boundary, LLM ou networking neste bloco.
+
+## Estado atual — Phase 16 Interactive World Components
+
+Phase 16 adiciona somente a capability reutilizável de ativação em
+`WorldObjectDefinition`: `interactToggle` para lever/switch e `playerPressure` para
+placas ativadas exclusivamente pela posição dos pés do Player. A transição emite
+`ObjectActivationChanged` no `EventBuffer`; `WorldLogicSystem` continua sendo a
+camada de composição para portas, flags, encounters e presentation. Pressure state é
+derivado e não é salvo; toggle state é persistente. Content JSON v4, UMAP v3, DMAP
+1.4 e DSAV 1.8 mantêm leitores retrocompatíveis.
+
+Não criar PuzzleEngine, push blocks, expressão booleana genérica, StatusEffectSystem,
+Visual Content Boundary, Content Studio, LLM, áudio, scripting ou networking para
+esta fase. Novos comportamentos de objetos devem preferir definitions + placements +
+World Rules, sem branches por mapa ou por ID de teste.
