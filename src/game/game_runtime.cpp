@@ -510,6 +510,16 @@ struct GameRuntime::State final {
                 lastEvent = "PICKUP " + std::to_string(pickup->amount);
             } else if (std::holds_alternative<simulation::NpcTalked>(event)) {
                 lastEvent = "NPC INTERACTION";
+            } else if (std::holds_alternative<simulation::RegionEntered>(event)) {
+                lastEvent = "REGION ENTERED";
+            } else if (std::holds_alternative<simulation::RegionExited>(event)) {
+                lastEvent = "REGION EXITED";
+            } else if (std::holds_alternative<simulation::EncounterStarted>(event)) {
+                lastEvent = "ENCOUNTER STARTED";
+            } else if (std::holds_alternative<simulation::EncounterCompleted>(event)) {
+                lastEvent = "ENCOUNTER COMPLETED";
+            } else if (std::holds_alternative<simulation::ObjectOpened>(event)) {
+                lastEvent = "OBJECT OPENED";
             }
         }
     }
@@ -534,7 +544,8 @@ struct GameRuntime::State final {
         std::vector<const maps::MapData*> maps;
         maps.reserve(knownMapData.size());
         for (const auto& map : knownMapData) { maps.push_back(&map); }
-        return {&itemCatalog, std::move(maps), &content.quests(), &content.progressions()};
+        return {&itemCatalog, std::move(maps), &content.quests(), &content.progressions(),
+                &content.objects()};
     }
 
     void saveGame() {

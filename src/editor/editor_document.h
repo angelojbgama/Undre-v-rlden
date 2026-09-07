@@ -5,6 +5,7 @@
 #include "engine/simulation/persistent_id.h"
 #include "engine/world/collision.h"
 #include "game/game_content.h"
+#include "game/maps/authored_map.h"
 #include "game/maps/map_data.h"
 
 #include <cstddef>
@@ -158,6 +159,8 @@ public:
     // dirty state. The sidecar must not be the authored document path.
     bool saveBackup(const std::filesystem::path& path,
                     const game::GameContentRegistry& content, std::string& error) const;
+    bool exportDmap(const std::filesystem::path& path,
+                    const game::GameContentRegistry& content, std::string& error) const;
     [[nodiscard]] std::optional<std::filesystem::path> autosavePath() const;
 
     bool execute(std::unique_ptr<EditorCommand> command, std::string& error);
@@ -192,15 +195,58 @@ public:
         commandPropertyOverrides() noexcept { return propertyOverrides_; }
     [[nodiscard]] bool hasExperimentalData() const noexcept;
     [[nodiscard]] ValidationReport validate(const game::GameContentRegistry& content) const;
+    [[nodiscard]] const maps::AuthoredMapSource& authoredSource() const noexcept {
+        return authoredSource_;
+    }
+    [[nodiscard]] const std::vector<maps::WorldRuleDefinition>& rules() const noexcept {
+        return authoredSource_.worldRules;
+    }
+    [[nodiscard]] const std::vector<maps::EncounterDefinition>& encounters() const noexcept {
+        return authoredSource_.encounters;
+    }
+
+    // These small document operations are the Map Maker's structured authoring
+    // surface for world logic.  They intentionally edit the authored source and
+    // refresh the compiled compatibility view used by the existing tools.
+    bool addRule(maps::WorldRuleDefinition rule, std::string& error);
+    bool removeRule(const simulation::DefinitionId& ruleId, std::string& error);
+    bool setRuleTrigger(const simulation::DefinitionId& ruleId,
+                        maps::WorldTrigger trigger, std::string& error);
+    bool addRuleCondition(const simulation::DefinitionId& ruleId,
+                          maps::WorldCondition condition, std::string& error);
+    bool removeRuleCondition(const simulation::DefinitionId& ruleId, std::size_t index,
+                             std::string& error);
+    bool addRuleAction(const simulation::DefinitionId& ruleId,
+                       maps::WorldAction action, std::string& error);
+    bool removeRuleAction(const simulation::DefinitionId& ruleId, std::size_t index,
+                          std::string& error);
+    bool setRuleOnce(const simulation::DefinitionId& ruleId, bool once, std::string& error);
+
+    bool addEncounter(maps::EncounterDefinition encounter, std::string& error);
+    bool removeEncounter(const simulation::DefinitionId& encounterId, std::string& error);
+    bool addEncounterParticipant(const simulation::DefinitionId& encounterId,
+                                 simulation::PersistentInstanceId participant,
+                                 std::string& error);
+    bool removeEncounterParticipant(const simulation::DefinitionId& encounterId,
+                                    simulation::PersistentInstanceId participant,
+                                    std::string& error);
+    bool setEncounterRewardGrant(const simulation::DefinitionId& encounterId,
+                                 std::optional<simulation::DefinitionId> rewardGrantId,
+                                 std::string& error);
+    bool clearEncounterRewardGrant(const simulation::DefinitionId& encounterId,
+                                   std::string& error);
 
 private:
     void markMutated() noexcept {
         if (revision_ != std::numeric_limits<std::uint64_t>::max()) { ++revision_; }
     }
     void synchronizeEditorState();
+    void synchronizeAuthoredSource();
+    void commitAuthoredMutation() noexcept;
     void initializeAllocator() noexcept;
 
     maps::MapData data_;
+    maps::AuthoredMapSource authoredSource_;
     EditorSelection selection_;
     EditorViewportState viewport_;
     EditorTool activeTool_{EditorTool::select};

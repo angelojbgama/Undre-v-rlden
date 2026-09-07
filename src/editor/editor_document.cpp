@@ -1,5 +1,6 @@
 #include "editor/editor_document.h"
 
+#include "game/maps/authored_map.h"
 #include "game/maps/dmap.h"
 #include "game/maps/map_composition.h"
 
@@ -87,8 +88,12 @@ void CommandHistory::clear() noexcept { commands_.clear(); cursor_ = 0; }
 
 EditorDocument::EditorDocument() = default;
 EditorDocument::EditorDocument(maps::MapData data) : data_(std::move(data)) {
+    authoredSource_ = maps::authoredMapFromMapData(data_);
     synchronizeEditorState();
     initializeAllocator();
+    for (const auto& region : data_.regions) {
+        regions_.push_back({allocatePersistentId(), std::string(region.id.value()), region.bounds});
+    }
 }
 
 EditorDocument EditorDocument::newMap(simulation::MapId id, std::uint32_t width,
@@ -177,6 +182,38 @@ EditorDocument EditorDocument::newAuthoredMap(
 std::optional<EditorDocument> EditorDocument::open(
     const std::filesystem::path& path, const game::GameContentRegistry& content,
     std::string& error) {
+    if (path.extension() == ".umap") {
+        const auto loaded = maps::readAuthoredMapFile(path);
+        if (!loaded.source) {
+            error = loaded.diagnostics.empty() ? "could not decode authored map" :
+                loaded.diagnostics.front().message;
+            return std::nullopt;
+        }
+        EditorDocument document(maps::mapDataFromAuthored(*loaded.source));
+        document.authoredSource_ = *loaded.source;
+        for (const auto& authoredOverride : loaded.source->placementOverrides) {
+            PropertyValue value;
+            switch (authoredOverride.value.kind) {
+            case maps::AuthoredPropertyValueKind::boolean:
+                value = authoredOverride.value.booleanValue; break;
+            case maps::AuthoredPropertyValueKind::integer:
+                value = authoredOverride.value.integerValue; break;
+            case maps::AuthoredPropertyValueKind::enumeration:
+                value = EnumPropertyValue{authoredOverride.value.textValue}; break;
+            case maps::AuthoredPropertyValueKind::definitionReference:
+                value = DefinitionReference{authoredOverride.value.definitionValue}; break;
+            case maps::AuthoredPropertyValueKind::instanceReference:
+                value = InstanceReference{authoredOverride.value.instanceValue}; break;
+            }
+            document.propertyOverrides_[authoredOverride.instanceId.value]
+                [PropertyId{authoredOverride.propertyId}] = std::move(value);
+        }
+        document.filePath_ = path;
+        document.dirty_ = false;
+        document.initializeAllocator();
+        document.synchronizeAuthoredSource();
+        return document;
+    }
     const auto catalogs = game::mapValidationCatalogs(content);
     auto loaded = maps::readDmap(path, &catalogs);
     if (!loaded) { error = std::move(loaded.error); return std::nullopt; }
@@ -188,6 +225,10 @@ std::optional<EditorDocument> EditorDocument::open(
 
 bool EditorDocument::save(const game::GameContentRegistry& content, std::string& error) {
     if (!filePath_) { error = "document has no file path; use Save As"; return false; }
+    if (filePath_->extension() != ".umap") {
+        error = "imported DMAP documents must be saved as .umap; use Save As";
+        return false;
+    }
     return saveAs(*filePath_, content, error);
 }
 
@@ -196,11 +237,12 @@ bool EditorDocument::saveAs(const std::filesystem::path& path,
                             std::string& error) {
     const ValidationReport report = validate(content);
     if (report.hasErrors()) { error = "document validation has blocking errors"; return false; }
-    if (hasExperimentalData()) {
-        error = "regions and typed placement overrides are experimental and cannot be persisted in DMAP 1.0";
+    if (path.extension() != ".umap") {
+        error = "authored Save As requires a .umap path; use Compile/Export DMAP for runtime output";
         return false;
     }
-    if (!maps::writeDmap(path, data_, error)) { return false; }
+    synchronizeAuthoredSource();
+    if (!maps::writeAuthoredMapFile(path, authoredSource_, error)) { return false; }
     filePath_ = path;
     dirty_ = false;
     return true;
@@ -222,22 +264,80 @@ bool EditorDocument::saveBackup(const std::filesystem::path& path,
     }
     const ValidationReport report = validate(content);
     if (report.hasErrors()) { error = "document validation has blocking errors"; return false; }
+    if (path.extension() == ".umap") {
+        auto authored = maps::authoredMapFromMapData(data_);
+        for (const auto& region : regions_) {
+            const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
+                [&](const auto& value) { return value.id.value() == region.regionId; });
+            if (found == authored.regions.end()) {
+                authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+            }
+        }
+        for (const auto& [instance, overrides] : propertyOverrides_) {
+            for (const auto& [property, value] : overrides) {
+                maps::AuthoredPlacementOverride authoredOverride;
+                authoredOverride.instanceId = {instance};
+                authoredOverride.propertyId = property.value();
+                if (const auto* boolean = std::get_if<bool>(&value)) {
+                    authoredOverride.value.kind = maps::AuthoredPropertyValueKind::boolean;
+                    authoredOverride.value.booleanValue = *boolean;
+                } else if (const auto* integer = std::get_if<std::int64_t>(&value)) {
+                    authoredOverride.value.kind = maps::AuthoredPropertyValueKind::integer;
+                    authoredOverride.value.integerValue = *integer;
+                } else if (const auto* enumeration = std::get_if<EnumPropertyValue>(&value)) {
+                    authoredOverride.value.kind = maps::AuthoredPropertyValueKind::enumeration;
+                    authoredOverride.value.textValue = enumeration->value;
+                } else if (const auto* definition = std::get_if<DefinitionReference>(&value)) {
+                    authoredOverride.value.kind = maps::AuthoredPropertyValueKind::definitionReference;
+                    authoredOverride.value.definitionValue = definition->id;
+                } else {
+                    authoredOverride.value.kind = maps::AuthoredPropertyValueKind::instanceReference;
+                    authoredOverride.value.instanceValue = std::get<InstanceReference>(value).id;
+                }
+                authored.placementOverrides.push_back(std::move(authoredOverride));
+            }
+        }
+        return maps::writeAuthoredMapFile(path, authored, error);
+    }
     if (hasExperimentalData()) {
-        error = "regions and typed placement overrides are experimental and cannot be backed up in DMAP 1.0";
+        error = "authored-only regions and typed placement overrides cannot be backed up in DMAP 1.0";
         return false;
     }
     return maps::writeDmap(path, data_, error);
 }
 
+bool EditorDocument::exportDmap(const std::filesystem::path& path,
+                                const game::GameContentRegistry& content,
+                                std::string& error) const {
+    const ValidationReport report = validate(content);
+    if (report.hasErrors()) { error = "document validation has blocking errors"; return false; }
+    auto authored = maps::authoredMapFromMapData(data_);
+    for (const auto& region : regions_) {
+        const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
+            [&](const auto& value) { return value.id.value() == region.regionId; });
+        if (found == authored.regions.end()) {
+            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+        }
+    }
+    const auto compiled = maps::compileAuthoredMap(authored, content);
+    if (!compiled.map) {
+        error = compiled.diagnostics.empty() ? "authored map compilation failed" :
+            compiled.diagnostics.front().message;
+        return false;
+    }
+    return maps::writeDmap(path, *compiled.map, error);
+}
+
 std::optional<std::filesystem::path> EditorDocument::autosavePath() const {
     if (!filePath_) { return std::nullopt; }
     auto result = *filePath_;
-    result += ".autosave.dmap";
+    result.replace_filename(filePath_->stem().string() + ".autosave.umap");
     return result;
 }
 
 bool EditorDocument::execute(std::unique_ptr<EditorCommand> command, std::string& error) {
     if (!history_.execute(std::move(command), *this, error)) { return false; }
+    synchronizeAuthoredSource();
     dirty_ = true;
     markMutated();
     return true;
@@ -245,6 +345,7 @@ bool EditorDocument::execute(std::unique_ptr<EditorCommand> command, std::string
 
 bool EditorDocument::undo() {
     if (!history_.undo(*this)) { return false; }
+    synchronizeAuthoredSource();
     dirty_ = true;
     markMutated();
     return true;
@@ -252,6 +353,7 @@ bool EditorDocument::undo() {
 
 bool EditorDocument::redo(std::string& error) {
     if (!history_.redo(*this, error)) { return false; }
+    synchronizeAuthoredSource();
     dirty_ = true;
     markMutated();
     return true;
@@ -266,10 +368,207 @@ bool EditorDocument::hasExperimentalData() const noexcept {
     return !regions_.empty() || !propertyOverrides_.empty();
 }
 
+void EditorDocument::commitAuthoredMutation() noexcept {
+    data_ = maps::mapDataFromAuthored(authoredSource_);
+    synchronizeEditorState();
+    initializeAllocator();
+    // These operations are direct document edits rather than EditorCommand
+    // instances.  Do not leave an older undo branch capable of restoring a
+    // stale compiled view over the newly edited authored source.
+    history_.clear();
+    dirty_ = true;
+    markMutated();
+}
+
+bool EditorDocument::addRule(maps::WorldRuleDefinition rule, std::string& error) {
+    error.clear();
+    if (rule.id.empty()) { error = "world rule id cannot be empty"; return false; }
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == rule.id; });
+    if (found != authoredSource_.worldRules.end()) {
+        error = "world rule id already exists";
+        return false;
+    }
+    authoredSource_.worldRules.push_back(std::move(rule));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeRule(const simulation::DefinitionId& ruleId, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    authoredSource_.worldRules.erase(found);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::setRuleTrigger(const simulation::DefinitionId& ruleId,
+                                    maps::WorldTrigger trigger, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    found->trigger = std::move(trigger);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::addRuleCondition(const simulation::DefinitionId& ruleId,
+                                      maps::WorldCondition condition, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    found->conditions.push_back(std::move(condition));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeRuleCondition(const simulation::DefinitionId& ruleId,
+                                         std::size_t index, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    if (index >= found->conditions.size()) { error = "world rule condition index is out of range"; return false; }
+    found->conditions.erase(found->conditions.begin() + static_cast<std::ptrdiff_t>(index));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::addRuleAction(const simulation::DefinitionId& ruleId,
+                                   maps::WorldAction action, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    found->actions.push_back(std::move(action));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeRuleAction(const simulation::DefinitionId& ruleId,
+                                      std::size_t index, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    if (index >= found->actions.size()) { error = "world rule action index is out of range"; return false; }
+    found->actions.erase(found->actions.begin() + static_cast<std::ptrdiff_t>(index));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::setRuleOnce(const simulation::DefinitionId& ruleId, bool once,
+                                 std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.worldRules.begin(),
+                                    authoredSource_.worldRules.end(),
+        [&](const auto& value) { return value.id == ruleId; });
+    if (found == authoredSource_.worldRules.end()) { error = "world rule does not exist"; return false; }
+    found->once = once;
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::addEncounter(maps::EncounterDefinition encounter, std::string& error) {
+    error.clear();
+    if (encounter.id.empty()) { error = "encounter id cannot be empty"; return false; }
+    const auto found = std::find_if(authoredSource_.encounters.begin(),
+                                    authoredSource_.encounters.end(),
+        [&](const auto& value) { return value.id == encounter.id; });
+    if (found != authoredSource_.encounters.end()) {
+        error = "encounter id already exists";
+        return false;
+    }
+    authoredSource_.encounters.push_back(std::move(encounter));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeEncounter(const simulation::DefinitionId& encounterId,
+                                     std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.encounters.begin(),
+                                    authoredSource_.encounters.end(),
+        [&](const auto& value) { return value.id == encounterId; });
+    if (found == authoredSource_.encounters.end()) { error = "encounter does not exist"; return false; }
+    authoredSource_.encounters.erase(found);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::addEncounterParticipant(const simulation::DefinitionId& encounterId,
+                                             simulation::PersistentInstanceId participant,
+                                             std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.encounters.begin(),
+                                    authoredSource_.encounters.end(),
+        [&](const auto& value) { return value.id == encounterId; });
+    if (found == authoredSource_.encounters.end()) { error = "encounter does not exist"; return false; }
+    if (!participant) { error = "encounter participant id cannot be zero"; return false; }
+    if (std::find(found->participants.begin(), found->participants.end(), participant) !=
+        found->participants.end()) { error = "encounter participant already exists"; return false; }
+    found->participants.push_back(participant);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeEncounterParticipant(const simulation::DefinitionId& encounterId,
+                                                simulation::PersistentInstanceId participant,
+                                                std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.encounters.begin(),
+                                    authoredSource_.encounters.end(),
+        [&](const auto& value) { return value.id == encounterId; });
+    if (found == authoredSource_.encounters.end()) { error = "encounter does not exist"; return false; }
+    const auto participantIt = std::find(found->participants.begin(), found->participants.end(), participant);
+    if (participantIt == found->participants.end()) { error = "encounter participant does not exist"; return false; }
+    found->participants.erase(participantIt);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::setEncounterRewardGrant(
+    const simulation::DefinitionId& encounterId,
+    std::optional<simulation::DefinitionId> rewardGrantId, std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.encounters.begin(),
+                                    authoredSource_.encounters.end(),
+        [&](const auto& value) { return value.id == encounterId; });
+    if (found == authoredSource_.encounters.end()) { error = "encounter does not exist"; return false; }
+    if (rewardGrantId && rewardGrantId->empty()) { error = "reward grant id cannot be empty"; return false; }
+    found->rewardGrantId = std::move(rewardGrantId);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::clearEncounterRewardGrant(const simulation::DefinitionId& encounterId,
+                                               std::string& error) {
+    return setEncounterRewardGrant(encounterId, std::nullopt, error);
+}
+
 ValidationReport EditorDocument::validate(const game::GameContentRegistry& content) const {
     ValidationReport report;
     const auto catalogs = game::mapValidationCatalogs(content);
-    const auto base = maps::validateMapData(data_, &catalogs);
+    auto authored = maps::authoredMapFromMapData(data_);
+    for (const auto& region : regions_) {
+        const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
+            [&](const auto& value) { return value.id.value() == region.regionId; });
+        if (found == authored.regions.end()) {
+            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+        }
+    }
+    const auto base = maps::validateMapData(maps::mapDataFromAuthored(authored), &catalogs);
     if (!base) { report.issues.push_back({ValidationSeverity::error, base.error, {}, {}}); }
 
     for (const auto& pickup : data_.pickups) {
@@ -340,12 +639,43 @@ ValidationReport EditorDocument::validate(const game::GameContentRegistry& conte
             }
         }
     }
-    if (hasExperimentalData()) {
-        report.issues.push_back({ValidationSeverity::warning,
-            "experimental regions/property overrides are not persisted by DMAP 1.0; save is blocked",
-            {}, {}});
-    }
     return report;
+}
+
+void EditorDocument::synchronizeAuthoredSource() {
+    authoredSource_ = maps::authoredMapFromMapData(data_);
+    for (const auto& region : regions_) {
+        const auto found = std::find_if(authoredSource_.regions.begin(), authoredSource_.regions.end(),
+            [&](const auto& value) { return value.id.value() == region.regionId; });
+        if (found == authoredSource_.regions.end()) {
+            authoredSource_.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+        }
+    }
+    authoredSource_.placementOverrides.clear();
+    for (const auto& [instance, overrides] : propertyOverrides_) {
+        for (const auto& [property, value] : overrides) {
+            maps::AuthoredPlacementOverride authoredOverride;
+            authoredOverride.instanceId = {instance};
+            authoredOverride.propertyId = property.value();
+            if (const auto* boolean = std::get_if<bool>(&value)) {
+                authoredOverride.value.kind = maps::AuthoredPropertyValueKind::boolean;
+                authoredOverride.value.booleanValue = *boolean;
+            } else if (const auto* integer = std::get_if<std::int64_t>(&value)) {
+                authoredOverride.value.kind = maps::AuthoredPropertyValueKind::integer;
+                authoredOverride.value.integerValue = *integer;
+            } else if (const auto* enumeration = std::get_if<EnumPropertyValue>(&value)) {
+                authoredOverride.value.kind = maps::AuthoredPropertyValueKind::enumeration;
+                authoredOverride.value.textValue = enumeration->value;
+            } else if (const auto* definition = std::get_if<DefinitionReference>(&value)) {
+                authoredOverride.value.kind = maps::AuthoredPropertyValueKind::definitionReference;
+                authoredOverride.value.definitionValue = definition->id;
+            } else {
+                authoredOverride.value.kind = maps::AuthoredPropertyValueKind::instanceReference;
+                authoredOverride.value.instanceValue = std::get<InstanceReference>(value).id;
+            }
+            authoredSource_.placementOverrides.push_back(std::move(authoredOverride));
+        }
+    }
 }
 
 void EditorDocument::synchronizeEditorState() {
@@ -359,6 +689,7 @@ void EditorDocument::initializeAllocator() noexcept {
     std::uint64_t maximum{};
     const auto see = [&](simulation::PersistentInstanceId id) { maximum = std::max(maximum, id.value); };
     for (const auto& value : data_.enemies) { see(value.id); }
+    for (const auto& value : data_.npcs) { see(value.id); }
     for (const auto& value : data_.objects) { see(value.id); }
     for (const auto& value : data_.pickups) { see(value.id); }
     for (const auto& value : regions_) { see(value.id); }

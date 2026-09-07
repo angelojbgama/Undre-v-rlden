@@ -143,7 +143,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if(ui.button({8,y,174,18},"Map Link",document_.activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
         selectedDefinition_=simulation::DefinitionId{"world.map_link"};document_.activeTool()=EditorTool::entityPlace;
     }y+=20;
-    if(ui.button({8,y,174,18},"Region (experimental)",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
+    if(ui.button({8,y,174,18},"Region",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
     y += 20;
     if (ui.button({8, y, 174, 18}, playtest_.active() ? "STOP PLAYTEST" : "PLAYTEST",
                   playtest_.active())) {

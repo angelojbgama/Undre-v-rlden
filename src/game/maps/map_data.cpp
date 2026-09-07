@@ -1,6 +1,7 @@
 #include "game/maps/map_data.h"
 
 #include <limits>
+#include <string>
 #include <unordered_set>
 
 namespace underworld::game::maps {
@@ -14,6 +15,20 @@ bool validFacing(gameplay::FacingDirection facing) noexcept {
 }
 
 bool validArea(world::AabbI area) noexcept { return area.width > 0 && area.height > 0; }
+
+bool areaInsideMap(const MapData& data, world::AabbI area) noexcept {
+    if (!validArea(area)) { return false; }
+    const auto mapWidth = static_cast<std::int64_t>(data.width) * data.tileSize;
+    const auto mapHeight = static_cast<std::int64_t>(data.height) * data.tileSize;
+    const auto right = static_cast<std::int64_t>(area.x) + area.width;
+    const auto bottom = static_cast<std::int64_t>(area.y) + area.height;
+    return area.x >= 0 && area.y >= 0 && right <= mapWidth && bottom <= mapHeight;
+}
+
+bool validDoorState(gameplay::DoorState state) noexcept {
+    return state == gameplay::DoorState::locked || state == gameplay::DoorState::closed ||
+           state == gameplay::DoorState::open;
+}
 
 bool equalPayload(const gameplay::PickupPayload& left,
                   const gameplay::PickupPayload& right) noexcept {
@@ -171,8 +186,164 @@ MapValidationResult validateMapData(const MapData& data,
     std::unordered_set<std::string> regionIds;
     for (const auto& region : data.regions) {
         if (region.id.empty() || !regionIds.emplace(std::string(region.id.value())).second ||
-            !validArea(region.bounds)) {
-            return failure("map region id or bounds are invalid");
+            !areaInsideMap(data, region.bounds)) {
+            return failure("map region id or bounds are invalid or outside the map");
+        }
+    }
+    std::unordered_set<std::string> ruleIds;
+    const auto objectById = [&](simulation::PersistentInstanceId id) {
+        return std::find_if(data.objects.begin(), data.objects.end(),
+            [&](const auto& value) { return value.id == id; });
+    };
+    const auto regionExists = [&](const simulation::DefinitionId& id) {
+        return std::any_of(data.regions.begin(), data.regions.end(),
+                           [&](const auto& value) { return value.id == id; });
+    };
+    const auto encounterExists = [&](const simulation::DefinitionId& id) {
+        return std::any_of(data.encounters.begin(), data.encounters.end(),
+                           [&](const auto& value) { return value.id == id; });
+    };
+    for (const auto& rule : data.worldRules) {
+        if (rule.id.empty() || !ruleIds.emplace(std::string(rule.id.value())).second) {
+            return failure("world rule id is empty or duplicate");
+        }
+        const auto& triggerTarget = rule.trigger.definitionTarget;
+        switch (rule.trigger.kind) {
+        case WorldTriggerKind::mapEntered:
+            if (!triggerTarget.empty() || rule.trigger.instanceTarget) {
+                return failure("map-entered trigger cannot have a target");
+            }
+            break;
+        case WorldTriggerKind::regionEntered:
+        case WorldTriggerKind::regionExited:
+            if (triggerTarget.empty() || rule.trigger.instanceTarget || !regionExists(triggerTarget)) {
+                return failure("world rule references an unknown region");
+            }
+            break;
+        case WorldTriggerKind::encounterStarted:
+        case WorldTriggerKind::encounterCompleted:
+            if (triggerTarget.empty() || rule.trigger.instanceTarget || !encounterExists(triggerTarget)) {
+                return failure("world rule references an unknown encounter");
+            }
+            break;
+        case WorldTriggerKind::objectOpened:
+            if (!triggerTarget.empty() || !rule.trigger.instanceTarget ||
+                objectById(rule.trigger.instanceTarget) == data.objects.end()) {
+                return failure("world rule references an unknown object instance");
+            }
+            break;
+        }
+        for (const auto& condition : rule.conditions) {
+            const auto& target = condition.definitionTarget;
+            switch (condition.kind) {
+            case WorldConditionKind::flagSet:
+            case WorldConditionKind::flagNotSet:
+                if (target.empty() || condition.instanceTarget) {
+                    return failure("world rule flag condition has an invalid target");
+                }
+                break;
+            case WorldConditionKind::encounterCompleted:
+            case WorldConditionKind::encounterNotCompleted:
+                if (target.empty() || condition.instanceTarget || !encounterExists(target)) {
+                    return failure("world rule condition references an unknown encounter");
+                }
+                break;
+            case WorldConditionKind::doorState: {
+                if (!target.empty() || !condition.instanceTarget || !validDoorState(condition.doorState)) {
+                    return failure("door condition has an invalid object instance target or state");
+                }
+                const auto object = objectById(condition.instanceTarget);
+                if (object == data.objects.end()) {
+                    return failure("door condition references an unknown object instance");
+                }
+                if (catalogs != nullptr && catalogs->objects != nullptr) {
+                    const auto* definition = catalogs->objects->find(object->definitionId);
+                    if (definition == nullptr || !definition->door) {
+                        return failure("door condition target is not door-capable");
+                    }
+                }
+                break;
+            }
+            }
+        }
+        for (const auto& action : rule.actions) {
+            const auto& target = action.definitionTarget;
+            switch (action.kind) {
+            case WorldActionKind::setFlag:
+            case WorldActionKind::clearFlag:
+                if (target.empty() || action.instanceTarget) {
+                    return failure("world rule flag action has an invalid target");
+                }
+                break;
+            case WorldActionKind::startEncounter:
+                if (target.empty() || action.instanceTarget || !encounterExists(target)) {
+                    return failure("world rule action references an unknown encounter");
+                }
+                break;
+            case WorldActionKind::setDoorState: {
+                if (!target.empty() || !action.instanceTarget || !validDoorState(action.doorState)) {
+                    return failure("door action has an invalid object instance target or state");
+                }
+                const auto object = objectById(action.instanceTarget);
+                if (object == data.objects.end()) {
+                    return failure("door action references an unknown object instance");
+                }
+                if (catalogs != nullptr && catalogs->objects != nullptr) {
+                    const auto* definition = catalogs->objects->find(object->definitionId);
+                    if (definition == nullptr || !definition->door) {
+                        return failure("door action target is not door-capable");
+                    }
+                }
+                break;
+            }
+            }
+        }
+    }
+    std::unordered_set<std::string> encounterIds;
+    std::unordered_set<std::uint64_t> encounterParticipants;
+    for (const auto& encounter : data.encounters) {
+        if (encounter.id.empty() || !encounterIds.emplace(std::string(encounter.id.value())).second ||
+            encounter.participants.empty()) {
+            return failure("encounter id is duplicate or has no participants");
+        }
+        if (encounter.rewardGrantId && catalogs && catalogs->rewardGrants &&
+            !catalogs->rewardGrants->find(*encounter.rewardGrantId)) {
+            return failure("encounter references an unknown reward grant");
+        }
+        std::unordered_set<std::uint64_t> localParticipants;
+        for (const auto participant : encounter.participants) {
+            if (!participant || !localParticipants.emplace(participant.value).second ||
+                !std::any_of(data.enemies.begin(), data.enemies.end(),
+                             [&](const auto& enemy) { return enemy.id == participant; }) ||
+                !encounterParticipants.emplace(participant.value).second) {
+                return failure("encounter participant is invalid, duplicated, or shared");
+            }
+        }
+    }
+    if (catalogs && catalogs->objects) {
+        std::unordered_set<std::uint64_t> doorCells;
+        const int tileSize = static_cast<int>(data.tileSize);
+        for (const auto& placement : data.objects) {
+            const auto* definition = catalogs->objects->find(placement.definitionId);
+            if (definition == nullptr || !definition->door) continue;
+            const auto bounds = definition->door->blockingBounds;
+            const auto firstX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x,
+                                                tileSize);
+            const auto firstY = core::floorDiv(static_cast<std::int64_t>(placement.position.y) + bounds.y,
+                                                tileSize);
+            const auto lastX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x +
+                                                  bounds.width - 1, tileSize);
+            const auto lastY = core::floorDiv(static_cast<std::int64_t>(placement.position.y) + bounds.y +
+                                                  bounds.height - 1, tileSize);
+            if (firstX < 0 || firstY < 0 || lastX >= static_cast<std::int64_t>(data.width) ||
+                lastY >= static_cast<std::int64_t>(data.height)) {
+                return failure("door blocking bounds are outside the map");
+            }
+            for (auto y = firstY; y <= lastY; ++y) for (auto x = firstX; x <= lastX; ++x) {
+                const auto cell = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(y)) << 32U) |
+                                  static_cast<std::uint32_t>(x);
+                if (!doorCells.emplace(cell).second) return failure("overlapping dynamic door collision cells");
+            }
         }
     }
     return {true, {}};

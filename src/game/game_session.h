@@ -17,6 +17,7 @@
 #include "game/maps/map_catalog.h"
 #include "game/maps/region_tracker.h"
 #include "game/gameplay/world_logic.h"
+#include "game/gameplay/encounter_system.h"
 #include "game/save/save_data.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
@@ -128,6 +129,7 @@ private:
     void applyDialogueActions();
     void consumeQuestEvents();
     void resolvePendingQuestRewards();
+    void resolveEncounterRewards();
     void refreshDerivedPlayerStats();
     [[nodiscard]] gameplay::DamageSpec effectivePlayerDamage(
         const gameplay::DamageSpec& base) const noexcept;
@@ -140,6 +142,8 @@ private:
     simulation::EventBuffer events_;
     maps::RegionTracker regionTracker_;
     gameplay::WorldLogicSystem worldLogic_;
+    gameplay::EncounterSystem encounters_;
+    bool mapEnteredPending_{};
     save::SessionWorldState worldState_;
     std::unique_ptr<maps::MapSession> mapSession_;
     const gameplay::AttackCatalog* attackCatalog_{};

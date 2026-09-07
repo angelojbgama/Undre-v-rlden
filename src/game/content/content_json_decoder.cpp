@@ -12,6 +12,7 @@ using engine::data::JsonArray; using engine::data::JsonObject; using engine::dat
 struct Context final {
     std::vector<ContentJsonDiagnostic> diagnostics;
     std::vector<ContentJsonDefinitionOrigin> origins;
+    std::uint64_t schemaVersion{1};
     void error(const JsonValue& v, std::string path, std::string message) {
         diagnostics.push_back({v.span.begin.line, v.span.begin.column, std::move(path), std::move(message)});
     }
@@ -125,6 +126,7 @@ bool shop(const JsonValue&v,std::string_view p,Context&c,AuthoredShop&out){const
 bool descriptor(const JsonValue&v,std::string_view p,Context&c,AuthoringDescriptor&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"definitionId","displayName","category","tags"},p,c);AuthoringDescriptor d{};bool ok=idField(v,*o,"definitionId",p,c,d.definitionId);const auto*n=required(v,*o,"displayName",p,c);const auto*k=required(v,*o,"category",p,c);const auto*t=required(v,*o,"tags",p,c);ok=n&&stringValue(*n,pathOf(p,"displayName"),c,d.displayName)&&ok;ok=k&&authoringCategory(*k,pathOf(p,"category"),c,d.category)&&ok;const JsonArray*a=nullptr;if(!t||!array(*t,pathOf(p,"tags"),c,a))ok=false;else for(size_t i=0;i<a->size();++i){std::string s;if(stringValue((*a)[i],pathOf(p,"tags")+"["+std::to_string(i)+"]",c,s))d.tags.push_back(std::move(s));else ok=false;}if(ok)out=std::move(d);return ok;}
 bool boolValue(const JsonValue&v,std::string_view p,Context&c,bool&out){if(const auto*b=std::get_if<bool>(&v.value)){out=*b;return true;}c.error(v,std::string(p),"must be a boolean");return false;}
 bool facing(const JsonValue&v,std::string_view p,Context&c,gameplay::FacingDirection&out){std::string s;if(!stringValue(v,p,c,s))return false;if(s=="down")out=gameplay::FacingDirection::down;else if(s=="up")out=gameplay::FacingDirection::up;else if(s=="left")out=gameplay::FacingDirection::left;else if(s=="right")out=gameplay::FacingDirection::right;else{c.error(v,std::string(p),"unknown FacingDirection");return false;}return true;}
+bool doorState(const JsonValue&v,std::string_view p,Context&c,gameplay::DoorState&out){std::string s;if(!stringValue(v,p,c,s))return false;if(s=="locked")out=gameplay::DoorState::locked;else if(s=="closed")out=gameplay::DoorState::closed;else if(s=="open")out=gameplay::DoorState::open;else{c.error(v,std::string(p),"unknown DoorState");return false;}return true;}
 bool attackKind(const JsonValue&v,std::string_view p,Context&c,gameplay::AttackKind&out){std::string s;if(!stringValue(v,p,c,s))return false;if(s=="meleeHitbox")out=gameplay::AttackKind::meleeHitbox;else if(s=="projectile")out=gameplay::AttackKind::projectile;else{c.error(v,std::string(p),"unknown AttackKind");return false;}return true;}
 bool faction(const JsonValue&v,std::string_view p,Context&c,gameplay::Faction&out){std::string s;if(!stringValue(v,p,c,s))return false;if(s=="player")out=gameplay::Faction::player;else if(s=="enemy")out=gameplay::Faction::enemy;else if(s=="environment")out=gameplay::Faction::environment;else if(s=="neutral")out=gameplay::Faction::neutral;else{c.error(v,std::string(p),"unknown Faction");return false;}return true;}
 bool timelineKind(const JsonValue&v,std::string_view p,Context&c,gameplay::AttackTimelineEventKind&out){std::string s;if(!stringValue(v,p,c,s))return false;if(s=="activateHitbox")out=gameplay::AttackTimelineEventKind::activateHitbox;else if(s=="deactivateHitbox")out=gameplay::AttackTimelineEventKind::deactivateHitbox;else if(s=="spawnProjectile")out=gameplay::AttackTimelineEventKind::spawnProjectile;else{c.error(v,std::string(p),"unknown AttackTimelineEventKind");return false;}return true;}
@@ -141,7 +143,7 @@ bool enemy(const JsonValue&v,std::string_view p,Context&c,AuthoredEnemy&out){con
 bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWorldObject& out) {
     const JsonObject* o = nullptr;
     if (!object(v, p, c, o)) return false;
-    allowed(*o, {"id", "visualSetId", "interactable", "container", "destructible", "bankAccess"}, p, c);
+    allowed(*o, {"id", "visualSetId", "interactable", "container", "destructible", "bankAccess", "door"}, p, c);
     AuthoredWorldObject d{};
     bool ok = idField(v, *o, "id", p, c, d.id);
     ok = idField(v, *o, "visualSetId", p, c, d.visualSetId) && ok;
@@ -184,6 +186,26 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
         const auto bankPath = pathOf(p, "bankAccess");
         if (!object(*x, bankPath, c, q)) ok = false;
         else { allowed(*q, {}, bankPath, c); d.bankAccess = AuthoredObjectBankAccess{}; }
+    }
+    if (const auto* x = findField(*o, "door"); x) {
+        const JsonObject* q = nullptr;
+        const auto doorPath = pathOf(p, "door");
+        if (c.schemaVersion == 1) {
+            c.error(*x, doorPath, "door capability requires content schema version 2");
+            ok = false;
+        }
+        if (!object(*x, doorPath, c, q)) ok = false;
+        else {
+            allowed(*q, {"initialState", "blockingBounds"}, doorPath, c);
+            gameplay::ObjectDoorDefinition decoded{};
+            const auto* state = required(*x, *q, "initialState", doorPath, c);
+            const auto* bounds = required(*x, *q, "blockingBounds", doorPath, c);
+            ok = state && doorState(*state, pathOf(doorPath, "initialState"), c,
+                                    decoded.initialState) && ok;
+            ok = bounds && aabb(*bounds, pathOf(doorPath, "blockingBounds"), c,
+                                decoded.blockingBounds) && ok;
+            if (ok) d.door = decoded;
+        }
     }
     if (ok) out = std::move(d);
     return ok;
@@ -328,5 +350,5 @@ template<class T> void category(const JsonObject&r,std::string_view n,Decoder<T>
 }}
 
 namespace underworld::game::content {
-ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)&&x!=1)c.error(*v,"version","unsupported schema version");}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"dialogues",dialogue,out.dialogues,c);category(*root,"quests",quest,out.quests,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);category(*root,"tileSemantics",tileSemantic,out.tileSemantics,c);category(*root,"stamps",stamp,out.stamps,c);r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());r.origins=std::move(c.origins);if(r.diagnostics.empty())r.content=std::move(out);else r.origins.clear();return r;}
+ContentJsonDecodeResult decodeAuthoredContentJson(std::string_view text){ContentJsonDecodeResult r;const auto p=engine::data::parseJson(text);for(const auto&d:p.diagnostics)r.diagnostics.push_back({d.location.line,d.location.column,{},d.message});if(!p.value||!r.diagnostics.empty())return r;const auto*root=std::get_if<engine::data::JsonObject>(&p.value->value);if(!root){r.diagnostics.push_back({p.value->span.begin.line,p.value->span.begin.column,{},"top-level JSON value must be an object"});return r;}Context c;allowed(*root,{"format","version","tilesets","projectiles","attacks","behaviors","enemies","items","objects","pickups","npcVisuals","npcs","dialogues","quests","playerProgressions","rewardProfiles","rewardGrants","shops","authoringDescriptors","tileSemantics","stamps"},"",c);const auto*f=required(*p.value,*root,"format","",c);std::string fs;if(f&&stringValue(*f,"format",c,fs)&&fs!="dungeon-underworld-content")c.error(*f,"format","invalid format identifier");const auto*v=required(*p.value,*root,"version","",c);if(v){uint64_t x{};if(u64(*v,"version",c,x)){c.schemaVersion=x;if(x!=1&&x!=2)c.error(*v,"version","unsupported schema version");}}AuthoredContentPack out;category(*root,"tilesets",tileset,out.tilesets,c);category(*root,"projectiles",projectile,out.projectiles,c);category(*root,"attacks",attack,out.attacks,c);category(*root,"behaviors",behavior,out.behaviors,c);category(*root,"enemies",enemy,out.enemies,c);category(*root,"items",item,out.items,c);category(*root,"objects",worldObject,out.objects,c);category(*root,"pickups",pickup,out.pickups,c);category(*root,"npcVisuals",npcVisual,out.npcVisuals,c);category(*root,"npcs",npc,out.npcs,c);category(*root,"dialogues",dialogue,out.dialogues,c);category(*root,"quests",quest,out.quests,c);category(*root,"playerProgressions",progression,out.playerProgressions,c);category(*root,"rewardProfiles",rewardProfile,out.rewardProfiles,c);category(*root,"rewardGrants",rewardGrant,out.rewardGrants,c);category(*root,"shops",shop,out.shops,c);category(*root,"authoringDescriptors",descriptor,out.authoringDescriptors,c);category(*root,"tileSemantics",tileSemantic,out.tileSemantics,c);category(*root,"stamps",stamp,out.stamps,c);r.diagnostics.insert(r.diagnostics.end(),c.diagnostics.begin(),c.diagnostics.end());r.origins=std::move(c.origins);if(r.diagnostics.empty())r.content=std::move(out);else r.origins.clear();return r;}
 }

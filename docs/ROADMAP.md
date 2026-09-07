@@ -1299,7 +1299,9 @@ codec remains separate from runtime source.
 13B2 — Workspace Directory Discovery — DONE.
 13B3 — Application/Tooling Integration — DONE.
 
-FASE 14 — Content Studio Foundation — FUTURE. Replay/state hashing are optional
+FASE 14 — Authored World Foundation — DONE. It supersedes the earlier Content Studio
+placeholder: authored maps, runtime regions, world rules, stateful doors and encounter
+foundations are implemented before any Studio work. Replay/state hashing are optional
 testing/debug tooling; networking and multiplayer remain permanently out of scope.
 
 The explicit loader sorts caller-provided source paths, rejects duplicate definitions
@@ -1308,13 +1310,26 @@ the existing compiler. 13B2 discovers regular `.json` files recursively; 13B3 sh
 the source bootstrap with Game, Map Maker and the headless `content_check` tool. No
 manifest is required at this stage.
 
-### Map authored-source boundary — FUTURE
+### Authored world source boundary
 
-DMAP remains the compiled/runtime map serialization and is unchanged. A future
-authored map source will be a higher-level document compiled through map composition
-to `MapData`, then serialized to DMAP. It may carry semantic intent, regions, world
-logic bindings, encounter placements and editor metadata; none of those are part of
-13B1 or the current DMAP format.
+`UMAP v1` is the authored map source. It is decoded strictly into an
+`AuthoredMapSource`, compiled into a fresh `MapData`, and serialized as `DMAP 1.2`.
+`REGN`, `WRLD` and `ENCT` are compiled runtime chunks. `DSAV 1.7` persists the
+session-side door, world-rule and encounter state while remaining compatible with
+DSAV 1.6. The Map Composer remains an initial-map generator; it does not regenerate
+manual authored geometry after a `.umap` is opened.
+
+### Phase 14 — Authored World Foundation — DONE
+
+14A — Authored Map Source — DONE.
+14B — Runtime Regions — DONE.
+14C — World Logic Foundation — DONE.
+14D — Stateful Doors — DONE.
+14E — Encounter Foundation — DONE.
+
+Content Studio, Visual Content Boundary, Puzzle Engine, encounter waves, boss phases,
+LLM authoring and networking remain future work. The Phase 14 closure suite and
+authored arena vertical slice are verified; no later phase is started here.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

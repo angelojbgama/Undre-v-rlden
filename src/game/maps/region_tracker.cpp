@@ -20,8 +20,10 @@ void RegionTracker::update(const simulation::MapId& mapId,
         current.insert(region.id);
         if (!inside_.contains(region.id)) events.emit(simulation::RegionEntered{mapId, region.id});
     }
-    for (const auto& region : inside_) {
-        if (!current.contains(region)) events.emit(simulation::RegionExited{mapId, region});
+    for (const auto& region : regions) {
+        if (inside_.contains(region.id) && !current.contains(region.id)) {
+            events.emit(simulation::RegionExited{mapId, region.id});
+        }
     }
     inside_ = std::move(current);
 }

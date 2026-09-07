@@ -9,6 +9,7 @@
 #include "game/maps/map_data.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,17 @@ struct PersistentPickup final {
     simulation::PersistentInstanceId persistentId{};
     bool transient{};
     gameplay::WorldPickup instance;
+};
+
+struct RuntimeDoorCell final {
+    int x{};
+    int y{};
+    bool baseSolid{};
+};
+struct RuntimeDoor final {
+    simulation::PersistentInstanceId id{};
+    gameplay::DoorState state{gameplay::DoorState::closed};
+    std::vector<RuntimeDoorCell> cells;
 };
 
 class RuntimeWorld final {
@@ -50,6 +62,12 @@ public:
     [[nodiscard]] const std::vector<PersistentNpc>& npcs() const noexcept { return npcs_; }
     [[nodiscard]] const std::vector<PersistentObject>& objects() const noexcept { return objects_; }
     [[nodiscard]] const std::vector<PersistentPickup>& pickups() const noexcept { return pickups_; }
+    [[nodiscard]] bool setDoorState(simulation::PersistentInstanceId id,
+                                     gameplay::DoorState state) noexcept;
+    [[nodiscard]] std::optional<gameplay::DoorState> doorState(
+        simulation::PersistentInstanceId id) const noexcept;
+    [[nodiscard]] bool interactDoor(simulation::PersistentInstanceId id) noexcept;
+    [[nodiscard]] const std::vector<RuntimeDoor>& doors() const noexcept { return doors_; }
 
 private:
     friend class RuntimeWorldBuilder;
@@ -61,6 +79,7 @@ private:
     std::vector<PersistentNpc> npcs_;
     std::vector<PersistentObject> objects_;
     std::vector<PersistentPickup> pickups_;
+    std::vector<RuntimeDoor> doors_;
 };
 
 struct RuntimeWorldBuildResult final {

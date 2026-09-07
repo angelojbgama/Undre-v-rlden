@@ -75,8 +75,12 @@ save::SaveData GameSession::captureSaveData() const {
         bank.items[index] = playerItems_->bank().items().slot(index);
     }
     bank.gold = playerItems_->bank().gold();
+    auto world = worldState_;
+    if (mapSession_ && mapSession_->world() && mapSession_->data()) {
+        save::captureWorldState(*mapSession_->data(), *mapSession_->world(), world);
+    }
     return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
-            {progression_.definition().id, progression_.totalExperience()}, worldState_,
+            {progression_.definition().id, progression_.totalExperience()}, std::move(world),
             dialogueFlags_, questState_,
             {playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor),
              playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)}, bank};
@@ -115,6 +119,10 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
     }
     const save::SaveData previous = captureSaveData();
     if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
+    // MapSession applies the object/pickup deltas while rebuilding the runtime
+    // world; the session-owned rule and encounter state must be replaced as one
+    // atomic save restore as well.
+    worldState_ = data.world;
     playerItems_->equipment().restore(data.equipment.armor, data.equipment.accessory);
     refreshDerivedPlayerStats();
     playerItems_->bank().items().restoreSlots(data.bank.items);
@@ -125,6 +133,7 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         std::string rollbackError;
         static_cast<void>(restoreMap(previous.player.currentMapId, previous.world,
                                      rollbackError));
+        worldState_ = previous.world;
         playerItems_->equipment().restore(previous.equipment.armor, previous.equipment.accessory);
         refreshDerivedPlayerStats();
         playerItems_->bank().items().restoreSlots(previous.bank.items);
@@ -455,12 +464,21 @@ void GameSession::interactWithWorld() {
     }
     if (!selected) { return; }
     auto& object = selected->instance;
+    bool opened = false;
     if (object.definition().bankAccess) {
         inventoryOverlay_.close();
         bankOverlay_.toggle();
         return;
     }
-    if (!object.open()) { return; }
+    if (object.isDoor()) {
+        if (!mapSession_->world()->interactDoor(selected->persistentId)) { return; }
+        // Doors have their own state transition and must not masquerade as
+        // container/object-open events for quests or world rules.
+    } else if (!object.open()) {
+        return;
+    } else {
+        opened = true;
+    }
     if (auto* contents = object.contents()) {
         for (std::size_t index = 0; index < contents->capacity(); ++index) {
             const auto slot = contents->slot(index);
@@ -470,8 +488,11 @@ void GameSession::interactWithWorld() {
             }
         }
     }
-    events_.emit(simulation::ObjectOpened{
-        player_.entityHandle(), object.handle(), object.definition().id});
+    if (opened) {
+        events_.emit(simulation::ObjectOpened{
+            player_.entityHandle(), object.handle(), object.definition().id,
+            selected->persistentId, mapSession_->world()->id()});
+    }
     captureWorldState();
 }
 
@@ -519,6 +540,40 @@ void GameSession::resolvePendingQuestRewards() {
     }
 }
 
+void GameSession::resolveEncounterRewards() {
+    if (!rewardGrantCatalog_ || !playerItems_ || !mapSession_ || !mapSession_->world()) return;
+    // Granting experience can append an ExperienceGranted event.  Consume a
+    // stable snapshot so appending to EventBuffer cannot invalidate the range
+    // being traversed.
+    const auto eventSnapshot = events_.events();
+    for (const auto& event : eventSnapshot) {
+        const auto* completed = std::get_if<simulation::EncounterCompleted>(&event);
+        if (!completed || completed->mapId != mapSession_->world()->id()) continue;
+        const auto definition = std::find_if(mapSession_->data()->encounters.begin(),
+            mapSession_->data()->encounters.end(), [&](const auto& value) {
+                return value.id == completed->encounterId;
+            });
+        if (definition == mapSession_->data()->encounters.end() || !definition->rewardGrantId) continue;
+        auto state = std::find_if(worldState_.encounters.begin(), worldState_.encounters.end(),
+            [&](const auto& value) {
+                return value.mapId == completed->mapId &&
+                       value.encounterId == completed->encounterId;
+            });
+        if (state == worldState_.encounters.end() || state->rewardClaimed) continue;
+        const auto* grant = rewardGrantCatalog_->find(*definition->rewardGrantId);
+        if (!grant) continue;
+        const auto result = rewardGrantService_.grant(*grant, progression_, *playerItems_);
+        if (!result.applied) continue;
+        state->rewardClaimed = true;
+        if (result.experience.granted != 0) {
+            events_.emit(simulation::ExperienceGranted{
+                player_.entityHandle(), completed->encounterId, result.experience.granted,
+                progression_.totalExperience(), result.experience.previousLevel,
+                result.experience.newLevel});
+        }
+    }
+}
+
 void GameSession::captureWorldState() {
     if (mapSession_ && mapSession_->world() && mapSession_->data()) {
         save::captureWorldState(*mapSession_->data(), *mapSession_->world(), worldState_);
@@ -537,11 +592,16 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
     if (!activated.changed) { error = activated.error; return false; }
     player_.relocate(activated.spawn.position, activated.spawn.facing);
     mapSession_ = std::move(candidate);
+    mapEnteredPending_ = true;
     return true;
 }
 
 void GameSession::tick(const simulation::PlayerCommand& command) {
     events_.clear();
+    if (mapEnteredPending_ && mapSession_ && mapSession_->world()) {
+        events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+        mapEnteredPending_ = false;
+    }
     gameplay::tickInvulnerability(player_.combatant());
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
     if (handleDialogueCommand(command)) {
@@ -584,8 +644,6 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     player_.update(command, map.collision(), map.tileSize());
     regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                           player_.feetPosition(), events_);
-    worldLogic_.consume(mapSession_->data()->worldRules, mapSession_->world()->id(),
-                        dialogueFlags_, events_);
     // Combat is optional for the small logical map fixtures used by Session
     // tests. A fully bootstrapped game configures it before the first tick.
     if (projectiles_ && attackCatalog_ && projectileCatalog_ && behaviorCatalog_ &&
@@ -606,6 +664,35 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         resolveDefeatRewards();
         removeDefeatedEnemies();
     }
+    // Interaction events are part of the same event-processing cycle as region,
+    // encounter and map-entry events, so authored objectOpened rules see them
+    // without a one-tick delay.
+    if (command.actions.interactPressed) { interactWithWorld(); }
+    std::vector<simulation::PersistentInstanceId> aliveParticipants;
+    aliveParticipants.reserve(mapSession_->world()->enemies().size());
+    for (const auto& enemy : mapSession_->world()->enemies()) {
+        aliveParticipants.push_back(enemy.persistentId);
+    }
+    encounters_.evaluate(mapSession_->data()->encounters, mapSession_->world()->id(),
+                         aliveParticipants, worldState_.encounters, events_);
+    const gameplay::WorldLogicRuntime runtime{
+        [&](const simulation::DefinitionId& id) {
+            return encounters_.state(worldState_.encounters, mapSession_->world()->id(), id) ==
+                   gameplay::EncounterState::completed;
+        },
+        [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
+            return encounters_.start(mapSession_->data()->encounters, mapSession_->world()->id(), id,
+                                     worldState_.encounters, generated);
+        },
+        [&](simulation::PersistentInstanceId id, maps::DoorState state) {
+            return mapSession_->world()->setDoorState(id, state);
+        },
+        [&](simulation::PersistentInstanceId id) {
+            return mapSession_->world()->doorState(id);
+        }};
+    worldLogic_.consume(mapSession_->data()->worldRules, mapSession_->world()->id(),
+                        dialogueFlags_, events_, worldState_.worldRules, runtime);
+    resolveEncounterRewards();
     mapSession_->beginTick();
     static_cast<void>(mapSession_->requestTransition(player_.collisionBody()));
     if (mapSession_->pending()) {
@@ -615,9 +702,38 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             closeDialogue();
             player_.relocate(transition.spawn.position, transition.spawn.facing);
             events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+            regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
+                                  player_.feetPosition(), events_);
+            std::vector<simulation::PersistentInstanceId> newMapAlive;
+            newMapAlive.reserve(mapSession_->world()->enemies().size());
+            for (const auto& enemy : mapSession_->world()->enemies()) {
+                newMapAlive.push_back(enemy.persistentId);
+            }
+            encounters_.evaluate(mapSession_->data()->encounters, mapSession_->world()->id(),
+                                 newMapAlive, worldState_.encounters, events_);
+            const gameplay::WorldLogicRuntime newMapRuntime{
+                [&](const simulation::DefinitionId& id) {
+                    return encounters_.state(worldState_.encounters, mapSession_->world()->id(), id) ==
+                           gameplay::EncounterState::completed;
+                },
+                [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
+                    return encounters_.start(mapSession_->data()->encounters,
+                                             mapSession_->world()->id(), id,
+                                             worldState_.encounters, generated);
+                },
+                [&](simulation::PersistentInstanceId id, maps::DoorState state) {
+                    return mapSession_->world()->setDoorState(id, state);
+                },
+                [&](simulation::PersistentInstanceId id) {
+                    return mapSession_->world()->doorState(id);
+                }};
+            static_cast<void>(worldLogic_.consume(mapSession_->data()->worldRules,
+                                                   mapSession_->world()->id(), dialogueFlags_,
+                                                   events_, worldState_.worldRules, newMapRuntime));
+            resolveEncounterRewards();
+            mapEnteredPending_ = false;
         }
     }
-    if (command.actions.interactPressed) { interactWithWorld(); }
     collectNearbyPickups();
     updateObjects();
     consumeQuestEvents();
@@ -697,6 +813,7 @@ bool GameSession::restoreMap(const simulation::MapId& mapId,
     clearCombatTransients();
     closeDialogue();
     player_.relocate(restored.spawn.position, restored.spawn.facing);
+    mapEnteredPending_ = true;
     return true;
 }
 

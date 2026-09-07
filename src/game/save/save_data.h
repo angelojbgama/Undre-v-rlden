@@ -11,6 +11,8 @@
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/maps/map_data.h"
 #include "game/maps/runtime_world.h"
+#include "game/gameplay/world_logic.h"
+#include "game/gameplay/encounter_system.h"
 
 #include <array>
 #include <cstdint>
@@ -50,6 +52,7 @@ struct ObjectDelta final {
     bool opened{};
     bool destroyed{};
     std::vector<gameplay::ItemStack> remainingContents;
+    std::optional<gameplay::DoorState> doorState;
 };
 
 struct PickupDelta final {
@@ -61,6 +64,8 @@ struct PickupDelta final {
 struct SessionWorldState final {
     std::vector<ObjectDelta> objects;
     std::vector<PickupDelta> pickups;
+    std::vector<gameplay::WorldRuleState> worldRules;
+    std::vector<gameplay::EncounterRuntimeState> encounters;
     void set(ObjectDelta delta);
     void set(PickupDelta delta);
     [[nodiscard]] const ObjectDelta* findObject(const simulation::PersistentEntityKey& key) const noexcept;
@@ -82,6 +87,7 @@ struct SaveValidationCatalogs final {
     std::vector<const maps::MapData*> maps;
     const gameplay::quests::QuestCatalog* quests{};
     const gameplay::rpg::PlayerProgressionCatalog* progressions{};
+    const gameplay::WorldObjectCatalog* objects{};
 };
 
 struct SaveResult final {
@@ -92,8 +98,10 @@ struct SaveResult final {
 };
 
 inline constexpr std::uint16_t saveMajorVersion = 1;
-// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP; minor 5 added BANK; minor 6 added quest reward claims.
-inline constexpr std::uint16_t saveMinorVersion = 6;
+// Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP;
+// minor 5 added BANK; minor 6 added quest reward claims; minor 7 adds world rules
+// and encounter runtime state.
+inline constexpr std::uint16_t saveMinorVersion = 7;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

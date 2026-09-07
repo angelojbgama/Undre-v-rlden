@@ -54,9 +54,14 @@ StringTable collectStrings(const MapData& data) {
     }
     for (const auto& region : data.regions) { addString(table.values, region.id.value()); }
     for (const auto& rule : data.worldRules) {
-        addString(table.values, rule.id.value()); addString(table.values, rule.trigger.target.value());
-        for (const auto& condition : rule.conditions) { addString(table.values, condition.target.value()); }
-        for (const auto& action : rule.actions) { addString(table.values, action.target.value()); }
+        addString(table.values, rule.id.value());
+        if (!rule.trigger.definitionTarget.empty()) addString(table.values, rule.trigger.definitionTarget.value());
+        for (const auto& condition : rule.conditions) {
+            if (!condition.definitionTarget.empty()) addString(table.values, condition.definitionTarget.value());
+        }
+        for (const auto& action : rule.actions) {
+            if (!action.definitionTarget.empty()) addString(table.values, action.definitionTarget.value());
+        }
     }
     for (const auto& encounter : data.encounters) {
         addString(table.values, encounter.id.value());
@@ -190,21 +195,33 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
     }
     appendChunk(chunks, {'R','E','G','N'}, std::move(regions));
     ByteWriter worldRules; worldRules.writeU32(static_cast<std::uint32_t>(data.worldRules.size()));
+    const auto writeTarget = [&](ByteWriter& output, const auto& value) {
+        const auto& definition = value.definitionTarget;
+        if (value.instanceTarget) {
+            output.writeU8(2);
+            output.writeU64(value.instanceTarget.value);
+        } else if (!definition.empty()) {
+            output.writeU8(1);
+            output.writeU32(strings.index(definition.value()));
+        } else {
+            output.writeU8(0);
+        }
+    };
     for (const auto& rule : data.worldRules) {
         worldRules.writeU32(strings.index(rule.id.value()));
         worldRules.writeU8(static_cast<std::uint8_t>(rule.trigger.kind));
-        worldRules.writeU32(strings.index(rule.trigger.target.value()));
+        writeTarget(worldRules, rule.trigger);
         worldRules.writeU8(rule.once ? 1 : 0);
         worldRules.writeU32(static_cast<std::uint32_t>(rule.conditions.size()));
         for (const auto& condition : rule.conditions) {
             worldRules.writeU8(static_cast<std::uint8_t>(condition.kind));
-            worldRules.writeU32(strings.index(condition.target.value()));
+            writeTarget(worldRules, condition);
             worldRules.writeU8(static_cast<std::uint8_t>(condition.doorState));
         }
         worldRules.writeU32(static_cast<std::uint32_t>(rule.actions.size()));
         for (const auto& action : rule.actions) {
             worldRules.writeU8(static_cast<std::uint8_t>(action.kind));
-            worldRules.writeU32(strings.index(action.target.value()));
+            writeTarget(worldRules, action);
             worldRules.writeU8(static_cast<std::uint8_t>(action.doorState));
         }
     }
@@ -368,22 +385,40 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         data.worldRules.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i) {
             WorldRuleDefinition rule; std::uint8_t kind{}, once{}; std::uint32_t conditionCount{}, actionCount{};
+            std::uint8_t instanceTarget{}; std::uint64_t instanceValue{};
             if (!readId(in, strings, rule.id) || !in.readU8(kind) || kind > 5 ||
-                !readId(in, strings, rule.trigger.target) || !in.readU8(once) || once > 1 ||
+                !in.readU8(instanceTarget) || instanceTarget > 2) return fail("invalid WRLD rule");
+            bool targetValid = true;
+            if (instanceTarget == 2) targetValid = in.readU64(instanceValue) && instanceValue != 0;
+            else if (instanceTarget == 1) targetValid = readId(in, strings, rule.trigger.definitionTarget);
+            if (!targetValid || !in.readU8(once) || once > 1 ||
                 !readCount(in, MapLimits::maximumPlacements, conditionCount)) return fail("invalid WRLD rule");
+            if (instanceTarget == 2) rule.trigger.instanceTarget = {instanceValue};
             rule.trigger.kind = static_cast<WorldTriggerKind>(kind); rule.once = once != 0;
             for (std::uint32_t j = 0; j < conditionCount; ++j) {
                 WorldCondition condition; std::uint8_t state{};
-                if (!in.readU8(kind) || kind > 4 || !readId(in, strings, condition.target) ||
-                    !in.readU8(state) || state > 2) return fail("invalid WRLD condition");
+                if (!in.readU8(kind) || kind > 4 || !in.readU8(instanceTarget) || instanceTarget > 2) {
+                    return fail("invalid WRLD condition");
+                }
+                targetValid = true;
+                if (instanceTarget == 2) targetValid = in.readU64(instanceValue) && instanceValue != 0;
+                else if (instanceTarget == 1) targetValid = readId(in, strings, condition.definitionTarget);
+                if (!targetValid || !in.readU8(state) || state > 2) return fail("invalid WRLD condition");
+                if (instanceTarget == 2) condition.instanceTarget = {instanceValue};
                 condition.kind = static_cast<WorldConditionKind>(kind);
                 condition.doorState = static_cast<DoorState>(state); rule.conditions.push_back(std::move(condition));
             }
             if (!readCount(in, MapLimits::maximumPlacements, actionCount)) return fail("invalid WRLD action count");
             for (std::uint32_t j = 0; j < actionCount; ++j) {
                 WorldAction action; std::uint8_t state{};
-                if (!in.readU8(kind) || kind > 3 || !readId(in, strings, action.target) ||
-                    !in.readU8(state) || state > 2) return fail("invalid WRLD action");
+                if (!in.readU8(kind) || kind > 3 || !in.readU8(instanceTarget) || instanceTarget > 2) {
+                    return fail("invalid WRLD action");
+                }
+                targetValid = true;
+                if (instanceTarget == 2) targetValid = in.readU64(instanceValue) && instanceValue != 0;
+                else if (instanceTarget == 1) targetValid = readId(in, strings, action.definitionTarget);
+                if (!targetValid || !in.readU8(state) || state > 2) return fail("invalid WRLD action");
+                if (instanceTarget == 2) action.instanceTarget = {instanceValue};
                 action.kind = static_cast<WorldActionKind>(kind);
                 action.doorState = static_cast<DoorState>(state); rule.actions.push_back(std::move(action));
             }

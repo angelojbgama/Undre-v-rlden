@@ -2,8 +2,40 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
+#include <stdexcept>
 
 namespace underworld::game::maps {
+
+bool RuntimeWorld::setDoorState(simulation::PersistentInstanceId id,
+                                gameplay::DoorState state) noexcept {
+    const auto found = std::find_if(doors_.begin(), doors_.end(),
+        [&](const RuntimeDoor& door) { return door.id == id; });
+    if (found == doors_.end()) return false;
+    if (found->state == state) return true;
+    found->state = state;
+    for (const auto& cell : found->cells) {
+        map_.collision().setSolid(cell.x, cell.y,
+            state == gameplay::DoorState::open ? cell.baseSolid : true);
+    }
+    for (auto& object : objects_) {
+        if (object.persistentId == id) static_cast<void>(object.instance.setDoorState(state));
+    }
+    return true;
+}
+
+std::optional<gameplay::DoorState> RuntimeWorld::doorState(
+    simulation::PersistentInstanceId id) const noexcept {
+    const auto found = std::find_if(doors_.begin(), doors_.end(),
+        [&](const RuntimeDoor& door) { return door.id == id; });
+    return found == doors_.end() ? std::nullopt : std::optional{found->state};
+}
+
+bool RuntimeWorld::interactDoor(simulation::PersistentInstanceId id) noexcept {
+    const auto state = doorState(id);
+    if (!state || *state == gameplay::DoorState::locked) return false;
+    return setDoorState(id, gameplay::DoorState::open);
+}
 
 RuntimeWorldBuildResult RuntimeWorldBuilder::build(
     const MapData& data, simulation::EntityHandlePool& handles,
@@ -58,6 +90,45 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         for (const auto& placement : data.objects) {
             result->objects_.push_back({placement.id, objectFactory_.create(handles,
                 placement.definitionId, placement.position, placement.initialContents)});
+        }
+        for (const auto& placement : data.objects) {
+            const auto* definition = catalogs_.objects ? catalogs_.objects->find(placement.definitionId) : nullptr;
+            if (!definition || !definition->door) continue;
+            const auto bounds = definition->door->blockingBounds;
+            const int tileSize = static_cast<int>(data.tileSize);
+            const auto firstX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x,
+                                                tileSize);
+            const auto firstY = core::floorDiv(static_cast<std::int64_t>(placement.position.y) + bounds.y,
+                                                tileSize);
+            const auto lastX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x +
+                                                  bounds.width - 1, tileSize);
+            const auto lastY = core::floorDiv(static_cast<std::int64_t>(placement.position.y) + bounds.y +
+                                                  bounds.height - 1, tileSize);
+            if (firstX < 0 || firstY < 0 || lastX >= static_cast<std::int64_t>(data.width) ||
+                lastY >= static_cast<std::int64_t>(data.height)) {
+                throw std::invalid_argument("door blocking bounds are outside the map");
+            }
+            RuntimeDoor door{placement.id, definition->door->initialState, {}};
+            for (auto y = firstY; y <= lastY; ++y) {
+                for (auto x = firstX; x <= lastX; ++x) {
+                    if (std::any_of(result->doors_.begin(), result->doors_.end(),
+                        [&](const RuntimeDoor& other) {
+                            return std::any_of(other.cells.begin(), other.cells.end(),
+                                [&](const RuntimeDoorCell& cell) { return cell.x == x && cell.y == y; });
+                        })) {
+                        throw std::invalid_argument("overlapping dynamic door collision cells");
+                    }
+                    door.cells.push_back({static_cast<int>(x), static_cast<int>(y),
+                                          result->map_.collision().isSolid(static_cast<int>(x),
+                                                                            static_cast<int>(y))});
+                }
+            }
+            result->doors_.push_back(std::move(door));
+            const auto& added = result->doors_.back();
+            for (const auto& cell : added.cells) {
+                result->map_.collision().setSolid(cell.x, cell.y,
+                    added.state != gameplay::DoorState::open);
+            }
         }
         result->pickupDefinitions_.reserve(data.pickups.size());
         for (const auto& placement : data.pickups) {

@@ -12,7 +12,8 @@ namespace {
 
 void validate(const WorldObjectDefinition& definition) {
     if (definition.id.empty() || definition.visualSetId.empty() ||
-        (!definition.interactable && !definition.container && !definition.destructible)) {
+        (!definition.interactable && !definition.container && !definition.destructible &&
+         !definition.door)) {
         throw std::invalid_argument("world object definition is incomplete");
     }
     if (definition.interactable && (definition.interactable->bounds.width <= 0 ||
@@ -31,6 +32,10 @@ void validate(const WorldObjectDefinition& definition) {
     }
     if (definition.bankAccess && (!definition.interactable || definition.container || definition.destructible)) {
         throw std::invalid_argument("bank access requires an interactable non-container object");
+    }
+    if (definition.door && (definition.door->blockingBounds.width <= 0 ||
+                            definition.door->blockingBounds.height <= 0)) {
+        throw std::invalid_argument("door blocking bounds must be positive");
     }
 }
 
@@ -87,13 +92,26 @@ WorldObjectInstance::WorldObjectInstance(
             handle, Faction::environment, Health{definition.destructible->maximumHealth}, 0,
             false, definition.id});
     }
+    if (definition.door) { doorState_ = definition.door->initialState; }
+}
+
+bool WorldObjectInstance::setDoorState(DoorState state) noexcept {
+    if (!definition_->door || doorState_ == state) { return false; }
+    doorState_ = state;
+    return true;
+}
+
+bool WorldObjectInstance::interactDoor() noexcept {
+    if (!definition_->door || doorState_ == DoorState::locked) { return false; }
+    return setDoorState(DoorState::open);
 }
 
 std::optional<world::AabbI> WorldObjectInstance::interactionArea() const noexcept {
-    if (!definition_->interactable || state_ == WorldObjectState::destroyed) {
+    if ((!definition_->interactable && !definition_->door) || state_ == WorldObjectState::destroyed) {
         return std::nullopt;
     }
-    const auto bounds = definition_->interactable->bounds;
+    const auto bounds = definition_->interactable ? definition_->interactable->bounds :
+                                                     definition_->door->blockingBounds;
     return world::AabbI{position_.x + bounds.x, position_.y + bounds.y,
                         bounds.width, bounds.height};
 }
@@ -177,6 +195,10 @@ ObjectInteractionResult interactNearest(
         }
     }
     if (selected == nullptr) { return {}; }
+    if (selected->isDoor()) {
+        return selected->interactDoor() ? ObjectInteractionResult{selected->handle(), 0} :
+                                          ObjectInteractionResult{};
+    }
     if (!selected->open()) { return {}; }
     std::uint64_t transferred{};
     if (ItemContainer* contents = selected->contents()) {

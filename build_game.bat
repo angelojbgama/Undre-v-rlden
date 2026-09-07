@@ -37,6 +37,10 @@ if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\builtin_content.obj" "src\game\content\builtin_content.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling authored map source...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\authored_map.obj" "src\game\maps\authored_map.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling changed Player gameplay...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\player.obj" "src\game\gameplay\player.cpp"
 if errorlevel 1 goto :build_failed
@@ -79,15 +83,21 @@ echo Compiling changed game session...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\game_session.obj" "src\game\game_session.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling world logic and encounters...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\world_logic.obj" "src\game\gameplay\world_logic.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\encounter_system.obj" "src\game\gameplay\encounter_system.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Linking game.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" "build\obj\sprite.obj" ^
     "build\obj\animation.obj" "build\obj\bitmap_font.obj" "build\obj\camera_2d.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
-    "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\map_data.obj" ^
-    "build\obj\dmap.obj" "build\obj\game_launch.obj" "build\obj\runtime_world.obj" "build\obj\save_data.obj" ^
+    "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" ^
+    "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" "build\obj\runtime_world.obj" "build\obj\save_data.obj" ^
     "build\obj\map_catalog.obj" "build\obj\official_maps.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" ^
-    "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
+    "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" "build\obj\reachability.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\combat_system.obj" ^
     "build\obj\projectile_system.obj" "build\obj\items.obj" "build\obj\player_items.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" ^

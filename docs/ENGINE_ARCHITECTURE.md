@@ -1581,24 +1581,48 @@ origens. A seleção é compartilhada por Game, Map Maker e `content_check`; bui
 fonte transicional default e `--content` é uma substituição explícita, sem overrides.
 Não há manifest, hot reload, mutação de registry ou autoria visual genérica.
 
-## Authored Map Source Boundary
+## Authored World Source Boundary
 
-`DMAP` continua sendo serialização compilada/runtime e permanece inalterado. A
-direção aprovada para mapas authored é:
+`UMAP v1` is the authored map source and `DMAP 1.2` is the compiled/runtime map
+serialization. The production boundary is:
 
 ```text
-Authored Map Source (future)
+Human / Map Maker / future LLM
        ↓
-Map compiler / semantic composition
+AuthoredMapSource (.umap)
+       ↓
+MapCompiler
        ↓
 MapData
        ↓
-DMAP
+DMAP 1.2
+       ↓
+RuntimeWorld
 ```
 
-Um futuro documento de mapa poderá conter intenção semântica, regiões, bindings de
-World Logic, placements de encounters e metadados de edição. Isso não constitui uma
-implementação de `AuthoredMapDocument` nem altera `MapData` ou DMAP.
+`AuthoredMapSource` is a real authored representation, distinct from `MapData`, and
+preserves manual geometry, placements, links, regions, world rules, encounters and
+typed placement metadata. The compiler validates authored references, constructs a
+fresh `MapData`, and then performs compiled-map validation. `MapComposer` remains an
+initial geometry generator, not a regeneration step for an existing `.umap`.
+
+Runtime world logic reuses the existing event stream:
+
+```text
+SimulationEvent / EventBuffer
+          ├── QuestSystem
+          └── WorldLogicSystem
+                    ├── RegionTracker
+                    ├── EncounterSystem
+                    └── stateful object doors
+```
+
+Regions are spatial data, rules are authored ordered event reactions, doors are an
+optional `WorldObjectDefinition` capability, and encounters monitor authored enemy
+placement IDs. The current implementation deliberately does not add a scripting VM,
+Puzzle Engine, encounter waves, Visual Content Boundary, Content Studio or LLM
+integration. Door and encounter presentation remains constrained by the current
+hardcoded runtime visual capabilities.
 ## Equipment and derived player stats
 
 Equipment is Player-owned gameplay state. Equipment items remain normal

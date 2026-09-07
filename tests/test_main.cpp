@@ -67,6 +67,8 @@
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/world_objects.h"
+#include "game/gameplay/world_logic.h"
+#include "game/gameplay/encounter_system.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/player.h"
 #include "game/player_visual.h"
@@ -2708,8 +2710,8 @@ void testPhase8PersistentMapsAndSave() {
     saved.player.inventory[0]=gameplay::ItemStack{gameplay::lifePotionItemId(),7};
     saved.player.inventory[29]=gameplay::ItemStack{gameplay::lifePotionItemId(),1};
     saved.player.gold=99; saved.player.quickSlots[0]=gameplay::lifePotionItemId();
-    saved.world.set(save::ObjectDelta{{map.id,{2}},true,false,{{gameplay::lifePotionItemId(),1}}});
-    saved.world.set(save::ObjectDelta{{map.id,{3}},false,true,{}});
+    saved.world.set(save::ObjectDelta{{map.id,{2}},true,false,{{gameplay::lifePotionItemId(),1}},std::nullopt});
+    saved.world.set(save::ObjectDelta{{map.id,{3}},false,true,{},std::nullopt});
     saved.world.set(save::PickupDelta{{map.id,{4}},true,std::nullopt});
     saved.world.set(save::PickupDelta{{map.id,{5}},false,2});
     static_cast<void>(saved.dialogueFlags.set(simulation::DefinitionId{"dialogue.flag.zeta"}));
@@ -2749,10 +2751,14 @@ void testPhase8PersistentMapsAndSave() {
            "save load rejects duplicate persistent delta keys");
     auto legacySave = saved;
     legacySave.dialogueFlags.clearAll();
+    legacySave.world.objects.clear();
+    legacySave.world.pickups.clear();
     auto legacyBytes = save::serializeSave(legacySave);
     removeSaveChunk(legacyBytes, "PROG");
     removeSaveChunk(legacyBytes, "EQIP");
     removeSaveChunk(legacyBytes, "BANK");
+    removeSaveChunk(legacyBytes, "WRLD");
+    removeSaveChunk(legacyBytes, "ENCT");
     legacyBytes[6] = 0;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, saveCatalogs);
@@ -3259,8 +3265,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 6 && encoded[7] == 0,
-           "quest reward claims advance DSAV to minor version 6");
+    expect(encoded.size() > 7 && encoded[6] == 7 && encoded[7] == 0,
+           "world state persistence advances DSAV to minor version 7");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
@@ -3271,10 +3277,14 @@ void testPhase11QuestPersistence() {
 
     auto legacy = data;
     static_cast<void>(legacy.quests.reset(definition.id));
+    legacy.world.objects.clear();
+    legacy.world.pickups.clear();
     auto legacyBytes = save::serializeSave(legacy);
     removeSaveChunk(legacyBytes, "PROG");
     removeSaveChunk(legacyBytes, "EQIP");
     removeSaveChunk(legacyBytes, "BANK");
+    removeSaveChunk(legacyBytes, "WRLD");
+    removeSaveChunk(legacyBytes, "ENCT");
     legacyBytes[6] = 1;
     legacyBytes[7] = 0;
     const auto legacyLoaded = save::deserializeSave(legacyBytes, catalogs);
@@ -3672,16 +3682,20 @@ void testPhase9EditorFoundation() {
            "DMAP 1.0 save explicitly blocks experimental regions instead of silently dropping them");
 
     auto roundtripMap = makeSyntheticMap("map.test.roundtrip", "map.test.other");
-    const auto temporary = std::filesystem::temp_directory_path() / "underworld_editor_roundtrip.dmap";
+    const auto temporary = std::filesystem::temp_directory_path() / "underworld_editor_roundtrip.umap";
+    const auto runtimeExport = std::filesystem::temp_directory_path() /
+                               "underworld_editor_roundtrip.dmap";
     editor::EditorDocument roundtrip(roundtripMap);
-    expect(roundtrip.saveAs(temporary, content, error) && !roundtrip.dirty(),
-           "EditorDocument Save As validates and writes through the existing DMAP writer");
+    expect(roundtrip.saveAs(temporary, content, error) && !roundtrip.dirty() &&
+               roundtrip.exportDmap(runtimeExport, content, error),
+           "EditorDocument Save As writes authored UMAP and exposes explicit DMAP export");
     const auto reopened = editor::EditorDocument::open(temporary, content, error);
     expect(reopened && maps::semanticallyEqual(roundtripMap, reopened->data()) &&
                !reopened->dirty() && reopened->filePath() == temporary,
-           "DMAP v1 open save reopen preserves semantic MapData equality");
+           "UMAP open save reopen preserves semantic MapData equality");
     std::error_code removeError;
     std::filesystem::remove(temporary, removeError);
+    std::filesystem::remove(runtimeExport, removeError);
 
     auto playtestSource = makeSyntheticMap("map.test.playtest", "map.test.playtest");
     editor::EditorDocument playtestDocument(playtestSource);
@@ -3702,9 +3716,9 @@ void testPhase9EditorFoundation() {
 
     editor::EditorDocument backupDocument(playtestSource);
     const auto authoredPath = std::filesystem::temp_directory_path() /
-                              "underworld_editor_authored.dmap";
+                              "underworld_editor_authored.umap";
     const auto backupPath = std::filesystem::temp_directory_path() /
-                            "underworld_editor_authored.dmap.autosave.dmap";
+                            "underworld_editor_authored.autosave.umap";
     std::filesystem::remove(authoredPath, removeError);
     std::filesystem::remove(backupPath, removeError);
     expect(backupDocument.saveAs(authoredPath, content, error) &&
@@ -3713,11 +3727,10 @@ void testPhase9EditorFoundation() {
                backupDocument.dirty() && backupDocument.saveBackup(backupPath, content, error) &&
                backupDocument.dirty() && backupDocument.filePath() == authoredPath,
            "editor autosave backup writes a validated sidecar without clearing dirty state or path");
-    const auto backupCatalogs = game::mapValidationCatalogs(content);
-    const auto backupLoaded = maps::readDmap(backupPath, &backupCatalogs);
-    expect(backupLoaded && backupLoaded.data.collision[5] == 1 &&
+    const auto backupLoaded = maps::readAuthoredMapFile(backupPath);
+    expect(backupLoaded.source && maps::mapDataFromAuthored(*backupLoaded.source).collision[5] == 1 &&
                backupDocument.autosavePath() && *backupDocument.autosavePath() == backupPath,
-           "editor autosave sidecar is readable through the official DMAP reader");
+           "editor autosave sidecar preserves the authored document through the official UMAP reader");
     expect(!backupDocument.saveBackup(authoredPath, content, error),
            "editor backup rejects replacing the authored document path");
     std::filesystem::remove(authoredPath, removeError);
@@ -3915,7 +3928,7 @@ void testOfficialGameplayMapAuthoringAsset() {
     std::string error;
     auto document = gameplayMap.empty() ? std::optional<editor::EditorDocument>{}
                                         : editor::EditorDocument::open(gameplayMap, content, error);
-    const auto copy = std::filesystem::temp_directory_path() / "underworld_gameplay_map_copy.dmap";
+    const auto copy = std::filesystem::temp_directory_path() / "underworld_gameplay_map_copy.umap";
     std::error_code removeError;
     std::filesystem::remove(copy, removeError);
     const bool savedCopy = document && !document->dirty() && !document->hasExperimentalData() &&
@@ -3924,7 +3937,7 @@ void testOfficialGameplayMapAuthoringAsset() {
                                     : std::optional<editor::EditorDocument>{};
     expect(savedCopy && reopened && !reopened->dirty() &&
                maps::semanticallyEqual(document->data(), reopened->data()),
-           "Map Editor opens an official gameplay map and saves a persistable roundtrip copy");
+           "Map Editor imports an official DMAP and saves a persistable authored UMAP copy");
     std::filesystem::remove(copy, removeError);
 }
 
@@ -4049,7 +4062,7 @@ void testOfficialGameplayMapSet() {
         auto document = underworld::editor::EditorDocument::open(
             paths[index], content, editorError);
         const auto copy = std::filesystem::temp_directory_path() /
-            ("underworld_official_map_" + std::to_string(index) + ".dmap");
+            ("underworld_official_map_" + std::to_string(index) + ".umap");
         std::error_code removeError;
         std::filesystem::remove(copy, removeError);
         const bool roundtrip = document && !document->dirty() &&
@@ -4058,7 +4071,7 @@ void testOfficialGameplayMapSet() {
             ? underworld::editor::EditorDocument::open(copy, content, editorError)
             : std::optional<underworld::editor::EditorDocument>{};
         expect(roundtrip && reopened && maps::semanticallyEqual(document->data(), reopened->data()),
-               "Map Maker opens and roundtrips every official authored map");
+               "Map Maker imports and roundtrips every official map through authored UMAP");
         std::filesystem::remove(copy, removeError);
     }
     maps::MapCatalog catalog;
@@ -5499,7 +5512,8 @@ void testPhase13AJsonFoundation() {
     expect(decoded.content && decoded.content->items.size() == 1 && decoded.content->items.front().stackLimit == 3,
            "content JSON decodes typed item fields and optional category arrays");
     expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content,
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content,
            "content JSON rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
@@ -5515,6 +5529,20 @@ void testPhase13AJsonFoundation() {
            "core authored DTO decoder preserves all 13A1 categories and uint64 precision");
     expect(!decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":1,"items":[{"id":"x","visualId":"v","category":"misc","stackLmit":3}]})").content,
            "core decoder rejects unknown nested item fields");
+    const auto doorV2 = decodeAuthoredContentJson(
+        R"({"format":"dungeon-underworld-content","version":2,"objects":[{"id":"object.door.test","visualSetId":"visual.door.test","door":{"initialState":"closed","blockingBounds":{"x":0,"y":0,"width":16,"height":16}}}]})");
+    expect(doorV2.content && doorV2.diagnostics.empty() && doorV2.content->objects.size() == 1 &&
+               doorV2.content->objects.front().door &&
+               doorV2.content->objects.front().door->initialState == underworld::game::gameplay::DoorState::closed,
+           "content schema v2 decodes a typed door capability");
+    const auto doorV2Json = doorV2.content ? encodeAuthoredContentJson(*doorV2.content) : std::string{};
+    const auto doorV2Roundtrip = decodeAuthoredContentJson(doorV2Json);
+    expect(doorV2Roundtrip.content && doorV2Roundtrip.diagnostics.empty() &&
+               encodeAuthoredContentJson(*doorV2Roundtrip.content) == doorV2Json,
+           "content schema v2 door encoding remains byte-identical after decode");
+    expect(!decodeAuthoredContentJson(
+               R"({"format":"dungeon-underworld-content","version":1,"objects":[{"id":"object.door.test","visualSetId":"visual.door.test","door":{"initialState":"closed","blockingBounds":{"x":0,"y":0,"width":16,"height":16}}}]})").content,
+           "content schema v1 rejects the door capability instead of changing its meaning silently");
     const std::string invalidUtf8{"{\"x\":\xC0\x80}"};
     expect(parseJson(invalidUtf8).value == nullptr,
            "strict JSON rejects overlong raw UTF-8 sequences");
@@ -5825,6 +5853,7 @@ void testPhase13A3JsonDecoders() {
 
 void testPhase13B1ContentWorkspace() {
     namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
     const auto builtin = content::makeBuiltinAuthoredContent();
     const auto root = std::filesystem::temp_directory_path() / "undre_content_workspace_13b1";
     std::filesystem::create_directories(root);
@@ -5982,6 +6011,21 @@ void testPhase13B1ContentWorkspace() {
     expect(externalSource && externalSource.content->registry.items().require(changed.items.front().id).stackLimit ==
                changed.items.front().stackLimit,
            "13B3 external source changes reach the compiled registry without builtin fallback");
+    const auto mixedVersionRoot = root / "mixed-versions";
+    std::filesystem::create_directories(mixedVersionRoot);
+    { std::ofstream legacy(mixedVersionRoot / "legacy-v1.json");
+      legacy << R"({"format":"dungeon-underworld-content","version":1})"; }
+    content::AuthoredContentPack v2Door;
+    content::AuthoredWorldObject door;
+    door.id = {"object.workspace.door"};
+    door.visualSetId = {"visual.workspace.door"};
+    door.door = gameplay::ObjectDoorDefinition{gameplay::DoorState::closed, {0, 0, 16, 16}};
+    v2Door.objects.push_back(door);
+    write(mixedVersionRoot / "door-v2.json", v2Door);
+    const auto mixedVersions = content::loadContentWorkspaceDirectory(mixedVersionRoot);
+    expect(mixedVersions.workspace && mixedVersions.workspace->registry.objects().find(
+               {"object.workspace.door"}) != nullptr,
+           "content workspace accepts v1 and v2 files in one deterministic merge");
     auto runtimeIncompatible = builtin;
     runtimeIncompatible.attacks.erase(std::remove_if(runtimeIncompatible.attacks.begin(),
                                                      runtimeIncompatible.attacks.end(),
@@ -6014,16 +6058,18 @@ void testPhase14AuthoredMapFoundation() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
     maps::AuthoredMapSource source;
-    source.map.id = simulation::MapId{"map.authored.test"};
-    source.map.width = 2;
-    source.map.height = 2;
-    source.map.tileSize = 16;
-    source.map.layers.push_back({"ground", true, std::vector<std::optional<std::uint32_t>>(4)});
-    source.map.collision.assign(4, 0);
-    source.map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {8, 8},
+    source.geometry.id = simulation::MapId{"map.authored.test"};
+    source.geometry.width = 2;
+    source.geometry.height = 2;
+    source.geometry.tileSize = 16;
+    source.geometry.layers.push_back({"ground", true, std::vector<std::optional<std::uint32_t>>(4)});
+    source.geometry.collision.assign(4, 0);
+    source.geometry.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {8, 8},
                                        underworld::game::gameplay::FacingDirection::down});
-    source.map.regions.push_back({simulation::DefinitionId{"region.test"}, {0, 0, 16, 16}});
-    source.map.encounters.push_back({simulation::DefinitionId{"encounter.test"}, {{42}}, std::nullopt});
+    source.geometry.enemies.push_back({{42}, simulation::DefinitionId{"enemy.test"}, {8, 8},
+                                       underworld::game::gameplay::FacingDirection::down});
+    source.regions.push_back({simulation::DefinitionId{"region.test"}, {0, 0, 16, 16}});
+    source.encounters.push_back({simulation::DefinitionId{"encounter.test"}, {{42}}, std::nullopt});
 
     const auto json = maps::encodeAuthoredMapJson(source);
     const auto decoded = maps::decodeAuthoredMapJson(json);
@@ -6032,23 +6078,618 @@ void testPhase14AuthoredMapFoundation() {
     expect(decoded.source && maps::encodeAuthoredMapJson(*decoded.source) == json,
            "authored map JSON roundtrip is deterministic");
 
-    const auto dmap = maps::deserializeDmap(maps::serializeDmap(source.map));
-    expect(dmap && dmap.data.regions == source.map.regions,
+    const auto compiled = maps::mapDataFromAuthored(source);
+    const auto dmap = maps::deserializeDmap(maps::serializeDmap(compiled));
+    expect(dmap && dmap.data.regions == source.regions,
            "DMAP 1.2 preserves authored regions");
 
     simulation::EventBuffer events;
     maps::RegionTracker tracker;
-    tracker.update(source.map.id, source.map.regions, {8, 8}, events);
+    tracker.update(source.geometry.id, source.regions, {8, 8}, events);
     expect(events.events().size() == 1 &&
                std::holds_alternative<simulation::RegionEntered>(events.events().front()),
            "region tracker emits entry on first tick inside a region");
     events.clear();
-    tracker.update(source.map.id, source.map.regions, {8, 8}, events);
+    tracker.update(source.geometry.id, source.regions, {8, 8}, events);
     expect(events.events().empty(), "region tracker does not repeat entry while staying inside");
-    tracker.update(source.map.id, source.map.regions, {24, 8}, events);
+    tracker.update(source.geometry.id, source.regions, {24, 8}, events);
     expect(events.events().size() == 1 &&
                std::holds_alternative<simulation::RegionExited>(events.events().front()),
            "region tracker emits one exit after leaving a region");
+    maps::RegionTracker orderedTracker;
+    const std::vector<maps::MapRegionDefinition> orderedRegions{
+        {{"region.second"}, {0, 0, 16, 16}},
+        {{"region.first"}, {0, 0, 16, 16}}};
+    events.clear();
+    orderedTracker.update(source.geometry.id, orderedRegions, {8, 8}, events);
+    expect(events.events().size() == 2 &&
+               std::get<simulation::RegionEntered>(events.events().front()).regionId ==
+                   simulation::DefinitionId{"region.second"} &&
+               std::get<simulation::RegionEntered>(events.events().back()).regionId ==
+                   simulation::DefinitionId{"region.first"},
+           "region tracker preserves authored order for deterministic multi-region events");
+    events.clear();
+    orderedTracker.update(source.geometry.id, orderedRegions, {24, 8}, events);
+    expect(events.events().size() == 2 &&
+               std::get<simulation::RegionExited>(events.events().front()).regionId ==
+                   simulation::DefinitionId{"region.second"} &&
+               std::get<simulation::RegionExited>(events.events().back()).regionId ==
+                   simulation::DefinitionId{"region.first"},
+           "region tracker preserves authored order for deterministic exits");
+}
+
+void testPhase14WorldClosure() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    namespace editor = underworld::editor;
+    namespace save = underworld::game::save;
+    const auto compiledContent = content::compileBuiltinContentOrThrow();
+
+    auto map = makeSyntheticMap("map.phase14.codec", "map.phase14.codec");
+    map.npcs.push_back({{6}, gameplay::npcs::guardNpcId(), {24, 24}, gameplay::FacingDirection::up});
+    map.regions.push_back({{"region.codec"}, {0, 0, 32, 32}});
+    map.encounters.push_back({{"encounter.codec"}, {{1}},
+                              simulation::DefinitionId{"reward.quest.scholar.path"}});
+    map.worldRules.push_back({{"rule.enter"},
+                              {maps::WorldTriggerKind::mapEntered, {}, {}}, {},
+                              {{maps::WorldActionKind::setFlag, {"flag.codec"}, {}}}, true});
+    auto authored = maps::authoredMapFromMapData(map);
+    authored.placementOverrides.push_back({{1}, "enemy.detection_range",
+        {maps::AuthoredPropertyValueKind::integer, false, 777, {}, {}, {}}});
+    const auto json = maps::encodeAuthoredMapJson(authored);
+    const auto decoded = maps::decodeAuthoredMapJson(json);
+    expect(decoded.source && decoded.diagnostics.empty() &&
+               maps::encodeAuthoredMapJson(*decoded.source) == json &&
+               decoded.source->geometry.npcs.size() == 1 &&
+               decoded.source->geometry.objects.size() == map.objects.size() &&
+               decoded.source->geometry.pickups.size() == map.pickups.size() &&
+               decoded.source->geometry.links.size() == map.links.size() &&
+               decoded.source->encounters.front().rewardGrantId ==
+                   simulation::DefinitionId{"reward.quest.scholar.path"} &&
+               decoded.source->placementOverrides == authored.placementOverrides,
+           "UMAP roundtrip preserves geometry, NPCs, objects, pickups, links, encounters and overrides");
+
+    auto unknownOverride = authored;
+    unknownOverride.placementOverrides.front().instanceId = {999};
+    const auto unknownOverrideResult = maps::decodeAuthoredMapJson(
+        maps::encodeAuthoredMapJson(unknownOverride));
+    auto duplicateOverride = authored;
+    duplicateOverride.placementOverrides.push_back(authored.placementOverrides.front());
+    const auto duplicateOverrideResult = maps::decodeAuthoredMapJson(
+        maps::encodeAuthoredMapJson(duplicateOverride));
+    expect(!unknownOverrideResult.source &&
+               std::any_of(unknownOverrideResult.diagnostics.begin(),
+                           unknownOverrideResult.diagnostics.end(), [](const auto& diagnostic) {
+                               return diagnostic.code == "invalid_override" &&
+                                      diagnostic.path == "placementOverrides[0].instanceId";
+                           }) &&
+               !duplicateOverrideResult.source &&
+               std::any_of(duplicateOverrideResult.diagnostics.begin(),
+                           duplicateOverrideResult.diagnostics.end(), [](const auto& diagnostic) {
+                               return diagnostic.code == "invalid_override" &&
+                                      diagnostic.path == "placementOverrides[1]";
+                           }),
+           "UMAP validation rejects unknown and duplicate placement overrides with paths");
+
+    const auto compiledMap = maps::compileAuthoredMap(*decoded.source, compiledContent);
+    const bool objectsPreserved = compiledMap.map &&
+        compiledMap.map->objects.size() == map.objects.size() &&
+        std::equal(compiledMap.map->objects.begin(), compiledMap.map->objects.end(),
+                   map.objects.begin(), [](const auto& left, const auto& right) {
+                       return left.id == right.id && left.definitionId == right.definitionId &&
+                              left.position == right.position &&
+                              left.initialContents.size() == right.initialContents.size() &&
+                              std::equal(left.initialContents.begin(), left.initialContents.end(),
+                                         right.initialContents.begin(), [](const auto& leftStack,
+                                                                          const auto& rightStack) {
+                                  return leftStack.itemId == rightStack.itemId &&
+                                         leftStack.quantity == rightStack.quantity;
+                              });
+                   });
+    expect(compiledMap.map && compiledMap.map->id == map.id &&
+               maps::semanticallyEqual(*compiledMap.map, map) &&
+               compiledMap.map->npcs == map.npcs &&
+               objectsPreserved &&
+               compiledMap.map->pickups.size() == map.pickups.size() &&
+               compiledMap.map->links == map.links &&
+               compiledMap.map->regions == map.regions &&
+               compiledMap.map->worldRules == map.worldRules,
+           "MapCompiler creates a fresh MapData from AuthoredMapSource and resolves authored references");
+    const auto mapCatalogs = game::mapValidationCatalogs(compiledContent);
+    auto duplicateRegion = map;
+    duplicateRegion.regions.push_back(map.regions.front());
+    auto invalidRegionBounds = map;
+    invalidRegionBounds.regions.front().bounds.x = -1;
+    auto duplicateRule = map;
+    duplicateRule.worldRules.push_back(map.worldRules.front());
+    auto unknownRegionRule = map;
+    unknownRegionRule.worldRules.front().trigger.definitionTarget = {"region.missing"};
+    auto unknownEncounterRule = map;
+    unknownEncounterRule.worldRules.front().trigger.kind = maps::WorldTriggerKind::encounterStarted;
+    unknownEncounterRule.worldRules.front().trigger.definitionTarget = {"encounter.missing"};
+    auto unknownDoorAction = map;
+    unknownDoorAction.worldRules.front().actions.front() =
+        {maps::WorldActionKind::setDoorState, {}, {999}, gameplay::DoorState::open};
+    auto nonDoorAction = map;
+    nonDoorAction.worldRules.front().actions.front() =
+        {maps::WorldActionKind::setDoorState, {}, {3}, gameplay::DoorState::open};
+    auto duplicateEncounter = map;
+    duplicateEncounter.encounters.push_back(map.encounters.front());
+    auto unknownParticipant = map;
+    unknownParticipant.encounters.front().participants = {{999}};
+    auto duplicateParticipant = map;
+    duplicateParticipant.encounters.front().participants = {{1}, {1}};
+    auto sharedParticipant = map;
+    sharedParticipant.encounters.push_back({{"encounter.other"}, {{1}}, std::nullopt});
+    auto unknownReward = map;
+    unknownReward.encounters.front().rewardGrantId = {"reward.missing"};
+    expect(!maps::validateMapData(duplicateRegion, &mapCatalogs) &&
+               !maps::validateMapData(invalidRegionBounds, &mapCatalogs) &&
+               !maps::validateMapData(duplicateRule, &mapCatalogs) &&
+               !maps::validateMapData(unknownRegionRule, &mapCatalogs) &&
+               !maps::validateMapData(unknownEncounterRule, &mapCatalogs) &&
+               !maps::validateMapData(unknownDoorAction, &mapCatalogs) &&
+               !maps::validateMapData(nonDoorAction, &mapCatalogs) &&
+               !maps::validateMapData(duplicateEncounter, &mapCatalogs) &&
+               !maps::validateMapData(unknownParticipant, &mapCatalogs) &&
+               !maps::validateMapData(duplicateParticipant, &mapCatalogs) &&
+               !maps::validateMapData(sharedParticipant, &mapCatalogs) &&
+               !maps::validateMapData(unknownReward, &mapCatalogs),
+           "Map validation rejects duplicate, unknown and wrongly typed world references");
+    const auto dmap = maps::deserializeDmap(maps::serializeDmap(*compiledMap.map));
+    expect(dmap && maps::semanticallyEqual(*compiledMap.map, dmap.data),
+           "DMAP 1.2 roundtrip preserves compiled authored-world structures");
+
+    const auto temporary = std::filesystem::temp_directory_path() / "underworld_phase14_map.umap";
+    const auto exported = std::filesystem::temp_directory_path() / "underworld_phase14_map.dmap";
+    std::error_code fsError;
+    std::filesystem::remove(temporary, fsError);
+    std::filesystem::remove(exported, fsError);
+    editor::EditorDocument document(map);
+    document.commandRegions().push_back({{99}, "region.editor", {16, 16, 16, 16}});
+    document.commandPropertyOverrides()[1][editor::PropertyId{"enemy.detection_range"}] =
+        std::int64_t{123};
+    std::string error;
+    const bool savedDocument = document.saveAs(temporary, compiledContent, error);
+    expect(savedDocument &&
+               document.autosavePath() &&
+               document.autosavePath()->filename() == "underworld_phase14_map.autosave.umap" &&
+               std::filesystem::exists(temporary),
+           "EditorDocument saves authored maps atomically and uses an authored autosave extension");
+    const auto reopened = editor::EditorDocument::open(temporary, compiledContent, error);
+    expect(reopened && reopened->authoredSource().placementOverrides.size() == 1 &&
+               reopened->regions().size() == 2 &&
+               reopened->authoredSource().regions.size() == 2,
+           "EditorDocument opens UMAP into authored source data without dropping regions or overrides");
+    const bool exportedDmap = reopened && reopened->exportDmap(exported, compiledContent, error);
+    expect(exportedDmap &&
+               std::filesystem::exists(exported),
+           "EditorDocument exposes explicit compiled DMAP export");
+
+    editor::EditorDocument authoringDocument(map);
+    maps::WorldRuleDefinition editorRule{
+        {"rule.editor"}, {maps::WorldTriggerKind::mapEntered, {}, {}}, {}, {}, false};
+    const auto editorEncounterId = simulation::DefinitionId{"encounter.editor"};
+    const auto editorRewardId = simulation::DefinitionId{"reward.quest.scholar.path"};
+    expect(authoringDocument.addRule(editorRule, error) &&
+               authoringDocument.setRuleTrigger(
+                   {"rule.editor"},
+                   {maps::WorldTriggerKind::regionEntered, {"region.codec"}, {}}, error) &&
+               authoringDocument.addRuleCondition(
+                   {"rule.editor"}, {maps::WorldConditionKind::flagNotSet, {"flag.editor"}, {}, {}}, error) &&
+               authoringDocument.addRuleAction(
+                   {"rule.editor"}, {maps::WorldActionKind::setFlag, {"flag.editor"}, {}}, error) &&
+               authoringDocument.setRuleOnce({"rule.editor"}, true, error) &&
+               authoringDocument.addEncounter({editorEncounterId, {}, std::nullopt}, error) &&
+               authoringDocument.addEncounterParticipant(editorEncounterId, {1}, error) &&
+               authoringDocument.setEncounterRewardGrant(editorEncounterId, editorRewardId, error) &&
+               authoringDocument.rules().size() == map.worldRules.size() + 1U &&
+               authoringDocument.encounters().back().participants ==
+                   std::vector<simulation::PersistentInstanceId>{{1}} &&
+               authoringDocument.encounters().back().rewardGrantId == editorRewardId,
+           "EditorDocument exposes structured authoring operations for rules and encounters");
+    expect(authoringDocument.removeRuleCondition({"rule.editor"}, 0, error) &&
+               authoringDocument.removeRuleAction({"rule.editor"}, 0, error) &&
+               authoringDocument.clearEncounterRewardGrant(editorEncounterId, error) &&
+               authoringDocument.removeEncounterParticipant(editorEncounterId, {1}, error) &&
+               authoringDocument.removeEncounter(editorEncounterId, error),
+           "EditorDocument rule and encounter operations support removal and clearing");
+    std::filesystem::remove(temporary, fsError);
+    std::filesystem::remove(temporary.string() + ".bak", fsError);
+    std::filesystem::remove(exported, fsError);
+
+    gameplay::EncounterSystem encounters;
+    const simulation::MapId mapId{"map.phase14.logic"};
+    const simulation::DefinitionId encounterId{"encounter.logic"};
+    const simulation::DefinitionId regionId{"region.logic"};
+    const simulation::PersistentInstanceId doorId{9};
+    const std::vector<maps::EncounterDefinition> encounterDefinitions{
+        {encounterId, {{101}}, std::nullopt}};
+    std::vector<maps::WorldRuleDefinition> rules;
+    rules.push_back({{"rule.start"},
+                     {maps::WorldTriggerKind::regionEntered, regionId, {}}, {},
+                     {{maps::WorldActionKind::startEncounter, encounterId, {}}}, true});
+    rules.push_back({{"rule.generated"},
+                     {maps::WorldTriggerKind::encounterStarted, encounterId, {}}, {},
+                     {{maps::WorldActionKind::setFlag, {"flag.generated"}, {}}}, false});
+    rules.push_back({{"rule.flags"},
+                     {maps::WorldTriggerKind::mapEntered, {}, {}},
+                     {{maps::WorldConditionKind::flagNotSet, {"flag.clear"}, {}, {}}},
+                     {{maps::WorldActionKind::setFlag, {"flag.clear"}, {}},
+                      {maps::WorldActionKind::clearFlag, {"flag.clear"}, {}}}, false});
+    rules.push_back({{"rule.encounter.condition"},
+                     {maps::WorldTriggerKind::mapEntered, {}, {}},
+                     {{maps::WorldConditionKind::encounterNotCompleted, encounterId, {}, {}}},
+                     {{maps::WorldActionKind::setFlag, {"flag.encounter_not_completed"}, {}}}, false});
+    rules.push_back({{"rule.door"},
+                     {maps::WorldTriggerKind::mapEntered, {}, {}},
+                     {{maps::WorldConditionKind::doorState, {}, doorId, gameplay::DoorState::closed}},
+                     {{maps::WorldActionKind::setDoorState, {}, doorId, gameplay::DoorState::open}}, false});
+    rules.push_back({{"rule.object"},
+                     {maps::WorldTriggerKind::objectOpened, {}, doorId}, {},
+                     {{maps::WorldActionKind::setFlag, {"flag.object"}, {}}}, false});
+    rules.push_back({{"rule.exit"},
+                     {maps::WorldTriggerKind::regionExited, regionId, {}}, {},
+                     {{maps::WorldActionKind::setFlag, {"flag.exit"}, {}}}, false});
+    rules.push_back({{"rule.completed"},
+                     {maps::WorldTriggerKind::encounterCompleted, encounterId, {}}, {},
+                     {{maps::WorldActionKind::setFlag, {"flag.completed"}, {}}}, false});
+    rules.push_back({{"rule.flag-set"},
+                     {maps::WorldTriggerKind::mapEntered, {}, {}},
+                     {{maps::WorldConditionKind::flagSet, {"flag.generated"}, {}, {}}},
+                     {{maps::WorldActionKind::setFlag, {"flag.condition"}, {}}}, false});
+    gameplay::dialogue::DialogueFlagSet flags;
+    simulation::EventBuffer events;
+    std::vector<gameplay::WorldRuleState> ruleState;
+    std::vector<gameplay::EncounterRuntimeState> encounterState;
+    gameplay::DoorState doorState = gameplay::DoorState::closed;
+    const gameplay::WorldLogicRuntime runtime{
+        [&](const simulation::DefinitionId& id) {
+            return encounters.state(encounterState, mapId, id) == gameplay::EncounterState::completed;
+        },
+        [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
+            return encounters.start(encounterDefinitions, mapId, id, encounterState, generated);
+        },
+        [&](simulation::PersistentInstanceId id, maps::DoorState state) {
+            if (id != doorId || doorState == state) return false;
+            doorState = state;
+            return true;
+        },
+        [&](simulation::PersistentInstanceId id) -> std::optional<maps::DoorState> {
+            return id == doorId ? std::optional<maps::DoorState>{doorState} : std::nullopt;
+        }};
+    events.emit(simulation::MapEntered{mapId});
+    events.emit(simulation::RegionEntered{mapId, regionId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(flags.isSet({"flag.generated"}) && encounters.state(encounterState, mapId, encounterId) ==
+               gameplay::EncounterState::active && doorState == gameplay::DoorState::open,
+           "World Logic processes generated EncounterStarted events and door conditions in one controlled cycle");
+    expect(flags.isSet({"flag.encounter_not_completed"}),
+           "World Logic evaluates encounterNotCompleted against the live encounter state");
+    events.clear();
+    events.emit(simulation::MapEntered{mapId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(!flags.isSet({"flag.clear"}),
+           "World Logic implements flagSet/flagNotSet and clearFlag without silently ignoring conditions");
+    events.clear();
+    events.emit(simulation::ObjectOpened{{1}, {2, 1}, {"object.chest"}, doorId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(flags.isSet({"flag.object"}), "objectOpened rules receive the persistent placement identity");
+    events.clear();
+    events.emit(simulation::RegionEntered{mapId, regionId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(std::count_if(events.events().begin(), events.events().end(), [](const auto& event) {
+               return std::holds_alternative<simulation::EncounterStarted>(event);
+           }) == 0,
+           "once world rules remain fired on re-entry instead of firing again");
+
+    events.clear();
+    events.emit(simulation::RegionExited{mapId, regionId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(flags.isSet({"flag.exit"}),
+           "World Logic implements the regionExited trigger");
+
+    events.clear();
+    events.emit(simulation::MapEntered{mapId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(flags.isSet({"flag.condition"}),
+           "World Logic evaluates flagSet conditions after earlier actions set the flag");
+
+    events.clear();
+    events.emit(simulation::MapEntered{simulation::MapId{"map.other"}});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    events.clear();
+    events.emit(simulation::RegionEntered{mapId, regionId});
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(std::none_of(events.events().begin(), events.events().end(), [](const auto& event) {
+               return std::holds_alternative<simulation::EncounterStarted>(event);
+           }),
+           "once world rule state survives a map transition and prevents re-entry replay");
+
+    events.clear();
+    encounters.evaluate(encounterDefinitions, mapId, std::span<const simulation::PersistentInstanceId>{},
+                        encounterState, events);
+    expect(encounters.state(encounterState, mapId, encounterId) == gameplay::EncounterState::completed &&
+               events.events().size() == 1 &&
+               std::holds_alternative<simulation::EncounterCompleted>(events.events().front()),
+           "EncounterSystem transitions active encounters to completed exactly once from persistent participants");
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            ruleState, runtime));
+    expect(flags.isSet({"flag.completed"}),
+           "World Logic implements the encounterCompleted trigger");
+    const auto before = events.events().size();
+    encounters.evaluate(encounterDefinitions, mapId, std::span<const simulation::PersistentInstanceId>{},
+                        encounterState, events);
+    expect(events.events().size() == before,
+           "completed encounter evaluation is idempotent and emits no duplicate completion event");
+
+    save::SaveData worldSave;
+    worldSave.player.currentMapId = map.id;
+    worldSave.player.health = compiledContent.progressions().require(
+        gameplay::rpg::defaultPlayerProgressionId()).baseStats.maximumHealth;
+    worldSave.progression = {gameplay::rpg::defaultPlayerProgressionId(), 0};
+    worldSave.world.worldRules.push_back({map.id, {"rule.enter"}, true});
+    worldSave.world.encounters.push_back({map.id, {"encounter.codec"},
+                                           gameplay::EncounterState::completed, true});
+    const save::SaveValidationCatalogs worldSaveCatalogs{
+        &compiledContent.items(), {&map}, nullptr, &compiledContent.progressions(),
+        &compiledContent.objects()};
+    const auto worldSaveBytes = save::serializeSave(worldSave);
+    const auto loadedWorldSave = save::deserializeSave(worldSaveBytes, worldSaveCatalogs);
+    expect(loadedWorldSave && loadedWorldSave.data.world.worldRules == worldSave.world.worldRules &&
+               loadedWorldSave.data.world.encounters == worldSave.world.encounters &&
+               worldSaveBytes == save::serializeSave(loadedWorldSave.data),
+           "DSAV 1.7 roundtrips persistent once-rule and completed encounter state deterministically");
+    auto invalidDoorSave = worldSave;
+    invalidDoorSave.world.objects.push_back({{map.id, {3}}, false, false, {},
+                                             static_cast<gameplay::DoorState>(99)});
+    auto invalidEncounterSave = worldSave;
+    invalidEncounterSave.world.encounters.front().state =
+        static_cast<gameplay::EncounterState>(99);
+    expect(!save::validateSaveData(invalidDoorSave, worldSaveCatalogs).empty() &&
+               !save::validateSaveData(invalidEncounterSave, worldSaveCatalogs).empty(),
+           "save validation rejects invalid door and encounter state enums before serialization");
+    auto loadedRuleState = loadedWorldSave ? loadedWorldSave.data.world.worldRules :
+                                           std::vector<gameplay::WorldRuleState>{};
+    loadedRuleState.push_back({mapId, {"rule.start"}, true});
+    events.clear();
+    events.emit(simulation::RegionEntered{mapId, regionId});
+    const auto beforeLoadedRuleEvents = events.size();
+    static_cast<void>(gameplay::WorldLogicSystem{}.consume(rules, mapId, flags, events,
+                                                            loadedRuleState, runtime));
+    expect(events.size() == beforeLoadedRuleEvents,
+           "once world rule state loaded from DSAV remains fired after re-entry");
+
+    auto authoredDoorContent = content::makeBuiltinAuthoredContent();
+    const auto doorDefinition = std::find_if(authoredDoorContent.objects.begin(),
+        authoredDoorContent.objects.end(), [](const auto& value) {
+            return value.id == simulation::DefinitionId{"object.crate"};
+        });
+    if (doorDefinition != authoredDoorContent.objects.end()) {
+        doorDefinition->door = gameplay::ObjectDoorDefinition{
+            gameplay::DoorState::closed, {0, 0, 16, 16}};
+    }
+    const auto compiledDoorContent = content::compileContent(authoredDoorContent);
+    auto doorMap = makeSyntheticMap("map.phase14.door", "map.phase14.door");
+    doorMap.objects[1].position = {32, 16};
+    bool doorBehaviorPassed = false;
+    if (compiledDoorContent.registry) {
+        const auto doorCatalogs = game::mapValidationCatalogs(*compiledDoorContent.registry);
+        simulation::EntityHandlePool doorHandles;
+        const std::array doorVisuals{gameplay::creatures::soldierVisualId(),
+                                     gameplay::creatures::skullVisualId()};
+        gameplay::creatures::EnemyFactory doorEnemies(doorHandles,
+            compiledDoorContent.registry->enemies(), compiledDoorContent.registry->behaviors(),
+            compiledDoorContent.registry->attacks(), compiledDoorContent.registry->projectiles(),
+            doorVisuals);
+        gameplay::WorldObjectFactory doorObjects(doorHandles,
+            compiledDoorContent.registry->objects(), compiledDoorContent.registry->items());
+        game::RuntimeTilesetCatalog doorTilesets(compiledDoorContent.registry->tilesets());
+        maps::RuntimeWorldBuilder doorBuilder(doorCatalogs, doorEnemies, doorObjects,
+                                              doorHandles, doorTilesets);
+        const auto doorWorld = doorBuilder.build(doorMap, simulation::SpawnId{"entry.start"});
+        doorBehaviorPassed = doorWorld &&
+            doorWorld.world->doorState({3}) == gameplay::DoorState::closed &&
+            doorWorld.world->map().collision().isSolid(2, 1) &&
+            doorWorld.world->interactDoor({3}) &&
+            doorWorld.world->doorState({3}) == gameplay::DoorState::open &&
+            !doorWorld.world->map().collision().isSolid(2, 1) &&
+            doorWorld.world->setDoorState({3}, gameplay::DoorState::locked) &&
+            doorWorld.world->map().collision().isSolid(2, 1) &&
+            doorWorld.world->setDoorState({3}, gameplay::DoorState::open) &&
+            !doorWorld.world->map().collision().isSolid(2, 1);
+    }
+    expect(doorBehaviorPassed,
+           "stateful doors change interaction state and restore authored base collision");
+    const auto doorCatalogs = compiledDoorContent.registry ?
+        game::mapValidationCatalogs(*compiledDoorContent.registry) : maps::MapValidationCatalogs{};
+    auto overlappingDoors = doorMap;
+    overlappingDoors.objects.push_back({{7}, simulation::DefinitionId{"object.crate"}, {32, 16}, {}});
+    expect(!maps::validateMapData(overlappingDoors, &doorCatalogs),
+           "map validation rejects overlapping dynamic door collision cells");
+
+    auto arenaAuthoredContent = content::makeBuiltinAuthoredContent();
+    for (auto& behavior : arenaAuthoredContent.behaviors) {
+        if (behavior.id == gameplay::creatures::soldierBehaviorId()) {
+            behavior.detectionRangePixels = 1;
+            behavior.disengageRangePixels = 2;
+            behavior.idleDurationTicks = 1000;
+            behavior.wanderDurationTicks = 1000;
+        }
+    }
+    for (auto& enemy : arenaAuthoredContent.enemies) {
+        if (enemy.id == gameplay::creatures::soldierEnemyId()) enemy.maximumHealth = 1;
+    }
+    for (auto& object : arenaAuthoredContent.objects) {
+        if (object.id == simulation::DefinitionId{"object.crate"}) {
+            object.door = gameplay::ObjectDoorDefinition{gameplay::DoorState::closed,
+                                                         {0, 0, 16, 16}};
+        }
+    }
+    const auto arenaContent = content::compileContent(arenaAuthoredContent);
+    bool arenaSessionPassed = false;
+    if (arenaContent.registry) {
+        auto arenaMap = makeSyntheticMap("map.phase14.arena", "map.phase14.arena");
+        arenaMap.objects[1].position = {32, 16};
+        arenaMap.enemies.push_back({{6}, gameplay::creatures::soldierEnemyId(), {40, 24},
+                                    gameplay::FacingDirection::left});
+        arenaMap.regions.push_back({{"region.arena"}, {0, 0, 64, 48}});
+        arenaMap.encounters.push_back({{"encounter.arena"}, {{1}, {6}},
+                                       simulation::DefinitionId{"reward.quest.scholar.path"}});
+        arenaMap.worldRules.push_back({
+            {"rule.arena.enter"},
+            {maps::WorldTriggerKind::regionEntered, {"region.arena"}, {}}, {},
+            {{maps::WorldActionKind::setDoorState, {}, {3}, gameplay::DoorState::locked},
+             {maps::WorldActionKind::startEncounter, {"encounter.arena"}, {}}}, true});
+        arenaMap.worldRules.push_back({
+            {"rule.arena.complete"},
+            {maps::WorldTriggerKind::encounterCompleted, {"encounter.arena"}, {}}, {},
+            {{maps::WorldActionKind::setDoorState, {}, {3}, gameplay::DoorState::open},
+             {maps::WorldActionKind::setFlag, {"flag.arena.completed"}, {}}}, true});
+        const auto arenaValidation = game::mapValidationCatalogs(*arenaContent.registry);
+        const auto arenaValidationResult = maps::validateMapData(arenaMap, &arenaValidation);
+        expect(arenaValidationResult.valid,
+               "authored arena validates with door, region, world rules and encounter references");
+        const auto arenaDmapPath = std::filesystem::temp_directory_path() /
+            "underworld_phase14_arena.dmap";
+        std::string arenaIoError;
+        std::error_code arenaFsError;
+        std::filesystem::remove(arenaDmapPath, arenaFsError);
+        const bool arenaDmapWritten = maps::writeDmap(arenaDmapPath, arenaMap, arenaIoError);
+        maps::MapCatalog arenaCatalog;
+        if (arenaDmapWritten) arenaCatalog.add(arenaMap.id, arenaDmapPath);
+        simulation::EntityHandlePool arenaHandles;
+        const std::array arenaVisuals{gameplay::creatures::soldierVisualId(),
+                                      gameplay::creatures::skullVisualId()};
+        gameplay::creatures::EnemyFactory arenaEnemies(
+            arenaHandles, arenaContent.registry->enemies(), arenaContent.registry->behaviors(),
+            arenaContent.registry->attacks(), arenaContent.registry->projectiles(), arenaVisuals);
+        gameplay::WorldObjectFactory arenaObjects(arenaHandles, arenaContent.registry->objects(),
+                                                   arenaContent.registry->items());
+        game::RuntimeTilesetCatalog arenaTilesets(arenaContent.registry->tilesets());
+        maps::RuntimeWorldBuilder arenaBuilder(arenaValidation, arenaEnemies, arenaObjects,
+                                                arenaHandles, arenaTilesets);
+        game::GameSession arenaSession({0}, testProgression());
+        arenaSession.configureCombat(arenaContent.registry->attacks(),
+                                     arenaContent.registry->projectiles(),
+                                     arenaContent.registry->behaviors(),
+                                     arenaContent.registry->attacks().require(
+                                         gameplay::playerSwordAttackId()),
+                                     arenaContent.registry->attacks().require(
+                                         gameplay::playerBowAttackId()));
+        arenaSession.configureItems(arenaContent.registry->items());
+        arenaSession.configureNarrative(arenaContent.registry->dialogues(),
+                                         arenaContent.registry->quests());
+        arenaSession.configureRewards(arenaContent.registry->rewardProfiles(),
+                                       arenaContent.registry->pickups());
+            arenaSession.configureRewardGrants(arenaContent.registry->rewardGrants());
+        std::string arenaSessionError;
+        const bool initialized = arenaDmapWritten && arenaValidationResult.valid &&
+            arenaSession.initializeMap(arenaCatalog, arenaValidation, arenaBuilder,
+                                       arenaMap.id, simulation::SpawnId{"entry.start"}, arenaSessionError);
+        expect(initialized, "GameSession initializes the authored arena through the DMAP catalog");
+        if (initialized) {
+            arenaSession.tick(movementCommand(1, 0, 0));
+            const auto encounterState = arenaSession.worldState().encounters;
+            const auto encounter = std::find_if(encounterState.begin(), encounterState.end(),
+                [](const auto& value) { return value.encounterId == simulation::DefinitionId{"encounter.arena"}; });
+            const bool entered = std::any_of(arenaSession.events().events().begin(),
+                arenaSession.events().events().end(), [](const auto& event) {
+                    return std::holds_alternative<simulation::RegionEntered>(event);
+                });
+            const bool started = std::any_of(arenaSession.events().events().begin(),
+                arenaSession.events().events().end(), [](const auto& event) {
+                    return std::holds_alternative<simulation::EncounterStarted>(event);
+                });
+            expect(entered && started && encounter != encounterState.end() &&
+                       encounter->state == gameplay::EncounterState::active &&
+                       arenaSession.world().doorState({3}) == gameplay::DoorState::locked &&
+                       arenaSession.world().map().collision().isSolid(2, 1),
+                   "arena entry emits RegionEntered, locks the door and starts the encounter");
+            arenaSession.relocatePlayer({28, 24}, gameplay::FacingDirection::right);
+            for (std::uint64_t tick = 2; tick < 80; ++tick) {
+                const auto encounterNow = std::find_if(arenaSession.worldState().encounters.begin(),
+                    arenaSession.worldState().encounters.end(), [](const auto& value) {
+                        return value.encounterId == simulation::DefinitionId{"encounter.arena"};
+                    });
+                if (encounterNow != arenaSession.worldState().encounters.end() &&
+                    encounterNow->state == gameplay::EncounterState::completed) break;
+                const auto command = arenaSession.player().actionState() ==
+                    gameplay::PlayerActionState::none
+                    ? actionCommand(tick, true, false)
+                    : movementCommand(tick, 0, 0);
+                arenaSession.tick(command);
+            }
+            const auto completed = std::find_if(arenaSession.worldState().encounters.begin(),
+                arenaSession.worldState().encounters.end(), [](const auto& value) {
+                    return value.encounterId == simulation::DefinitionId{"encounter.arena"};
+                });
+            const bool completedEvent = std::any_of(arenaSession.events().events().begin(),
+                arenaSession.events().events().end(), [](const auto& event) {
+                    return std::holds_alternative<simulation::EncounterCompleted>(event);
+                });
+            arenaSessionPassed = completed != arenaSession.worldState().encounters.end() &&
+                completed->state == gameplay::EncounterState::completed && completed->rewardClaimed &&
+                completedEvent && arenaSession.world().doorState({3}) == gameplay::DoorState::open &&
+                !arenaSession.world().map().collision().isSolid(2, 1) &&
+                arenaSession.dialogueFlags().isSet({"flag.arena.completed"}) &&
+                arenaSession.world().enemies().empty();
+            expect(arenaSessionPassed,
+                   "arena gameplay defeats participants, completes encounter, opens door, sets flag and rewards once");
+            const auto savedArena = arenaSession.captureSaveData();
+            const auto savedDoor = savedArena.world.findObject({arenaMap.id, {3}});
+            const save::SaveValidationCatalogs arenaSaveCatalogs{
+                &arenaContent.registry->items(), {&arenaMap}, &arenaContent.registry->quests(),
+                &arenaContent.registry->progressions(), &arenaContent.registry->objects()};
+            const auto serializedArenaSave = save::serializeSave(savedArena);
+            const auto restoredArenaSave = save::deserializeSave(serializedArenaSave,
+                                                                 arenaSaveCatalogs);
+            const bool savedState = savedDoor && savedDoor->doorState &&
+                *savedDoor->doorState == gameplay::DoorState::open && restoredArenaSave;
+            expect(savedState, "arena save captures open door and completed encounter state");
+            if (restoredArenaSave) {
+                game::GameSession loadedArena({0}, testProgression());
+                loadedArena.configureCombat(arenaContent.registry->attacks(),
+                                            arenaContent.registry->projectiles(),
+                                            arenaContent.registry->behaviors(),
+                                            arenaContent.registry->attacks().require(
+                                                gameplay::playerSwordAttackId()),
+                                            arenaContent.registry->attacks().require(
+                                                gameplay::playerBowAttackId()));
+                loadedArena.configureItems(arenaContent.registry->items());
+                loadedArena.configureNarrative(arenaContent.registry->dialogues(),
+                                               arenaContent.registry->quests());
+                loadedArena.configureRewards(arenaContent.registry->rewardProfiles(),
+                                              arenaContent.registry->pickups());
+                loadedArena.configureRewardGrants(arenaContent.registry->rewardGrants());
+                std::string loadError;
+                const bool loaded = loadedArena.initializeMap(arenaCatalog, arenaValidation,
+                    arenaBuilder, arenaMap.id, simulation::SpawnId{"entry.start"}, loadError) &&
+                    loadedArena.restoreSaveData(restoredArenaSave.data, loadError);
+                const auto rewardItems = loaded ? loadedArena.playerItems().inventory().items().count(
+                    gameplay::lifePotionItemId()) : 0;
+                expect(loaded && loadedArena.world().doorState({3}) == gameplay::DoorState::open &&
+                           loadedArena.world().enemies().empty() && loadedArena.dialogueFlags().isSet(
+                               {"flag.arena.completed"}) && rewardItems ==
+                               arenaSession.playerItems().inventory().items().count(
+                                   gameplay::lifePotionItemId()),
+                       "arena save/load preserves completed encounter, open door, flag and exactly-once reward");
+            }
+        }
+        std::filesystem::remove(arenaDmapPath, arenaFsError);
+    }
+    expect(arenaSessionPassed, "vertical authored arena slice passes through GameSession");
 }
 
 int main() {
@@ -6124,6 +6765,7 @@ int main() {
         testPhase13A3JsonDecoders();
         testPhase13B1ContentWorkspace();
         testPhase14AuthoredMapFoundation();
+        testPhase14WorldClosure();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

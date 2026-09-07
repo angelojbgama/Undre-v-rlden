@@ -11,6 +11,7 @@
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
+#include "game/gameplay/rpg/reward_grants.h"
 #include "game/tilesets.h"
 
 #include <cstdint>
@@ -19,6 +20,8 @@
 #include <vector>
 
 namespace underworld::game::maps {
+
+using DoorState = gameplay::DoorState;
 
 struct MapLimits final {
     static constexpr std::uint32_t maximumDimension = 4096;
@@ -103,22 +106,23 @@ enum class WorldTriggerKind { mapEntered, regionEntered, regionExited, encounter
 enum class WorldConditionKind { flagSet, flagNotSet, encounterCompleted,
                                 encounterNotCompleted, doorState };
 enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState };
-enum class DoorState { locked, closed, open };
-
 struct WorldTrigger final {
     WorldTriggerKind kind{WorldTriggerKind::mapEntered};
-    simulation::DefinitionId target{};
+    simulation::DefinitionId definitionTarget{};
+    simulation::PersistentInstanceId instanceTarget{};
     [[nodiscard]] bool operator==(const WorldTrigger&) const noexcept = default;
 };
 struct WorldCondition final {
     WorldConditionKind kind{WorldConditionKind::flagSet};
-    simulation::DefinitionId target{};
+    simulation::DefinitionId definitionTarget{};
+    simulation::PersistentInstanceId instanceTarget{};
     DoorState doorState{DoorState::closed};
     [[nodiscard]] bool operator==(const WorldCondition&) const noexcept = default;
 };
 struct WorldAction final {
     WorldActionKind kind{WorldActionKind::setFlag};
-    simulation::DefinitionId target{};
+    simulation::DefinitionId definitionTarget{};
+    simulation::PersistentInstanceId instanceTarget{};
     DoorState doorState{DoorState::closed};
     [[nodiscard]] bool operator==(const WorldAction&) const noexcept = default;
 };
@@ -162,6 +166,7 @@ struct MapValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
     const TilesetCatalog* tilesets{};
     const gameplay::npcs::NpcCatalog* npcs{};
+    const gameplay::rpg::RewardGrantCatalog* rewardGrants{};
 };
 
 struct MapValidationResult final {

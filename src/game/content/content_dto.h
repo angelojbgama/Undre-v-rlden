@@ -35,7 +35,7 @@ struct AuthoredEquipmentModifiers final { int maximumHealthBonus{}; int playerAt
 struct AuthoredEquipment final { AuthoredEquipmentSlot slot{AuthoredEquipmentSlot::armor}; AuthoredEquipmentModifiers modifiers{}; };
 struct AuthoredItem final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::ItemCategory category{gameplay::ItemCategory::misc}; std::uint32_t stackLimit{}; std::optional<gameplay::ItemUseDefinition> use{}; std::optional<AuthoredEquipment> equipment{}; };
 struct AuthoredObjectBankAccess final {};
-struct AuthoredWorldObject final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; std::optional<gameplay::ObjectInteractionDefinition> interactable{}; std::optional<gameplay::ObjectContainerDefinition> container{}; std::optional<gameplay::ObjectDestructibleDefinition> destructible{}; std::optional<AuthoredObjectBankAccess> bankAccess{}; };
+struct AuthoredWorldObject final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; std::optional<gameplay::ObjectInteractionDefinition> interactable{}; std::optional<gameplay::ObjectContainerDefinition> container{}; std::optional<gameplay::ObjectDestructibleDefinition> destructible{}; std::optional<AuthoredObjectBankAccess> bankAccess{}; std::optional<gameplay::ObjectDoorDefinition> door{}; };
 struct AuthoredHealthPickup final { int amount{}; };
 struct AuthoredCurrencyPickup final { std::uint64_t amount{}; };
 struct AuthoredItemPickup final { simulation::DefinitionId itemId{}; std::uint32_t quantity{}; };

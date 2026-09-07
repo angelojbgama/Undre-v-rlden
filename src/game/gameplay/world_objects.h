@@ -25,6 +25,11 @@ struct ObjectDestructibleDefinition final {
     std::uint32_t destructionDurationTicks{28};
 };
 struct ObjectBankAccessDefinition final {};
+enum class DoorState { locked, closed, open };
+struct ObjectDoorDefinition final {
+    DoorState initialState{DoorState::closed};
+    world::AabbI blockingBounds{};
+};
 
 struct WorldObjectDefinition final {
     simulation::DefinitionId id{};
@@ -33,6 +38,7 @@ struct WorldObjectDefinition final {
     std::optional<ObjectContainerDefinition> container{};
     std::optional<ObjectDestructibleDefinition> destructible{};
     std::optional<ObjectBankAccessDefinition> bankAccess{};
+    std::optional<ObjectDoorDefinition> door{};
 };
 
 class WorldObjectCatalog final {
@@ -63,6 +69,10 @@ public:
     }
     [[nodiscard]] core::WorldPointI position() const noexcept { return position_; }
     [[nodiscard]] WorldObjectState state() const noexcept { return state_; }
+    [[nodiscard]] bool isDoor() const noexcept { return definition_->door.has_value(); }
+    [[nodiscard]] DoorState doorState() const noexcept { return doorState_; }
+    [[nodiscard]] bool setDoorState(DoorState state) noexcept;
+    [[nodiscard]] bool interactDoor() noexcept;
     [[nodiscard]] std::optional<world::AabbI> interactionArea() const noexcept;
     [[nodiscard]] ItemContainer* contents() noexcept;
     [[nodiscard]] const ItemContainer* contents() const noexcept;
@@ -90,6 +100,7 @@ private:
     std::optional<ItemContainer> contents_{};
     std::optional<CombatantState> combatant_{};
     std::uint32_t destructionTicksRemaining_{};
+    DoorState doorState_{DoorState::closed};
 };
 
 class WorldObjectFactory final {

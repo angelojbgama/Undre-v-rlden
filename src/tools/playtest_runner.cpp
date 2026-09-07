@@ -7,6 +7,7 @@
 #include "game/gameplay/world_objects.h"
 #include "game/game_runtime.h"
 #include "game/content/builtin_content.h"
+#include "game/content/content_compiler.h"
 #include "game/maps/dmap.h"
 #include "game/maps/official_maps.h"
 
@@ -146,6 +147,13 @@ std::optional<RunnerOptions> parseOptions(int argc, char** argv, std::string& er
     return options;
 }
 
+struct WorldLogicFixture final {
+    game::GameContentRegistry content;
+    game::maps::MapData map;
+};
+
+WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root);
+
 class ScenarioContext final {
 public:
     ScenarioContext(const std::filesystem::path& root, const RunnerOptions& options,
@@ -161,9 +169,20 @@ public:
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
+        game::GameContentRegistry content = game::content::compileBuiltinContentOrThrow();
+        if (scenario_ == "world_logic") {
+            const auto fixture = makeWorldLogicFixture(root_);
+            const auto fixtureMap = executableDirectory_ / "world_logic.dmap";
+            std::string writeError;
+            if (!game::maps::writeDmap(fixtureMap, fixture.map, writeError)) {
+                throw std::runtime_error("could not write world logic playtest map: " + writeError);
+            }
+            launch.mapPath = fixtureMap;
+            content = fixture.content;
+        }
         demo_ = std::make_unique<game::GameRuntime>(
             decoder_, options.assetRoot.empty() ? root_ : options.assetRoot,
-            executableDirectory_, game::content::compileBuiltinContentOrThrow(), launch);
+            executableDirectory_, std::move(content), launch);
 
         AuditSessionConfig config;
         config.outputRoot = options.auditRoot;
@@ -440,6 +459,123 @@ PointTarget linkCenter(const world::AabbI& area) {
     return {area.x + area.width / 2, area.y + area.height / 2};
 }
 
+WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
+    auto authored = game::content::makeBuiltinAuthoredContent();
+    for (auto& behavior : authored.behaviors) {
+        // The scenario is about authored world orchestration. Keep the real
+        // combat path, but prevent the participants from attacking while the
+        // runner brings the player into sword range.
+        behavior.detectionRangePixels = 1;
+        behavior.disengageRangePixels = 2;
+    }
+    for (auto& enemy : authored.enemies) { enemy.maximumHealth = 1; }
+
+    game::content::AuthoredWorldObject door;
+    door.id = {"object.playtest.door"};
+    door.visualSetId = {"visual.object.crate"};
+    door.door = game::gameplay::ObjectDoorDefinition{
+        game::gameplay::DoorState::closed, {-8, -24, 16, 24}};
+    authored.objects.push_back(std::move(door));
+
+    const auto compiled = game::content::compileContent(authored);
+    if (!compiled) {
+        std::string message = "could not compile world logic playtest content";
+        for (const auto& diagnostic : compiled.report.diagnostics) {
+            if (diagnostic.severity == game::content::ContentDiagnosticSeverity::error) {
+                message += ": " + diagnostic.code + " " + diagnostic.message;
+            }
+        }
+        throw std::runtime_error(message);
+    }
+
+    const auto loaded = game::maps::readDmap(mapPath(root, "map.dungeon.02"));
+    if (!loaded) { throw std::runtime_error("could not load world logic playtest map"); }
+    auto map = loaded.data;
+    if (map.enemies.empty()) {
+        throw std::runtime_error("world logic playtest map needs an enemy participant");
+    }
+    if (map.enemies.size() < 2) {
+        auto duplicate = map.enemies.front();
+        duplicate.id = {9002};
+        duplicate.position.x += static_cast<int>(map.tileSize) * 2;
+        map.enemies.push_back(std::move(duplicate));
+    }
+
+    constexpr simulation::PersistentInstanceId doorInstance{9001};
+    const simulation::DefinitionId regionId{"region.playtest.arena"};
+    const simulation::DefinitionId encounterId{"encounter.playtest.arena"};
+    const simulation::DefinitionId completedFlag{"flag.playtest.arena.completed"};
+
+    map.objects.push_back({doorInstance, {"object.playtest.door"}, {160, 128}, {}});
+    map.regions.push_back({regionId, {0, 0,
+                                      static_cast<int>(map.width * map.tileSize),
+                                      static_cast<int>(map.height * map.tileSize)}});
+
+    game::maps::EncounterDefinition encounter;
+    encounter.id = encounterId;
+    for (const auto& enemy : map.enemies) { encounter.participants.push_back(enemy.id); }
+    map.encounters.push_back(encounter);
+
+    game::maps::WorldRuleDefinition entered;
+    entered.id = {"rule.playtest.arena.entered"};
+    entered.trigger.kind = game::maps::WorldTriggerKind::regionEntered;
+    entered.trigger.definitionTarget = regionId;
+    entered.once = true;
+    entered.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, doorInstance,
+                               game::gameplay::DoorState::locked});
+    entered.actions.push_back({game::maps::WorldActionKind::startEncounter, encounterId, {},
+                               game::gameplay::DoorState::closed});
+    map.worldRules.push_back(std::move(entered));
+
+    game::maps::WorldRuleDefinition completedRule;
+    completedRule.id = {"rule.playtest.arena.completed"};
+    completedRule.trigger.kind = game::maps::WorldTriggerKind::encounterCompleted;
+    completedRule.trigger.definitionTarget = encounterId;
+    completedRule.once = true;
+    completedRule.actions.push_back({game::maps::WorldActionKind::setDoorState, {}, doorInstance,
+                                     game::gameplay::DoorState::open});
+    completedRule.actions.push_back({game::maps::WorldActionKind::setFlag, completedFlag, {},
+                                     game::gameplay::DoorState::closed});
+    map.worldRules.push_back(std::move(completedRule));
+
+    return {std::move(*compiled.registry), std::move(map)};
+}
+
+bool runWorldLogic(ScenarioContext& context) {
+    if (!runBaseline(context)) { return false; }
+    if (!context.step()) { return false; }
+    if (!context.require(context.snapshot().lastEvent == "ENCOUNTER STARTED",
+                         "region rule did not start the encounter in the same event cycle")) {
+        return false;
+    }
+    for (int index = 0; index < 1200 && !context.snapshot().enemies.empty(); ++index) {
+        const auto enemy = context.snapshot().enemies.front();
+        const auto player = context.snapshot();
+        platform::InputState input;
+        const int dx = enemy.x - player.playerX;
+        const int dy = enemy.y - player.playerY;
+        if (std::abs(dx) <= 24 && std::abs(dy) <= 24) {
+            input.primaryAttackPressed = index % 8 == 0;
+        } else {
+            input.moveRight = dx > 0;
+            input.moveLeft = dx < 0;
+            input.moveDown = dy > 0;
+            input.moveUp = dy < 0;
+        }
+        if (!context.step(input)) { return false; }
+    }
+    const auto& completed = context.snapshot();
+    const bool finished = context.require(completed.enemies.empty(),
+                                          "arena participants were not defeated through gameplay") &&
+        context.require(std::find(completed.dialogueFlags.begin(), completed.dialogueFlags.end(),
+                                  "flag.playtest.arena.completed") != completed.dialogueFlags.end(),
+                        "encounter completion rule did not set its authored flag") &&
+        context.require(completed.lastEvent == "ENCOUNTER COMPLETED",
+                        "encounter completion event was not observed by the runtime");
+    if (finished) { static_cast<void>(context.checkpoint("arena_complete", "world_logic_complete")); }
+    return finished;
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -710,6 +846,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runDialogue(context);
     } else if (name == "quest") {
         passed = runQuest(context);
+    } else if (name == "world_logic") {
+        passed = runWorldLogic(context);
     } else if (name == "rewards_loot") {
         passed = runRewards(context);
     } else {
@@ -724,7 +862,8 @@ const std::vector<std::string> allScenarios{
     "pickup_money", "pickup_heart", "pickup_life_potion", "inventory", "quick_slot",
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
-    "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "rewards_loot"};
+        "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
+        "rewards_loot"};
 
 } // namespace
 

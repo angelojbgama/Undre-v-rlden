@@ -11,8 +11,48 @@
 
 namespace underworld::game::maps {
 
+struct AuthoredMapGeometry final {
+    simulation::MapId id{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint16_t tileSize{};
+    std::vector<MapTileReference> tileReferences;
+    std::vector<MapTileLayer> layers;
+    std::vector<std::uint8_t> collision;
+    std::vector<PlayerSpawn> playerSpawns;
+    std::vector<EnemyPlacement> enemies;
+    std::vector<NpcPlacement> npcs;
+    std::vector<ObjectPlacement> objects;
+    std::vector<PickupPlacement> pickups;
+    std::vector<MapLink> links;
+    [[nodiscard]] bool operator==(const AuthoredMapGeometry&) const noexcept = default;
+};
+
+enum class AuthoredPropertyValueKind { boolean, integer, enumeration,
+                                      definitionReference, instanceReference };
+struct AuthoredPropertyValue final {
+    AuthoredPropertyValueKind kind{AuthoredPropertyValueKind::integer};
+    bool booleanValue{};
+    std::int64_t integerValue{};
+    std::string textValue;
+    simulation::DefinitionId definitionValue{};
+    simulation::PersistentInstanceId instanceValue{};
+    [[nodiscard]] bool operator==(const AuthoredPropertyValue&) const noexcept = default;
+};
+struct AuthoredPlacementOverride final {
+    simulation::PersistentInstanceId instanceId{};
+    std::string propertyId;
+    AuthoredPropertyValue value;
+    [[nodiscard]] bool operator==(const AuthoredPlacementOverride&) const noexcept = default;
+};
+
 struct AuthoredMapSource final {
-    MapData map;
+    AuthoredMapGeometry geometry;
+    std::vector<MapRegionDefinition> regions;
+    std::vector<WorldRuleDefinition> worldRules;
+    std::vector<EncounterDefinition> encounters;
+    std::vector<AuthoredPlacementOverride> placementOverrides;
+    [[nodiscard]] bool operator==(const AuthoredMapSource&) const noexcept = default;
 };
 
 enum class AuthoredMapDiagnosticStage { decode, validation, compile, io };
@@ -40,5 +80,7 @@ struct MapCompileResult final {
                                         const AuthoredMapSource& source, std::string& error);
 [[nodiscard]] MapCompileResult compileAuthoredMap(const AuthoredMapSource& source,
                                                   const game::GameContentRegistry& content);
+[[nodiscard]] MapData mapDataFromAuthored(const AuthoredMapSource& source);
+[[nodiscard]] AuthoredMapSource authoredMapFromMapData(const MapData& data);
 
 } // namespace underworld::game::maps

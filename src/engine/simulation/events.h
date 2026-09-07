@@ -66,6 +66,8 @@ struct ObjectOpened final {
     EntityHandle player{};
     EntityHandle object{};
     DefinitionId objectDefinitionId{};
+    PersistentInstanceId objectInstanceId{};
+    MapId mapId{};
 };
 
 struct ItemDelivered final {
@@ -94,6 +96,10 @@ public:
     void emit(Event event) { events_.emplace_back(std::move(event)); }
     void clear() noexcept { events_.clear(); }
     [[nodiscard]] const std::vector<SimulationEvent>& events() const noexcept { return events_; }
+    [[nodiscard]] std::size_t size() const noexcept { return events_.size(); }
+    [[nodiscard]] const SimulationEvent& eventAt(std::size_t index) const noexcept {
+        return events_[index];
+    }
 
 private:
     std::vector<SimulationEvent> events_;

@@ -182,12 +182,14 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.objects) {
         if (value.id.empty() || value.visualSetId.empty() ||
-            (!value.interactable && !value.container && !value.destructible))
+            (!value.interactable && !value.container && !value.destructible && !value.door))
             error(report, ContentKind::object, value.id, "invalid_value", "object must have valid visual and capability data", "definition");
         if (value.interactable && (value.interactable->bounds.width <= 0 || value.interactable->bounds.height <= 0)) error(report, ContentKind::object, value.id, "invalid_value", "interaction bounds are invalid", "interactable");
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
         if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0))
             error(report, ContentKind::object, value.id, "invalid_value", "destructible values are invalid", "destructible");
+        if (value.door && (value.door->blockingBounds.width <= 0 || value.door->blockingBounds.height <= 0))
+            error(report, ContentKind::object, value.id, "invalid_value", "door blocking bounds must be positive", "door.blockingBounds");
         if (value.bankAccess && (!value.interactable || value.container || value.destructible))
             error(report, ContentKind::object, value.id, "invalid_bank_access", "bank access requires interaction and cannot be a container or destructible", "bankAccess");
     }
