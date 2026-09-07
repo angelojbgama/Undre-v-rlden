@@ -15,7 +15,7 @@ std::filesystem::path normalized(const std::filesystem::path& path) {
     return path.lexically_normal();
 }
 
-std::string categoryOf(ContentKind kind) {
+std::string_view categoryName(ContentKind kind) noexcept {
     switch (kind) {
     case ContentKind::tileset: return "tilesets";
     case ContentKind::projectile: return "projectiles";
@@ -46,12 +46,6 @@ std::string categoryOf(ContentKind kind) {
     return {};
 }
 
-struct DecodedFile final {
-    std::filesystem::path path;
-    AuthoredContentPack content;
-    std::vector<ContentJsonDefinitionOrigin> origins;
-};
-
 void addDiagnostic(ContentWorkspaceLoadResult& result,
                    ContentWorkspaceDiagnosticStage stage,
                    const std::filesystem::path& path, std::size_t line,
@@ -65,7 +59,7 @@ void addDiagnostic(ContentWorkspaceLoadResult& result,
 }
 
 template<class T, class IdFn>
-void mergeCategory(const DecodedFile& file, std::string_view category, const std::vector<T>& values,
+void mergeCategory(const DecodedContentWorkspaceFile& file, std::string_view category, const std::vector<T>& values,
                    std::vector<T>& destination, ContentSourceMap& sources,
                    ContentWorkspaceLoadResult& result, IdFn idFn) {
     std::size_t originIndex = 0;
@@ -100,6 +94,10 @@ std::string fieldPath(const ContentSourceLocation& origin, std::string_view fiel
 
 } // namespace
 
+std::string_view contentCategoryName(ContentKind kind) noexcept {
+    return categoryName(kind);
+}
+
 const ContentSourceLocation* ContentSourceMap::find(
     std::string_view category, const simulation::DefinitionId& id) const noexcept {
     const auto it = std::find_if(definitions.begin(), definitions.end(),
@@ -130,7 +128,7 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
     }
     if (!result.diagnostics.empty()) return result;
 
-    std::vector<DecodedFile> decoded;
+    std::vector<DecodedContentWorkspaceFile> decoded;
     for (const auto& path : paths) {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
@@ -152,6 +150,19 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
         decoded.push_back({path, std::move(*parsed.content), std::move(parsed.origins)});
     }
     if (!result.diagnostics.empty()) return result;
+
+    return buildContentWorkspace(decoded);
+}
+
+ContentWorkspaceLoadResult buildContentWorkspace(
+    std::span<const DecodedContentWorkspaceFile> decoded) {
+    ContentWorkspaceLoadResult result;
+    result.sourceFileCount = decoded.size();
+    if (decoded.empty()) {
+        addDiagnostic(result, ContentWorkspaceDiagnosticStage::merge, {}, 0, 0, {},
+                      "empty_workspace", "at least one content source file is required");
+        return result;
+    }
 
     AuthoredContentPack merged;
     ContentSourceMap sources;
@@ -182,18 +193,20 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
         mergeCategory(file, "enemyVisuals", file.content.enemyVisuals, merged.enemyVisuals, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "objectVisuals", file.content.objectVisuals, merged.objectVisuals, sources, result, [](const auto& v) { return v.id; });
     }
+    result.mergedAuthored = merged;
+    result.sources = sources;
     if (!result.diagnostics.empty()) return result;
 
     const auto compiled = compileContent(merged);
     if (!compiled.registry) {
         for (const auto& diagnostic : compiled.report.diagnostics) {
-            const auto category = categoryOf(diagnostic.kind);
+            const auto category = contentCategoryName(diagnostic.kind);
             const auto* origin = sources.find(category, diagnostic.definitionId);
             addDiagnostic(result, ContentWorkspaceDiagnosticStage::validation,
                           origin ? origin->sourcePath : std::filesystem::path{},
                           origin ? origin->line : 0, origin ? origin->column : 0,
                           origin ? fieldPath(*origin, diagnostic.field) : diagnostic.field,
-                          diagnostic.code, diagnostic.message, category, diagnostic.definitionId);
+                          diagnostic.code, diagnostic.message, std::string(category), diagnostic.definitionId);
         }
         return result;
     }

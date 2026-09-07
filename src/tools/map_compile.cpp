@@ -71,6 +71,14 @@ int main(int argc, char** argv) {
         std::cerr << "[io/write_dmap] " << error << "\n";
         return 1;
     }
+    const auto& registry = loadedContent.content->registry;
+    const auto catalogs = underworld::game::mapValidationCatalogs(registry);
+    const auto verified = underworld::game::maps::readDmap(options->output, &catalogs);
+    if (!verified) {
+        std::cerr << "[io/verify_dmap] production DMAP reader rejected the compiled output: "
+                  << verified.error << "\n";
+        return 1;
+    }
     std::cout << "PASS\nmap: " << compiled.map->id.value()
               << "\nregions: " << compiled.map->regions.size()
               << "\nrules: " << compiled.map->worldRules.size()

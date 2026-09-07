@@ -66,6 +66,8 @@ std::string formatContentWorkspaceDiagnostic(
         output << ' ';
     }
     output << '[' << stageName(diagnostic.stage) << '/' << diagnostic.code << ']';
+    if (!diagnostic.category.empty()) output << " category=" << diagnostic.category;
+    if (!diagnostic.definitionId.empty()) output << " definitionId=" << diagnostic.definitionId.value();
     if (!diagnostic.jsonPath.empty()) output << ' ' << diagnostic.jsonPath << ':';
     output << ' ' << diagnostic.message;
     if (!diagnostic.relatedSourcePath.empty()) {

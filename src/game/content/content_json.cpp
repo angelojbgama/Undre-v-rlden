@@ -84,10 +84,38 @@ ContentJsonDecodeResult readAuthoredContentJsonFile(const std::filesystem::path&
 bool writeAuthoredContentJsonFile(const std::filesystem::path& path,
                                   const AuthoredContentPack& content,
                                   std::string& error) {
-    std::ofstream file(path, std::ios::binary);
+    const auto temporary = path.string() + ".tmp";
+    const auto backup = path.string() + ".bak";
+    std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
     if (!file) { error = "could not open content file for writing"; return false; }
     file << encodeAuthoredContentJson(content);
-    if (!file) { error = "could not write content file"; return false; }
+    file.flush();
+    if (!file) {
+        error = "could not write content file";
+        file.close();
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return false;
+    }
+    file.close();
+    std::error_code errorCode;
+    std::filesystem::remove(backup, errorCode);
+    errorCode.clear();
+    if (std::filesystem::exists(path, errorCode)) {
+        if (errorCode || std::rename(path.c_str(), backup.c_str()) != 0) {
+            error = "could not preserve existing content file";
+            std::filesystem::remove(temporary, errorCode);
+            return false;
+        }
+    }
+    if (std::rename(temporary.c_str(), path.c_str()) != 0) {
+        error = "could not replace content file";
+        std::error_code restoreError;
+        if (std::filesystem::exists(backup, restoreError)) std::rename(backup.c_str(), path.c_str());
+        std::filesystem::remove(temporary, restoreError);
+        return false;
+    }
+    std::filesystem::remove(backup, errorCode);
     error.clear();
     return true;
 }

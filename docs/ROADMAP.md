@@ -127,6 +127,11 @@ FASE 17 — Visual Content Boundary                     DONE
 17B — Authored Animation + Visual Sets                DONE
 17C — Runtime Visual Content Loader                   DONE
 17D — External Visual Content Vertical Slice          DONE
+FASE 18 — Content Studio                              IN PROGRESS
+18A — Content Studio Foundation                       DONE
+18B — Visual Asset + Animation Authoring              FUTURE
+18C — Gameplay Content Editors                        FUTURE
+18D — Unified Content/Map Workflow                    FUTURE
 ```
 
 Baseline validada da Fase 6:
@@ -1348,8 +1353,9 @@ it does not regenerate manual authored geometry after a `.umap` is opened.
 14D — Stateful Doors — DONE.
 14E — Encounter Foundation — DONE.
 
-Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
-networking remain future work. The Phase 14 closure suite and
+The full Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
+networking remain future work. Content Studio 18A is now the active foundation slice.
+The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
 
 ### Phase 15 — Presentation Feedback Foundation — DONE
@@ -1447,7 +1453,8 @@ Phase 20 — LLM Authoring
 ```
 
 Status effects, complex puzzle components, encounter waves, boss phases, audio,
-scripting, Content Studio, LLM integration and networking remain future work.
+scripting, the remaining Content Studio slices, LLM integration and networking remain
+future work.
 
 ### Phase 17 — Visual Content Boundary — DONE
 
@@ -1482,6 +1489,29 @@ UMAP v3          (unchanged)
 DMAP 1.4         (unchanged)
 DSAV 1.8         (unchanged)
 ```
+
+### Phase 18 — Content Studio — IN PROGRESS
+
+18A — Content Studio Foundation — DONE. The existing Map Maker shell now exposes MAP
+and CONTENT modes. `ContentWorkspaceDocument` preserves individual source JSON files,
+definition ownership, independent dirty state and derived merge/validation/compile
+results. It provides typed authoring operations for visual images, static sprites,
+animations and flexible enemy visual profiles, including frame/marker editing and
+Slime-like idle-plus-death profiles. Save All writes only dirty files as canonical v5
+JSON using atomic replacement; semantic errors remain editable and saveable but block
+the derived registry and playtest.
+
+The browser lists all twenty-five categories in deterministic order; categories
+without an 18A inspector are read-only. Builtin content is read-only and an explicit
+`--content` workspace is editable. The unified shell preserves the existing MAP mode
+and keeps both map and content documents alive when switching modes.
+
+18B — Visual Asset + Animation Authoring — FUTURE.
+18C — Gameplay Content Editors — FUTURE.
+18D — Unified Content/Map Workflow — FUTURE.
+
+The next phase is not started here. Asset previews/import, hot reload, gameplay
+inspectors, node graphs, LLM authoring, scripting and networking remain deferred.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

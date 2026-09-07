@@ -79,4 +79,22 @@ remains the transitional default source; an explicit workspace replaces it witho
 an overlay. Presentation effects, object activation and visual definitions are
 data-driven capabilities, not authoritative gameplay state. Player visuals, HUD/font
 assets, tileset loading and generic impact VFX remain fixed presentation concerns in
-this phase. Content Studio and LLM tooling remain future work.
+this phase. Content Studio 18A now provides the first typed workspace-document shell;
+the remaining Studio slices and LLM tooling remain future work.
+
+## Content Studio source ownership
+
+The Content Studio foundation keeps each discovered JSON file as an editable
+`ContentFileDocument`. These source files are the authored truth, including their
+individual dirty state and ownership of definitions. The merged `AuthoredContentPack`,
+provenance index and `GameContentRegistry` are derived from all files through the same
+workspace merge, validation and compilation pipeline used by runtime tools. Semantic
+cross-reference errors leave the structured document editable and saveable, but make
+the compiled registry unavailable for playtest/launch.
+
+Save writes only dirty files, emits canonical v5 JSON and uses an atomic temporary-file
+replacement. Opening a mixed v1-v5 workspace does not rewrite untouched legacy files;
+only a modified file is upgraded by the encoder. Builtin content is exposed as a
+read-only document. Content Studio 18A provides typed authoring for visual images,
+static sprites, animations and flexible enemy visual profiles; image preview, asset
+import, timeline editing and gameplay definition inspectors remain future work.

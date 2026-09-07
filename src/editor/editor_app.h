@@ -3,6 +3,7 @@
 #include "editor/editor_commands.h"
 #include "editor/editor_playtest.h"
 #include "editor/editor_ui.h"
+#include "editor/content_workspace_document.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
 #include "game/game_content.h"
@@ -16,12 +17,16 @@ namespace underworld::render { class BitmapFont; class Image; }
 
 namespace underworld::editor {
 
-enum class EditorShellCommand { newMap, undo, redo, toggleGrid, frameMap, playtest };
+enum class EditorShellCommand {
+    newMap, undo, redo, toggleGrid, frameMap, playtest,
+    mapMode, contentMode, saveAll, validateWorkspace
+};
 
 class EditorApp final {
 public:
     EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
-              game::GameContentRegistry content);
+              game::GameContentRegistry content,
+              std::optional<ContentWorkspaceDocument> contentWorkspace = std::nullopt);
     ~EditorApp();
 
     void resize(int width, int height);
@@ -32,7 +37,15 @@ public:
     [[nodiscard]] bool save(std::string& error);
     [[nodiscard]] bool saveAs(const std::filesystem::path& path, std::string& error);
     [[nodiscard]] bool autosave(std::string& error);
+    [[nodiscard]] bool saveAll(std::string& error);
+    [[nodiscard]] bool validateWorkspace();
+    [[nodiscard]] bool hasUnsavedChanges() const noexcept {
+        return document_.dirty() || (contentWorkspace_ && contentWorkspace_->dirty());
+    }
     [[nodiscard]] bool playtestActive() const noexcept { return playtest_.active(); }
+    [[nodiscard]] bool contentMode() const noexcept { return contentMode_; }
+    [[nodiscard]] ContentWorkspaceDocument* contentWorkspace() noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
+    [[nodiscard]] const ContentWorkspaceDocument* contentWorkspace() const noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
 
     [[nodiscard]] const render::Framebuffer& framebuffer() const noexcept { return *framebuffer_; }
     [[nodiscard]] EditorDocument& document() noexcept { return document_; }
@@ -52,6 +65,9 @@ private:
     };
 
     void drawShell(EditorUiContext& ui, const EditorInputState& input);
+    void drawContentShell(EditorUiContext& ui, const EditorInputState& input,
+                          core::RectI left, core::RectI center, core::RectI right,
+                          core::RectI status);
     void drawViewport(render::Renderer2D& renderer, core::RectI viewport,
                       const EditorInputState& input);
     void handleViewport(core::RectI viewport, const EditorInputState& input);
@@ -73,9 +89,11 @@ private:
     void execute(std::unique_ptr<EditorCommand> command);
     void updateStatus(core::RectI viewport, const EditorInputState& input);
     void togglePlaytest();
+    void refreshContentRegistry();
 
     game::GameContentRegistry content_;
     EditorDocument document_;
+    std::optional<ContentWorkspaceDocument> contentWorkspace_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
@@ -101,6 +119,15 @@ private:
     std::string newMapWidth_{"32"};
     std::string newMapHeight_{"24"};
     std::string newMapTileSize_{"16"};
+    bool contentMode_{};
+    ContentDefinitionKind selectedContentCategory_{ContentDefinitionKind::visualImage};
+    std::optional<ContentDefinitionKey> selectedContentDefinition_;
+    std::optional<ContentDefinitionKey> contentTextKey_;
+    std::string contentTextField_;
+    std::string contentTextBuffer_;
+    bool contentTextFocus_{};
+    int contentTextFieldKind_{};
+    int contentCategoryScroll_{};
     std::string status_;
 };
 

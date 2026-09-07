@@ -35,6 +35,19 @@ bool EditorUiContext::toggle(core::RectI bounds, std::string_view text, bool val
     return button(bounds, text, value);
 }
 
+bool EditorUiContext::textField(core::RectI bounds, std::string& value, bool active,
+                               std::size_t maximumLength) const {
+    const bool clicked = button(bounds, value, active);
+    if (active) {
+        for (const char character : input_.textInput) {
+            if (value.size() >= maximumLength) break;
+            if (character >= 32 && character < 127) value.push_back(character);
+        }
+        if (input_.backspacePressed && !value.empty()) value.pop_back();
+    }
+    return clicked;
+}
+
 bool EditorUiContext::pointerInside(core::RectI bounds) const noexcept {
     return input_.pointer.x >= bounds.x && input_.pointer.y >= bounds.y &&
            input_.pointer.x < bounds.x + bounds.width &&

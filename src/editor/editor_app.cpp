@@ -5,6 +5,8 @@
 #include "engine/render/bitmap_font.h"
 #include "engine/render/image.h"
 #include "engine/render/renderer_2d.h"
+#include "game/content/builtin_content.h"
+#include "game/content/content_source.h"
 
 #include <algorithm>
 #include <array>
@@ -29,6 +31,22 @@ int parsePositive(const std::string& value) {
     try { const int parsed=std::stoi(value); return parsed>0?parsed:0; } catch (...) { return 0; }
 }
 
+template<std::size_t Count>
+std::optional<std::array<int, Count>> parseIntegerList(std::string_view text) {
+    std::istringstream stream{std::string(text)};
+    std::array<int, Count> values{};
+    for (std::size_t index = 0; index < Count; ++index) {
+        if (!(stream >> values[index])) return std::nullopt;
+        if (index + 1 < Count) {
+            char separator{};
+            if (!(stream >> separator) || separator != ',') return std::nullopt;
+        }
+    }
+    stream >> std::ws;
+    if (!stream.eof()) return std::nullopt;
+    return values;
+}
+
 core::ColorRGBA8 categoryColor(SelectionKind kind) noexcept {
     if(kind==SelectionKind::enemy)return {220,75,75,255};
     if(kind==SelectionKind::npc)return {75,180,235,255};
@@ -45,14 +63,31 @@ void outline(render::Renderer2D& renderer, core::RectI bounds, core::ColorRGBA8 
     renderer.fillRect({bounds.x,bounds.y,1,bounds.height},color);
     renderer.fillRect({bounds.x+bounds.width-1,bounds.y,1,bounds.height},color);
 }
+
+EditorDocument initialDocument(const game::GameContentRegistry& content) {
+    if (content.authoringSemantics().findTile(
+            simulation::DefinitionId{"tile.dungeon.masonry.39"}) != nullptr) {
+        return EditorDocument::newAuthoredMap(
+            simulation::MapId{"map.untitled"}, 32, 24, 16, content, true);
+    }
+    // A semantically invalid external workspace still needs an editable shell so
+    // its diagnostics can be repaired. This is an empty document, not builtin
+    // content fallback; map authoring remains unavailable until the workspace is valid.
+    return EditorDocument::newMap(simulation::MapId{"map.untitled"}, 32, 24, 16, true);
+}
 }
 
 EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,
-                     game::GameContentRegistry content)
+                     game::GameContentRegistry content,
+                     std::optional<ContentWorkspaceDocument> contentWorkspace)
     : content_(std::move(content)),
-      document_(EditorDocument::newAuthoredMap(
-          simulation::MapId{"map.untitled"}, 32, 24, 16, content_, true)),
+      document_(initialDocument(content_)),
+      contentWorkspace_(std::move(contentWorkspace)),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
+    if (!contentWorkspace_) contentWorkspace_ = ContentWorkspaceDocument::fromBuiltin(
+        game::content::makeBuiltinAuthoredContent());
+    if (!contentWorkspace_->valid()) status_ = "Content workspace invalid; map compile/playtest unavailable";
+    refreshContentRegistry();
     for (const auto& definition : content_.tilesets().definitions()) {
         std::string error;
         if (!tilesetVisuals_.load(definition, runtimeTilesets_.requireRuntimeId(definition.id),
@@ -99,6 +134,11 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     const core::RectI right{leftPanelWidth+viewportWidth,0,rightPanelWidth,viewportHeight};
     const core::RectI status{0,viewportHeight,width,statusHeight};
     ui.panel(left);ui.panel(right);ui.panel(status);
+
+    if (contentMode_) {
+        drawContentShell(ui, input, left, {leftPanelWidth, 0, viewportWidth, viewportHeight}, right, status);
+        return;
+    }
 
     ui.label("LAYERS",8,8);int y=22;
     for(std::size_t i=0;i<document_.data().layers.size();++i){
@@ -190,6 +230,302 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     render::Renderer2D renderer(*framebuffer_);drawViewport(renderer,viewportBounds_,input);drawInspector(ui,right);
     ui.label(status_,6,viewportHeight+6);
     if(newMapDialog_)drawNewMapDialog(ui,input);
+}
+
+void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& input,
+                                  core::RectI left, core::RectI center, core::RectI right,
+                                  core::RectI status) {
+    if (ui.button({left.x + 8, 8, 78, 20}, "MAP")) {
+        contentMode_ = false;
+        status_ = "Map mode";
+        return;
+    }
+    (void)ui.button({left.x + 92, 8, 82, 20}, "CONTENT", true);
+    ui.label("CATEGORIES", left.x + 8, 38);
+    const auto& order = ContentWorkspaceDocument::categoryOrder();
+    const int listTop = 54;
+    const int rowHeight = 18;
+    const int listHeight = std::max(1, left.height - listTop - 8);
+    const int maxScroll = std::max(0, static_cast<int>(order.size() * rowHeight) - listHeight);
+    if (ui.pointerInside({left.x, left.y + listTop, left.width, listHeight}) && input.pointer.wheelDelta != 0) {
+        contentCategoryScroll_ = std::clamp(contentCategoryScroll_ - (input.pointer.wheelDelta / 120) * rowHeight,
+                                             0, maxScroll);
+    }
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        const int y = listTop + static_cast<int>(i) * rowHeight - contentCategoryScroll_;
+        if (y + rowHeight <= listTop || y >= left.height) continue;
+        const auto kind = order[i];
+        if (ui.button({left.x + 8, y, left.width - 16, 16},
+                      ContentWorkspaceDocument::categoryName(kind), selectedContentCategory_ == kind)) {
+            selectedContentCategory_ = kind;
+            selectedContentDefinition_.reset();
+        }
+    }
+
+    ui.label("DEFINITIONS", center.x + 8, 38);
+    const auto allDefinitions = contentWorkspace_->index();
+    int definitionY = 54;
+    for (const auto& key : allDefinitions) {
+        if (key.kind != selectedContentCategory_) continue;
+        if (definitionY + 18 >= center.y + center.height) break;
+        if (ui.button({center.x + 8, definitionY, center.width - 16, 16},
+                      key.id.value(), selectedContentDefinition_ == key)) {
+            selectedContentDefinition_ = key;
+        }
+        definitionY += 18;
+    }
+    if (definitionY == 54) ui.label("No definitions", center.x + 8, definitionY);
+
+    ui.label("INSPECTOR", right.x + 8, 10);
+    if (!selectedContentDefinition_) {
+        ui.label("Select a definition", right.x + 8, 30);
+    } else {
+        const auto& key = *selectedContentDefinition_;
+        ui.label(std::string(key.id.value()), right.x + 8, 30);
+        if (const auto* source = contentWorkspace_->sourceFor(key)) {
+            ui.label("Source:", right.x + 8, 52);
+            ui.label(source->sourcePath.filename().string(), right.x + 8, 66);
+            if (!source->jsonPath.empty()) ui.label(source->jsonPath, right.x + 8, 80);
+        }
+        ui.label(contentWorkspace_->writable() ? "Typed document API: editable" : "Builtin content - read only",
+                 right.x + 8, 104);
+        int inspectorY = 124;
+        if (key.kind == ContentDefinitionKind::visualImage) {
+            const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
+            if (pack) {
+                const auto authored = std::find_if(pack->visualImages.begin(), pack->visualImages.end(),
+                                                   [&](const auto& value) { return value.id == key.id; });
+                if (authored != pack->visualImages.end()) {
+                if (contentTextKey_ != key) {
+                    contentTextKey_ = key;
+                    contentTextBuffer_ = authored->relativePath;
+                    contentTextFocus_ = false;
+                }
+                ui.label("relativePath", right.x + 8, inspectorY);
+                if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                 contentTextBuffer_, contentTextFocus_)) {
+                    contentTextFocus_ = true;
+                    contentTextFieldKind_ = 0;
+                }
+                if (ui.button({right.x + 8, inspectorY + 40, 112, 18},
+                              authored->root == game::presentation::VisualAssetRoot::gameAssets
+                                  ? "gameAssets" : "contentWorkspace",
+                              false) && contentWorkspace_->writable()) {
+                    auto updated = *authored;
+                    updated.root = authored->root == game::presentation::VisualAssetRoot::gameAssets
+                        ? game::presentation::VisualAssetRoot::contentWorkspace
+                        : game::presentation::VisualAssetRoot::gameAssets;
+                    std::string editError;
+                    if (!contentWorkspace_->updateVisualImage(key.id, updated, editError)) status_ = editError;
+                    else { refreshContentRegistry(); return; }
+                }
+                if (input.enterPressed && contentTextFocus_ && contentWorkspace_->writable()) {
+                    auto updated = *authored;
+                    updated.relativePath = contentTextBuffer_;
+                    std::string editError;
+                    if (contentWorkspace_->updateVisualImage(key.id, updated, editError)) {
+                        contentTextFocus_ = false;
+                        refreshContentRegistry();
+                        status_ = "Visual image updated";
+                        return;
+                    } else status_ = editError;
+                }
+                }
+            }
+        } else if (key.kind == ContentDefinitionKind::staticSprite) {
+            const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
+            if (pack) {
+                const auto value = std::find_if(pack->staticSprites.begin(), pack->staticSprites.end(),
+                                                [&](const auto& item) { return item.id == key.id; });
+                if (value != pack->staticSprites.end()) {
+                    if (contentTextKey_ != key) {
+                        contentTextKey_ = key;
+                        contentTextBuffer_ = std::string(value->imageId.value());
+                        contentTextField_ = std::to_string(value->anchor.x) + "," +
+                                            std::to_string(value->anchor.y);
+                        contentTextFocus_ = false;
+                    }
+                    ui.label("Static sprite imageId", right.x + 8, inspectorY);
+                    if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
+                        contentTextFocus_ = true;
+                        contentTextFieldKind_ = 0;
+                    }
+                    ui.label("anchor x,y", right.x + 8, inspectorY + 40);
+                    if (ui.textField({right.x + 8, inspectorY + 54, right.width - 16, 20},
+                                     contentTextField_, contentTextFocus_ && contentTextFieldKind_ == 1)) {
+                        contentTextFocus_ = true;
+                        contentTextFieldKind_ = 1;
+                    }
+                    if (input.enterPressed && contentTextFocus_ && contentWorkspace_->writable()) {
+                        auto updated = *value;
+                        std::string editError;
+                        bool accepted = false;
+                        if (contentTextFieldKind_ == 0) {
+                            updated.imageId = simulation::DefinitionId{contentTextBuffer_};
+                            accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
+                        } else if (const auto parsed = parseIntegerList<2>(contentTextField_)) {
+                            updated.anchor = {(*parsed)[0], (*parsed)[1]};
+                            accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
+                        } else {
+                            editError = "anchor must contain two comma-separated integers";
+                        }
+                        if (accepted) {
+                            contentTextFocus_ = false;
+                            refreshContentRegistry();
+                            status_ = "Static sprite updated";
+                            return;
+                        } else if (!editError.empty()) status_ = editError;
+                    }
+                }
+            }
+        } else if (key.kind == ContentDefinitionKind::animation) {
+            const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
+            if (pack) {
+                const auto value = std::find_if(pack->animations.begin(), pack->animations.end(),
+                                                [&](const auto& item) { return item.id == key.id; });
+                if (value != pack->animations.end()) {
+                    if (contentTextKey_ != key) {
+                        contentTextKey_ = key;
+                        contentTextBuffer_ = std::string(value->imageId.value());
+                        contentTextFocus_ = false;
+                    }
+                    ui.label("Animation imageId", right.x + 8, inspectorY);
+                    if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
+                        contentTextFocus_ = true;
+                        contentTextFieldKind_ = 0;
+                    }
+                    if (ui.button({right.x + 8, inspectorY + 40, 92, 18},
+                                  value->loop ? "LOOP ON" : "LOOP OFF", value->loop) &&
+                        contentWorkspace_->writable()) {
+                        auto updated = *value;
+                        updated.loop = !updated.loop;
+                        std::string editError;
+                        if (!contentWorkspace_->updateAnimation(key.id, updated, editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Animation loop updated"; return; }
+                    }
+                    if (input.enterPressed && contentTextFocus_ && contentTextFieldKind_ == 0 &&
+                        contentWorkspace_->writable()) {
+                        auto updated = *value;
+                        updated.imageId = simulation::DefinitionId{contentTextBuffer_};
+                        std::string editError;
+                        if (contentWorkspace_->updateAnimation(key.id, updated, editError)) {
+                            contentTextFocus_ = false;
+                            refreshContentRegistry();
+                            status_ = "Animation updated";
+                            return;
+                        } else status_ = editError;
+                    }
+                    ui.label(std::to_string(value->frames.size()) + " frame(s)", right.x + 8, inspectorY + 64);
+                    if (ui.button({right.x + 8, inspectorY + 80, 92, 18}, "ADD FRAME") &&
+                        contentWorkspace_->writable()) {
+                        std::string editError;
+                        if (!contentWorkspace_->addAnimationFrame(key.id,
+                                game::content::AuthoredAnimationFrame{{0, 0, 1, 1}, {0, 0}, {0, 0}, 1, {}},
+                                editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Animation frame added"; return; }
+                    }
+                    if (ui.button({right.x + 104, inspectorY + 80, 112, 18}, "REMOVE LAST") &&
+                        contentWorkspace_->writable() && !value->frames.empty()) {
+                        std::string editError;
+                        if (!contentWorkspace_->removeAnimationFrame(key.id, value->frames.size() - 1, editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Animation frame removed"; return; }
+                    }
+                    if (value->frames.size() > 1 &&
+                        ui.button({right.x + 8, inspectorY + 104, 208, 18}, "MOVE FIRST DOWN") &&
+                        contentWorkspace_->writable()) {
+                        std::string editError;
+                        if (!contentWorkspace_->moveAnimationFrame(key.id, 0, 1, editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Animation frame reordered"; return; }
+                    }
+                }
+            }
+        } else if (key.kind == ContentDefinitionKind::enemyVisual) {
+            const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
+            if (pack) {
+                const auto value = std::find_if(pack->enemyVisuals.begin(), pack->enemyVisuals.end(),
+                                                [&](const auto& item) { return item.id == key.id; });
+                if (value != pack->enemyVisuals.end()) {
+                    if (contentTextKey_ != key) {
+                        contentTextKey_ = key;
+                        contentTextBuffer_ = value->idle.defaultAnimation
+                            ? std::string(value->idle.defaultAnimation->value()) : std::string{};
+                        contentTextField_ = "action.custom";
+                        contentTextFocus_ = false;
+                    }
+                    ui.label("EnemyVisual idle default", right.x + 8, inspectorY);
+                    if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
+                        contentTextFocus_ = true;
+                        contentTextFieldKind_ = 0;
+                    }
+                    if (input.enterPressed && contentTextFocus_ && contentTextFieldKind_ == 0 &&
+                        contentWorkspace_->writable()) {
+                        auto updated = *value;
+                        updated.idle.defaultAnimation = simulation::DefinitionId{contentTextBuffer_};
+                        std::string editError;
+                        if (contentWorkspace_->updateEnemyVisual(key.id, updated, editError)) {
+                            contentTextFocus_ = false;
+                            refreshContentRegistry();
+                            status_ = "Enemy visual idle binding updated";
+                            return;
+                        } else status_ = editError;
+                    }
+                    ui.label("optional states: " + std::string(value->move ? "move " : "") +
+                             std::string(value->hurt ? "hurt " : "") +
+                             std::string(value->death ? "death " : "") +
+                             std::string(value->dead ? "dead" : ""), right.x + 8, inspectorY + 40);
+                    ui.label("actions " + std::to_string(value->attacks.size()) +
+                             " (arbitrary VisualActionId)", right.x + 8, inspectorY + 56);
+                    ui.label("new action id", right.x + 8, inspectorY + 76);
+                    if (ui.textField({right.x + 8, inspectorY + 90, right.width - 16, 20},
+                                     contentTextField_, contentTextFocus_ && contentTextFieldKind_ == 1)) {
+                        contentTextFocus_ = true;
+                        contentTextFieldKind_ = 1;
+                    }
+                    if (ui.button({right.x + 8, inspectorY + 114, right.width - 16, 18}, "ADD ACTION (IDLE)") &&
+                        contentWorkspace_->writable()) {
+                        game::content::AuthoredEnemyAttackVisual action;
+                        action.visualActionId = simulation::DefinitionId{contentTextField_};
+                        action.clips = value->idle;
+                        std::string editError;
+                        if (!contentWorkspace_->addEnemyVisualAction(key.id, action, editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Enemy visual action added"; return; }
+                    }
+                    int actionY = inspectorY + 138;
+                    for (const auto& action : value->attacks) {
+                        if (actionY + 18 >= right.height - 80) break;
+                        ui.label(std::string(action.visualActionId.value()), right.x + 8, actionY);
+                        if (ui.button({right.x + right.width - 74, actionY - 2, 66, 18}, "REMOVE")) {
+                            std::string editError;
+                            if (!contentWorkspace_->removeEnemyVisualAction(key.id, action.visualActionId, editError)) status_ = editError;
+                            else { refreshContentRegistry(); status_ = "Enemy visual action removed"; return; }
+                        }
+                        actionY += 20;
+                    }
+                }
+            }
+        } else ui.label("Read-only category in 18A", right.x + 8, inspectorY);
+    }
+    if (ui.button({right.x + 8, right.height - 64, right.width - 16, 20}, "VALIDATE WORKSPACE")) {
+        status_ = validateWorkspace() ? "Workspace valid" : "Workspace invalid; see diagnostics";
+    }
+    ui.label(contentWorkspace_->dirty() ? "Workspace dirty *" : "Workspace clean", right.x + 8, right.height - 38);
+    const auto& diagnostics = contentWorkspace_->diagnostics();
+    ui.label("VALIDATION", status.x + 8, status.y + 4);
+    if (diagnostics.empty()) {
+        ui.label(contentWorkspace_->valid() ? "OK" : "No compiled registry", status.x + 88, status.y + 4);
+    } else {
+        ui.label(std::to_string(diagnostics.size()) + " diagnostic(s)", status.x + 88, status.y + 4);
+        int diagnosticY = right.height - 130;
+        for (const auto& diagnostic : diagnostics) {
+            if (diagnosticY > right.height - 8) break;
+            std::string line = game::content::formatContentWorkspaceDiagnostic(diagnostic);
+            ui.label(line.substr(0, 34), right.x + 8, diagnosticY);
+            diagnosticY += 12;
+        }
+    }
 }
 
 void EditorApp::drawViewport(render::Renderer2D& renderer,core::RectI viewport,const EditorInputState& input){
@@ -331,12 +667,31 @@ void EditorApp::frameMap(core::RectI viewport) noexcept{const double mapWidth=st
 
 void EditorApp::execute(std::unique_ptr<EditorCommand> command){std::string error;if(!document_.execute(std::move(command),error))status_=error;}
 void EditorApp::cancelActiveGesture() noexcept{drag_={};}
-void EditorApp::shellCommand(EditorShellCommand command){if(command==EditorShellCommand::newMap){playtest_.stop();newMapDialog_=true;}else if(command==EditorShellCommand::undo)document_.undo();else if(command==EditorShellCommand::redo){std::string error;if(!document_.redo(error))status_=error;}else if(command==EditorShellCommand::toggleGrid)document_.viewport().showGrid=!document_.viewport().showGrid;else if(command==EditorShellCommand::playtest)togglePlaytest();else frameMap(viewportBounds_);}
-bool EditorApp::open(const std::filesystem::path& path,std::string& error){auto loaded=EditorDocument::open(path,content_,error);if(!loaded)return false;playtest_.stop();document_=std::move(*loaded);validationCache_.invalidate();frameMap(viewportBounds_);return true;}
-bool EditorApp::save(std::string& error){return document_.save(content_,error);}bool EditorApp::saveAs(const std::filesystem::path& path,std::string& error){return document_.saveAs(path,content_,error);}
+void EditorApp::shellCommand(EditorShellCommand command){
+    if(command==EditorShellCommand::newMap){playtest_.stop();newMapDialog_=true;}
+    else if(command==EditorShellCommand::undo)document_.undo();
+    else if(command==EditorShellCommand::redo){std::string error;if(!document_.redo(error))status_=error;}
+    else if(command==EditorShellCommand::toggleGrid)document_.viewport().showGrid=!document_.viewport().showGrid;
+    else if(command==EditorShellCommand::playtest)togglePlaytest();
+    else if(command==EditorShellCommand::mapMode){contentMode_=false;status_="Map mode";}
+    else if(command==EditorShellCommand::contentMode){contentMode_=true;status_="Content mode";}
+    else if(command==EditorShellCommand::saveAll){std::string error;if(!saveAll(error))status_=error;}
+    else if(command==EditorShellCommand::validateWorkspace){status_=validateWorkspace()?"Workspace valid":"Workspace invalid; see diagnostics";}
+    else frameMap(viewportBounds_);
+}
+bool EditorApp::open(const std::filesystem::path& path,std::string& error){auto loaded=EditorDocument::open(path,content_,error);if(!loaded)return false;playtest_.stop();document_=std::move(*loaded);contentMode_=false;validationCache_.invalidate();frameMap(viewportBounds_);return true;}
+bool EditorApp::save(std::string& error){if(contentMode_)return saveAll(error);return document_.save(content_,error);}bool EditorApp::saveAs(const std::filesystem::path& path,std::string& error){if(contentMode_){error="Content workspace Save As is not supported; save the selected workspace files";return false;}return document_.saveAs(path,content_,error);}
 bool EditorApp::autosave(std::string& error){error.clear();if(!document_.dirty())return true;const auto path=document_.autosavePath();if(!path)return true;const bool saved=document_.saveBackup(*path,content_,error);if(saved)status_="Autosave backup written: "+path->string();return saved;}
+bool EditorApp::saveAll(std::string& error){if(contentWorkspace_&&contentWorkspace_->dirty()){if(!contentWorkspace_->saveAll(error))return false;status_="Content workspace saved";}refreshContentRegistry();if(!contentMode_&&document_.dirty())return document_.save(content_,error);error.clear();return true;}
+bool EditorApp::validateWorkspace(){const bool valid=contentWorkspace_&&contentWorkspace_->validateWorkspace();refreshContentRegistry();return valid;}
+void EditorApp::refreshContentRegistry(){
+    if (!contentWorkspace_) return;
+    if (contentWorkspace_->compiledRegistry()) content_ = *contentWorkspace_->compiledRegistry();
+    else content_ = game::GameContentRegistry{};
+    runtimeTilesets_ = game::RuntimeTilesetCatalog(content_.tilesets());
+}
 void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}std::string error;if(!playtest_.start(document_.data(),content_,error)){status_=error;return;}status_="Playtest active: runtime world built from document snapshot";}
-std::string EditorApp::windowTitle() const{std::string title="Dungeon Underworld - Map Maker - ";title.append(document_.data().id.value());if(document_.dirty())title+=" *";return title;}
-void EditorApp::updateStatus(core::RectI viewport,const EditorInputState& input){if(input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height){const auto world=screenToWorld({input.pointer.x,input.pointer.y},viewport);std::ostringstream out;out<<"World "<<world.x<<','<<world.y<<"  Tile "<<world.x/document_.data().tileSize<<','<<world.y/document_.data().tileSize<<"  Zoom "<<static_cast<int>(zoom()*100)<<'%';status_=out.str();}}
+std::string EditorApp::windowTitle() const{std::string title=contentMode_?"Dungeon Underworld - Content Studio - ":"Dungeon Underworld - Map Maker - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?"Builtin content":"Content workspace");else title.append(document_.data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
+void EditorApp::updateStatus(core::RectI viewport,const EditorInputState& input){if(contentMode_)return;if(input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height){const auto world=screenToWorld({input.pointer.x,input.pointer.y},viewport);std::ostringstream out;out<<"World "<<world.x<<','<<world.y<<"  Tile "<<world.x/document_.data().tileSize<<','<<world.y/document_.data().tileSize<<"  Zoom "<<static_cast<int>(zoom()*100)<<'%';status_=out.str();}}
 
 } // namespace underworld::editor

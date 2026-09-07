@@ -1837,3 +1837,37 @@ This phase does not add a status-effect system, asset importer, resource packer,
 reload, audio engine, shader framework, Content Studio or LLM integration. `EffectSystem`
 continues to own world-space animated VFX, independently from presentation screen
 effects and authored gameplay visuals.
+
+## Content Studio Foundation — Phase 18A
+
+The existing Map Maker shell is the first Content Studio shell. It has a MAP mode for
+the authored map document and a CONTENT mode for an editable external workspace:
+
+```text
+Content Studio
+├── Map Document
+│     └ AuthoredMapSource (.umap) -> MapCompiler -> MapData / DMAP
+└── Content Workspace Document
+      ├ source file A (.json)
+      ├ source file B (.json)
+      ├ source file C (.json)
+      └ merge + provenance -> ContentValidator -> ContentCompiler
+                                             -> GameContentRegistry
+```
+
+`ContentFileDocument` entries are the editable source of truth. The merged authored
+pack, source index, diagnostics and compiled registry are derived and rebuilt after
+typed mutations. Files retain their definition ownership; duplicates remain merge
+errors. Save All writes only dirty files, with canonical Content JSON v5 and atomic
+replacement. Structural JSON is produced by the shared strict encoder, while semantic
+reference errors are visible and saveable but disable compilation and playtest.
+
+The browser uses a fixed order for all twenty-five content categories and lexical
+`DefinitionId` order within a category. Selection is a typed
+`ContentDefinitionKey`, not a pointer into a vector. 18A has concrete typed editors
+for `visualImages`, `staticSprites`, `animations` (including frame and marker
+operations) and flexible `enemyVisuals`; other categories are browsable read-only.
+Builtin content is read-only, while `--content <workspace>` supplies the editable
+workspace root. The same document and compiler APIs are suitable for future human or
+LLM authored DTOs; no reflection, generic editor framework or raw JSON editor is
+introduced.

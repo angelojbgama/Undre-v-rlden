@@ -29,6 +29,7 @@
 #include "editor/editor_commands.h"
 #include "editor/editor_document.h"
 #include "editor/editor_playtest.h"
+#include "editor/content_workspace_document.h"
 #include "game/command_builder.h"
 #include "game/audit/audit_session.h"
 #include "game/audit/audit_snapshot.h"
@@ -7719,6 +7720,165 @@ void testPhase17VisualContentBoundary() {
     std::filesystem::remove_all(workspaceRoot, fsError);
 }
 
+void testPhase18ContentStudioFoundation() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+    const auto root = std::filesystem::temp_directory_path() / "underworld_phase18_content_studio";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root / "visuals", fsError);
+
+    const auto writePack = [](const std::filesystem::path& path, const content::AuthoredContentPack& pack) {
+        std::ofstream file(path, std::ios::binary);
+        file << content::encodeAuthoredContentJson(pack);
+        return file.good();
+    };
+    const auto readBytes = [](const std::filesystem::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    };
+
+    { std::ofstream legacy(root / "base-v4.json", std::ios::binary);
+      legacy << R"({"format":"dungeon-underworld-content","version":4})"; }
+    content::AuthoredContentPack initial;
+    initial.visualImages.push_back({{"image.studio.initial"}, presentation::VisualAssetRoot::contentWorkspace,
+                                    "assets/initial.png"});
+    const auto visualsPath = root / "visuals" / "visuals-v5.json";
+    expect(writePack(visualsPath, initial), "18A writes initial content studio fixture");
+    const auto untouchedBefore = readBytes(root / "base-v4.json");
+
+    std::string error;
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && document->files().size() == 2 && document->valid() && error.empty(),
+           "18A opens mixed-version workspace with derived valid registry");
+    if (!document) { std::filesystem::remove_all(root, fsError); return; }
+    const editor::ContentDefinitionKey imageKey{editor::ContentDefinitionKind::visualImage,
+                                                 {"image.studio.initial"}};
+    const auto* imageSource = document->sourceFor(imageKey);
+    expect(imageSource && imageSource->sourcePath == visualsPath.lexically_normal() &&
+               imageSource->jsonPath == "visualImages[0]",
+           "18A preserves definition ownership and source location");
+    expect(editor::ContentWorkspaceDocument::categoryOrder().size() == 25 &&
+               document->index().front() == imageKey,
+           "18A exposes all categories and deterministic definition index");
+
+    auto changed = initial.visualImages.front();
+    changed.relativePath = "assets/changed.png";
+    expect(document->updateVisualImage(changed.id, changed, error) && document->dirty(),
+           "18A typed visual image mutation marks only its source file dirty");
+    expect(document->saveAll(error) && !document->dirty() &&
+               readBytes(root / "base-v4.json") == untouchedBefore,
+           "18A Save All writes dirty files only and keeps untouched legacy bytes unchanged");
+    auto reloaded = editor::ContentWorkspaceDocument::open(root, error);
+    expect(reloaded && reloaded->mergedAuthored() && reloaded->mergedAuthored()->visualImages.front().relativePath == "assets/changed.png",
+           "18A save/reload persists structured visual edits");
+
+    expect(document->createContentFile("visuals/slime.json", error),
+           "18A creates a new content source file inside workspace");
+    const auto slimeFile = root / "visuals" / "slime.json";
+    expect(!document->createContentFile("../outside.json", error) &&
+               !document->createContentFile("/outside.json", error) &&
+               !document->createContentFile("C:/outside.json", error),
+           "18A rejects content file path traversal and absolute paths");
+    std::error_code symlinkError;
+    const auto symlinkPath = root / "visuals" / "linked";
+    std::filesystem::create_directory_symlink(root.parent_path() / "outside-content-target",
+                                              symlinkPath, symlinkError);
+    if (!symlinkError) {
+        expect(!document->createContentFile("visuals/linked/escape.json", error),
+               "18A rejects content files crossing a workspace symlink");
+    }
+
+    content::AuthoredVisualImage slimeImage{{"image.studio.slime"}, presentation::VisualAssetRoot::contentWorkspace,
+                                            "assets/slime.png"};
+    expect(document->addVisualImage(slimeFile, slimeImage, error),
+           "18A adds a typed visual image to the selected source file");
+    content::AuthoredAnimationFrame frame{{0, 0, 16, 16}, {8, 15}, {0, 0}, 4, {"idle"}};
+    content::AuthoredAnimation idle{{"animation.studio.slime.idle"}, slimeImage.id, {frame}, true};
+    content::AuthoredAnimation death{{"animation.studio.slime.death"}, slimeImage.id, {frame}, false};
+    expect(document->addAnimation(slimeFile, idle, error) && document->addAnimation(slimeFile, death, error),
+           "18A creates typed animation definitions without raw JSON editing");
+    expect(document->addAnimationMarker(idle.id, 0, "contact", error) &&
+               document->updateAnimationMarker(idle.id, 0, 1, "contact.updated", error),
+           "18A edits animation markers through typed document operations");
+    auto secondFrame = frame;
+    secondFrame.durationTicks = 6;
+    expect(document->addAnimationFrame(idle.id, secondFrame, error) &&
+               document->moveAnimationFrame(idle.id, 1, 0, error) &&
+               document->updateAnimationFrame(idle.id, 0, secondFrame, error) &&
+               document->removeAnimationFrame(idle.id, 1, error),
+           "18A supports animation frame add/edit/reorder/remove operations");
+    presentation::DirectionalAnimationRef idleBinding;
+    idleBinding.defaultAnimation = idle.id;
+    presentation::DirectionalAnimationRef deathBinding;
+    deathBinding.defaultAnimation = death.id;
+    content::AuthoredEnemyVisual slimeVisual;
+    slimeVisual.id = {"visual.enemy.studio.slime"};
+    slimeVisual.idle = idleBinding;
+    slimeVisual.death = deathBinding;
+    expect(document->addEnemyVisual(slimeFile, slimeVisual, error),
+           "18A authors a Slime-like idle-plus-death flexible profile");
+
+    content::AuthoredAnimation richAction{{"animation.studio.sleep"}, slimeImage.id, {frame}, true};
+    expect(document->addAnimation(slimeFile, richAction, error), "18A creates optional profile action animation");
+    content::AuthoredEnemyAttackVisual sleepAction;
+    sleepAction.visualActionId = {"sleep"};
+    sleepAction.clips.defaultAnimation = richAction.id;
+    expect(document->addEnemyVisualAction(slimeVisual.id, sleepAction, error),
+           "18A authors arbitrary EnemyVisual action mappings");
+    expect(document->addStaticSprite(slimeFile, {{"visual.studio.icon"}, slimeImage.id, std::nullopt, {8, 8}}, error),
+           "18A creates a typed static sprite definition");
+
+    expect(document->saveAll(error) && std::filesystem::exists(slimeFile) &&
+               readBytes(slimeFile).find("\"version\": 5") != std::string::npos,
+           "18A saves newly created files using canonical Content JSON v5");
+    auto slimeReload = editor::ContentWorkspaceDocument::open(root, error);
+    expect(slimeReload && slimeReload->valid() && slimeReload->mergedAuthored() &&
+               slimeReload->mergedAuthored()->enemyVisuals.front().death.has_value() &&
+               slimeReload->mergedAuthored()->animations.size() == 3,
+           "18A reloads the complete structured Slime and optional-action profile");
+
+    content::AuthoredAnimation invalid{{"animation.studio.invalid"}, {"image.missing"}, {frame}, true};
+    expect(document->addAnimation(slimeFile, invalid, error) && !document->valid() &&
+               !document->compiledRegistry() && !document->diagnostics().empty(),
+           "18A allows semantic invalid references while exposing diagnostics and no stale registry");
+    const auto invalidDiagnostic = content::formatContentWorkspaceDiagnostic(document->diagnostics().front());
+    expect(invalidDiagnostic.find("[validation/") != std::string::npos &&
+               invalidDiagnostic.find("category=animations") != std::string::npos &&
+               invalidDiagnostic.find("definitionId=animation.studio.invalid") != std::string::npos &&
+               invalidDiagnostic.find("imageId") != std::string::npos,
+           "18A validation view preserves stage, category, definition ID and JSON path");
+    expect(document->saveAll(error), "18A saves structurally valid content even when semantically invalid");
+    content::AuthoredVisualImage missingImage{{"image.missing"}, presentation::VisualAssetRoot::contentWorkspace,
+                                               "assets/missing.png"};
+    expect(document->addVisualImage(slimeFile, missingImage, error) && document->valid(),
+           "18A rebuilds the registry after an invalid reference is fixed");
+
+    content::AuthoredVisualImage duplicate = slimeImage;
+    expect(document->createContentFile("visuals/duplicates.json", error) &&
+               document->addVisualImage(root / "visuals" / "duplicates.json", duplicate, error) &&
+               !document->valid() && std::any_of(document->diagnostics().begin(), document->diagnostics().end(),
+                   [](const auto& diagnostic) { return diagnostic.code == "duplicate_definition"; }),
+           "18A reports cross-file duplicate definitions with a derived invalid workspace");
+    expect(!document->createContentFile("visuals/duplicates.json", error),
+           "18A rejects duplicate content source file creation");
+
+    auto builtinDocument = editor::ContentWorkspaceDocument::fromBuiltin(content::makeBuiltinAuthoredContent());
+    expect(builtinDocument.builtinReadOnly() && builtinDocument.index().size() >= 25 &&
+               !builtinDocument.createContentFile("new.json", error),
+           "18A exposes builtin content as a navigable read-only document");
+
+    // Map and content documents coexist without sharing mutable source state.
+    editor::EditorDocument mapDocument = editor::EditorDocument::newAuthoredMap(
+        simulation::MapId{"map.studio.test"}, 8, 8, 16, content::compileBuiltinContentOrThrow());
+    expect(mapDocument.data().id.value() == "map.studio.test" && document->files().size() == 4,
+           "18A preserves Map mode state while a content workspace remains open");
+
+    std::filesystem::remove_all(root, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -7796,6 +7956,7 @@ int main() {
         testPhase15PresentationFeedback();
         testPhase16InteractiveWorld();
         testPhase17VisualContentBoundary();
+        testPhase18ContentStudioFoundation();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

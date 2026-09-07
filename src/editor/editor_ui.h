@@ -51,6 +51,8 @@ public:
     [[nodiscard]] bool button(core::RectI bounds, std::string_view text,
                               bool active = false) const;
     [[nodiscard]] bool toggle(core::RectI bounds, std::string_view text, bool value) const;
+    [[nodiscard]] bool textField(core::RectI bounds, std::string& value, bool active,
+                                 std::size_t maximumLength = 240) const;
     [[nodiscard]] bool pointerInside(core::RectI bounds) const noexcept;
 
 private:
