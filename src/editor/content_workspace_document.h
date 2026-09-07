@@ -93,6 +93,14 @@ public:
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const game::content::AuthoredNpcVisualSet* npcVisual(
         const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredTileset* tileset(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoringDescriptor* authoringDescriptor(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredTileSemantic* tileSemantic(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredStamp* stamp(
+        const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const game::content::AuthoredProjectile* projectile(
         const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] const game::content::AuthoredAttack* attack(
@@ -203,6 +211,37 @@ public:
                                        game::content::AuthoredNpcVisualSet value,
                                        std::string& error);
     [[nodiscard]] bool removeNpcVisual(const simulation::DefinitionId& id, std::string& error);
+
+    [[nodiscard]] bool addTileset(const std::filesystem::path& file,
+                                  game::content::AuthoredTileset value,
+                                  std::string& error);
+    [[nodiscard]] bool updateTileset(const simulation::DefinitionId& id,
+                                     game::content::AuthoredTileset value,
+                                     std::string& error);
+    [[nodiscard]] bool removeTileset(const simulation::DefinitionId& id, std::string& error);
+    [[nodiscard]] bool addAuthoringDescriptor(const std::filesystem::path& file,
+                                              game::content::AuthoringDescriptor value,
+                                              std::string& error);
+    [[nodiscard]] bool updateAuthoringDescriptor(const simulation::DefinitionId& id,
+                                                 game::content::AuthoringDescriptor value,
+                                                 std::string& error);
+    [[nodiscard]] bool removeAuthoringDescriptor(const simulation::DefinitionId& id,
+                                                 std::string& error);
+    [[nodiscard]] bool addTileSemantic(const std::filesystem::path& file,
+                                       game::content::AuthoredTileSemantic value,
+                                       std::string& error);
+    [[nodiscard]] bool updateTileSemantic(const simulation::DefinitionId& id,
+                                          game::content::AuthoredTileSemantic value,
+                                          std::string& error);
+    [[nodiscard]] bool removeTileSemantic(const simulation::DefinitionId& id,
+                                          std::string& error);
+    [[nodiscard]] bool addStamp(const std::filesystem::path& file,
+                                game::content::AuthoredStamp value,
+                                std::string& error);
+    [[nodiscard]] bool updateStamp(const simulation::DefinitionId& id,
+                                   game::content::AuthoredStamp value,
+                                   std::string& error);
+    [[nodiscard]] bool removeStamp(const simulation::DefinitionId& id, std::string& error);
 
     [[nodiscard]] bool addProjectile(const std::filesystem::path& file,
                                      game::content::AuthoredProjectile value,

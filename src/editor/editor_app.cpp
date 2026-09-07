@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <utility>
@@ -114,6 +115,12 @@ enum ContentEditField : int {
     fieldPresentationShake, fieldPresentationOverlay, fieldPresentationOverlayMode,
     fieldPresentationOverlayPulse, fieldPresentationOverlayLayer, fieldPresentationVision,
     fieldPresentationFade,
+    fieldTilesetDisplay, fieldTilesetPath, fieldTilesetSize, fieldTilesetColumns,
+    fieldTilesetRows, fieldDescriptorDisplay, fieldDescriptorCategory,
+    fieldDescriptorTag, fieldSemanticTileset, fieldSemanticSource, fieldSemanticFamily,
+    fieldSemanticPreferredLayer, fieldSemanticRole, fieldSemanticTopology,
+    fieldSemanticEdges, fieldStampDisplay, fieldStampSize, fieldStampAnchor,
+    fieldStampCell, fieldStampConfidence,
     contentEditFieldCount
 };
 
@@ -253,15 +260,49 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         return;
     }
 
-    ui.label("LAYERS",8,8);int y=22;
+    if (ui.button({8, 2, 42, 18}, "TILES", mapPaletteTab_ == MapPaletteTab::tiles)) mapPaletteTab_ = MapPaletteTab::tiles;
+    if (ui.button({52, 2, 42, 18}, "SEM", mapPaletteTab_ == MapPaletteTab::semantics)) mapPaletteTab_ = MapPaletteTab::semantics;
+    if (ui.button({96, 2, 42, 18}, "STAMPS", mapPaletteTab_ == MapPaletteTab::stamps)) mapPaletteTab_ = MapPaletteTab::stamps;
+    if (ui.button({140, 2, 42, 18}, "ENT", mapPaletteTab_ == MapPaletteTab::entities)) mapPaletteTab_ = MapPaletteTab::entities;
+    ui.label("LAYERS",8,26);int y=40;
     for(std::size_t i=0;i<document_.data().layers.size();++i){
         const auto& layer=document_.data().layers[i];
-        if(ui.button({8,y,110,18},layer.name,i==document_.activeLayer()))document_.activeLayer()=i;
+        if(ui.button({8,y,110,18},layer.name,i==document_.activeLayer())) {
+            document_.activeLayer()=i;
+            layerNameEdit_=layer.name;
+            layerNameFocused_=false;
+        }
         auto& state=document_.layerStates()[i];
         if(ui.toggle({120,y,30,18},state.visible?"ON":"OFF",state.visible))state.visible=!state.visible;
         if(ui.toggle({152,y,30,18},state.locked?"L":"U",state.locked))state.locked=!state.locked;
         y+=20;
     }
+    if (ui.button({8, y, 52, 18}, "ADD", false)) {
+        layerNameEdit_ = "Layer " + std::to_string(document_.data().layers.size() + 1);
+        execute(std::make_unique<AddLayerCommand>(document_.data().layers.size(), layerNameEdit_));
+    }
+    if (ui.button({64, y, 52, 18}, "DEL", false)) execute(std::make_unique<RemoveLayerCommand>(document_.activeLayer()));
+    if (ui.button({120, y, 28, 18}, "<", false) && document_.activeLayer() > 0)
+        execute(std::make_unique<MoveLayerCommand>(document_.activeLayer(), document_.activeLayer() - 1));
+    if (ui.button({152, y, 28, 18}, ">", false) && document_.activeLayer() + 1 < document_.data().layers.size())
+        execute(std::make_unique<MoveLayerCommand>(document_.activeLayer(), document_.activeLayer() + 1));
+    y += 20;
+    if (document_.activeLayer() < document_.data().layers.size()) {
+        if (!layerNameFocused_ && layerNameEdit_.empty()) {
+            layerNameEdit_ = document_.data().layers[document_.activeLayer()].name;
+        }
+        if (ui.textField({8, y, 174, 18}, layerNameEdit_, layerNameFocused_)) {
+            layerNameFocused_=true;
+        }
+        if (input.escapePressed) {
+            layerNameEdit_=document_.data().layers[document_.activeLayer()].name;
+            layerNameFocused_=false;
+        } else if (input.enterPressed && layerNameFocused_) {
+            if (!layerNameEdit_.empty()) execute(std::make_unique<RenameLayerCommand>(document_.activeLayer(), layerNameEdit_));
+            layerNameFocused_=false;
+        }
+    }
+    y += 22;
     if(ui.button({8,y,85,18},"SELECT",document_.activeTool()==EditorTool::select))document_.activeTool()=EditorTool::select;
     if(ui.button({97,y,85,18},"TILE",document_.activeTool()==EditorTool::tilePencil)) { document_.activeTool()=EditorTool::tilePencil; }
     y+=20;
@@ -282,22 +323,71 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if(ui.button({8,y,85,18},"COLL F+",document_.activeTool()==EditorTool::collisionFill))document_.activeTool()=EditorTool::collisionFill;
     if(ui.button({97,y,85,18},"COLL F-",document_.activeTool()==EditorTool::collisionFillErase)) { document_.activeTool()=EditorTool::collisionFillErase; }
     y+=24;
+    if(ui.button({8,y,85,18},"ENTITY",document_.activeTool()==EditorTool::entityPlace))document_.activeTool()=EditorTool::entityPlace;
+    if(ui.button({97,y,85,18},"REGION",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
+    y+=20;
+    if(ui.button({8,y,85,18},"STAMP",document_.activeTool()==EditorTool::stampPlace))document_.activeTool()=EditorTool::stampPlace;
+    if(ui.button({97,y,85,18},"SELECT TILES",document_.activeTool()==EditorTool::tileSelection))document_.activeTool()=EditorTool::tileSelection;
+    y+=24;
+    if(ui.button({8,y,85,18},"RULES",mapPaletteTab_==MapPaletteTab::rules))mapPaletteTab_=MapPaletteTab::rules;
+    if(ui.button({97,y,85,18},"ENCOUNTERS",mapPaletteTab_==MapPaletteTab::encounters))mapPaletteTab_=MapPaletteTab::encounters;
+    y+=24;
 
-    ui.label("CONTENT",8,y);y+=14;
-    for(const auto& descriptor:content_.authoringDescriptors()){
-        if(y+18>viewportHeight-210)break;
-        if(ui.button({8,y,174,18},descriptor.displayName,selectedDefinition_==descriptor.definitionId&&document_.activeTool()==EditorTool::entityPlace)){
-            selectedDefinition_=descriptor.definitionId;selectedCategory_=descriptor.category;document_.activeTool()=EditorTool::entityPlace;
+    if (mapPaletteTab_ == MapPaletteTab::entities) {
+        ui.label("CONTENT",8,y);y+=14;
+        struct PaletteEntry final { simulation::DefinitionId id; std::string label; game::AuthoringCategory category; };
+        std::vector<PaletteEntry> entries;
+        const auto addEntry = [&](simulation::DefinitionId id, game::AuthoringCategory category,
+                                  std::string fallback) {
+            const auto duplicate = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
+                return entry.id == id && entry.category == category;
+            });
+            if (duplicate != entries.end()) return;
+            auto label = std::move(fallback);
+            for (const auto& descriptor : content_.authoringDescriptors()) {
+                if (descriptor.definitionId == id && descriptor.category == category) {
+                    label = descriptor.displayName + " (" + std::string(id.value()) + ")";
+                    break;
+                }
+            }
+            entries.push_back({std::move(id), std::move(label), category});
+        };
+        for (const auto& descriptor:content_.authoringDescriptors()) {
+            if (descriptor.category == game::AuthoringCategory::enemy ||
+                descriptor.category == game::AuthoringCategory::object ||
+                descriptor.category == game::AuthoringCategory::pickup ||
+                descriptor.category == game::AuthoringCategory::npc) {
+                addEntry(descriptor.definitionId, descriptor.category,
+                         std::string(descriptor.definitionId.value()));
+            }
+        }
+        for (const auto& entry : content_.enemies().values())
+            addEntry(entry.first, game::AuthoringCategory::enemy, std::string(entry.first.value()));
+        for (const auto& entry : content_.objects().values())
+            addEntry(entry.first, game::AuthoringCategory::object, std::string(entry.first.value()));
+        for (const auto& definition : content_.pickups())
+            addEntry(definition.id, game::AuthoringCategory::pickup, std::string(definition.id.value()));
+        for (const auto& entry : content_.npcs().values())
+            addEntry(entry.first, game::AuthoringCategory::npc, std::string(entry.first.value()));
+        std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
+            if (left.category != right.category) return left.category < right.category;
+            return left.id.value() < right.id.value();
+        });
+        for(const auto& descriptor:entries){
+            if(y+18>viewportHeight-210)break;
+            if(ui.button({8,y,174,18},descriptor.label,selectedDefinition_==descriptor.id&&document_.activeTool()==EditorTool::entityPlace)){
+                selectedDefinition_=descriptor.id;selectedCategory_=descriptor.category;document_.activeTool()=EditorTool::entityPlace;
+            }y+=20;
+        }
+        if(ui.button({8,y,174,18},"Player Spawn",document_.activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.player_spawn")){
+            selectedDefinition_=simulation::DefinitionId{"world.player_spawn"};document_.activeTool()=EditorTool::entityPlace;
         }y+=20;
+        if(ui.button({8,y,174,18},"Map Link",document_.activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
+            selectedDefinition_=simulation::DefinitionId{"world.map_link"};document_.activeTool()=EditorTool::entityPlace;
+        }y+=20;
+        if(ui.button({8,y,174,18},"Region",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
+        y += 20;
     }
-    if(ui.button({8,y,174,18},"Player Spawn",document_.activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.player_spawn")){
-        selectedDefinition_=simulation::DefinitionId{"world.player_spawn"};document_.activeTool()=EditorTool::entityPlace;
-    }y+=20;
-    if(ui.button({8,y,174,18},"Map Link",document_.activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
-        selectedDefinition_=simulation::DefinitionId{"world.map_link"};document_.activeTool()=EditorTool::entityPlace;
-    }y+=20;
-    if(ui.button({8,y,174,18},"Region",document_.activeTool()==EditorTool::regionCreate))document_.activeTool()=EditorTool::regionCreate;
-    y += 20;
     if (ui.button({8, y, 174, 18}, playtest_.active() ? "STOP PLAYTEST" : "PLAYTEST",
                   playtest_.active())) {
         togglePlaytest();
@@ -305,12 +395,16 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
 
     const auto& semantics = content_.authoringSemantics();
     static const std::array<std::string, 6> semanticFamilies{"ALL", "masonry", "ledge", "architectural_detail", "detail", "RAW"};
-    ui.label("DATASET TILES",8,y+8); y+=20;
-    if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
-    if(ui.button({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
-    if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
-    rawPalette_=semanticFamilies[semanticFamilyIndex_]=="RAW"; y+=22;
-    if(!semantics.stamps().empty()) {
+    if (mapPaletteTab_ == MapPaletteTab::semantics) {
+        ui.label("SEMANTIC TILES",8,y+8); y+=20;
+        if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
+        if(ui.button({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
+        if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
+        rawPalette_=semanticFamilies[semanticFamilyIndex_]=="RAW"; y+=22;
+    } else if (mapPaletteTab_ == MapPaletteTab::tiles) {
+        rawPalette_=true;
+    }
+    if(mapPaletteTab_ == MapPaletteTab::stamps && !semantics.stamps().empty()) {
         ui.label("STAMPS",8,y+8); y+=20;
         const auto& stamp=semantics.stamps()[std::min(selectedStamp_,semantics.stamps().size()-1)];
         if(ui.button({8,y,28,18},"<")) selectedStamp_=(selectedStamp_+semantics.stamps().size()-1)%semantics.stamps().size();
@@ -318,6 +412,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         if(ui.button({156,y,26,18},">")) selectedStamp_=(selectedStamp_+1)%semantics.stamps().size();
         y+=22;
     }
+    if (mapPaletteTab_ == MapPaletteTab::tiles || mapPaletteTab_ == MapPaletteTab::semantics) {
     const auto* selectedDefinition=content_.tilesets().find(selectedTileset_);
     if(selectedDefinition){
         ui.label("TILESET",8,y+8); y+=20;
@@ -337,8 +432,24 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         for(std::size_t paletteIndex=0;paletteIndex<paletteTiles.size();++paletteIndex){const auto index=paletteTiles[paletteIndex];const int column=static_cast<int>(paletteIndex%static_cast<std::size_t>(paletteColumns)),row=static_cast<int>(paletteIndex/static_cast<std::size_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
             render::Renderer2D renderer(*framebuffer_);const core::RectI source=tileset->atlas.sourceRect(index);renderer.drawImageRegion(*tileset->image,source,cell.x,cell.y);
             if(index==selectedTile_) { outline(renderer,cell,selectedColor); }
-            if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;document_.activeTool()=EditorTool::tilePencil;}}
+        if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;tileBrush_={selectedTileset_,1,1,{selectedTileReference()}};paletteDragging_=true;paletteDragStart_=index;paletteDragCurrent_=index;document_.activeTool()=EditorTool::tilePencil;}
+            if(paletteDragging_&&ui.pointerInside(cell)&&input.pointer.leftDown)paletteDragCurrent_=index;
+            if(paletteDragging_&&ui.pointerInside(cell)&&input.pointer.leftReleased)paletteDragCurrent_=index;
+        }
+        if (paletteDragging_ && input.pointer.leftReleased) {
+            const auto columns = std::max<std::uint32_t>(1, selectedDefinition->columns);
+            const auto sx = paletteDragStart_ % columns; const auto sy = paletteDragStart_ / columns;
+            const auto ex = paletteDragCurrent_ % columns; const auto ey = paletteDragCurrent_ / columns;
+            const auto minX = std::min(sx, ex); const auto minY = std::min(sy, ey);
+            const auto maxX = std::max(sx, ex); const auto maxY = std::max(sy, ey);
+            tileBrush_.tilesetId = selectedTileset_; tileBrush_.width = maxX - minX + 1; tileBrush_.height = maxY - minY + 1; tileBrush_.cells.clear();
+            for (std::uint32_t brushY = minY; brushY <= maxY; ++brushY) for (std::uint32_t brushX = minX; brushX <= maxX; ++brushX)
+                tileBrush_.cells.push_back({selectedTileset_, brushY * columns + brushX, tileFlipX_ ? world::TileFlags::flipX : world::TileFlags::none});
+            selectedTile_ = paletteDragStart_; paletteDragging_ = false;
+        }
+        if (paletteDragging_ && input.pointer.leftReleased && !ui.pointerInside({0, paletteTop, leftPanelWidth, paletteHeight})) paletteDragging_ = false;
     } else if (selectedDefinition) { ui.label("Tileset image unavailable",8,y+4); }
+    }
 
     render::Renderer2D renderer(*framebuffer_);drawViewport(renderer,viewportBounds_,input);drawInspector(ui,right);
     ui.label(status_,6,viewportHeight+6);
@@ -389,6 +500,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                       ContentWorkspaceDocument::categoryName(kind), selectedContentCategory_ == kind)) {
             selectedContentCategory_ = kind;
             selectedContentDefinition_.reset();
+            pendingStampFromSelection_.reset();
             resetContentEditState();
             resetContentPreviewState();
         }
@@ -446,6 +558,10 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         case ContentDefinitionKind::enemyVisual: { game::content::AuthoredEnemyVisual value; value.id=id; created=contentWorkspace_->addEnemyVisual(file,value,error); break; }
         case ContentDefinitionKind::objectVisual: { game::content::AuthoredWorldObjectVisual value; value.id=id; created=contentWorkspace_->addObjectVisual(file,value,error); break; }
         case ContentDefinitionKind::npcVisual: { game::content::AuthoredNpcVisualSet value; value.id=id; created=contentWorkspace_->addNpcVisual(file,value,error); break; }
+        case ContentDefinitionKind::tileset: { game::content::AuthoredTileset value; value.id=id; value.displayName=newContentDefinitionId_; value.relativeAssetPath="assets/tileset.png"; value.tileSize=16; value.columns=1; value.rows=1; created=contentWorkspace_->addTileset(file,value,error); break; }
+        case ContentDefinitionKind::authoringDescriptor: { game::content::AuthoringDescriptor value; value.definitionId=id; value.displayName=newContentDefinitionId_; created=contentWorkspace_->addAuthoringDescriptor(file,value,error); break; }
+        case ContentDefinitionKind::tileSemantic: { game::content::AuthoredTileSemantic value; value.id=id; value.family="unclassified"; created=contentWorkspace_->addTileSemantic(file,value,error); break; }
+        case ContentDefinitionKind::stamp: { game::content::AuthoredStamp value = pendingStampFromSelection_.value_or(game::content::AuthoredStamp{}); value.id=id; if (value.displayName.empty()) value.displayName=newContentDefinitionId_; if (value.width == 0) value.width=1; if (value.height == 0) value.height=1; created=contentWorkspace_->addStamp(file,value,error); if (created) pendingStampFromSelection_.reset(); break; }
         default: error = "This category is reserved for the unified map workflow (18D)"; break;
         }
         if (!created) { status_ = error; return; }
@@ -515,7 +631,9 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
             key.kind == ContentDefinitionKind::npc || key.kind == ContentDefinitionKind::dialogue ||
             key.kind == ContentDefinitionKind::quest || key.kind == ContentDefinitionKind::playerProgression ||
             key.kind == ContentDefinitionKind::rewardProfile || key.kind == ContentDefinitionKind::rewardGrant ||
-            key.kind == ContentDefinitionKind::shop || key.kind == ContentDefinitionKind::presentationEffect;
+            key.kind == ContentDefinitionKind::shop || key.kind == ContentDefinitionKind::presentationEffect ||
+            key.kind == ContentDefinitionKind::tileset || key.kind == ContentDefinitionKind::authoringDescriptor ||
+            key.kind == ContentDefinitionKind::tileSemantic || key.kind == ContentDefinitionKind::stamp;
         if (gameplayCategory) {
             drawGameplayContentInspector(ui, input, right, key, inspectorY);
         } else if (key.kind == ContentDefinitionKind::visualImage) {
@@ -1356,6 +1474,56 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
         refreshContentRegistry();
         status_ = std::string(message);
     };
+    if (key.kind == ContentDefinitionKind::tileset ||
+        key.kind == ContentDefinitionKind::tileSemantic ||
+        key.kind == ContentDefinitionKind::stamp) {
+        if (ui.button({panel.x + 8, inspectorY, panel.width - 16, 20},
+                      key.kind == ContentDefinitionKind::tileset ? "SHOW IN MAP PALETTE" :
+                      key.kind == ContentDefinitionKind::tileSemantic ? "USE SEMANTIC IN MAP" :
+                      "USE STAMP IN MAP")) {
+            if (key.kind == ContentDefinitionKind::tileset) {
+                selectedTileset_ = key.id;
+                mapPaletteTab_ = MapPaletteTab::tiles;
+            } else if (key.kind == ContentDefinitionKind::tileSemantic) {
+                if (const auto* semantic = contentWorkspace_->tileSemantic(key.id)) {
+                    selectedTileset_ = semantic->tilesetId;
+                    selectedTile_ = semantic->sourceIndex;
+                    tileBrush_ = {selectedTileset_, 1, 1, {selectedTileReference()}};
+                    rawPalette_ = false;
+                }
+                mapPaletteTab_ = MapPaletteTab::semantics;
+            } else {
+                const auto& stamps = content_.authoringSemantics().stamps();
+                const auto it = std::find_if(stamps.begin(), stamps.end(),
+                    [&](const auto& stamp) { return stamp.id == key.id; });
+                if (it != stamps.end()) selectedStamp_ = static_cast<std::size_t>(it - stamps.begin());
+                mapPaletteTab_ = MapPaletteTab::stamps;
+            }
+            contentMode_ = false;
+            status_ = "Map palette selected";
+            return;
+        }
+        inspectorY += 28;
+    }
+    if (key.kind == ContentDefinitionKind::enemy || key.kind == ContentDefinitionKind::npc ||
+        key.kind == ContentDefinitionKind::object || key.kind == ContentDefinitionKind::pickup) {
+        const auto category = key.kind == ContentDefinitionKind::enemy ? game::AuthoringCategory::enemy :
+            key.kind == ContentDefinitionKind::npc ? game::AuthoringCategory::npc :
+            key.kind == ContentDefinitionKind::object ? game::AuthoringCategory::object : game::AuthoringCategory::pickup;
+        if (ui.button({panel.x + 8, inspectorY, 108, 20}, "PLACE IN MAP") && writable) {
+            selectedDefinition_ = key.id; selectedCategory_ = category; contentMode_ = false;
+            document_.activeTool() = EditorTool::entityPlace; status_ = "Select a map position to place this definition"; return;
+        }
+        if (ui.button({panel.x + 120, inspectorY, 108, 20}, "FIND IN MAP")) {
+            std::optional<EditorSelection> found;
+            if (key.kind == ContentDefinitionKind::enemy) for (const auto& value : document_.data().enemies) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::enemy, value.id, {}}; document_.viewport().worldX = value.position.x - viewportBounds_.width / (2.0 * zoom()); document_.viewport().worldY = value.position.y - viewportBounds_.height / (2.0 * zoom()); break; }
+            if (key.kind == ContentDefinitionKind::npc) for (const auto& value : document_.data().npcs) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::npc, value.id, {}}; break; }
+            if (key.kind == ContentDefinitionKind::object) for (const auto& value : document_.data().objects) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::object, value.id, {}}; break; }
+            if (key.kind == ContentDefinitionKind::pickup) for (const auto& value : document_.data().pickups) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::pickup, value.id, {}}; break; }
+            if (found) { document_.selection() = *found; contentMode_ = false; status_ = "Found definition usage in current map"; return; }
+            status_ = "Definition has no placement in current map";
+        }
+    }
     const auto facingNames = std::array<std::string_view, 4>{"down", "up", "left", "right"};
     const auto attackKinds = std::array<std::string_view, 2>{"meleeHitbox", "projectile"};
     const auto factions = std::array<std::string_view, 4>{"player", "enemy", "environment", "neutral"};
@@ -2456,6 +2624,148 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
     if (key.kind == ContentDefinitionKind::pickup) {const auto* value=contentWorkspace_->pickup(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldPickupVisual]=std::string(value->visualId.value());contentEditValues_[fieldPickupBounds]=rectText(value->collectionBounds);contentEditValues_[fieldPickupPayload]=std::holds_alternative<game::content::AuthoredHealthPickup>(value->payload)?"health":std::holds_alternative<game::content::AuthoredCurrencyPickup>(value->payload)?"currency":"item";contentEditValues_[fieldPickupAmount]="0";contentEditValues_[fieldPickupItem]="";contentEditValues_[fieldPickupQuantity]="1";}reference("visualId",ContentDefinitionKind::staticSprite,fieldPickupVisual,inspectorY);field("collection x,y,w,h",fieldPickupBounds,inspectorY+48);const bool payloadChanged=enumButton("payload",fieldPickupPayload,inspectorY+96,std::array<std::string_view,3>{"health","currency","item"});field("health/currency amount",fieldPickupAmount,inspectorY+144);reference("itemId",ContentDefinitionKind::item,fieldPickupItem,inspectorY+192);field("item quantity",fieldPickupQuantity,inspectorY+240);if(writable&&(input.enterPressed||payloadChanged)&&contentFocusedField_>=fieldPickupVisual&&contentFocusedField_<=fieldPickupQuantity){auto u=*value;std::string e;bool ok=true;if(contentFocusedField_==fieldPickupVisual)u.visualId=simulation::DefinitionId{contentEditValues_[fieldPickupVisual]};else if(contentFocusedField_==fieldPickupBounds){auto p=parseRect(contentEditValues_[fieldPickupBounds]);if(!p)ok=false;else u.collectionBounds=*p;}else if(contentFocusedField_==fieldPickupPayload||payloadChanged){if(contentEditValues_[fieldPickupPayload]=="health")u.payload=game::content::AuthoredHealthPickup{};else if(contentEditValues_[fieldPickupPayload]=="currency")u.payload=game::content::AuthoredCurrencyPickup{};else u.payload=game::content::AuthoredItemPickup{};}else if(contentFocusedField_==fieldPickupAmount){auto p=parseIntegerList<1>(contentEditValues_[fieldPickupAmount]);if(!p)ok=false;else if(auto h=std::get_if<game::content::AuthoredHealthPickup>(&u.payload))h->amount=(*p)[0];else if(auto c=std::get_if<game::content::AuthoredCurrencyPickup>(&u.payload))c->amount=static_cast<std::uint64_t>((*p)[0]);}else if(contentFocusedField_==fieldPickupItem){if(auto i=std::get_if<game::content::AuthoredItemPickup>(&u.payload))i->itemId=simulation::DefinitionId{contentEditValues_[fieldPickupItem]};}else if(auto i=std::get_if<game::content::AuthoredItemPickup>(&u.payload))i->quantity=parseUnsigned(contentEditValues_[fieldPickupQuantity]).value_or(i->quantity);if(!ok)e="pickup field has an invalid value";if(ok&&contentWorkspace_->updatePickup(key.id,u,e))refresh("Pickup updated");else if(!ok||!e.empty())status_=e;}return;}
     if (key.kind == ContentDefinitionKind::object) {const auto* value=contentWorkspace_->object(key.id);if(!value)return;if(contentEditKey_!=key){resetContentEditState();contentEditKey_=key;contentEditValues_[fieldObjectVisual]=std::string(value->visualSetId.value());contentEditValues_[fieldObjectInteractBounds]=value->interactable?rectText(value->interactable->bounds):"0,0,16,16";contentEditValues_[fieldObjectCapacity]=value->container?std::to_string(value->container->capacity):"1";contentEditValues_[fieldObjectDestructibleHealth]=value->destructible?std::to_string(value->destructible->maximumHealth):"1";contentEditValues_[fieldObjectDestructibleHurtbox]=value->destructible?rectText(value->destructible->hurtbox):"0,0,16,16";contentEditValues_[fieldObjectDestructibleDuration]=value->destructible?std::to_string(value->destructible->destructionDurationTicks):"1";contentEditValues_[fieldObjectDoorState]=value->door?std::array<std::string_view,3>{"locked","closed","open"}[static_cast<int>(value->door->initialState)]:"closed";contentEditValues_[fieldObjectDoorBounds]=value->door?rectText(value->door->blockingBounds):"0,0,16,16";contentEditValues_[fieldObjectActivationMode]=value->activation?(value->activation->mode==game::gameplay::ObjectActivationMode::interactToggle?"interactToggle":"playerPressure"):"interactToggle";contentEditValues_[fieldObjectActivationBounds]=value->activation&&value->activation->activationBounds?rectText(*value->activation->activationBounds):"0,0,16,16";}
         reference("visualSetId",ContentDefinitionKind::objectVisual,fieldObjectVisual,inspectorY);const bool interact=ui.button({panel.x+8,inspectorY+48,panel.width-16,20},value->interactable?"INTERACTABLE ON":"INTERACTABLE OFF",value->interactable.has_value());field("interactable bounds",fieldObjectInteractBounds,inspectorY+72);const bool container=ui.button({panel.x+8,inspectorY+120,panel.width-16,20},value->container?"CONTAINER ON":"CONTAINER OFF",value->container.has_value());field("container capacity",fieldObjectCapacity,inspectorY+144);const bool destructible=ui.button({panel.x+8,inspectorY+192,panel.width-16,20},value->destructible?"DESTRUCTIBLE ON":"DESTRUCTIBLE OFF",value->destructible.has_value());field("destructible health",fieldObjectDestructibleHealth,inspectorY+216);field("destructible hurtbox",fieldObjectDestructibleHurtbox,inspectorY+264);field("destruction duration",fieldObjectDestructibleDuration,inspectorY+312);const bool bank=ui.button({panel.x+8,inspectorY+360,panel.width-16,20},value->bankAccess?"BANK ACCESS ON":"BANK ACCESS OFF",value->bankAccess.has_value());const bool door=ui.button({panel.x+8,inspectorY+384,panel.width-16,20},value->door?"DOOR ON":"DOOR OFF",value->door.has_value());const bool doorStateChanged=enumButton("door initial state",fieldObjectDoorState,inspectorY+408,doorStates);field("door blocking x,y,w,h",fieldObjectDoorBounds,inspectorY+456);const bool activation=ui.button({panel.x+8,inspectorY+504,panel.width-16,20},value->activation?"ACTIVATION ON":"ACTIVATION OFF",value->activation.has_value());const bool activationInitial=ui.button({panel.x+8,inspectorY+528,panel.width-16,20},value->activation&&value->activation->initialActive?"INITIAL ACTIVE":"INITIAL INACTIVE",value->activation&&value->activation->initialActive);const bool modeChanged=enumButton("activation mode",fieldObjectActivationMode,inspectorY+552,activationModes);field("activation bounds",fieldObjectActivationBounds,inspectorY+600);if(writable&&(input.enterPressed||interact||container||destructible||bank||door||doorStateChanged||activation||activationInitial||modeChanged)){auto u=*value;std::string e;bool ok=true;if(interact){if(u.interactable)u.interactable.reset();else u.interactable=game::gameplay::ObjectInteractionDefinition{};}else if(container){if(u.container)u.container.reset();else u.container=game::gameplay::ObjectContainerDefinition{};}else if(destructible){if(u.destructible)u.destructible.reset();else u.destructible=game::gameplay::ObjectDestructibleDefinition{};}else if(bank){if(u.bankAccess)u.bankAccess.reset();else u.bankAccess=game::content::AuthoredObjectBankAccess{};}else if(door){if(u.door)u.door.reset();else u.door=game::gameplay::ObjectDoorDefinition{};}else if(activation){if(u.activation)u.activation.reset();else u.activation=game::gameplay::ObjectActivationDefinition{};}else if(activationInitial){if(!u.activation)u.activation=game::gameplay::ObjectActivationDefinition{};u.activation->initialActive=!u.activation->initialActive;}else if(contentFocusedField_==fieldObjectVisual)u.visualSetId=simulation::DefinitionId{contentEditValues_[fieldObjectVisual]};else if(contentFocusedField_==fieldObjectInteractBounds){auto p=parseRect(contentEditValues_[fieldObjectInteractBounds]);if(!p)ok=false;else{if(!u.interactable)u.interactable={};u.interactable->bounds=*p;}}else if(contentFocusedField_==fieldObjectCapacity){if(auto p=parseUnsigned(contentEditValues_[fieldObjectCapacity])){if(!u.container)u.container={};u.container->capacity=*p;}else ok=false;}else if(contentFocusedField_==fieldObjectDestructibleHealth){if(auto p=parseIntegerList<1>(contentEditValues_[fieldObjectDestructibleHealth])){if(!u.destructible)u.destructible={};u.destructible->maximumHealth=(*p)[0];}else ok=false;}else if(contentFocusedField_==fieldObjectDestructibleHurtbox){auto p=parseRect(contentEditValues_[fieldObjectDestructibleHurtbox]);if(!p)ok=false;else{if(!u.destructible)u.destructible={};u.destructible->hurtbox=*p;}}else if(contentFocusedField_==fieldObjectDestructibleDuration){if(auto p=parseUnsigned(contentEditValues_[fieldObjectDestructibleDuration])){if(!u.destructible)u.destructible={};u.destructible->destructionDurationTicks=*p;}else ok=false;}else if(contentFocusedField_==fieldObjectDoorState||doorStateChanged){auto it=std::find(doorStates.begin(),doorStates.end(),contentEditValues_[fieldObjectDoorState]);if(it==doorStates.end())ok=false;else{if(!u.door)u.door={};u.door->initialState=static_cast<game::gameplay::DoorState>(it-doorStates.begin());}}else if(contentFocusedField_==fieldObjectDoorBounds){auto p=parseRect(contentEditValues_[fieldObjectDoorBounds]);if(!p)ok=false;else{if(!u.door)u.door={};u.door->blockingBounds=*p;}}else if(contentFocusedField_==fieldObjectActivationMode||modeChanged){auto it=std::find(activationModes.begin(),activationModes.end(),contentEditValues_[fieldObjectActivationMode]);if(it==activationModes.end())ok=false;else{if(!u.activation)u.activation={};u.activation->mode=static_cast<game::gameplay::ObjectActivationMode>(it-activationModes.begin());}}else if(contentFocusedField_==fieldObjectActivationBounds){auto p=parseRect(contentEditValues_[fieldObjectActivationBounds]);if(!p)ok=false;else{if(!u.activation)u.activation={};u.activation->activationBounds=*p;}}if(!ok)e="object field has an invalid value";if(ok&&contentWorkspace_->updateObject(key.id,u,e))refresh("World object updated");else if(!ok||!e.empty())status_=e;}return;}
+    if (key.kind == ContentDefinitionKind::tileset) {
+        const auto* value = contentWorkspace_->tileset(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldTilesetDisplay] = value->displayName;
+            contentEditValues_[fieldTilesetPath] = value->relativeAssetPath;
+            contentEditValues_[fieldTilesetSize] = std::to_string(value->tileSize);
+            contentEditValues_[fieldTilesetColumns] = std::to_string(value->columns);
+            contentEditValues_[fieldTilesetRows] = std::to_string(value->rows); }
+        field("displayName", fieldTilesetDisplay, inspectorY);
+        field("relativeAssetPath", fieldTilesetPath, inspectorY + 48);
+        field("tileSize", fieldTilesetSize, inspectorY + 96);
+        field("columns", fieldTilesetColumns, inspectorY + 144);
+        field("rows", fieldTilesetRows, inspectorY + 192);
+        if (writable && input.enterPressed && contentFocusedField_ >= fieldTilesetDisplay &&
+            contentFocusedField_ <= fieldTilesetRows) {
+            auto updated = *value; std::string error; bool ok = true;
+            if (contentFocusedField_ == fieldTilesetDisplay) updated.displayName = contentEditValues_[fieldTilesetDisplay];
+            else if (contentFocusedField_ == fieldTilesetPath) updated.relativeAssetPath = contentEditValues_[fieldTilesetPath];
+            else if (contentFocusedField_ == fieldTilesetSize) { const auto p = parseUnsigned(contentEditValues_[fieldTilesetSize]); if (!p || *p > 65535) ok = false; else updated.tileSize = static_cast<std::uint16_t>(*p); }
+            else if (contentFocusedField_ == fieldTilesetColumns) { const auto p = parseUnsigned(contentEditValues_[fieldTilesetColumns]); if (!p) ok = false; else updated.columns = *p; }
+            else { const auto p = parseUnsigned(contentEditValues_[fieldTilesetRows]); if (!p) ok = false; else updated.rows = *p; }
+            if (ok && contentWorkspace_->updateTileset(key.id, updated, error)) refresh("Tileset updated");
+            else status_ = ok ? error : "Tileset numeric field is invalid";
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::authoringDescriptor) {
+        const auto* value = contentWorkspace_->authoringDescriptor(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldDescriptorDisplay] = value->displayName;
+            contentEditValues_[fieldDescriptorCategory] = ContentWorkspaceDocument::categoryName(
+                value->category == game::content::AuthoringCategory::enemy ? ContentDefinitionKind::enemy :
+                value->category == game::content::AuthoringCategory::object ? ContentDefinitionKind::object :
+                value->category == game::content::AuthoringCategory::pickup ? ContentDefinitionKind::pickup :
+                value->category == game::content::AuthoringCategory::npc ? ContentDefinitionKind::npc :
+                value->category == game::content::AuthoringCategory::item ? ContentDefinitionKind::item :
+                value->category == game::content::AuthoringCategory::rewardProfile ? ContentDefinitionKind::rewardProfile :
+                value->category == game::content::AuthoringCategory::rewardGrant ? ContentDefinitionKind::rewardGrant : ContentDefinitionKind::shop);
+            contentEditValues_[fieldDescriptorTag] = value->tags.empty() ? "tag" : value->tags.front(); }
+        const auto categories = std::array<std::string_view, 8>{"enemy", "object", "pickup", "npc", "item", "rewardProfile", "rewardGrant", "shop"};
+        field("displayName", fieldDescriptorDisplay, inspectorY);
+        const bool categoryChanged = enumButton("category", fieldDescriptorCategory, inspectorY + 48, categories);
+        field("tag", fieldDescriptorTag, inspectorY + 96);
+        const auto tagIndex = value->tags.empty() ? noContentIndex : std::min(selectedAnimationMarkerIndex_, value->tags.size() - 1);
+        if (ui.button({panel.x + 8, inspectorY + 144, 54, 18}, "ADD") && writable && !contentEditValues_[fieldDescriptorTag].empty()) {
+            auto updated = *value; updated.tags.push_back(contentEditValues_[fieldDescriptorTag]); std::string error;
+            if (contentWorkspace_->updateAuthoringDescriptor(key.id, updated, error)) { selectedAnimationMarkerIndex_ = updated.tags.size() - 1; refresh("Descriptor tag added"); } else status_ = error;
+            return;
+        }
+        if (ui.button({panel.x + 66, inspectorY + 144, 54, 18}, "EDIT") && writable && tagIndex != noContentIndex) {
+            auto updated = *value; updated.tags[tagIndex] = contentEditValues_[fieldDescriptorTag]; std::string error;
+            if (contentWorkspace_->updateAuthoringDescriptor(key.id, updated, error)) refresh("Descriptor tag updated"); else status_ = error; return;
+        }
+        if (ui.button({panel.x + 124, inspectorY + 144, 64, 18}, "REMOVE") && writable && tagIndex != noContentIndex) {
+            auto updated = *value; updated.tags.erase(updated.tags.begin() + static_cast<std::ptrdiff_t>(tagIndex)); std::string error;
+            if (contentWorkspace_->updateAuthoringDescriptor(key.id, updated, error)) refresh("Descriptor tag removed"); else status_ = error; return;
+        }
+        if (writable && (input.enterPressed || categoryChanged) &&
+            (contentFocusedField_ == fieldDescriptorDisplay || contentFocusedField_ == fieldDescriptorCategory)) {
+            auto updated = *value; updated.displayName = contentEditValues_[fieldDescriptorDisplay];
+            const auto it = std::find(categories.begin(), categories.end(), contentEditValues_[fieldDescriptorCategory]);
+            if (it != categories.end()) updated.category = static_cast<game::content::AuthoringCategory>(it - categories.begin());
+            std::string error; if (contentWorkspace_->updateAuthoringDescriptor(key.id, updated, error)) refresh("Descriptor updated"); else status_ = error;
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::tileSemantic) {
+        const auto* value = contentWorkspace_->tileSemantic(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key;
+            contentEditValues_[fieldSemanticTileset] = std::string(value->tilesetId.value());
+            contentEditValues_[fieldSemanticSource] = std::to_string(value->sourceIndex);
+            contentEditValues_[fieldSemanticFamily] = value->family;
+            contentEditValues_[fieldSemanticPreferredLayer] = value->preferredLayer;
+            contentEditValues_[fieldSemanticRole] = game::authoring::toString(value->role);
+            contentEditValues_[fieldSemanticTopology] = game::authoring::toString(value->topology);
+            contentEditValues_[fieldSemanticEdges] = std::to_string(static_cast<int>(value->north)) + "," + std::to_string(static_cast<int>(value->east)) + "," + std::to_string(static_cast<int>(value->south)) + "," + std::to_string(static_cast<int>(value->west)); }
+        const auto roles = std::array<std::string_view, 7>{"floor", "wall", "corner", "ledge", "opening", "detail", "unknown"};
+        const auto topologies = std::array<std::string_view, 9>{"unknown", "interior", "straightHorizontal", "straightVertical", "outerCorner", "innerCorner", "cap", "junction", "architecturalDetail"};
+        field("tilesetId", fieldSemanticTileset, inspectorY); field("sourceIndex", fieldSemanticSource, inspectorY + 48); field("family", fieldSemanticFamily, inspectorY + 96);
+        const bool roleChanged = enumButton("role", fieldSemanticRole, inspectorY + 144, roles);
+        const bool topologyChanged = enumButton("topology", fieldSemanticTopology, inspectorY + 192, topologies);
+        field("preferredLayer", fieldSemanticPreferredLayer, inspectorY + 240); field("edges N,E,S,W", fieldSemanticEdges, inspectorY + 288);
+        const bool flipChanged = ui.button({panel.x + 8, inspectorY + 336, panel.width - 16, 20}, value->flipXAllowed ? "FLIP X ALLOWED" : "FLIP X DISABLED", value->flipXAllowed);
+        if (writable && (input.enterPressed || roleChanged || topologyChanged || flipChanged) && contentFocusedField_ >= fieldSemanticTileset && contentFocusedField_ <= fieldSemanticEdges) {
+            auto updated = *value; std::string error; bool ok = true;
+            if (contentFocusedField_ == fieldSemanticTileset) updated.tilesetId = simulation::DefinitionId{contentEditValues_[fieldSemanticTileset]};
+            else if (contentFocusedField_ == fieldSemanticSource) { const auto p = parseUnsigned(contentEditValues_[fieldSemanticSource]); if (!p) ok = false; else updated.sourceIndex = *p; }
+            else if (contentFocusedField_ == fieldSemanticFamily) updated.family = contentEditValues_[fieldSemanticFamily];
+            else if (contentFocusedField_ == fieldSemanticPreferredLayer) updated.preferredLayer = contentEditValues_[fieldSemanticPreferredLayer];
+            else if (contentFocusedField_ == fieldSemanticRole || roleChanged) { const auto it = std::find(roles.begin(), roles.end(), contentEditValues_[fieldSemanticRole]); if (it == roles.end()) ok = false; else updated.role = static_cast<game::authoring::TileRole>(it - roles.begin()); }
+            else if (contentFocusedField_ == fieldSemanticTopology || topologyChanged) { const auto it = std::find(topologies.begin(), topologies.end(), contentEditValues_[fieldSemanticTopology]); if (it == topologies.end()) ok = false; else updated.topology = static_cast<game::authoring::TileTopology>(it - topologies.begin()); }
+            else if (contentFocusedField_ == fieldSemanticEdges) { const auto p = parseIntegerList<4>(contentEditValues_[fieldSemanticEdges]); if (!p || (*p)[0] < 0 || (*p)[0] > 4 || (*p)[1] < 0 || (*p)[1] > 4 || (*p)[2] < 0 || (*p)[2] > 4 || (*p)[3] < 0 || (*p)[3] > 4) ok = false; else { updated.north = static_cast<game::authoring::EdgeProfile>((*p)[0]); updated.east = static_cast<game::authoring::EdgeProfile>((*p)[1]); updated.south = static_cast<game::authoring::EdgeProfile>((*p)[2]); updated.west = static_cast<game::authoring::EdgeProfile>((*p)[3]); } }
+            if (flipChanged) updated.flipXAllowed = !updated.flipXAllowed;
+            if (ok && contentWorkspace_->updateTileSemantic(key.id, updated, error)) refresh("Tile semantic updated"); else status_ = ok ? error : "Tile semantic field is invalid";
+        }
+        return;
+    }
+    if (key.kind == ContentDefinitionKind::stamp) {
+        const auto* value = contentWorkspace_->stamp(key.id); if (!value) return;
+        if (contentEditKey_ != key) { resetContentEditState(); contentEditKey_ = key; contentEditValues_[fieldStampDisplay] = value->displayName; contentEditValues_[fieldStampSize] = std::to_string(value->width) + "," + std::to_string(value->height); contentEditValues_[fieldStampAnchor] = pointText(value->anchor); contentEditValues_[fieldStampConfidence] = game::authoring::toString(value->confidence); contentEditValues_[fieldStampCell] = "0,0,"; }
+        const auto confidence = std::array<std::string_view, 3>{"confirmed", "probable", "unverified"};
+        field("displayName", fieldStampDisplay, inspectorY); field("width,height", fieldStampSize, inspectorY + 48); field("anchor x,y", fieldStampAnchor, inspectorY + 96); field("cell x,y,tileId", fieldStampCell, inspectorY + 144);
+        const auto cellIndex = value->cells.empty() ? noContentIndex : std::min(selectedAnimationMarkerIndex_, value->cells.size() - 1);
+        const auto gridWidth = std::min<std::uint32_t>(value->width, 8);
+        const auto gridHeight = std::min<std::uint32_t>(value->height, 8);
+        const int gridTop = inspectorY + 216;
+        ui.label("STAMP GRID", panel.x + 8, gridTop - 14);
+        for (std::uint32_t row = 0; row < gridHeight; ++row) for (std::uint32_t column = 0; column < gridWidth; ++column) {
+            const auto cell = std::find_if(value->cells.begin(), value->cells.end(), [&](const auto& item) {
+                return item.x == static_cast<int>(column) && item.y == static_cast<int>(row);
+            });
+            const auto cellIndexAtPosition = cell == value->cells.end() ? noContentIndex
+                : static_cast<std::size_t>(cell - value->cells.begin());
+            if (ui.button({panel.x + 8 + static_cast<int>(column) * 22,
+                           gridTop + static_cast<int>(row) * 20, 20, 18},
+                          cell == value->cells.end() ? "." : "*", cellIndex == cellIndexAtPosition) &&
+                writable) {
+                if (cellIndexAtPosition == noContentIndex) {
+                    auto updated = *value; updated.cells.push_back({static_cast<int>(column), static_cast<int>(row), {}}); std::string error;
+                    if (contentWorkspace_->updateStamp(key.id, updated, error)) {
+                        selectedAnimationMarkerIndex_ = updated.cells.size() - 1; refresh("Stamp cell added"); return;
+                    }
+                    status_ = error;
+                } else selectedAnimationMarkerIndex_ = cellIndexAtPosition;
+            }
+        }
+        const int cellControlsY = gridTop + static_cast<int>(gridHeight) * 20 + 4;
+        if (cellIndex != noContentIndex) { if (ui.button({panel.x + 8, cellControlsY, panel.width - 16, 16}, std::string("Cell ") + std::to_string(cellIndex) + "  " + std::string(value->cells[cellIndex].tileId.value()), true)) { contentEditValues_[fieldStampCell] = std::to_string(value->cells[cellIndex].x) + "," + std::to_string(value->cells[cellIndex].y) + "," + std::string(value->cells[cellIndex].tileId.value()); } }
+        if (ui.button({panel.x + 8, cellControlsY + 20, 54, 18}, "ADD") && writable) { auto updated = *value; updated.cells.push_back({0, 0, {}}); std::string error; if (contentWorkspace_->updateStamp(key.id, updated, error)) { selectedAnimationMarkerIndex_ = updated.cells.size() - 1; refresh("Stamp cell added"); } else status_ = error; return; }
+        if (ui.button({panel.x + 66, cellControlsY + 20, 64, 18}, "REMOVE") && writable && cellIndex != noContentIndex) { auto updated = *value; updated.cells.erase(updated.cells.begin() + static_cast<std::ptrdiff_t>(cellIndex)); std::string error; if (contentWorkspace_->updateStamp(key.id, updated, error)) refresh("Stamp cell removed"); else status_ = error; return; }
+        const bool confidenceChanged = enumButton("confidence", fieldStampConfidence, cellControlsY + 44, confidence);
+        if (writable && (input.enterPressed || confidenceChanged) && contentFocusedField_ >= fieldStampDisplay && contentFocusedField_ <= fieldStampCell) {
+            auto updated = *value; std::string error; bool ok = true;
+            if (contentFocusedField_ == fieldStampDisplay) updated.displayName = contentEditValues_[fieldStampDisplay];
+            else if (contentFocusedField_ == fieldStampSize) { const auto p = parseIntegerList<2>(contentEditValues_[fieldStampSize]); if (!p || (*p)[0] < 0 || (*p)[1] < 0) ok = false; else { updated.width = static_cast<std::uint32_t>((*p)[0]); updated.height = static_cast<std::uint32_t>((*p)[1]); } }
+            else if (contentFocusedField_ == fieldStampAnchor) { const auto p = parseIntegerList<2>(contentEditValues_[fieldStampAnchor]); if (!p) ok = false; else updated.anchor = {(*p)[0], (*p)[1]}; }
+            else if (contentFocusedField_ == fieldStampCell && cellIndex != noContentIndex) { const auto comma = contentEditValues_[fieldStampCell].find(','); const auto comma2 = contentEditValues_[fieldStampCell].find(',', comma == std::string::npos ? comma : comma + 1); if (comma == std::string::npos || comma2 == std::string::npos) ok = false; else { try { updated.cells[cellIndex].x = std::stoi(contentEditValues_[fieldStampCell].substr(0, comma)); updated.cells[cellIndex].y = std::stoi(contentEditValues_[fieldStampCell].substr(comma + 1, comma2 - comma - 1)); updated.cells[cellIndex].tileId = simulation::DefinitionId{contentEditValues_[fieldStampCell].substr(comma2 + 1)}; } catch (...) { ok = false; } } }
+            const auto it = std::find(confidence.begin(), confidence.end(), contentEditValues_[fieldStampConfidence]); if (it != confidence.end()) updated.confidence = static_cast<game::authoring::SemanticConfidence>(it - confidence.begin());
+            if (ok && contentWorkspace_->updateStamp(key.id, updated, error)) refresh("Stamp updated"); else status_ = ok ? error : "Stamp field is invalid";
+        }
+        return;
+    }
     if (key.kind == ContentDefinitionKind::staticSprite || key.kind == ContentDefinitionKind::animation || key.kind == ContentDefinitionKind::visualImage || key.kind == ContentDefinitionKind::enemyVisual || key.kind == ContentDefinitionKind::objectVisual || key.kind == ContentDefinitionKind::npcVisual) return;
     showReadOnlyFields("Typed editor", {{"category", ContentWorkspaceDocument::categoryName(key.kind)}, {"id", std::string(key.id.value())}});
 }
@@ -2883,6 +3193,19 @@ void EditorApp::drawMap(render::Renderer2D& renderer,core::RectI viewport) const
             renderer.drawImageRegionNearest(*tileset->image,tileset->atlas.sourceRect(reference.sourceIndex),{screen.x,screen.y,scaled,scaled},world::hasFlag(reference.flags,world::TileFlags::flipX));}}
     if(showCollision_){for(int y=visible.firstY;y<=visible.lastY;++y)for(int x=visible.firstX;x<=visible.lastX;++x){if(data.collision[static_cast<std::size_t>(y)*data.width+static_cast<std::size_t>(x)]==0)continue;const auto screen=worldToScreen({x*static_cast<int>(data.tileSize),y*static_cast<int>(data.tileSize)},viewport);renderer.fillRect({screen.x,screen.y,scaled,scaled},collisionColor);}}
     if(document_.viewport().showGrid&&scaled>=4&&!visible.empty()){for(int x=visible.firstX;x<=visible.lastX+1;++x){const auto p=worldToScreen({x*static_cast<int>(data.tileSize),0},viewport);renderer.fillRect({p.x,viewport.y,1,viewport.height},gridColor);}for(int y=visible.firstY;y<=visible.lastY+1;++y){const auto p=worldToScreen({0,y*static_cast<int>(data.tileSize)},viewport);renderer.fillRect({viewport.x,p.y,viewport.width,1},gridColor);}}
+    if (mapTileSelection_ || drag_.kind == DragState::Kind::tileSelection) {
+        const auto origin = mapTileSelection_ ? mapTileSelection_->origin
+            : TileCoordinate{static_cast<std::uint32_t>(std::min(drag_.worldStart.x, drag_.worldCurrent.x)),
+                             static_cast<std::uint32_t>(std::min(drag_.worldStart.y, drag_.worldCurrent.y))};
+        const auto width = mapTileSelection_ ? mapTileSelection_->width
+            : static_cast<std::uint32_t>(std::abs(drag_.worldCurrent.x - drag_.worldStart.x) + 1);
+        const auto height = mapTileSelection_ ? mapTileSelection_->height
+            : static_cast<std::uint32_t>(std::abs(drag_.worldCurrent.y - drag_.worldStart.y) + 1);
+        const auto screen = worldToScreen({static_cast<int>(origin.x * data.tileSize),
+                                           static_cast<int>(origin.y * data.tileSize)}, viewport);
+        outline(renderer, {screen.x, screen.y, static_cast<int>(width * scaled),
+                           static_cast<int>(height * scaled)}, selectedColor);
+    }
 }
 
 void EditorApp::drawEntities(render::Renderer2D& renderer,core::RectI viewport) const{
@@ -2910,9 +3233,10 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     if (!tile && drag_.kind==DragState::Kind::none) return;
     const auto tool=document_.activeTool();
     if(input.pointer.leftPressed&&inside){
-        if((tool==EditorTool::tilePencil||tool==EditorTool::tileErase||tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase) && tile){drag_.kind=DragState::Kind::brush;drag_.stroke={*tile};}
+        if(tool==EditorTool::tileSelection && tile){drag_.kind=DragState::Kind::tileSelection;drag_.worldStart={static_cast<int>(tile->x),static_cast<int>(tile->y)};drag_.worldCurrent=drag_.worldStart;}
+        else if((tool==EditorTool::tilePencil||tool==EditorTool::tileErase||tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase) && tile){drag_.kind=DragState::Kind::brush;drag_.stroke={*tile};}
         else if((tool==EditorTool::tileRectangle||tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase) && tile){drag_.kind=DragState::Kind::rectangle;drag_.worldStart={static_cast<int>(tile->x),static_cast<int>(tile->y)};drag_.worldCurrent=drag_.worldStart;}
-        else if((tool==EditorTool::tileFill && input.alt)||tool==EditorTool::tileEyedropper){if(tile){const auto index=static_cast<std::size_t>(tile->y)*document_.data().width+tile->x;const auto cell=document_.data().layers[document_.activeLayer()].cells[index];if(cell){const auto& ref=document_.data().tileReferences[*cell];selectedTileset_=ref.tilesetId;selectedTile_=ref.sourceIndex;tileFlipX_=world::hasFlag(ref.flags,world::TileFlags::flipX);tilePaletteScroll_=0;}if(tool==EditorTool::tileEyedropper)document_.activeTool()=EditorTool::tilePencil;}}
+        else if((tool==EditorTool::tileFill && input.alt)||tool==EditorTool::tileEyedropper){if(tile){const auto index=static_cast<std::size_t>(tile->y)*document_.data().width+tile->x;const auto cell=document_.data().layers[document_.activeLayer()].cells[index];if(cell){const auto& ref=document_.data().tileReferences[*cell];selectedTileset_=ref.tilesetId;selectedTile_=ref.sourceIndex;tileFlipX_=world::hasFlag(ref.flags,world::TileFlags::flipX);tileBrush_={ref.tilesetId,1,1,{ref}};tilePaletteScroll_=0;}if(tool==EditorTool::tileEyedropper)document_.activeTool()=EditorTool::tilePencil;}}
         else if(tool==EditorTool::tileFill && tile)execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),tileFloodCells(document_.data(),document_.activeLayer(),tile->x,tile->y),selectedTileReference()));
         else if((tool==EditorTool::collisionFill||tool==EditorTool::collisionFillErase) && tile)execute(std::make_unique<SetCollisionCommand>(collisionFloodCells(document_.data(),tile->x,tile->y),tool==EditorTool::collisionFill));
         else if(tool==EditorTool::stampPlace && tile && selectedStamp_<content_.authoringSemantics().stamps().size()) execute(std::make_unique<PlaceStampCommand>(document_.activeLayer(),content_.authoringSemantics().stamps()[selectedStamp_],*tile,content_.authoringSemantics()));
@@ -2921,10 +3245,19 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
         else if(tool==EditorTool::select){auto hit=hitTest(worldPoint);if(hit){document_.selection()=*hit;if(hit->kind==SelectionKind::region){const auto it=std::find_if(document_.regions().begin(),document_.regions().end(),[&](const auto& r){return r.id==hit->instanceId;});if(it!=document_.regions().end()&&std::abs(worldPoint.x-(it->bounds.x+it->bounds.width))<8&&std::abs(worldPoint.y-(it->bounds.y+it->bounds.height))<8){drag_.kind=DragState::Kind::regionResize;drag_.regionStart=it->bounds;drag_.worldCurrent=worldPoint;return;}}if(hit->kind!=SelectionKind::none){drag_.kind=DragState::Kind::move;drag_.worldStart=worldPoint;drag_.worldCurrent=snapped;if(hit->kind==SelectionKind::region){auto it=std::find_if(document_.regions().begin(),document_.regions().end(),[&](const auto& r){return r.id==hit->instanceId;});drag_.entityStart={it->bounds.x,it->bounds.y};}else if(hit->kind==SelectionKind::playerSpawn){auto it=std::find_if(document_.data().playerSpawns.begin(),document_.data().playerSpawns.end(),[&](const auto& v){return v.id.value()==hit->authoredId;});drag_.entityStart=it->position;}else if(hit->kind==SelectionKind::mapLink){auto it=std::find_if(document_.data().links.begin(),document_.data().links.end(),[&](const auto& v){return v.id==hit->authoredId;});drag_.entityStart={it->trigger.x,it->trigger.y};}else{auto point=[&](){if(hit->kind==SelectionKind::enemy)return std::find_if(document_.data().enemies.begin(),document_.data().enemies.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;if(hit->kind==SelectionKind::npc)return std::find_if(document_.data().npcs.begin(),document_.data().npcs.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;if(hit->kind==SelectionKind::object)return std::find_if(document_.data().objects.begin(),document_.data().objects.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;return std::find_if(document_.data().pickups.begin(),document_.data().pickups.end(),[&](const auto& v){return v.id==hit->instanceId;})->position;}();drag_.entityStart=point;}}}else document_.selection().clear();}
     }
     if(drag_.kind==DragState::Kind::brush&&input.pointer.leftDown&&tile){if(std::none_of(drag_.stroke.begin(),drag_.stroke.end(),[&](auto v){return v.x==tile->x&&v.y==tile->y;}))drag_.stroke.push_back(*tile);}
-    if(drag_.kind==DragState::Kind::rectangle||drag_.kind==DragState::Kind::regionCreate||drag_.kind==DragState::Kind::regionResize||drag_.kind==DragState::Kind::move){if(drag_.kind!=DragState::Kind::rectangle||tile)drag_.worldCurrent=(drag_.kind==DragState::Kind::rectangle)?core::WorldPointI{static_cast<int>(tile->x),static_cast<int>(tile->y)}:snapped;}
+    if(drag_.kind==DragState::Kind::rectangle||drag_.kind==DragState::Kind::tileSelection||drag_.kind==DragState::Kind::regionCreate||drag_.kind==DragState::Kind::regionResize||drag_.kind==DragState::Kind::move){if((drag_.kind==DragState::Kind::rectangle||drag_.kind==DragState::Kind::tileSelection)&&tile)drag_.worldCurrent={static_cast<int>(tile->x),static_cast<int>(tile->y)};else if(drag_.kind!=DragState::Kind::rectangle&&drag_.kind!=DragState::Kind::tileSelection)drag_.worldCurrent=snapped;}
     if(input.pointer.leftReleased){
-        if(drag_.kind==DragState::Kind::brush){if(tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase)execute(std::make_unique<SetCollisionCommand>(drag_.stroke,tool==EditorTool::collisionPaint));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),drag_.stroke,tool==EditorTool::tileErase?std::nullopt:std::optional<maps::MapTileReference>{selectedTileReference()}));}
-        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else execute(std::make_unique<PaintTilesCommand>(document_.activeLayer(),cells,selectedTileReference()));}
+        const auto paintBrush = [&](const std::vector<TileCoordinate>& origins, bool erase) {
+            TileBrushSelection brush = tileBrush_;
+            if (!brush.valid()) brush = {selectedTileset_, 1, 1, {selectedTileReference()}};
+            auto compound = std::make_unique<CompoundEditorCommand>("Paint Tile Brush");
+            for (const auto origin : origins) for (const auto& placement : brushPlacements(brush, origin, document_.data()))
+                compound->add(std::make_unique<PaintTilesCommand>(document_.activeLayer(), std::vector<TileCoordinate>{placement.first}, erase ? std::nullopt : std::optional<maps::MapTileReference>{placement.second}));
+            execute(std::move(compound));
+        };
+        if(drag_.kind==DragState::Kind::tileSelection){const auto minX=std::min(drag_.worldStart.x,drag_.worldCurrent.x);const auto minY=std::min(drag_.worldStart.y,drag_.worldCurrent.y);const auto maxX=std::max(drag_.worldStart.x,drag_.worldCurrent.x);const auto maxY=std::max(drag_.worldStart.y,drag_.worldCurrent.y);mapTileSelection_=MapTileSelection{{static_cast<std::uint32_t>(minX),static_cast<std::uint32_t>(minY)},static_cast<std::uint32_t>(maxX-minX+1),static_cast<std::uint32_t>(maxY-minY+1)};status_="Map tile selection ready for stamp authoring";}
+        else if(drag_.kind==DragState::Kind::brush){if(tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase)execute(std::make_unique<SetCollisionCommand>(drag_.stroke,tool==EditorTool::collisionPaint));else paintBrush(drag_.stroke,tool==EditorTool::tileErase);}
+        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else paintBrush(cells, false);}
         else if(drag_.kind==DragState::Kind::move&&drag_.worldCurrent!=drag_.entityStart)execute(std::make_unique<MoveEntityCommand>(document_.selection().kind,document_.selection().instanceId,drag_.entityStart,drag_.worldCurrent,document_.selection().authoredId));
         else if(drag_.kind==DragState::Kind::regionCreate){world::AabbI bounds{std::min(drag_.worldStart.x,drag_.worldCurrent.x),std::min(drag_.worldStart.y,drag_.worldCurrent.y),std::abs(drag_.worldCurrent.x-drag_.worldStart.x),std::abs(drag_.worldCurrent.y-drag_.worldStart.y)};if(bounds.width>0&&bounds.height>0){const auto id=document_.allocatePersistentId();execute(std::make_unique<PlaceEntityCommand>(RegionPlacement{id,"region."+std::to_string(id.value),bounds}));}}
         else if(drag_.kind==DragState::Kind::regionResize){world::AabbI after=drag_.regionStart;after.width=std::max(1,drag_.worldCurrent.x-after.x);after.height=std::max(1,drag_.worldCurrent.y-after.y);execute(std::make_unique<ResizeRegionCommand>(document_.selection().instanceId,drag_.regionStart,after));}
@@ -2971,6 +3304,7 @@ void EditorApp::selectTileset(int direction) {
     index = direction > 0 ? (index + 1U) % count : (index + count - 1U) % count;
     selectedTileset_ = definitions[index].id;
     selectedTile_ = 0;
+    tileBrush_ = {selectedTileset_, 1, 1, {selectedTileReference()}};
     tilePaletteScroll_ = 0;
     if (!selectedTilesetVisual()) { status_ = definitions[index].displayName + " image is unavailable"; }
 }
@@ -2985,13 +3319,268 @@ void EditorApp::placeSelected(core::WorldPointI point){const auto id=document_.a
 }
 
 void EditorApp::drawInspector(EditorUiContext& ui,core::RectI panel){int y=10;ui.label("PROPERTIES",panel.x+8,y);y+=18;ui.label(std::string(document_.data().id.value()),panel.x+8,y);y+=18;
-    if(const auto* semantic=content_.authoringSemantics().findTile(selectedTileset_,selectedTile_)) { ui.label("TILE: "+std::string(semantic->id.value()),panel.x+8,y); y+=14; ui.label(std::string(toString(semantic->role))+" / "+toString(semantic->topology),panel.x+8,y); y+=14; ui.label("FlipX "+std::string(semantic->flipXAllowed?"allowed":"not approved"),panel.x+8,y); y+=18; }
-    else { ui.label("TILE: Unclassified (RAW)",panel.x+8,y); y+=18; }
+    if (mapPaletteTab_ == MapPaletteTab::rules) {
+        ui.label("WORLD RULES", panel.x + 8, y); y += 18;
+        const auto objectFor = [&](bool activation, bool door) -> simulation::PersistentInstanceId {
+            for (const auto& object : document_.data().objects) {
+                const auto* definition = content_.objects().find(object.definitionId);
+                if (!definition) continue;
+                if ((!activation || definition->activation.has_value()) &&
+                    (!door || definition->door.has_value())) return object.id;
+            }
+            return {};
+        };
+        const auto regionTarget = [&]() -> simulation::DefinitionId {
+            return document_.regions().empty() ? simulation::DefinitionId{}
+                : simulation::DefinitionId{document_.regions().front().regionId};
+        };
+        const auto encounterTarget = [&]() -> simulation::DefinitionId {
+            return document_.encounters().empty() ? simulation::DefinitionId{}
+                : document_.encounters().front().id;
+        };
+        if (ui.button({panel.x + 8, y, 76, 18}, "ADD", false)) {
+            maps::WorldRuleDefinition rule;
+            rule.id = simulation::DefinitionId{"rule.editor." + std::to_string(document_.rules().size() + 1)};
+            const auto object = objectFor(true, false);
+            if (object) rule.trigger = {maps::WorldTriggerKind::objectActivated, {}, object};
+            else rule.trigger = {maps::WorldTriggerKind::mapEntered, {}, {}};
+            rule.actions.push_back({maps::WorldActionKind::setFlag, {"flag.editor.rule"}, {}, {}});
+            std::string error;
+            if (document_.addRule(std::move(rule), error)) {
+                selectedRuleIndex_ = document_.rules().size() - 1;
+                status_ = "World rule added";
+            } else status_ = error;
+        }
+        if (document_.rules().empty()) {
+            ui.label("No authored rules", panel.x + 8, y + 28);
+            return;
+        }
+        selectedRuleIndex_ = std::min(selectedRuleIndex_, document_.rules().size() - 1);
+        int listY = y + 24;
+        for (std::size_t index = 0; index < document_.rules().size(); ++index) {
+            if (ui.button({panel.x + 8, listY, panel.width - 16, 18},
+                          document_.rules()[index].id.value(), selectedRuleIndex_ == index)) {
+                selectedRuleIndex_ = index;
+            }
+            listY += 20;
+            if (listY > panel.height - 118) break;
+        }
+        const auto& rule = document_.rules()[selectedRuleIndex_];
+        const auto triggerNames = std::array<std::string_view, 8>{"mapEntered", "regionEntered", "regionExited", "encounterStarted", "encounterCompleted", "objectOpened", "objectActivated", "objectDeactivated"};
+        const auto triggerIndex = static_cast<std::size_t>(rule.trigger.kind);
+        ui.label("TRIGGER", panel.x + 8, panel.height - 110);
+        if (ui.button({panel.x + 8, panel.height - 96, panel.width - 16, 18},
+                      triggerNames[std::min(triggerIndex, triggerNames.size() - 1)], false)) {
+            const auto next = (triggerIndex + 1) % triggerNames.size();
+            maps::WorldTrigger trigger;
+            trigger.kind = static_cast<maps::WorldTriggerKind>(next);
+            if (trigger.kind == maps::WorldTriggerKind::regionEntered || trigger.kind == maps::WorldTriggerKind::regionExited) trigger.definitionTarget = regionTarget();
+            else if (trigger.kind == maps::WorldTriggerKind::encounterStarted || trigger.kind == maps::WorldTriggerKind::encounterCompleted) trigger.definitionTarget = encounterTarget();
+            else if (trigger.kind == maps::WorldTriggerKind::objectOpened) trigger.instanceTarget = objectFor(false, false);
+            else if (trigger.kind == maps::WorldTriggerKind::objectActivated || trigger.kind == maps::WorldTriggerKind::objectDeactivated) trigger.instanceTarget = objectFor(true, false);
+            std::string error;
+            if (!document_.setRuleTrigger(rule.id, trigger, error)) status_ = error;
+        }
+        ui.label("conditions " + std::to_string(rule.conditions.size()) +
+                 " / actions " + std::to_string(rule.actions.size()), panel.x + 8, panel.height - 74);
+        if (ui.button({panel.x + 8, panel.height - 54, 78, 18}, rule.once ? "ONCE ON" : "ONCE OFF", rule.once)) {
+            std::string error; if (!document_.setRuleOnce(rule.id, !rule.once, error)) status_ = error;
+        }
+        if (ui.button({panel.x + 92, panel.height - 54, 72, 18}, "ADD COND")) {
+            const auto object = objectFor(true, false);
+            if (!object) status_ = "No activation-capable object placement";
+            else { std::string error; if (!document_.addRuleCondition(rule.id, {maps::WorldConditionKind::objectActive, {}, object}, error)) status_ = error; }
+        }
+        if (ui.button({panel.x + 170, panel.height - 54, 72, 18}, "ADD ACT")) {
+            maps::WorldAction action;
+            if (!content_.presentationEffects().definitions().empty()) action = {maps::WorldActionKind::playPresentationEffect, content_.presentationEffects().definitions().front().id, {}, {}};
+            else action = {maps::WorldActionKind::setFlag, {"flag.editor.action"}, {}, {}};
+            std::string error; if (!document_.addRuleAction(rule.id, action, error)) status_ = error;
+        }
+        if (ui.button({panel.x + 8, panel.height - 30, 78, 18}, "REMOVE")) {
+            std::string error; if (!document_.removeRule(rule.id, error)) status_ = error; else selectedRuleIndex_ = 0;
+        }
+        return;
+    }
+    if (mapPaletteTab_ == MapPaletteTab::encounters) {
+        ui.label("ENCOUNTERS", panel.x + 8, y); y += 18;
+        if (ui.button({panel.x + 8, y, 76, 18}, "ADD", false)) {
+            maps::EncounterDefinition encounter;
+            encounter.id = simulation::DefinitionId{"encounter.editor." + std::to_string(document_.encounters().size() + 1)};
+            if (!document_.data().enemies.empty()) encounter.participants.push_back(document_.data().enemies.front().id);
+            if (contentWorkspace_) {
+                for (const auto& key : contentWorkspace_->index()) {
+                    if (key.kind == ContentDefinitionKind::rewardGrant) {
+                        encounter.rewardGrantId = key.id;
+                        break;
+                    }
+                }
+            }
+            std::string error;
+            if (document_.addEncounter(std::move(encounter), error)) {
+                selectedEncounterIndex_ = document_.encounters().size() - 1;
+                status_ = "Encounter added";
+            } else status_ = error;
+        }
+        if (document_.encounters().empty()) { ui.label("No authored encounters", panel.x + 8, y + 28); return; }
+        selectedEncounterIndex_ = std::min(selectedEncounterIndex_, document_.encounters().size() - 1);
+        int listY = y + 24;
+        for (std::size_t index = 0; index < document_.encounters().size(); ++index) {
+            if (ui.button({panel.x + 8, listY, panel.width - 16, 18}, document_.encounters()[index].id.value(), selectedEncounterIndex_ == index)) selectedEncounterIndex_ = index;
+            listY += 20;
+            if (listY > panel.height - 112) break;
+        }
+        const auto& encounter = document_.encounters()[selectedEncounterIndex_];
+        ui.label("participants " + std::to_string(encounter.participants.size()), panel.x + 8, panel.height - 108);
+        if (ui.button({panel.x + 8, panel.height - 88, 80, 18}, "ADD ENEMY")) {
+            simulation::PersistentInstanceId candidate{};
+            for (const auto& enemy : document_.data().enemies) if (std::find(encounter.participants.begin(), encounter.participants.end(), enemy.id) == encounter.participants.end()) { candidate = enemy.id; break; }
+            if (!candidate) status_ = "No unused enemy placement";
+            else { std::string error; if (!document_.addEncounterParticipant(encounter.id, candidate, error)) status_ = error; }
+        }
+        if (ui.button({panel.x + 94, panel.height - 88, 80, 18}, "REMOVE" ) && !encounter.participants.empty()) {
+            std::string error; if (!document_.removeEncounterParticipant(encounter.id, encounter.participants.back(), error)) status_ = error;
+        }
+        if (ui.button({panel.x + 8, panel.height - 64, panel.width - 16, 18}, encounter.rewardGrantId ? "CYCLE REWARD" : "SET REWARD")) {
+            std::vector<simulation::DefinitionId> grants;
+            if (contentWorkspace_) for (const auto& key : contentWorkspace_->index())
+                if (key.kind == ContentDefinitionKind::rewardGrant) grants.push_back(key.id);
+            if (!grants.empty()) {
+                std::optional<simulation::DefinitionId> next = grants.front();
+                if (encounter.rewardGrantId) {
+                    const auto it = std::find(grants.begin(), grants.end(), *encounter.rewardGrantId);
+                    next = it == grants.end() || std::next(it) == grants.end() ? grants.front() : *std::next(it);
+                }
+                std::string error; if (!document_.setEncounterRewardGrant(encounter.id, next, error)) status_ = error;
+            } else status_ = "No RewardGrant definitions available";
+        }
+        if (ui.button({panel.x + 8, panel.height - 40, panel.width - 16, 18}, "DELETE ENCOUNTER")) {
+            std::string error; if (!document_.removeEncounter(encounter.id, error)) status_ = error; else selectedEncounterIndex_ = 0;
+        }
+        return;
+    }
+    if(const auto* semantic=content_.authoringSemantics().findTile(selectedTileset_,selectedTile_)) {
+        ui.label("TILE: "+std::string(semantic->id.value()),panel.x+8,y); y+=14;
+        ui.label(std::string(toString(semantic->role))+" / "+toString(semantic->topology),panel.x+8,y); y+=14;
+        ui.label("FlipX "+std::string(semantic->flipXAllowed?"allowed":"not approved"),panel.x+8,y);
+        if (ui.button({panel.x + 8, y + 16, panel.width - 16, 18}, "OPEN SEMANTIC")) {
+            selectedContentCategory_ = ContentDefinitionKind::tileSemantic;
+            selectedContentDefinition_ = ContentDefinitionKey{ContentDefinitionKind::tileSemantic, semantic->id};
+            resetContentEditState(); resetContentPreviewState(); contentMode_ = true; return;
+        }
+        y+=40;
+    } else {
+        ui.label("TILE: Unclassified (RAW)",panel.x+8,y); y+=18;
+        if (contentWorkspace_ && contentWorkspace_->writable() &&
+            ui.button({panel.x + 8, y, panel.width - 16, 18}, "CREATE SEMANTIC FROM TILE")) {
+            newContentDefinitionId_ = "tile." + std::string(selectedTileset_.value()) + "." + std::to_string(selectedTile_);
+            if (!contentWorkspace_->files().empty()) {
+                std::error_code relativeError;
+                newContentDefinitionFile_ = std::filesystem::relative(
+                    contentWorkspace_->files().front().path, contentWorkspace_->root(), relativeError).generic_string();
+            }
+            selectedContentCategory_ = ContentDefinitionKind::tileSemantic;
+            selectedContentDefinition_.reset();
+            resetContentEditState(); resetContentPreviewState(); contentMode_ = true;
+            status_ = "Semantic draft prepared from selected raw tile";
+            return;
+        }
+        y+=24;
+    }
+    if (mapTileSelection_ && contentWorkspace_ && contentWorkspace_->writable() &&
+        ui.button({panel.x + 8, y, panel.width - 16, 18}, "CREATE STAMP FROM SELECTION")) {
+        const auto& data = document_.data();
+        const auto& layer = data.layers[document_.activeLayer()];
+        game::content::AuthoredStamp stamp;
+        stamp.displayName = "Map Selection";
+        stamp.width = mapTileSelection_->width;
+        stamp.height = mapTileSelection_->height;
+        bool valid = true;
+        for (std::uint32_t row = 0; row < stamp.height && valid; ++row) for (std::uint32_t column = 0; column < stamp.width; ++column) {
+            const auto x = mapTileSelection_->origin.x + column;
+            const auto yTile = mapTileSelection_->origin.y + row;
+            if (x >= data.width || yTile >= data.height) { valid = false; break; }
+            const auto cellIndex = static_cast<std::size_t>(yTile) * data.width + x;
+            if (cellIndex >= layer.cells.size() || !layer.cells[cellIndex] ||
+                *layer.cells[cellIndex] >= data.tileReferences.size()) { valid = false; break; }
+            const auto& reference = data.tileReferences[*layer.cells[cellIndex]];
+            const auto* semantic = content_.authoringSemantics().findTile(reference.tilesetId, reference.sourceIndex);
+            if (!semantic) { valid = false; break; }
+            stamp.cells.push_back({static_cast<int>(column), static_cast<int>(row), semantic->id});
+        }
+        if (!valid) {
+            status_ = "Cannot create stamp: every selected tile needs a semantic definition";
+        } else {
+            pendingStampFromSelection_ = stamp;
+            newContentDefinitionId_ = "stamp.map.selection";
+            if (!contentWorkspace_->files().empty()) {
+                std::error_code relativeError;
+                newContentDefinitionFile_ = std::filesystem::relative(
+                    contentWorkspace_->files().front().path, contentWorkspace_->root(), relativeError).generic_string();
+            }
+            selectedContentCategory_ = ContentDefinitionKind::stamp;
+            selectedContentDefinition_.reset();
+            resetContentEditState(); resetContentPreviewState(); contentMode_ = true;
+            status_ = "Stamp draft prepared from map selection";
+            return;
+        }
+    }
+    if (mapTileSelection_) y += 24;
     const auto& selection=document_.selection();if(selection.kind==SelectionKind::none){ui.label("No selection",panel.x+8,y);}else{ui.label("Selection",panel.x+8,y);y+=16;if(selection.instanceId)ui.label("ID "+std::to_string(selection.instanceId.value),panel.x+8,y);else ui.label(selection.authoredId,panel.x+8,y);y+=20;
-        simulation::DefinitionId definition;for(const auto& enemy:document_.data().enemies)if(enemy.id==selection.instanceId)definition=enemy.definitionId;
+        simulation::DefinitionId definition; ContentDefinitionKind definitionKind = ContentDefinitionKind::enemy;
+        if (selection.kind == SelectionKind::enemy) for(const auto& enemy:document_.data().enemies)if(enemy.id==selection.instanceId){definition=enemy.definitionId;definitionKind=ContentDefinitionKind::enemy;}
+        if (selection.kind == SelectionKind::npc) for(const auto& npc:document_.data().npcs)if(npc.id==selection.instanceId){definition=npc.definitionId;definitionKind=ContentDefinitionKind::npc;}
+        if (selection.kind == SelectionKind::object) for(const auto& object:document_.data().objects)if(object.id==selection.instanceId){definition=object.definitionId;definitionKind=ContentDefinitionKind::object;}
+        if (selection.kind == SelectionKind::pickup) for(const auto& pickup:document_.data().pickups)if(pickup.id==selection.instanceId){definition=pickup.definitionId;definitionKind=ContentDefinitionKind::pickup;}
+        if (!definition.empty() && ui.button({panel.x + 8, y, panel.width - 16, 20}, "OPEN DEFINITION")) {
+            selectedContentCategory_ = definitionKind; selectedContentDefinition_ = ContentDefinitionKey{definitionKind, definition};
+            resetContentEditState(); resetContentPreviewState(); contentMode_ = true; return;
+        }
+        y+=24;
+    if (selection.kind == SelectionKind::region) {
+        const auto region = std::find_if(document_.regions().begin(), document_.regions().end(),
+            [&](const auto& value) { return value.id == selection.instanceId; });
+        if (region != document_.regions().end()) {
+            ui.label("Region " + region->regionId, panel.x + 8, y);
+            ui.label("Bounds " + std::to_string(region->bounds.x) + "," +
+                     std::to_string(region->bounds.y) + "," +
+                     std::to_string(region->bounds.width) + "," +
+                     std::to_string(region->bounds.height), panel.x + 8, y + 16);
+            const auto& effects = content_.presentationEffects().definitions();
+            if (ui.button({panel.x + 8, y + 38, panel.width - 16, 18},
+                          region->environmentEffectId ? "CYCLE ENVIRONMENT EFFECT" : "SET ENVIRONMENT EFFECT") &&
+                !effects.empty()) {
+                std::optional<simulation::DefinitionId> next = effects.front().id;
+                if (region->environmentEffectId) {
+                    const auto it = std::find_if(effects.begin(), effects.end(),
+                        [&](const auto& effect) { return effect.id == *region->environmentEffectId; });
+                    next = it == effects.end() || std::next(it) == effects.end()
+                        ? effects.front().id : std::next(it)->id;
+                }
+                std::string error;
+                if (!document_.setRegionEnvironmentEffect(
+                        simulation::DefinitionId{region->regionId}, next, error)) status_ = error;
+            }
+            if (ui.button({panel.x + 8, y + 62, panel.width - 16, 18}, "CLEAR ENVIRONMENT EFFECT")) {
+                std::string error;
+                if (!document_.setRegionEnvironmentEffect(
+                        simulation::DefinitionId{region->regionId}, std::nullopt, error)) status_ = error;
+            }
+            if (region->environmentEffectId) {
+                ui.label("Effect " + std::string(region->environmentEffectId->value()),
+                         panel.x + 8, y + 86);
+                if (ui.button({panel.x + 8, y + 104, panel.width - 16, 18}, "OPEN EFFECT")) {
+                    selectedContentCategory_ = ContentDefinitionKind::presentationEffect;
+                    selectedContentDefinition_ = ContentDefinitionKey{
+                        ContentDefinitionKind::presentationEffect, *region->environmentEffectId};
+                    resetContentEditState(); resetContentPreviewState(); contentMode_ = true; return;
+                }
+            }
+        }
+    }
     const auto schemas=propertySchemasFor(content_,definition);for(const auto& schema:schemas){ui.label(schema.displayName,panel.x+8,y);y+=14;std::int64_t value=std::get<std::int64_t>(schema.defaultValue);const auto outer=document_.propertyOverrides().find(selection.instanceId.value);bool overridden=false;if(outer!=document_.propertyOverrides().end()){const auto found=outer->second.find(schema.id);if(found!=outer->second.end()){value=std::get<std::int64_t>(found->second);overridden=true;}}
             ui.label(std::to_string(value)+(overridden?" *":""),panel.x+8,y+4);if(ui.button({panel.x+90,y,32,18},"-"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,PropertyValue{value-1},content_));if(ui.button({panel.x+126,y,32,18},"+"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,PropertyValue{value+1},content_));if(ui.button({panel.x+162,y,72,18},"RESET"))execute(std::make_unique<SetPropertyCommand>(selection.instanceId,schema,std::nullopt,content_));y+=24;}}
-    y=panel.height-150;ui.label("VALIDATION",panel.x+8,y);y+=16;validationCache_.refreshIfNeeded(document_,content_);const auto& report=validationCache_.structural();const auto& semanticReport=validationCache_.semantic();ui.label("Structural: "+std::to_string(report.errorCount())+" errors",panel.x+8,y);y+=14;ui.label("Semantic: "+std::to_string(semanticReport.warningCount())+" warnings",panel.x+8,y);y+=16;for(const auto& issue:report.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}for(const auto& issue:semanticReport.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}
+    y=panel.height-150;ui.label("VALIDATION",panel.x+8,y);y+=16;if(contentWorkspace_&&!contentWorkspace_->valid()){ui.label("CONTENT: unavailable",panel.x+8,y);y+=14;}validationCache_.refreshIfNeeded(document_,content_);const auto& report=validationCache_.structural();const auto& semanticReport=validationCache_.semantic();ui.label("Structural: "+std::to_string(report.errorCount())+" errors",panel.x+8,y);y+=14;ui.label("Semantic: "+std::to_string(semanticReport.warningCount())+" warnings",panel.x+8,y);y+=16;for(const auto& issue:report.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}for(const auto& issue:semanticReport.issues){if(y>panel.height-12)break;ui.label(issue.message.substr(0,32),panel.x+8,y);y+=12;}
 }
 
 void EditorApp::drawNewMapDialog(EditorUiContext& ui,const EditorInputState& input){const int width=360,height=220,x=(framebuffer_->width()-width)/2,y=(framebuffer_->height()-height)/2;ui.panel({x,y,width,height});ui.label("NEW MAP",x+12,y+12);std::array<std::string*,4> fields{&newMapId_,&newMapWidth_,&newMapHeight_,&newMapTileSize_};const std::array<const char*,4> names{"MapId","Width","Height","Tile Size"};
@@ -3024,12 +3613,13 @@ void EditorApp::shellCommand(EditorShellCommand command){
 bool EditorApp::open(const std::filesystem::path& path,std::string& error){auto loaded=EditorDocument::open(path,content_,error);if(!loaded)return false;playtest_.stop();document_=std::move(*loaded);contentMode_=false;validationCache_.invalidate();frameMap(viewportBounds_);return true;}
 bool EditorApp::save(std::string& error){if(contentMode_)return saveAll(error);return document_.save(content_,error);}bool EditorApp::saveAs(const std::filesystem::path& path,std::string& error){if(contentMode_){error="Content workspace Save As is not supported; save the selected workspace files";return false;}return document_.saveAs(path,content_,error);}
 bool EditorApp::autosave(std::string& error){error.clear();if(!document_.dirty())return true;const auto path=document_.autosavePath();if(!path)return true;const bool saved=document_.saveBackup(*path,content_,error);if(saved)status_="Autosave backup written: "+path->string();return saved;}
-bool EditorApp::saveAll(std::string& error){if(contentWorkspace_&&contentWorkspace_->dirty()){if(!contentWorkspace_->saveAll(error))return false;status_="Content workspace saved";}refreshContentRegistry();if(!contentMode_&&document_.dirty())return document_.save(content_,error);error.clear();return true;}
+bool EditorApp::saveAll(std::string& error){if(contentWorkspace_&&contentWorkspace_->dirty()){if(!contentWorkspace_->saveAll(error))return false;status_="Content workspace saved";}refreshContentRegistry();if(document_.dirty()){if(!document_.save(content_,error))return false;}error.clear();return true;}
 bool EditorApp::validateWorkspace(){const bool contentValid=contentWorkspace_&&contentWorkspace_->validateWorkspace();refreshContentRegistry();const bool visualValid=runVisualValidation();if(!contentValid){status_="Workspace invalid; asset validation skipped";}else if(!visualValid){status_="Content valid; visual asset diagnostics reported";}else{status_="Workspace and visual assets valid";}return contentValid&&visualValid;}
 void EditorApp::refreshContentRegistry(){
     if (!contentWorkspace_) return;
     if (contentWorkspace_->compiledRegistry()) content_ = *contentWorkspace_->compiledRegistry();
     else content_ = game::GameContentRegistry{};
+    validationCache_.invalidate();
     runtimeTilesets_ = game::RuntimeTilesetCatalog(content_.tilesets());
     visualValidationAttempted_ = false;
     visualValidationRevision_ = noContentIndex;
@@ -3072,7 +3662,7 @@ bool EditorApp::runVisualValidation(){
     visualDiagnostics_ = loaded.diagnostics;
     return static_cast<bool>(loaded);
 }
-void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}std::string error;if(!playtest_.start(document_.data(),content_,error)){status_=error;return;}status_="Playtest active: runtime world built from document snapshot";}
+void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}if(contentWorkspace_&&!contentWorkspace_->compiledRegistry()){status_="Playtest unavailable: Content Workspace is invalid";return;}std::string error;if(!playtest_.start(document_.data(),content_,error)){status_=error;return;}status_="Playtest active: runtime world built from document snapshot";}
 std::string EditorApp::windowTitle() const{std::string title=contentMode_?"Dungeon Underworld - Content Studio - ":"Dungeon Underworld - Map Maker - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?"Builtin content":"Content workspace");else title.append(document_.data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
 void EditorApp::updateStatus(core::RectI viewport,const EditorInputState& input){if(contentMode_)return;if(input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height){const auto world=screenToWorld({input.pointer.x,input.pointer.y},viewport);std::ostringstream out;out<<"World "<<world.x<<','<<world.y<<"  Tile "<<world.x/document_.data().tileSize<<','<<world.y/document_.data().tileSize<<"  Zoom "<<static_cast<int>(zoom()*100)<<'%';status_=out.str();}}
 

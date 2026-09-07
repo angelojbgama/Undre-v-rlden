@@ -35,7 +35,7 @@ struct EditorSelection final {
 enum class EditorTool {
     select, tilePencil, tileErase, tileRectangle, tileFill, tileEyedropper, collisionPaint,
     collisionErase, collisionRectangle, collisionRectangleErase, collisionFill,
-    collisionFillErase, entityPlace, regionCreate, stampPlace
+    collisionFillErase, entityPlace, regionCreate, stampPlace, tileSelection
 };
 
 struct EditorViewportState final {

@@ -127,11 +127,11 @@ FASE 17 — Visual Content Boundary                     DONE
 17B — Authored Animation + Visual Sets                DONE
 17C — Runtime Visual Content Loader                   DONE
 17D — External Visual Content Vertical Slice          DONE
-FASE 18 — Content Studio                              IN PROGRESS
+FASE 18 — Content Studio                              DONE
 18A — Content Studio Foundation                       DONE
 18B — Visual Asset + Animation Authoring              DONE
 18C — Gameplay Content Editors                        DONE
-18D — Unified Content/Map Workflow                    FUTURE
+18D — Unified Content/Map Workflow                    DONE
 ```
 
 Baseline validada da Fase 6:
@@ -1354,8 +1354,9 @@ it does not regenerate manual authored geometry after a `.umap` is opened.
 14E — Encounter Foundation — DONE.
 
 The full Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
-networking remain future work. Content Studio 18A, 18B and 18C are now closed; 18D is
-the remaining Studio slice for unified MAP/content authoring.
+networking remain future work. Content Studio 18A through 18D are closed; the single
+MAP/CONTENT shell now provides the unified authored workflow while advanced semantic
+authoring remains a later phase.
 The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
 
@@ -1491,7 +1492,7 @@ DMAP 1.4         (unchanged)
 DSAV 1.8         (unchanged)
 ```
 
-### Phase 18 — Content Studio — IN PROGRESS
+### Phase 18 — Content Studio — DONE
 
 18A — Content Studio Foundation — DONE. The existing Map Maker shell now exposes MAP
 and CONTENT modes. `ContentWorkspaceDocument` preserves individual source JSON files,
@@ -1505,8 +1506,8 @@ frame fields are editable through the typed inspector; explicit validation also
 reports VisualContentLoader asset/decode/bounds diagnostics without changing Content
 JSON v5.
 
-The browser lists all twenty-five categories in deterministic order; categories
-without an 18A inspector are read-only. Builtin content is read-only and an explicit
+The browser lists all twenty-five categories in deterministic order; all categories
+have typed authoring paths after 18D. Builtin content is read-only and an explicit
 `--content` workspace is editable. The unified shell preserves the existing MAP mode
 and keeps both map and content documents alive when switching modes.
 
@@ -1520,14 +1521,19 @@ object and NPC visual profiles have typed binding/state inspectors, including
 optional states, arbitrary visual actions, directional fallback and NPC marker
 fallback. Preview ticks come from a dedicated editor timer and are never driven by
 paint frequency. Grid/viewport state is editor-only and is not serialized.
-18C — Gameplay Content Editors — DONE. Typed gameplay inspectors now cover the
-runtime-content categories while map-semantic categories remain read-only.
-18D — Unified Content/Map Workflow — FUTURE.
+18C — Gameplay Content Editors — DONE. Typed gameplay inspectors cover the
+runtime-content categories.
+18D — Unified Content/Map Workflow — DONE. The MAP perspective now exposes persistent
+tileset/semantic/stamp/entity palettes, deterministic multi-tile brushes, layer
+commands with undo/redo, and navigation between map placements and CONTENT
+definitions. Tilesets, authoring descriptors, tile semantics and stamps have typed
+document mutations and inspectors. Current content revisions invalidate map validation;
+compile/export/playtest never fall back silently to builtin or stale registries.
 
 The next phase is not started here. Asset import, automatic slicing, complex timeline
-editing, hot reload, node graphs, LLM authoring, scripting and networking remain
-deferred. Tileset/semantic/stamp editors and the unified MAP/content workflow remain
-for 18D.
+editing, hot reload, node graphs, LLM authoring, scripting, audio and networking remain
+deferred. Phase 19 is reserved for advanced semantic authoring and Phase 20 for LLM
+authoring.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

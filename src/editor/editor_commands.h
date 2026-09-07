@@ -12,6 +12,24 @@ namespace underworld::editor {
 
 struct TileCoordinate final { std::uint32_t x{}; std::uint32_t y{}; };
 
+// Editor-only palette selection.  The authored map still stores ordinary
+// MapTileReferences; this pattern is expanded into one compound command when
+// it is painted.
+struct TileBrushSelection final {
+    simulation::DefinitionId tilesetId{};
+    std::uint32_t width{1};
+    std::uint32_t height{1};
+    std::vector<maps::MapTileReference> cells;
+    [[nodiscard]] bool valid() const noexcept {
+        return width != 0 && height != 0 &&
+               cells.size() == static_cast<std::size_t>(width) * height;
+    }
+};
+
+[[nodiscard]] std::vector<std::pair<TileCoordinate, maps::MapTileReference>>
+brushPlacements(const TileBrushSelection& brush, TileCoordinate origin,
+               const maps::MapData& data);
+
 class PaintTilesCommand final : public EditorCommand {
 public:
     PaintTilesCommand(std::size_t layer, std::vector<TileCoordinate> cells,
@@ -30,6 +48,56 @@ private:
 };
 
 using EraseTilesCommand = PaintTilesCommand;
+
+class AddLayerCommand final : public EditorCommand {
+public:
+    AddLayerCommand(std::size_t index, std::string name);
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Add Layer"; }
+private:
+    std::size_t index_{};
+    std::string name_;
+    bool applied_{};
+};
+
+class RemoveLayerCommand final : public EditorCommand {
+public:
+    explicit RemoveLayerCommand(std::size_t index) : index_(index) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Remove Layer"; }
+private:
+    std::size_t index_{};
+    std::optional<maps::MapTileLayer> removed_;
+    std::optional<EditorLayerState> removedState_;
+    std::size_t activeBefore_{};
+};
+
+class RenameLayerCommand final : public EditorCommand {
+public:
+    RenameLayerCommand(std::size_t index, std::string name)
+        : index_(index), name_(std::move(name)) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Rename Layer"; }
+private:
+    std::size_t index_{};
+    std::string name_;
+    std::string previous_;
+};
+
+class MoveLayerCommand final : public EditorCommand {
+public:
+    MoveLayerCommand(std::size_t from, std::size_t to) : from_(from), to_(to) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Move Layer"; }
+private:
+    std::size_t from_{};
+    std::size_t to_{};
+    std::size_t activeBefore_{};
+};
 
 class SetCollisionCommand final : public EditorCommand {
 public:

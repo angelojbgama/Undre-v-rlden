@@ -268,6 +268,30 @@ const game::content::AuthoredNpcVisualSet* ContentWorkspaceDocument::npcVisual(
     return mergedAuthored_ ? findId(mergedAuthored_->npcVisuals, id) : nullptr;
 }
 
+const game::content::AuthoredTileset* ContentWorkspaceDocument::tileset(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->tilesets, id) : nullptr;
+}
+
+const game::content::AuthoringDescriptor* ContentWorkspaceDocument::authoringDescriptor(
+    const simulation::DefinitionId& id) const noexcept {
+    if (!mergedAuthored_) return nullptr;
+    const auto it = std::find_if(mergedAuthored_->authoringDescriptors.begin(),
+                                 mergedAuthored_->authoringDescriptors.end(),
+                                 [&](const auto& value) { return value.definitionId == id; });
+    return it == mergedAuthored_->authoringDescriptors.end() ? nullptr : &*it;
+}
+
+const game::content::AuthoredTileSemantic* ContentWorkspaceDocument::tileSemantic(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->tileSemantics, id) : nullptr;
+}
+
+const game::content::AuthoredStamp* ContentWorkspaceDocument::stamp(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->stamps, id) : nullptr;
+}
+
 #define UNDERWORLD_CONTENT_GETTER(name, member, type) \
 const game::content::type* ContentWorkspaceDocument::name( \
     const simulation::DefinitionId& id) const noexcept { \
@@ -439,6 +463,13 @@ bool ContentWorkspaceDocument::addDefinition(
         if (std::string_view(category) == "npcVisuals") return containsId(local->authored.npcVisuals, id);
         if (std::string_view(category) == "dialogues") return containsId(local->authored.dialogues, id);
         if (std::string_view(category) == "quests") return containsId(local->authored.quests, id);
+        if (std::string_view(category) == "authoringDescriptors") {
+            return std::any_of(local->authored.authoringDescriptors.begin(),
+                               local->authored.authoringDescriptors.end(),
+                               [&](const auto& value) { return value.definitionId == id; });
+        }
+        if (std::string_view(category) == "tileSemantics") return containsId(local->authored.tileSemantics, id);
+        if (std::string_view(category) == "stamps") return containsId(local->authored.stamps, id);
         if (std::string_view(category) == "playerProgressions") return containsId(local->authored.playerProgressions, id);
         if (std::string_view(category) == "rewardProfiles") return containsId(local->authored.rewardProfiles, id);
         if (std::string_view(category) == "rewardGrants") return containsId(local->authored.rewardGrants, id);
@@ -698,6 +729,120 @@ bool ContentWorkspaceDocument::removeNpcVisual(const simulation::DefinitionId& i
     return removeDefinition({ContentDefinitionKind::npcVisual, id}, error);
 }
 
+bool ContentWorkspaceDocument::addTileset(const std::filesystem::path& file,
+                                          game::content::AuthoredTileset value,
+                                          std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::tileset, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.tilesets.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateTileset(const simulation::DefinitionId& id,
+                                             game::content::AuthoredTileset value,
+                                             std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::tileset, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.tilesets, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeTileset(const simulation::DefinitionId& id,
+                                             std::string& error) {
+    return removeDefinition({ContentDefinitionKind::tileset, id}, error);
+}
+
+bool ContentWorkspaceDocument::addAuthoringDescriptor(
+    const std::filesystem::path& file, game::content::AuthoringDescriptor value,
+    std::string& error) {
+    const auto id = value.definitionId;
+    return addDefinition(ContentDefinitionKind::authoringDescriptor, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.authoringDescriptors.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateAuthoringDescriptor(
+    const simulation::DefinitionId& id, game::content::AuthoringDescriptor value,
+    std::string& error) {
+    if (value.definitionId != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::authoringDescriptor, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            const auto it = std::find_if(pack.authoringDescriptors.begin(),
+                                         pack.authoringDescriptors.end(),
+                                         [&](const auto& current) { return current.definitionId == id; });
+            if (it == pack.authoringDescriptors.end()) return false;
+            *it = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeAuthoringDescriptor(
+    const simulation::DefinitionId& id, std::string& error) {
+    return removeDefinition({ContentDefinitionKind::authoringDescriptor, id}, error);
+}
+
+bool ContentWorkspaceDocument::addTileSemantic(const std::filesystem::path& file,
+                                               game::content::AuthoredTileSemantic value,
+                                               std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::tileSemantic, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.tileSemantics.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateTileSemantic(const simulation::DefinitionId& id,
+                                                  game::content::AuthoredTileSemantic value,
+                                                  std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::tileSemantic, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.tileSemantics, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeTileSemantic(const simulation::DefinitionId& id,
+                                                  std::string& error) {
+    return removeDefinition({ContentDefinitionKind::tileSemantic, id}, error);
+}
+
+bool ContentWorkspaceDocument::addStamp(const std::filesystem::path& file,
+                                        game::content::AuthoredStamp value,
+                                        std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::stamp, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.stamps.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateStamp(const simulation::DefinitionId& id,
+                                           game::content::AuthoredStamp value,
+                                           std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::stamp, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.stamps, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeStamp(const simulation::DefinitionId& id,
+                                           std::string& error) {
+    return removeDefinition({ContentDefinitionKind::stamp, id}, error);
+}
+
 #define UNDERWORLD_CONTENT_EDITORS(methodName, kindName, memberName, typeName) \
 bool ContentWorkspaceDocument::add##methodName(const std::filesystem::path& file, \
                                              game::content::typeName value, std::string& error) { \
@@ -745,6 +890,7 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
                 return true;
             };
             switch (key.kind) {
+            case ContentDefinitionKind::tileset: return erase(pack.tilesets);
             case ContentDefinitionKind::visualImage: return erase(pack.visualImages);
             case ContentDefinitionKind::staticSprite: return erase(pack.staticSprites);
             case ContentDefinitionKind::animation: return erase(pack.animations);
@@ -761,6 +907,16 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
             case ContentDefinitionKind::npc: return erase(pack.npcs);
             case ContentDefinitionKind::dialogue: return erase(pack.dialogues);
             case ContentDefinitionKind::quest: return erase(pack.quests);
+            case ContentDefinitionKind::authoringDescriptor: {
+                const auto it = std::find_if(pack.authoringDescriptors.begin(),
+                                             pack.authoringDescriptors.end(),
+                                             [&](const auto& value) { return value.definitionId == key.id; });
+                if (it == pack.authoringDescriptors.end()) return false;
+                pack.authoringDescriptors.erase(it);
+                return true;
+            }
+            case ContentDefinitionKind::tileSemantic: return erase(pack.tileSemantics);
+            case ContentDefinitionKind::stamp: return erase(pack.stamps);
             case ContentDefinitionKind::playerProgression: return erase(pack.playerProgressions);
             case ContentDefinitionKind::rewardProfile: return erase(pack.rewardProfiles);
             case ContentDefinitionKind::rewardGrant: return erase(pack.rewardGrants);

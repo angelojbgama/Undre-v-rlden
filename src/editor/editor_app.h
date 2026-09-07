@@ -65,8 +65,15 @@ public:
     [[nodiscard]] const std::string& status() const noexcept { return status_; }
 
 private:
+    enum class MapPaletteTab { tiles, semantics, stamps, entities, rules, encounters };
+    struct MapTileSelection final {
+        TileCoordinate origin{};
+        std::uint32_t width{};
+        std::uint32_t height{};
+        [[nodiscard]] bool valid() const noexcept { return width != 0 && height != 0; }
+    };
     struct DragState final {
-        enum class Kind { none, pan, brush, rectangle, move, regionCreate, regionResize } kind{Kind::none};
+        enum class Kind { none, pan, brush, rectangle, tileSelection, move, regionCreate, regionResize } kind{Kind::none};
         core::PointI pointerStart{};
         core::WorldPointI worldStart{};
         core::WorldPointI worldCurrent{};
@@ -131,10 +138,21 @@ private:
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
     simulation::DefinitionId selectedTileset_{"tileset.dungeon"};
     std::uint32_t selectedTile_{};
+    TileBrushSelection tileBrush_{};
+    MapPaletteTab mapPaletteTab_{MapPaletteTab::tiles};
+    bool paletteDragging_{};
+    std::uint32_t paletteDragStart_{};
+    std::uint32_t paletteDragCurrent_{};
+    std::string layerNameEdit_;
+    bool layerNameFocused_{};
     int tilePaletteScroll_{};
     bool tileFlipX_{};
     std::size_t semanticFamilyIndex_{};
     std::size_t selectedStamp_{};
+    std::size_t selectedRuleIndex_{};
+    std::size_t selectedEncounterIndex_{};
+    std::optional<MapTileSelection> mapTileSelection_;
+    std::optional<game::content::AuthoredStamp> pendingStampFromSelection_;
     bool rawPalette_{};
     bool showCollision_{true};
     bool newMapDialog_{};

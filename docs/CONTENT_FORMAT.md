@@ -81,10 +81,12 @@ data-driven capabilities, not authoritative gameplay state. Player visuals, HUD/
 assets, tileset loading and generic impact VFX remain fixed presentation concerns in
 this phase. Content Studio 18A provides the typed workspace-document shell and 18B
 adds editor-only spritesheet selection, grid/pan/zoom and AnimationClip/Animator
-playback through the same secure asset resolver used by runtime. Preview state is not
-serialized. Asset import, automatic slicing and complex timeline tooling remain
-future work; gameplay inspectors are provided by 18C while map-semantic inspectors
-remain deferred.
+playback through the same secure asset resolver used by runtime. 18C adds typed
+gameplay inspectors and 18D completes typed authoring paths for tilesets, authoring
+descriptors, tile semantics and stamps. All twenty-five categories therefore have a
+typed authoring route while MAP-local authored data remains in UMAP. Preview state,
+palette tabs, layer visibility/lock and multi-tile brush state are not serialized.
+Asset import, automatic slicing and complex timeline tooling remain future work.
 
 ## Content Studio source ownership
 
@@ -122,6 +124,8 @@ delete.
 Attack timelines remain fixed-tick gameplay data, dialogue remains a structured
 node/page/choice list rather than a graph, reward profiles remain probabilistic,
 reward grants remain guaranteed, and shops deliberately have no stock system.
-Tilesets, authoring descriptors, tile semantics and stamps remain read-only until
-18D integrates content authoring with the MAP workflow. Semantic-invalid documents
-remain structurally saveable while compilation is unavailable.
+Tilesets, authoring descriptors, tile semantics and stamps are edited through the same
+workspace ownership, merge, validation and compiler pipeline. Semantic-invalid
+documents remain structurally saveable while compilation is unavailable; map compile
+and playtest use only the current valid registry and never silently fall back to a
+builtin or stale registry.

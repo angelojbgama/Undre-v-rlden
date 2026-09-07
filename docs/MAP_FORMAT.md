@@ -274,9 +274,37 @@ inválidos, dimensões incompatíveis, payloads inválidos e references sem defi
 ## Cadeia runtime
 
 ```text
-MapData -> DMAP v1.1 -> MapCatalog -> deserialize/validate
+MapData -> DMAP 1.4 -> MapCatalog -> deserialize/validate
          -> RuntimeWorldBuilder -> RuntimeMap + factories + WorldPickup/NPC
 ```
 
 Handles são sempre novos. Map Maker e conteúdo authored versionado produzem o mesmo
 `MapData` e chamam o mesmo writer sem dependência de UI no formato.
+
+## Content Studio MAP workflow — Phase 18D
+
+O Content Studio usa a mesma fonte authored UMAP do Map Maker. A perspectiva MAP possui
+paletas editor-only para `TILES`, `SEMANTICS`, `STAMPS` e `ENTITIES`, além das
+ferramentas de seleção, pencil, erase, rectangle, fill, eyedropper, collision,
+region, entity e stamp. A paleta de tiles pode formar uma seleção retangular de várias
+células; o brush é expandido em ordem row-major para referências ordinárias de tile e
+uma edição composta preserva undo/redo. Flood fill continua usando a referência de
+um único tile.
+
+Layers authored podem ser adicionadas, removidas (mantendo ao menos uma), renomeadas e
+reordenadas por commands. Visibilidade e lock são estado do editor: visibilidade não
+altera semantics/runtime e uma layer bloqueada não aceita pintura. Nenhum desses
+estados de ferramenta, palette, brush, lock ou viewport entra no UMAP.
+
+As quatro categorias restantes do Content JSON v5 — `tilesets`,
+`authoringDescriptors`, `tileSemantics` e `stamps` — possuem inspectors e mutations
+typed. A navegação MAP ↔ CONTENT mantém `DefinitionId` para definições e
+`PersistentInstanceId` para placements; abrir uma definição, colocar conteúdo e
+encontrar usages são ações de tooling. Tilesets, semantic tiles e stamps podem ser
+selecionados de volta na paleta. O painel MAP também expõe a edição estruturada de
+regiões/efeitos, world rules e encounters usando os pickers do mapa e do Content
+Workspace. Definitions sem `AuthoringDescriptor` continuam aparecendo pelo
+`DefinitionId`. UMAP v3 e DMAP 1.4 permanecem inalterados.
+Compile/export/playtest usam o registry atual do workspace quando ele é válido; um
+workspace inválido torna a dependência de conteúdo indisponível em vez de usar builtin
+ou cache stale silenciosamente.

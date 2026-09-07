@@ -40,6 +40,24 @@ void insertAt(std::vector<Placement>& values, std::size_t index, Placement value
 
 } // namespace
 
+std::vector<std::pair<TileCoordinate, maps::MapTileReference>>
+brushPlacements(const TileBrushSelection& brush, TileCoordinate origin,
+                const maps::MapData& data) {
+    std::vector<std::pair<TileCoordinate, maps::MapTileReference>> result;
+    if (!brush.valid()) return result;
+    result.reserve(brush.cells.size());
+    for (std::uint32_t y = 0; y < brush.height; ++y) {
+        for (std::uint32_t x = 0; x < brush.width; ++x) {
+            const auto destinationX = origin.x + x;
+            const auto destinationY = origin.y + y;
+            if (destinationX >= data.width || destinationY >= data.height) continue;
+            result.push_back({{destinationX, destinationY},
+                              brush.cells[static_cast<std::size_t>(y) * brush.width + x]});
+        }
+    }
+    return result;
+}
+
 PaintTilesCommand::PaintTilesCommand(std::size_t layer, std::vector<TileCoordinate> cells,
                                      std::optional<maps::MapTileReference> value)
     : layer_(layer), cells_(std::move(cells)), desired_(std::move(value)) {}
@@ -92,6 +110,145 @@ void PaintTilesCommand::revert(EditorDocument& document) noexcept {
         });
         if (!used) { data.tileReferences.pop_back(); }
     }
+}
+
+AddLayerCommand::AddLayerCommand(std::size_t index, std::string name)
+    : index_(index), name_(std::move(name)) {}
+
+bool AddLayerCommand::apply(EditorDocument& document, std::string& error) {
+    auto& data = document.commandData();
+    if (data.layers.size() >= maps::MapLimits::maximumLayers) {
+        error = "map layer limit reached";
+        return false;
+    }
+    if (name_.empty()) {
+        error = "layer name must not be empty";
+        return false;
+    }
+    if (std::any_of(data.layers.begin(), data.layers.end(),
+                    [&](const auto& layer) { return layer.name == name_; })) {
+        error = "layer name is already used";
+        return false;
+    }
+    const std::size_t cells = static_cast<std::size_t>(data.width) * data.height;
+    const auto position = std::min(index_, data.layers.size());
+    data.layers.insert(data.layers.begin() + static_cast<std::ptrdiff_t>(position),
+                       maps::MapTileLayer{name_, true,
+                                          std::vector<std::optional<std::uint32_t>>(cells)});
+    document.layerStates().insert(document.layerStates().begin() +
+                                      static_cast<std::ptrdiff_t>(position),
+                                  EditorLayerState{true, false});
+    if (document.activeLayer() >= position) ++document.activeLayer();
+    index_ = position;
+    applied_ = true;
+    return true;
+}
+
+void AddLayerCommand::revert(EditorDocument& document) noexcept {
+    if (!applied_ || index_ >= document.commandData().layers.size() ||
+        document.commandData().layers.size() <= 1) return;
+    document.commandData().layers.erase(document.commandData().layers.begin() +
+                                        static_cast<std::ptrdiff_t>(index_));
+    if (index_ < document.layerStates().size()) {
+        document.layerStates().erase(document.layerStates().begin() +
+                                     static_cast<std::ptrdiff_t>(index_));
+    }
+    if (document.activeLayer() > index_) --document.activeLayer();
+    if (document.activeLayer() >= document.commandData().layers.size()) {
+        document.activeLayer() = document.commandData().layers.size() - 1U;
+    }
+}
+
+bool RemoveLayerCommand::apply(EditorDocument& document, std::string& error) {
+    auto& data = document.commandData();
+    if (data.layers.size() <= 1) {
+        error = "the map must retain at least one layer";
+        return false;
+    }
+    if (index_ >= data.layers.size()) {
+        error = "layer does not exist";
+        return false;
+    }
+    activeBefore_ = document.activeLayer();
+    removed_ = data.layers[index_];
+    if (index_ < document.layerStates().size()) removedState_ = document.layerStates()[index_];
+    data.layers.erase(data.layers.begin() + static_cast<std::ptrdiff_t>(index_));
+    if (index_ < document.layerStates().size()) {
+        document.layerStates().erase(document.layerStates().begin() +
+                                     static_cast<std::ptrdiff_t>(index_));
+    }
+    if (document.activeLayer() > index_) --document.activeLayer();
+    if (document.activeLayer() >= data.layers.size()) document.activeLayer() = data.layers.size() - 1U;
+    return true;
+}
+
+void RemoveLayerCommand::revert(EditorDocument& document) noexcept {
+    if (!removed_) return;
+    auto& data = document.commandData();
+    const auto position = std::min(index_, data.layers.size());
+    data.layers.insert(data.layers.begin() + static_cast<std::ptrdiff_t>(position), *removed_);
+    const auto state = removedState_.value_or(EditorLayerState{removed_->visible, false});
+    document.layerStates().insert(document.layerStates().begin() +
+                                      static_cast<std::ptrdiff_t>(position), state);
+    document.activeLayer() = std::min(activeBefore_, data.layers.size() - 1U);
+}
+
+bool RenameLayerCommand::apply(EditorDocument& document, std::string& error) {
+    auto& layers = document.commandData().layers;
+    if (index_ >= layers.size()) { error = "layer does not exist"; return false; }
+    if (name_.empty()) { error = "layer name must not be empty"; return false; }
+    if (std::any_of(layers.begin(), layers.end(), [&](const auto& layer) {
+            return layer.name == name_ && &layer != &layers[index_]; })) {
+        error = "layer name is already used";
+        return false;
+    }
+    if (previous_.empty()) previous_ = layers[index_].name;
+    layers[index_].name = name_;
+    return true;
+}
+
+void RenameLayerCommand::revert(EditorDocument& document) noexcept {
+    if (index_ < document.commandData().layers.size() && !previous_.empty()) {
+        document.commandData().layers[index_].name = previous_;
+    }
+}
+
+bool MoveLayerCommand::apply(EditorDocument& document, std::string& error) {
+    auto& data = document.commandData();
+    if (from_ >= data.layers.size() || to_ >= data.layers.size()) {
+        error = "layer move is outside the layer list";
+        return false;
+    }
+    if (from_ == to_) return true;
+    activeBefore_ = document.activeLayer();
+    auto move = [&](auto& values) {
+        auto value = std::move(values[from_]);
+        values.erase(values.begin() + static_cast<std::ptrdiff_t>(from_));
+        values.insert(values.begin() + static_cast<std::ptrdiff_t>(to_), std::move(value));
+    };
+    move(data.layers);
+    if (from_ < document.layerStates().size() && to_ < document.layerStates().size()) {
+        move(document.layerStates());
+    }
+    if (document.activeLayer() == from_) document.activeLayer() = to_;
+    else if (from_ < document.activeLayer() && document.activeLayer() <= to_) --document.activeLayer();
+    else if (to_ <= document.activeLayer() && document.activeLayer() < from_) ++document.activeLayer();
+    return true;
+}
+
+void MoveLayerCommand::revert(EditorDocument& document) noexcept {
+    if (from_ >= document.commandData().layers.size() || to_ >= document.commandData().layers.size() ||
+        from_ == to_) return;
+    auto move = [&](auto& values) {
+        auto value = std::move(values[to_]);
+        values.erase(values.begin() + static_cast<std::ptrdiff_t>(to_));
+        values.insert(values.begin() + static_cast<std::ptrdiff_t>(from_), std::move(value));
+    };
+    move(document.commandData().layers);
+    if (from_ < document.layerStates().size() && to_ < document.layerStates().size()) {
+        move(document.layerStates());
+    }
+    document.activeLayer() = std::min(activeBefore_, document.commandData().layers.size() - 1U);
 }
 
 SetCollisionCommand::SetCollisionCommand(std::vector<TileCoordinate> cells, bool solid)

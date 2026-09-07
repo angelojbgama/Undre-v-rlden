@@ -1943,6 +1943,67 @@ references are displayed and preserved so the user can repair them incrementally
 The typed inspectors cover projectiles, attacks and fixed-tick timelines, behavior
 profiles, enemies, items, pickups, world-object capabilities, NPCs, structured
 dialogue, quests, rewards, shops, progression and presentation effects. Dialogue
-and quest authoring use ordered lists rather than a node graph. Tilesets,
-authoring descriptors, tile semantics and stamps remain read-only until the 18D
-MAP/content workflow.
+and quest authoring use ordered lists rather than a node graph. Phase 18D completes
+typed inspectors and document mutations for tilesets, authoring descriptors, tile
+semantics and stamps, so all twenty-five Content JSON categories have an authored
+editing path.
+
+## Unified MAP/CONTENT workflow — Phase 18D
+
+The Content Studio remains one immediate-mode application shell with two document
+perspectives. Source JSON files and the UMAP document are authored truth; merged
+content, provenance, compiled registry and DMAP are derived artifacts:
+
+```text
+Content Studio
+├ MAP
+│  ├ tile palette / semantic palette / stamps / entities
+│  ├ layers, tools, placements, regions, world rules, encounters
+│  └ authored UMAP
+└ CONTENT
+   ├ gameplay and visual definitions
+   ├ tilesets, authoring descriptors, tile semantics, stamps
+   └ source Content JSON files
+
+Authored Content JSON + UMAP
+             ↓
+      validation / compiler
+             ↓
+    GameContentRegistry + DMAP
+             ↓
+           runtime
+```
+
+The MAP palette uses the existing tileset/semantic/stamp registries and ordinary
+`MapTileReference` storage. A rectangular tile brush is editor-only and expands in
+deterministic row-major order through a compound command, so undo/redo remains one
+coherent edit. Layer add/remove/rename/reorder operations are commands; layer lock,
+editor visibility, active palette, brush, viewport and tool are not serialized.
+
+Map placements retain `PersistentInstanceId` while their definitions retain
+`DefinitionId`. MAP can open a placement's definition in CONTENT, and CONTENT can
+activate place/find-in-map operations for placeable enemy, NPC, object and pickup
+definitions. Definitions without authoring descriptors use their IDs as palette
+fallback labels. Tilesets, semantic tiles and stamps use the same navigation in the
+opposite direction. Regions expose presentation-effect binding, while world rules
+and encounters remain structured list editors with compatible placement pickers.
+Current external workspace content replaces builtin content; an invalid
+workspace invalidates content-dependent map validation, compile/export and playtest
+instead of silently using a stale registry.
+
+Map validation is cached against both the map document revision and the current
+content-derived registry. Save All writes only dirty Content JSON files and the dirty
+UMAP; DMAP is never written implicitly. The current in-memory authored documents can
+be used for editor validation and playtest without a second map editor or a parallel
+renderer.
+
+Human authoring and future LLM authoring converge at the same boundary:
+
+```text
+Human Studio ─┐
+              ├→ Authored DTOs → validators → compiler → runtime
+Future LLM  ──┘
+```
+
+Phase 18D does not add advanced autotiling, a procedural rule solver, asset import,
+hot reload, a dialogue/quest graph, scripting, audio, networking or LLM integration.

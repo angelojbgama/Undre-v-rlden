@@ -3,6 +3,8 @@
 #include "engine/core/image_data.h"
 #include "engine/render/framebuffer.h"
 #include "editor/content_workspace_document.h"
+#include "editor/editor_commands.h"
+#include "editor/editor_document.h"
 #include "editor/visual_preview.h"
 #include "game/audit/audit_session.h"
 #include "game/gameplay/creatures/creature_engine.h"
@@ -1106,6 +1108,84 @@ bool runContentStudioGameplay(ScenarioContext& context) {
     return relationships && runtimeCheck && context.step();
 }
 
+bool runContentStudioUnified(ScenarioContext& context) {
+    namespace content = game::content;
+    namespace editor = underworld::editor;
+    namespace maps = game::maps;
+    namespace simulation = underworld::simulation;
+    namespace gameplay = game::gameplay;
+    if (!runBaseline(context)) return false;
+
+    const auto root = std::filesystem::temp_directory_path() / "underworld_playtest_content_studio_unified";
+    std::error_code fsError; std::filesystem::remove_all(root, fsError); std::filesystem::create_directories(root, fsError);
+    const auto source = root / "unified.json"; std::string error;
+    if (!context.require(content::writeAuthoredContentJsonFile(source, content::makeBuiltinAuthoredContent(), error),
+                         "unified Studio fixture was written")) { std::filesystem::remove_all(root, fsError); return false; }
+    auto workspace = editor::ContentWorkspaceDocument::open(root, error);
+    if (!context.require(workspace && workspace->valid(), "unified Studio workspace opened")) { std::filesystem::remove_all(root, fsError); return false; }
+
+    const auto tilesetId = simulation::DefinitionId{"tileset.studio.unified"};
+    content::AuthoredTileset tileset{tilesetId, "Studio Tiles", "assets/studio-tiles.png", 16, 4, 4};
+    content::AuthoringDescriptor descriptor{{"enemy.studio.unified"}, "Unified Test Enemy", content::AuthoringCategory::enemy, {"test", "enemy"}};
+    content::AuthoredTileSemantic semantic; semantic.id = {"tile.studio.unified.floor"}; semantic.tilesetId = tilesetId; semantic.sourceIndex = 0; semantic.family = "studio"; semantic.role = game::authoring::TileRole::floor;
+    content::AuthoredStamp stamp; stamp.id = {"stamp.studio.unified"}; stamp.displayName = "Studio Stamp"; stamp.width = 1; stamp.height = 1; stamp.cells.push_back({0, 0, semantic.id});
+    content::AuthoredEnemy enemy; enemy.id = descriptor.definitionId; enemy.visualSetId = game::gameplay::creatures::soldierVisualId(); enemy.behaviorProfileId = game::gameplay::creatures::soldierBehaviorId(); enemy.faction = gameplay::Faction::enemy; enemy.maximumHealth = 5; enemy.movementSpeedSubpixelsPerTick = 256; enemy.collisionBody = {0, -8, 12, 8}; enemy.hurtbox = {-6, -18, 12, 18}; enemy.attackIds = {{"attack.soldier.sword"}};
+    content::AuthoredWorldObject object; object.id = {"object.studio.unified.switch"}; object.visualSetId = {"visual.object.chest"}; object.interactable = gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}}; object.activation = gameplay::ObjectActivationDefinition{gameplay::ObjectActivationMode::interactToggle, false, std::nullopt};
+    const bool authored = workspace->addTileset(source, tileset, error) && workspace->addAuthoringDescriptor(source, descriptor, error) &&
+        workspace->addTileSemantic(source, semantic, error) && workspace->addStamp(source, stamp, error) && workspace->addEnemy(source, enemy, error) && workspace->addObject(source, object, error);
+    if (!context.require(authored && workspace->valid(), "unified Studio authored tileset, semantic, stamp and placeable content")) { std::filesystem::remove_all(root, fsError); return false; }
+
+    auto registry = workspace->compiledRegistry();
+    if (!context.require(registry.has_value(), "unified Studio produced a current registry")) { std::filesystem::remove_all(root, fsError); return false; }
+    editor::EditorDocument map = editor::EditorDocument::newMap(simulation::MapId{"map.studio.unified"}, 8, 8, 16, true);
+    if (!context.require(map.execute(std::make_unique<editor::AddLayerCommand>(1, "Foreground"), error), "unified map added a layer")) { std::filesystem::remove_all(root, fsError); return false; }
+    editor::TileBrushSelection brush{tilesetId, 2, 2, {{tilesetId, 0, world::TileFlags::none}, {tilesetId, 1, world::TileFlags::none}, {tilesetId, 4, world::TileFlags::none}, {tilesetId, 5, world::TileFlags::none}}};
+    const auto placements = editor::brushPlacements(brush, {2, 3}, map.data());
+    if (!context.require(placements.size() == 4 && placements[0].first.x == 2 && placements[3].first.y == 4,
+                         "unified map expands a deterministic multi-tile brush")) { std::filesystem::remove_all(root, fsError); return false; }
+    auto brushPaint = std::make_unique<editor::CompoundEditorCommand>("Paint Unified Brush");
+    for (const auto& placement : placements) brushPaint->add(std::make_unique<editor::PaintTilesCommand>(
+        1, std::vector<editor::TileCoordinate>{placement.first}, placement.second));
+    if (!context.require(map.execute(std::move(brushPaint), error) &&
+                         map.data().layers[1].cells[static_cast<std::size_t>(3) * map.data().width + 2].has_value(),
+                         "unified map painted a tile brush")) { std::filesystem::remove_all(root, fsError); return false; }
+    if (!context.require(map.execute(std::make_unique<editor::RenameLayerCommand>(1, "Foreground Studio"), error) && map.execute(std::make_unique<editor::MoveLayerCommand>(1, 0), error), "unified map edited layer order")) { std::filesystem::remove_all(root, fsError); return false; }
+    if (!context.require(map.execute(std::make_unique<editor::PlaceStampCommand>(1, registry->authoringSemantics().stamps().back(), editor::TileCoordinate{4, 4}, registry->authoringSemantics()), error), "unified map placed an authored stamp")) { std::filesystem::remove_all(root, fsError); return false; }
+    const auto enemyInstance = map.allocatePersistentId(); const auto objectInstance = map.allocatePersistentId();
+    if (!context.require(map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::EnemyPlacement{enemyInstance, enemy.id, {24, 24}, gameplay::FacingDirection::down}), error) &&
+                         map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::ObjectPlacement{objectInstance, object.id, {40, 24}, {}}), error),
+                         "unified map placed authored enemy and object instances")) { std::filesystem::remove_all(root, fsError); return false; }
+    const auto effectId = simulation::DefinitionId{"effect.environment.dark"};
+    const auto cueEffectId = simulation::DefinitionId{"effect.world.heavy_impact"};
+    const auto regionInstance = map.allocatePersistentId();
+    if (!context.require(map.execute(std::make_unique<editor::PlaceEntityCommand>(
+            editor::RegionPlacement{regionInstance, "region.studio.unified", {0, 0, 32, 32}, {}}), error) &&
+                         map.setRegionEnvironmentEffect({"region.studio.unified"}, effectId, error),
+                         "unified map authored a region presentation binding")) {
+        std::filesystem::remove_all(root, fsError);
+        return false;
+    }
+    maps::WorldRuleDefinition rule; rule.id = {"rule.studio.unified"}; rule.trigger = {maps::WorldTriggerKind::objectActivated, {}, objectInstance}; rule.actions.push_back({maps::WorldActionKind::playPresentationEffect, cueEffectId, {}, {}});
+    const auto rewardId = registry->rewardGrants().find({"reward.quest.scholar.path"}) ? std::optional<simulation::DefinitionId>{simulation::DefinitionId{"reward.quest.scholar.path"}} : std::nullopt;
+    maps::EncounterDefinition encounter; encounter.id = {"encounter.studio.unified"}; encounter.participants = {enemyInstance}; encounter.rewardGrantId = rewardId;
+    if (!context.require(map.addRule(rule, error) && map.addEncounter(encounter, error), "unified map authored a rule and encounter")) { std::filesystem::remove_all(root, fsError); return false; }
+    const auto mapPath = root / "map.studio.unified.umap"; const auto dmapPath = root / "map.studio.unified.dmap";
+    const bool saved = map.saveAs(mapPath, *registry, error) && map.exportDmap(dmapPath, *registry, error);
+    if (!context.require(saved, "unified Studio saved authored UMAP and compiled DMAP: " + error)) { std::filesystem::remove_all(root, fsError); return false; }
+    const auto catalogs = game::mapValidationCatalogs(*registry);
+    const auto productionDmap = maps::readDmap(dmapPath, &catalogs);
+    if (!context.require(productionDmap.success, "unified Studio DMAP is accepted by the production reader")) { std::filesystem::remove_all(root, fsError); return false; }
+    auto reloadedMap = editor::EditorDocument::open(mapPath, *registry, error);
+    auto reloadedWorkspace = editor::ContentWorkspaceDocument::open(root, error);
+    const bool reloaded = context.require(reloadedMap && reloadedWorkspace && reloadedWorkspace->valid() && reloadedMap->data().layers.size() == 2 &&
+        reloadedMap->data().enemies.size() == 1 && reloadedMap->data().objects.size() == 1 &&
+        reloadedMap->regions().size() == 1 && reloadedMap->regions().front().environmentEffectId == effectId &&
+        !reloadedMap->rules().empty() && !reloadedMap->encounters().empty(),
+        "unified Studio save/reload preserves content, layers, placements, rule and encounter");
+    std::filesystem::remove_all(root, fsError);
+    return reloaded && context.step();
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -1386,6 +1466,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runContentStudioVisuals(context);
     } else if (name == "content_studio_gameplay") {
         passed = runContentStudioGameplay(context);
+    } else if (name == "content_studio_unified") {
+        passed = runContentStudioUnified(context);
     } else if (name == "interactive_world") {
         passed = runInteractiveWorld(context);
     } else if (name == "rewards_loot") {
@@ -1404,7 +1486,7 @@ const std::vector<std::string> allScenarios{
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
         "presentation_feedback", "interactive_world", "visual_content", "content_studio_visuals",
-        "content_studio_gameplay", "rewards_loot"};
+        "content_studio_gameplay", "content_studio_unified", "rewards_loot"};
 
 } // namespace
 

@@ -8336,6 +8336,62 @@ void testPhase18CGameplayContentEditors() {
     std::filesystem::remove_all(root, fsError);
 }
 
+void testPhase18DUnifiedStudioWorkflow() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace simulation = underworld::simulation;
+    const auto root = std::filesystem::temp_directory_path() / "underworld_phase18d_unified_workflow";
+    std::error_code fsError; std::filesystem::remove_all(root, fsError); std::filesystem::create_directories(root, fsError);
+    const auto source = root / "studio.json"; std::string error;
+    expect(content::writeAuthoredContentJsonFile(source, content::makeBuiltinAuthoredContent(), error),
+           "18D writes a unified Content v5 fixture");
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && document->valid(), "18D opens the unified workspace through the existing source pipeline");
+    content::AuthoredTileset tileset{{"tileset.test.18d"}, "18D Tiles", "assets/tiles.png", 16, 4, 4};
+    content::AuthoringDescriptor descriptor{{"enemy.test.18d"}, "Test Enemy", content::AuthoringCategory::enemy, {"test"}};
+    content::AuthoredTileSemantic semantic; semantic.id = {"tile.test.18d"}; semantic.tilesetId = tileset.id; semantic.sourceIndex = 0; semantic.family = "test";
+    content::AuthoredStamp stamp; stamp.id = {"stamp.test.18d"}; stamp.displayName = "Test Stamp"; stamp.width = 1; stamp.height = 1; stamp.cells.push_back({0, 0, semantic.id});
+    content::AuthoredEnemy enemy; enemy.id = descriptor.definitionId; enemy.visualSetId = underworld::game::gameplay::creatures::soldierVisualId(); enemy.behaviorProfileId = underworld::game::gameplay::creatures::soldierBehaviorId(); enemy.maximumHealth = 1; enemy.movementSpeedSubpixelsPerTick = 256; enemy.collisionBody = {0, -8, 12, 8}; enemy.hurtbox = {-6, -18, 12, 18}; enemy.attackIds = {{"attack.soldier.sword"}};
+    expect(document && document->addTileset(source, tileset, error) && document->addAuthoringDescriptor(source, descriptor, error) &&
+               document->addTileSemantic(source, semantic, error) && document->addStamp(source, stamp, error) && document->addEnemy(source, enemy, error) && document->valid(),
+           "18D provides typed authoring paths for Tileset, Descriptor, Semantic, Stamp and Enemy");
+    expect(document->tileset(tileset.id) && document->authoringDescriptor(descriptor.definitionId) &&
+               document->tileSemantic(semantic.id) && document->stamp(stamp.id),
+           "18D typed getters preserve all remaining category ownership");
+    editor::EditorDocument map = editor::EditorDocument::newMap(simulation::MapId{"map.test.18d"}, 8, 8, 16, true);
+    editor::TileBrushSelection brush{tileset.id, 2, 2, {{tileset.id, 0, underworld::world::TileFlags::none}, {tileset.id, 1, underworld::world::TileFlags::none}, {tileset.id, 4, underworld::world::TileFlags::none}, {tileset.id, 5, underworld::world::TileFlags::none}}};
+    const auto placements = editor::brushPlacements(brush, {3, 2}, map.data());
+    expect(placements.size() == 4 && placements[0].first.x == 3 && placements[1].first.x == 4 && placements[2].first.y == 3,
+           "18D expands a multi-tile palette brush in row-major order");
+    expect(map.execute(std::make_unique<editor::AddLayerCommand>(1, "Foreground"), error) && map.data().layers.size() == 2,
+           "18D adds a layer through an undoable command");
+    map.layerStates()[0].locked = true;
+    expect(!map.execute(std::make_unique<editor::PaintTilesCommand>(0, std::vector<editor::TileCoordinate>{{0, 0}}, placements.front().second), error),
+           "18D prevents painting a locked layer");
+    map.layerStates()[0].locked = false;
+    auto brushPaint = std::make_unique<editor::CompoundEditorCommand>("Paint 18D Brush");
+    for (const auto& placement : placements) brushPaint->add(std::make_unique<editor::PaintTilesCommand>(
+        1, std::vector<editor::TileCoordinate>{placement.first}, placement.second));
+    expect(map.execute(std::move(brushPaint), error) &&
+               map.data().layers[1].cells[static_cast<std::size_t>(2) * map.data().width + 3].has_value() &&
+               map.data().tileReferences[map.data().layers[1].cells[static_cast<std::size_t>(2) * map.data().width + 3].value()].sourceIndex == 0 &&
+               map.data().tileReferences[map.data().layers[1].cells[static_cast<std::size_t>(3) * map.data().width + 4].value()].sourceIndex == 5,
+           "18D paints a multi-tile brush as one authored map edit");
+    expect(map.execute(std::make_unique<editor::RenameLayerCommand>(1, "Foreground Renamed"), error) &&
+               map.execute(std::make_unique<editor::MoveLayerCommand>(1, 0), error) && map.data().layers.front().name == "Foreground Renamed",
+           "18D renames and reorders layers through command history");
+    expect(map.undo() && map.data().layers.front().name == "Ground" && map.redo(error) && map.data().layers.front().name == "Foreground Renamed",
+           "18D layer operations support undo and redo");
+    const auto mapPath = root / "map.test.18d.umap";
+    expect(document->saveAll(error) && document->compiledRegistry() && map.saveAs(mapPath, *document->compiledRegistry(), error),
+           "18D saves authored Content and UMAP documents without schema changes");
+    auto reloaded = editor::ContentWorkspaceDocument::open(root, error);
+    auto reloadedMap = editor::EditorDocument::open(mapPath, *document->compiledRegistry(), error);
+    expect(reloaded && reloaded->valid() && reloaded->tileset(tileset.id) && reloaded->stamp(stamp.id) && reloadedMap && reloadedMap->data().layers.size() == 2,
+           "18D save/reload preserves category ownership and authored layer order");
+    std::filesystem::remove_all(root, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -8417,6 +8473,7 @@ int main() {
         testPhase18StudioVisualValidation();
         testPhase18BVisualPreview();
         testPhase18CGameplayContentEditors();
+        testPhase18DUnifiedStudioWorkflow();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';
