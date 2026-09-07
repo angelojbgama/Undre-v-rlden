@@ -687,12 +687,12 @@ bool decodePayload(const JsonValue& value, Reader& reader, std::string_view path
 
 JsonValue encodePayload(const gameplay::PickupPayload& payload) {
     JsonObject objectValue;
-    if (const auto* value = std::get_if<gameplay::HealthPickup>(&payload)) {
+    if (const auto* health = std::get_if<gameplay::HealthPickup>(&payload)) {
         put(objectValue, "kind", stringValue("health"));
-        put(objectValue, "amount", signedValue(value->amount));
-    } else if (const auto* value = std::get_if<gameplay::CurrencyPickup>(&payload)) {
+        put(objectValue, "amount", signedValue(health->amount));
+    } else if (const auto* currency = std::get_if<gameplay::CurrencyPickup>(&payload)) {
         put(objectValue, "kind", stringValue("currency"));
-        put(objectValue, "amount", unsignedValue(value->amount));
+        put(objectValue, "amount", unsignedValue(currency->amount));
     } else {
         const auto& item = std::get<gameplay::ItemPickup>(payload);
         put(objectValue, "kind", stringValue("item"));
@@ -1353,14 +1353,15 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
             if (item == nullptr) { good = false; continue; }
             allowed(*item, reader, path, {"id", "definitionId", "visualId", "position",
                                            "collectionBounds", "payload"});
-            const auto* id = required(*item, value, reader, path, "id");
+            const auto* pickupId = required(*item, value, reader, path, "id");
             const auto* definition = required(*item, value, reader, path, "definitionId");
             const auto* visual = required(*item, value, reader, path, "visualId");
             const auto* position = required(*item, value, reader, path, "position");
             const auto* bounds = required(*item, value, reader, path, "collectionBounds");
             const auto* payload = required(*item, value, reader, path, "payload");
             PickupPlacement decoded;
-            bool itemGood = id != nullptr && readPersistentId(*id, reader, path + ".id", decoded.id);
+            bool itemGood = pickupId != nullptr &&
+                readPersistentId(*pickupId, reader, path + ".id", decoded.id);
             itemGood = definition != nullptr && readId(*definition, reader, path + ".definitionId",
                                                        decoded.definitionId) && itemGood;
             itemGood = visual != nullptr && readId(*visual, reader, path + ".visualId",

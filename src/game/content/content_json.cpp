@@ -84,8 +84,10 @@ ContentJsonDecodeResult readAuthoredContentJsonFile(const std::filesystem::path&
 bool writeAuthoredContentJsonFile(const std::filesystem::path& path,
                                   const AuthoredContentPack& content,
                                   std::string& error) {
-    const auto temporary = path.string() + ".tmp";
-    const auto backup = path.string() + ".bak";
+    auto temporary = path;
+    temporary += ".tmp";
+    auto backup = path;
+    backup += ".bak";
     std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
     if (!file) { error = "could not open content file for writing"; return false; }
     file << encodeAuthoredContentJson(content);
@@ -100,22 +102,48 @@ bool writeAuthoredContentJsonFile(const std::filesystem::path& path,
     file.close();
     std::error_code errorCode;
     std::filesystem::remove(backup, errorCode);
+    if (errorCode) {
+        error = "could not remove stale content backup";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporary, cleanupError);
+        return false;
+    }
     errorCode.clear();
-    if (std::filesystem::exists(path, errorCode)) {
-        if (errorCode || std::rename(path.c_str(), backup.c_str()) != 0) {
+    const bool originalExists = std::filesystem::exists(path, errorCode);
+    if (errorCode) {
+        error = "could not inspect existing content file";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporary, cleanupError);
+        return false;
+    }
+    if (originalExists) {
+        std::filesystem::rename(path, backup, errorCode);
+        if (errorCode) {
             error = "could not preserve existing content file";
-            std::filesystem::remove(temporary, errorCode);
+            std::error_code cleanupError;
+            std::filesystem::remove(temporary, cleanupError);
             return false;
         }
     }
-    if (std::rename(temporary.c_str(), path.c_str()) != 0) {
+    errorCode.clear();
+    std::filesystem::rename(temporary, path, errorCode);
+    if (errorCode) {
         error = "could not replace content file";
         std::error_code restoreError;
-        if (std::filesystem::exists(backup, restoreError)) std::rename(backup.c_str(), path.c_str());
-        std::filesystem::remove(temporary, restoreError);
+        const bool backupExists = std::filesystem::exists(backup, restoreError);
+        if (!restoreError && backupExists) {
+            std::filesystem::rename(backup, path, restoreError);
+        }
+        if (restoreError) error += "; could not restore previous content file";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporary, cleanupError);
         return false;
     }
     std::filesystem::remove(backup, errorCode);
+    if (errorCode) {
+        error = "could not remove content backup after save";
+        return false;
+    }
     error.clear();
     return true;
 }

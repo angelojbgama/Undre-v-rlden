@@ -5896,6 +5896,46 @@ void testPhase13A3JsonDecoders() {
     }
 }
 
+void testContentJsonAtomicWriter() {
+    namespace content = underworld::game::content;
+    const auto root = std::filesystem::temp_directory_path() / "undre content atomic writer";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+    const auto path = root / "content file.json";
+    auto temporary = path;
+    temporary += ".tmp";
+    auto backup = path;
+    backup += ".bak";
+    const content::AuthoredContentPack original = content::makeBuiltinAuthoredContent();
+    content::AuthoredContentPack replacement = original;
+    replacement.tilesets.front().displayName = "Atomic replacement";
+    std::string error = "previous error";
+    {
+        std::ofstream staleBackup(backup, std::ios::binary);
+        staleBackup << "stale backup";
+    }
+    expect(content::writeAuthoredContentJsonFile(path, original, error) && error.empty() &&
+               std::filesystem::exists(path) && !std::filesystem::exists(temporary) &&
+               !std::filesystem::exists(backup),
+           "Content JSON atomic writer creates a new native-path file and cleans temporary artifacts");
+    const auto firstRead = content::readAuthoredContentJsonFile(path);
+    expect(firstRead && firstRead.content &&
+               content::encodeAuthoredContentJson(*firstRead.content) ==
+                   content::encodeAuthoredContentJson(original),
+           "Content JSON atomic writer supports a native-path save/load roundtrip");
+    error = "previous error";
+    expect(content::writeAuthoredContentJsonFile(path, replacement, error) && error.empty() &&
+               std::filesystem::exists(path) && !std::filesystem::exists(temporary) &&
+               !std::filesystem::exists(backup),
+           "Content JSON atomic writer replaces an existing file and removes its backup after success");
+    const auto secondRead = content::readAuthoredContentJsonFile(path);
+    expect(secondRead && secondRead.content && secondRead.content->tilesets.front().displayName ==
+               "Atomic replacement",
+           "Content JSON atomic writer leaves the replacement content readable");
+    std::filesystem::remove_all(root, fsError);
+}
+
 void testPhase13B1ContentWorkspace() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -8535,6 +8575,7 @@ int main() {
         testFixedStepAccumulator();
         testWin32Clock();
         testAuthoredContentBoundary();
+        testContentJsonAtomicWriter();
         testPhase12AProgressionFoundation();
         testPhase12BRewards();
         testPhase12BRewardEventSnapshot();
