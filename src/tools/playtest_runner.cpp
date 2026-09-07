@@ -1143,6 +1143,28 @@ bool runContentStudioUnified(ScenarioContext& context) {
     const auto placements = editor::brushPlacements(brush, {2, 3}, map.data());
     if (!context.require(placements.size() == 4 && placements[0].first.x == 2 && placements[3].first.y == 4,
                          "unified map expands a deterministic multi-tile brush")) { std::filesystem::remove_all(root, fsError); return false; }
+    const editor::TileBrushSelection horizontalBrush{
+        tilesetId, 2, 1, {{tilesetId, 0, world::TileFlags::none},
+                           {tilesetId, 1, world::TileFlags::none}}};
+    const auto patterned = editor::patternRectanglePlacements(
+        horizontalBrush, {1, 1}, {4, 2}, map.data());
+    if (!context.require(patterned.size() == 8 && patterned[0].second.sourceIndex == 0 &&
+                         patterned[1].second.sourceIndex == 1 && patterned[2].second.sourceIndex == 0 &&
+                         patterned[4].second.sourceIndex == 0 &&
+                         std::none_of(patterned.begin(), patterned.end(), [](const auto& placement) {
+                             return placement.first.x == 5;
+                         }), "unified map rectangle repeats a brush without painting outside its bounds")) {
+        std::filesystem::remove_all(root, fsError); return false;
+    }
+    auto patternPaint = std::make_unique<editor::CompoundEditorCommand>("Paint Unified Pattern");
+    for (const auto& placement : patterned) {
+        patternPaint->add(std::make_unique<editor::PaintTilesCommand>(
+            1, std::vector<editor::TileCoordinate>{placement.first}, placement.second));
+    }
+    if (!context.require(map.execute(std::move(patternPaint), error),
+                         "unified map paints the periodic rectangle as one edit")) {
+        std::filesystem::remove_all(root, fsError); return false;
+    }
     auto brushPaint = std::make_unique<editor::CompoundEditorCommand>("Paint Unified Brush");
     for (const auto& placement : placements) brushPaint->add(std::make_unique<editor::PaintTilesCommand>(
         1, std::vector<editor::TileCoordinate>{placement.first}, placement.second));
@@ -1152,9 +1174,23 @@ bool runContentStudioUnified(ScenarioContext& context) {
     if (!context.require(map.execute(std::make_unique<editor::RenameLayerCommand>(1, "Foreground Studio"), error) && map.execute(std::make_unique<editor::MoveLayerCommand>(1, 0), error), "unified map edited layer order")) { std::filesystem::remove_all(root, fsError); return false; }
     if (!context.require(map.execute(std::make_unique<editor::PlaceStampCommand>(1, registry->authoringSemantics().stamps().back(), editor::TileCoordinate{4, 4}, registry->authoringSemantics()), error), "unified map placed an authored stamp")) { std::filesystem::remove_all(root, fsError); return false; }
     const auto enemyInstance = map.allocatePersistentId(); const auto objectInstance = map.allocatePersistentId();
+    const auto npcInstance = map.allocatePersistentId(); const auto pickupInstance = map.allocatePersistentId();
     if (!context.require(map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::EnemyPlacement{enemyInstance, enemy.id, {24, 24}, gameplay::FacingDirection::down}), error) &&
-                         map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::ObjectPlacement{objectInstance, object.id, {40, 24}, {}}), error),
-                         "unified map placed authored enemy and object instances")) { std::filesystem::remove_all(root, fsError); return false; }
+                         map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::ObjectPlacement{objectInstance, object.id, {40, 24}, {}}), error) &&
+                         map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::NpcPlacement{npcInstance, game::gameplay::npcs::guardNpcId(), {56, 24}, gameplay::FacingDirection::down}), error) &&
+                         map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::PickupPlacement{pickupInstance, {"pickup.heart"}, {"visual.pickup.heart"}, {72, 24}, {0, 0, 16, 16}, gameplay::HealthPickup{1}}), error),
+                         "unified map placed authored enemy, NPC, object and pickup instances")) { std::filesystem::remove_all(root, fsError); return false; }
+    const auto enemyUsages = editor::findPlacementUsages(map, {editor::ContentDefinitionKind::enemy, enemy.id});
+    const auto npcUsages = editor::findPlacementUsages(map, {editor::ContentDefinitionKind::npc, game::gameplay::npcs::guardNpcId()});
+    const auto objectUsages = editor::findPlacementUsages(map, {editor::ContentDefinitionKind::object, object.id});
+    const auto pickupUsages = editor::findPlacementUsages(map, {editor::ContentDefinitionKind::pickup, {"pickup.heart"}});
+    if (!context.require(enemyUsages.size() == 1 && npcUsages.size() == 1 && objectUsages.size() == 1 &&
+                         pickupUsages.size() == 1 && enemyUsages.front().instanceId == enemyInstance &&
+                         npcUsages.front().instanceId == npcInstance && objectUsages.front().instanceId == objectInstance &&
+                         pickupUsages.front().instanceId == pickupInstance,
+                         "unified map finds every placeable definition usage in authored order")) {
+        std::filesystem::remove_all(root, fsError); return false;
+    }
     const auto effectId = simulation::DefinitionId{"effect.environment.dark"};
     const auto cueEffectId = simulation::DefinitionId{"effect.world.heavy_impact"};
     const auto regionInstance = map.allocatePersistentId();
@@ -1178,7 +1214,8 @@ bool runContentStudioUnified(ScenarioContext& context) {
     auto reloadedMap = editor::EditorDocument::open(mapPath, *registry, error);
     auto reloadedWorkspace = editor::ContentWorkspaceDocument::open(root, error);
     const bool reloaded = context.require(reloadedMap && reloadedWorkspace && reloadedWorkspace->valid() && reloadedMap->data().layers.size() == 2 &&
-        reloadedMap->data().enemies.size() == 1 && reloadedMap->data().objects.size() == 1 &&
+        reloadedMap->data().enemies.size() == 1 && reloadedMap->data().npcs.size() == 1 &&
+        reloadedMap->data().objects.size() == 1 && reloadedMap->data().pickups.size() == 1 &&
         reloadedMap->regions().size() == 1 && reloadedMap->regions().front().environmentEffectId == effectId &&
         !reloadedMap->rules().empty() && !reloadedMap->encounters().empty(),
         "unified Studio save/reload preserves content, layers, placements, rule and encounter");

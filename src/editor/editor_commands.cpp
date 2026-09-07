@@ -58,6 +58,61 @@ brushPlacements(const TileBrushSelection& brush, TileCoordinate origin,
     return result;
 }
 
+std::vector<std::pair<TileCoordinate, maps::MapTileReference>>
+patternRectanglePlacements(const TileBrushSelection& brush, TileCoordinate minimum,
+                           TileCoordinate maximum, const maps::MapData& data) {
+    std::vector<std::pair<TileCoordinate, maps::MapTileReference>> result;
+    if (!brush.valid() || data.width == 0 || data.height == 0) return result;
+    const auto left = std::min(minimum.x, maximum.x);
+    const auto top = std::min(minimum.y, maximum.y);
+    const auto right = std::min<std::uint32_t>(std::max(minimum.x, maximum.x), data.width - 1U);
+    const auto bottom = std::min<std::uint32_t>(std::max(minimum.y, maximum.y), data.height - 1U);
+    if (left >= data.width || top >= data.height || left > right || top > bottom) return result;
+    result.reserve(static_cast<std::size_t>(right - left + 1U) * (bottom - top + 1U));
+    for (std::uint32_t y = top; y <= bottom; ++y) {
+        for (std::uint32_t x = left; x <= right; ++x) {
+            const auto brushX = (x - left) % brush.width;
+            const auto brushY = (y - top) % brush.height;
+            result.push_back({{x, y}, brush.cells[static_cast<std::size_t>(brushY) * brush.width + brushX]});
+        }
+    }
+    return result;
+}
+
+std::vector<PlacementUsage> findPlacementUsages(const EditorDocument& document,
+                                                const ContentDefinitionKey& key) {
+    std::vector<PlacementUsage> result;
+    switch (key.kind) {
+    case ContentDefinitionKind::enemy:
+        for (const auto& value : document.data().enemies) {
+            if (value.definitionId == key.id) result.push_back({SelectionKind::enemy, value.id, value.position});
+        }
+        break;
+    case ContentDefinitionKind::npc:
+        for (const auto& value : document.data().npcs) {
+            if (value.definitionId == key.id) result.push_back({SelectionKind::npc, value.id, value.position});
+        }
+        break;
+    case ContentDefinitionKind::object:
+        for (const auto& value : document.data().objects) {
+            if (value.definitionId == key.id) result.push_back({SelectionKind::object, value.id, value.position});
+        }
+        break;
+    case ContentDefinitionKind::pickup:
+        for (const auto& value : document.data().pickups) {
+            if (value.definitionId == key.id) result.push_back({SelectionKind::pickup, value.id, value.position});
+        }
+        break;
+    default:
+        break;
+    }
+    return result;
+}
+
+std::size_t nextPlacementUsageIndex(std::size_t current, std::size_t usageCount) noexcept {
+    return usageCount == 0 || current >= usageCount - 1U ? 0 : current + 1U;
+}
+
 PaintTilesCommand::PaintTilesCommand(std::size_t layer, std::vector<TileCoordinate> cells,
                                      std::optional<maps::MapTileReference> value)
     : layer_(layer), cells_(std::move(cells)), desired_(std::move(value)) {}
@@ -78,21 +133,24 @@ bool PaintTilesCommand::apply(EditorDocument& document, std::string& error) {
         }
         if (previous_.empty()) { error = "tile edit is outside map bounds"; return false; }
     }
-    if (!referenceIndex_ && desired_) {
-        const auto found = std::find(data.tileReferences.begin(), data.tileReferences.end(), *desired_);
-        if (found == data.tileReferences.end()) {
-            if (data.tileReferences.size() >= maps::MapLimits::maximumTileReferences) {
-                error = "tile reference limit reached"; return false;
+    if (desired_) {
+        const bool cachedReferenceIsCurrent = referenceIndex_ &&
+            *referenceIndex_ < data.tileReferences.size() &&
+            data.tileReferences[*referenceIndex_] == *desired_;
+        if (!cachedReferenceIsCurrent) {
+            const auto found = std::find(data.tileReferences.begin(), data.tileReferences.end(), *desired_);
+            if (found != data.tileReferences.end()) {
+                referenceIndex_ = static_cast<std::uint32_t>(found - data.tileReferences.begin());
+                ownsReference_ = false;
+            } else {
+                if (data.tileReferences.size() >= maps::MapLimits::maximumTileReferences) {
+                    error = "tile reference limit reached"; return false;
+                }
+                data.tileReferences.push_back(*desired_);
+                referenceIndex_ = static_cast<std::uint32_t>(data.tileReferences.size() - 1);
+                ownsReference_ = true;
             }
-            data.tileReferences.push_back(*desired_);
-            referenceIndex_ = static_cast<std::uint32_t>(data.tileReferences.size() - 1);
-            ownsReference_ = true;
-        } else {
-            referenceIndex_ = static_cast<std::uint32_t>(found - data.tileReferences.begin());
         }
-    } else if (desired_ && ownsReference_ && referenceIndex_ &&
-               *referenceIndex_ == data.tileReferences.size()) {
-        data.tileReferences.push_back(*desired_);
     }
     for (const auto& previous : previous_) {
         data.layers[layer_].cells[previous.index] = desired_ ? referenceIndex_ : std::nullopt;

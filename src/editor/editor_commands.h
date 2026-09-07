@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/content_workspace_document.h"
 #include "editor/editor_document.h"
 #include "game/authoring/authoring_semantics.h"
 
@@ -29,6 +30,27 @@ struct TileBrushSelection final {
 [[nodiscard]] std::vector<std::pair<TileCoordinate, maps::MapTileReference>>
 brushPlacements(const TileBrushSelection& brush, TileCoordinate origin,
                const maps::MapData& data);
+
+// Expands a brush periodically over exactly the requested inclusive rectangle.
+// Unlike brushPlacements(), this function treats the rectangle as the
+// destination area and never starts a new brush at every destination cell.
+[[nodiscard]] std::vector<std::pair<TileCoordinate, maps::MapTileReference>>
+patternRectanglePlacements(const TileBrushSelection& brush, TileCoordinate minimum,
+                           TileCoordinate maximum, const maps::MapData& data);
+
+struct PlacementUsage final {
+    SelectionKind kind{SelectionKind::none};
+    simulation::PersistentInstanceId instanceId{};
+    core::WorldPointI position{};
+    [[nodiscard]] bool operator==(const PlacementUsage&) const noexcept = default;
+};
+
+// Returns usages in authored placement order. This data-only helper is shared
+// by MAP -> CONTENT navigation and headless tests.
+[[nodiscard]] std::vector<PlacementUsage> findPlacementUsages(
+    const EditorDocument& document, const ContentDefinitionKey& key);
+[[nodiscard]] std::size_t nextPlacementUsageIndex(std::size_t current,
+                                                  std::size_t usageCount) noexcept;
 
 class PaintTilesCommand final : public EditorCommand {
 public:

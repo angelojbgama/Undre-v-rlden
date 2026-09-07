@@ -288,8 +288,10 @@ paletas editor-only para `TILES`, `SEMANTICS`, `STAMPS` e `ENTITIES`, além das
 ferramentas de seleção, pencil, erase, rectangle, fill, eyedropper, collision,
 region, entity e stamp. A paleta de tiles pode formar uma seleção retangular de várias
 células; o brush é expandido em ordem row-major para referências ordinárias de tile e
-uma edição composta preserva undo/redo. Flood fill continua usando a referência de
-um único tile.
+uma edição composta preserva undo/redo. No Tile Rectangle, um brush multi-tile é
+repetido periodicamente somente dentro do retângulo inclusivo solicitado; nenhuma
+célula fora dele é alterada e um brush 1x1 preserva o comportamento simples. Flood
+fill continua usando a referência de um único tile.
 
 Layers authored podem ser adicionadas, removidas (mantendo ao menos uma), renomeadas e
 reordenadas por commands. Visibilidade e lock são estado do editor: visibilidade não
@@ -307,4 +309,7 @@ Workspace. Definitions sem `AuthoringDescriptor` continuam aparecendo pelo
 `DefinitionId`. UMAP v3 e DMAP 1.4 permanecem inalterados.
 Compile/export/playtest usam o registry atual do workspace quando ele é válido; um
 workspace inválido torna a dependência de conteúdo indisponível em vez de usar builtin
-ou cache stale silenciosamente.
+ou cache stale silenciosamente. Conteúdo builtin válido é read-only para edição de
+JSON, mas pode ser colocado e localizado em um UMAP editável. `FIND IN MAP` percorre
+as ocorrências da definição no mapa atual em ordem authored e retorna ao primeiro uso
+após o último.

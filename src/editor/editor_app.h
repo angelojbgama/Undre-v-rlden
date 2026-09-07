@@ -164,6 +164,9 @@ private:
     bool contentMode_{};
     ContentDefinitionKind selectedContentCategory_{ContentDefinitionKind::visualImage};
     std::optional<ContentDefinitionKey> selectedContentDefinition_;
+    std::optional<ContentDefinitionKey> findUsageKey_;
+    std::size_t findUsageIndex_{};
+    std::uint64_t findUsageMapRevision_{static_cast<std::uint64_t>(-1)};
     std::optional<ContentDefinitionKey> contentEditKey_;
     std::array<std::string, 160> contentEditValues_{};
     std::size_t selectedAnimationFrameIndex_{};

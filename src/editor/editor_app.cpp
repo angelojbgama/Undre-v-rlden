@@ -1510,18 +1510,42 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
         const auto category = key.kind == ContentDefinitionKind::enemy ? game::AuthoringCategory::enemy :
             key.kind == ContentDefinitionKind::npc ? game::AuthoringCategory::npc :
             key.kind == ContentDefinitionKind::object ? game::AuthoringCategory::object : game::AuthoringCategory::pickup;
-        if (ui.button({panel.x + 8, inspectorY, 108, 20}, "PLACE IN MAP") && writable) {
-            selectedDefinition_ = key.id; selectedCategory_ = category; contentMode_ = false;
-            document_.activeTool() = EditorTool::entityPlace; status_ = "Select a map position to place this definition"; return;
+        if (ui.button({panel.x + 8, inspectorY, 108, 20}, "PLACE IN MAP")) {
+            if (!contentWorkspace_->valid()) {
+                status_ = "Content workspace invalid; placement unavailable";
+            } else {
+                selectedDefinition_ = key.id; selectedCategory_ = category; contentMode_ = false;
+                document_.activeTool() = EditorTool::entityPlace; status_ = "Select a map position to place this definition"; return;
+            }
         }
         if (ui.button({panel.x + 120, inspectorY, 108, 20}, "FIND IN MAP")) {
-            std::optional<EditorSelection> found;
-            if (key.kind == ContentDefinitionKind::enemy) for (const auto& value : document_.data().enemies) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::enemy, value.id, {}}; document_.viewport().worldX = value.position.x - viewportBounds_.width / (2.0 * zoom()); document_.viewport().worldY = value.position.y - viewportBounds_.height / (2.0 * zoom()); break; }
-            if (key.kind == ContentDefinitionKind::npc) for (const auto& value : document_.data().npcs) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::npc, value.id, {}}; break; }
-            if (key.kind == ContentDefinitionKind::object) for (const auto& value : document_.data().objects) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::object, value.id, {}}; break; }
-            if (key.kind == ContentDefinitionKind::pickup) for (const auto& value : document_.data().pickups) if (value.definitionId == key.id) { found = EditorSelection{SelectionKind::pickup, value.id, {}}; break; }
-            if (found) { document_.selection() = *found; contentMode_ = false; status_ = "Found definition usage in current map"; return; }
-            status_ = "Definition has no placement in current map";
+            if (!contentWorkspace_->valid()) {
+                status_ = "Content workspace invalid; map navigation unavailable";
+            } else {
+                if (findUsageKey_ != key || findUsageMapRevision_ != document_.revision()) {
+                    findUsageKey_ = key;
+                    findUsageIndex_ = 0;
+                    findUsageMapRevision_ = document_.revision();
+                }
+                const auto usages = findPlacementUsages(document_, key);
+                if (!usages.empty()) {
+                    const auto& usage = usages[findUsageIndex_ % usages.size()];
+                    document_.selection() = {usage.kind, usage.instanceId, {}};
+                    const double visibleWidth = viewportBounds_.width / zoom();
+                    const double visibleHeight = viewportBounds_.height / zoom();
+                    const double mapWidth = static_cast<double>(document_.data().width * document_.data().tileSize);
+                    const double mapHeight = static_cast<double>(document_.data().height * document_.data().tileSize);
+                    document_.viewport().worldX = std::clamp(static_cast<double>(usage.position.x) - visibleWidth / 2.0,
+                                                             0.0, std::max(0.0, mapWidth - visibleWidth));
+                    document_.viewport().worldY = std::clamp(static_cast<double>(usage.position.y) - visibleHeight / 2.0,
+                                                             0.0, std::max(0.0, mapHeight - visibleHeight));
+                    findUsageIndex_ = nextPlacementUsageIndex(findUsageIndex_, usages.size());
+                    contentMode_ = false;
+                    status_ = "Found definition usage in current map";
+                    return;
+                }
+                status_ = "Definition has no placement in current map";
+            }
         }
     }
     const auto facingNames = std::array<std::string_view, 4>{"down", "up", "left", "right"};
@@ -3255,9 +3279,19 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
                 compound->add(std::make_unique<PaintTilesCommand>(document_.activeLayer(), std::vector<TileCoordinate>{placement.first}, erase ? std::nullopt : std::optional<maps::MapTileReference>{placement.second}));
             execute(std::move(compound));
         };
+        const auto paintPlacements = [&](const std::vector<std::pair<TileCoordinate, maps::MapTileReference>>& placements,
+                                         bool erase) {
+            auto compound = std::make_unique<CompoundEditorCommand>("Paint Tile Pattern");
+            for (const auto& placement : placements) {
+                compound->add(std::make_unique<PaintTilesCommand>(
+                    document_.activeLayer(), std::vector<TileCoordinate>{placement.first},
+                    erase ? std::nullopt : std::optional<maps::MapTileReference>{placement.second}));
+            }
+            execute(std::move(compound));
+        };
         if(drag_.kind==DragState::Kind::tileSelection){const auto minX=std::min(drag_.worldStart.x,drag_.worldCurrent.x);const auto minY=std::min(drag_.worldStart.y,drag_.worldCurrent.y);const auto maxX=std::max(drag_.worldStart.x,drag_.worldCurrent.x);const auto maxY=std::max(drag_.worldStart.y,drag_.worldCurrent.y);mapTileSelection_=MapTileSelection{{static_cast<std::uint32_t>(minX),static_cast<std::uint32_t>(minY)},static_cast<std::uint32_t>(maxX-minX+1),static_cast<std::uint32_t>(maxY-minY+1)};status_="Map tile selection ready for stamp authoring";}
         else if(drag_.kind==DragState::Kind::brush){if(tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase)execute(std::make_unique<SetCollisionCommand>(drag_.stroke,tool==EditorTool::collisionPaint));else paintBrush(drag_.stroke,tool==EditorTool::tileErase);}
-        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else paintBrush(cells, false);}
+        else if(drag_.kind==DragState::Kind::rectangle){const auto cells=rectangleCells(drag_.worldStart.x,drag_.worldStart.y,drag_.worldCurrent.x,drag_.worldCurrent.y,document_.data());if(tool==EditorTool::collisionRectangle||tool==EditorTool::collisionRectangleErase)execute(std::make_unique<SetCollisionCommand>(cells,tool==EditorTool::collisionRectangle));else {TileBrushSelection brush=tileBrush_;if(!brush.valid())brush={selectedTileset_,1,1,{selectedTileReference()}};const auto minimum=TileCoordinate{static_cast<std::uint32_t>(std::max(0,std::min(drag_.worldStart.x,drag_.worldCurrent.x))),static_cast<std::uint32_t>(std::max(0,std::min(drag_.worldStart.y,drag_.worldCurrent.y)))};const auto maximum=TileCoordinate{static_cast<std::uint32_t>(std::max(0,std::max(drag_.worldStart.x,drag_.worldCurrent.x))),static_cast<std::uint32_t>(std::max(0,std::max(drag_.worldStart.y,drag_.worldCurrent.y)))};paintPlacements(patternRectanglePlacements(brush,minimum,maximum,document_.data()),false);}}
         else if(drag_.kind==DragState::Kind::move&&drag_.worldCurrent!=drag_.entityStart)execute(std::make_unique<MoveEntityCommand>(document_.selection().kind,document_.selection().instanceId,drag_.entityStart,drag_.worldCurrent,document_.selection().authoredId));
         else if(drag_.kind==DragState::Kind::regionCreate){world::AabbI bounds{std::min(drag_.worldStart.x,drag_.worldCurrent.x),std::min(drag_.worldStart.y,drag_.worldCurrent.y),std::abs(drag_.worldCurrent.x-drag_.worldStart.x),std::abs(drag_.worldCurrent.y-drag_.worldStart.y)};if(bounds.width>0&&bounds.height>0){const auto id=document_.allocatePersistentId();execute(std::make_unique<PlaceEntityCommand>(RegionPlacement{id,"region."+std::to_string(id.value),bounds}));}}
         else if(drag_.kind==DragState::Kind::regionResize){world::AabbI after=drag_.regionStart;after.width=std::max(1,drag_.worldCurrent.x-after.x);after.height=std::max(1,drag_.worldCurrent.y-after.y);execute(std::make_unique<ResizeRegionCommand>(document_.selection().instanceId,drag_.regionStart,after));}
@@ -3630,6 +3664,9 @@ void EditorApp::refreshContentRegistry(){
 }
 void EditorApp::resetContentEditState() noexcept {
     contentEditKey_.reset();
+    findUsageKey_.reset();
+    findUsageIndex_ = 0;
+    findUsageMapRevision_ = static_cast<std::uint64_t>(-1);
     contentEditValues_.fill({});
     contentEditFrame_ = noContentIndex;
     contentEditMarker_ = noContentIndex;

@@ -8340,6 +8340,7 @@ void testPhase18DUnifiedStudioWorkflow() {
     namespace content = underworld::game::content;
     namespace editor = underworld::editor;
     namespace simulation = underworld::simulation;
+    namespace gameplay = underworld::game::gameplay;
     const auto root = std::filesystem::temp_directory_path() / "underworld_phase18d_unified_workflow";
     std::error_code fsError; std::filesystem::remove_all(root, fsError); std::filesystem::create_directories(root, fsError);
     const auto source = root / "studio.json"; std::string error;
@@ -8363,6 +8364,54 @@ void testPhase18DUnifiedStudioWorkflow() {
     const auto placements = editor::brushPlacements(brush, {3, 2}, map.data());
     expect(placements.size() == 4 && placements[0].first.x == 3 && placements[1].first.x == 4 && placements[2].first.y == 3,
            "18D expands a multi-tile palette brush in row-major order");
+    const editor::TileBrushSelection horizontalBrush{
+        tileset.id, 2, 1, {{tileset.id, 0, underworld::world::TileFlags::none},
+                           {tileset.id, 1, underworld::world::TileFlags::none}}};
+    const auto patterned = editor::patternRectanglePlacements(
+        horizontalBrush, {1, 2}, {4, 3}, map.data());
+    expect(patterned.size() == 8 && patterned[0].second.sourceIndex == 0 &&
+               patterned[1].second.sourceIndex == 1 && patterned[2].second.sourceIndex == 0 &&
+               patterned[4].second.sourceIndex == 0 &&
+               std::none_of(patterned.begin(), patterned.end(), [](const auto& placement) {
+                   return placement.first.x == 5;
+               }),
+           "18D rectangle repeats a 2x1 brush exactly inside its destination bounds");
+    const editor::TileBrushSelection checkerBrush{
+        tileset.id, 2, 2, {{tileset.id, 0, underworld::world::TileFlags::none},
+                           {tileset.id, 1, underworld::world::TileFlags::none},
+                           {tileset.id, 4, underworld::world::TileFlags::none},
+                           {tileset.id, 5, underworld::world::TileFlags::none}}};
+    const auto oddPattern = editor::patternRectanglePlacements(
+        checkerBrush, {0, 0}, {4, 2}, map.data());
+    const std::array<std::uint32_t, 15> expectedOddPattern{
+        0, 1, 0, 1, 0, 4, 5, 4, 5, 4, 0, 1, 0, 1, 0};
+    const bool oddPatternMatches = oddPattern.size() == expectedOddPattern.size() &&
+        std::equal(oddPattern.begin(), oddPattern.end(), expectedOddPattern.begin(),
+                   [](const auto& placement, std::uint32_t sourceIndex) {
+                       return placement.second.sourceIndex == sourceIndex;
+                   });
+    expect(oddPatternMatches,
+           "18D odd-sized rectangle repeats a 2x2 brush in row-major order");
+    const auto clippedPattern = editor::patternRectanglePlacements(
+        horizontalBrush, {7, 7}, {99, 99}, map.data());
+    expect(clippedPattern.size() == 1 && clippedPattern.front().first.x == 7 &&
+               clippedPattern.front().first.y == 7,
+           "18D patterned rectangles are clipped to map bounds without expanding their authored area");
+    editor::EditorDocument patternedMap = editor::EditorDocument::newMap(
+        simulation::MapId{"map.patterned.rectangle"}, 8, 8);
+    const auto beforePatternedMap = patternedMap.data();
+    auto patternCommand = std::make_unique<editor::CompoundEditorCommand>("Pattern Rectangle");
+    for (const auto& placement : patterned) {
+        patternCommand->add(std::make_unique<editor::PaintTilesCommand>(
+            0, std::vector<editor::TileCoordinate>{placement.first}, placement.second));
+    }
+    const bool paintedPattern = patternedMap.execute(std::move(patternCommand), error);
+    expect(paintedPattern && patternedMap.undo() &&
+               patternedMap.data().layers[0].cells == beforePatternedMap.layers[0].cells &&
+               patternedMap.data().tileReferences == beforePatternedMap.tileReferences &&
+               patternedMap.redo(error) && patternedMap.data().layers[0].cells[2 * 8 + 1].has_value() &&
+               patternedMap.data().tileReferences[patternedMap.data().layers[0].cells[2 * 8 + 2].value()].sourceIndex == 1,
+           "18D patterned rectangle remains one undoable operation and redoes exactly");
     expect(map.execute(std::make_unique<editor::AddLayerCommand>(1, "Foreground"), error) && map.data().layers.size() == 2,
            "18D adds a layer through an undoable command");
     map.layerStates()[0].locked = true;
@@ -8382,6 +8431,42 @@ void testPhase18DUnifiedStudioWorkflow() {
            "18D renames and reorders layers through command history");
     expect(map.undo() && map.data().layers.front().name == "Ground" && map.redo(error) && map.data().layers.front().name == "Foreground Renamed",
            "18D layer operations support undo and redo");
+    editor::EditorDocument usageMap = editor::EditorDocument::newMap(
+        simulation::MapId{"map.find.usages"}, 12, 12);
+    const simulation::DefinitionId findEnemyId{"enemy.find.test"};
+    const simulation::DefinitionId findNpcId{"npc.find.test"};
+    const simulation::DefinitionId findObjectId{"object.find.test"};
+    const simulation::DefinitionId findPickupId{"pickup.find.test"};
+    expect(usageMap.execute(std::make_unique<editor::PlaceEntityCommand>(
+                   underworld::game::maps::EnemyPlacement{{1}, findEnemyId, {16, 16}, gameplay::FacingDirection::down}), error) &&
+               usageMap.execute(std::make_unique<editor::PlaceEntityCommand>(
+                   underworld::game::maps::EnemyPlacement{{2}, findEnemyId, {32, 16}, gameplay::FacingDirection::down}), error) &&
+               usageMap.execute(std::make_unique<editor::PlaceEntityCommand>(
+                   underworld::game::maps::NpcPlacement{{3}, findNpcId, {48, 16}, gameplay::FacingDirection::down}), error) &&
+               usageMap.execute(std::make_unique<editor::PlaceEntityCommand>(
+                   underworld::game::maps::ObjectPlacement{{4}, findObjectId, {64, 16}, {}}), error) &&
+               usageMap.execute(std::make_unique<editor::PlaceEntityCommand>(
+                   underworld::game::maps::PickupPlacement{{5}, findPickupId, {}, {80, 16}, {0, 0, 16, 16}, gameplay::HealthPickup{1}}), error),
+           "18D creates authored usages for every placeable Content category");
+    const auto enemyUsages = editor::findPlacementUsages(
+        usageMap, {editor::ContentDefinitionKind::enemy, findEnemyId});
+    const auto npcUsages = editor::findPlacementUsages(
+        usageMap, {editor::ContentDefinitionKind::npc, findNpcId});
+    const auto objectUsages = editor::findPlacementUsages(
+        usageMap, {editor::ContentDefinitionKind::object, findObjectId});
+    const auto pickupUsages = editor::findPlacementUsages(
+        usageMap, {editor::ContentDefinitionKind::pickup, findPickupId});
+    expect(enemyUsages.size() == 2 && enemyUsages[0].kind == editor::SelectionKind::enemy &&
+               enemyUsages[0].instanceId == simulation::PersistentInstanceId{1} &&
+               enemyUsages[1].instanceId == simulation::PersistentInstanceId{2} &&
+               npcUsages.size() == 1 && npcUsages[0].kind == editor::SelectionKind::npc &&
+               objectUsages.size() == 1 && objectUsages[0].kind == editor::SelectionKind::object &&
+               pickupUsages.size() == 1 && pickupUsages[0].kind == editor::SelectionKind::pickup,
+           "18D Find In Map uses one common helper for Enemy, NPC, Object and Pickup placements");
+    expect(editor::nextPlacementUsageIndex(0, enemyUsages.size()) == 1 &&
+               editor::nextPlacementUsageIndex(1, enemyUsages.size()) == 0 &&
+               editor::nextPlacementUsageIndex(0, 0) == 0,
+           "18D Find In Map cycles multiple usages deterministically with wraparound");
     const auto mapPath = root / "map.test.18d.umap";
     expect(document->saveAll(error) && document->compiledRegistry() && map.saveAs(mapPath, *document->compiledRegistry(), error),
            "18D saves authored Content and UMAP documents without schema changes");

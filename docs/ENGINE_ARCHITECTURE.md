@@ -1975,15 +1975,19 @@ Authored Content JSON + UMAP
 ```
 
 The MAP palette uses the existing tileset/semantic/stamp registries and ordinary
-`MapTileReference` storage. A rectangular tile brush is editor-only and expands in
-deterministic row-major order through a compound command, so undo/redo remains one
-coherent edit. Layer add/remove/rename/reorder operations are commands; layer lock,
+`MapTileReference` storage. A rectangular tile brush is editor-only and repeats its
+pattern periodically inside exactly the requested inclusive rectangle in deterministic
+row-major order through a compound command, so undo/redo remains one coherent edit.
+Layer add/remove/rename/reorder operations are commands; layer lock,
 editor visibility, active palette, brush, viewport and tool are not serialized.
 
 Map placements retain `PersistentInstanceId` while their definitions retain
 `DefinitionId`. MAP can open a placement's definition in CONTENT, and CONTENT can
 activate place/find-in-map operations for placeable enemy, NPC, object and pickup
-definitions. Definitions without authoring descriptors use their IDs as palette
+definitions. `FIND IN MAP` shares one authored-order usage traversal and centers the
+viewport for every placeable kind, wrapping after the last occurrence. Valid builtin
+definitions remain read-only for JSON mutation but can still be placed/found in an
+editable map. Definitions without authoring descriptors use their IDs as palette
 fallback labels. Tilesets, semantic tiles and stamps use the same navigation in the
 opposite direction. Regions expose presentation-effect binding, while world rules
 and encounters remain structured list editors with compatible placement pickers.
