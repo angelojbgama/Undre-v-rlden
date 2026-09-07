@@ -10,9 +10,11 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
-#include <sstream>
 #include <exception>
+#include <limits>
+#include <sstream>
 #include <utility>
 
 namespace underworld::editor {
@@ -26,6 +28,25 @@ constexpr core::ColorRGBA8 viewportBackground{12, 14, 18, 255};
 constexpr core::ColorRGBA8 gridColor{54, 61, 72, 150};
 constexpr core::ColorRGBA8 collisionColor{220, 60, 70, 105};
 constexpr core::ColorRGBA8 selectedColor{255, 220, 70, 255};
+constexpr std::size_t noContentIndex = std::numeric_limits<std::size_t>::max();
+
+enum ContentEditField : int {
+    fieldVisualImagePath,
+    fieldStaticImageId,
+    fieldStaticSourceXY,
+    fieldStaticSourceWH,
+    fieldStaticAnchorXY,
+    fieldAnimationImageId,
+    fieldAnimationFrameSourceXY,
+    fieldAnimationFrameSourceWH,
+    fieldAnimationFrameAnchorXY,
+    fieldAnimationFrameOffsetXY,
+    fieldAnimationFrameDuration,
+    fieldAnimationMarker,
+    fieldAnimationNewMarker,
+    fieldEnemyIdleDefault,
+    fieldEnemyActionId
+};
 
 int parsePositive(const std::string& value) {
     try { const int parsed=std::stoi(value); return parsed>0?parsed:0; } catch (...) { return 0; }
@@ -45,6 +66,26 @@ std::optional<std::array<int, Count>> parseIntegerList(std::string_view text) {
     stream >> std::ws;
     if (!stream.eof()) return std::nullopt;
     return values;
+}
+
+std::optional<std::uint32_t> parseUnsigned(std::string_view text) {
+    if (text.empty()) return std::nullopt;
+    std::uint32_t value{};
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size()) return std::nullopt;
+    return value;
+}
+
+std::string pointText(core::PointI point) {
+    return std::to_string(point.x) + "," + std::to_string(point.y);
+}
+
+std::string rectPositionText(core::RectI rect) {
+    return std::to_string(rect.x) + "," + std::to_string(rect.y);
+}
+
+std::string rectSizeText(core::RectI rect) {
+    return std::to_string(rect.width) + "," + std::to_string(rect.height);
 }
 
 core::ColorRGBA8 categoryColor(SelectionKind kind) noexcept {
@@ -83,6 +124,8 @@ EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::pat
     : content_(std::move(content)),
       document_(initialDocument(content_)),
       contentWorkspace_(std::move(contentWorkspace)),
+      decoder_(&decoder),
+      assetRoot_(assetRoot),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
     if (!contentWorkspace_) contentWorkspace_ = ContentWorkspaceDocument::fromBuiltin(
         game::content::makeBuiltinAuthoredContent());
@@ -235,7 +278,14 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
 void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& input,
                                   core::RectI left, core::RectI center, core::RectI right,
                                   core::RectI status) {
+    if (input.escapePressed) resetContentEditState();
+    if (visualValidationAttempted_ && contentWorkspace_ &&
+        visualValidationRevision_ != contentWorkspace_->revision()) {
+        visualValidationAttempted_ = false;
+        visualDiagnostics_.clear();
+    }
     if (ui.button({left.x + 8, 8, 78, 20}, "MAP")) {
+        resetContentEditState();
         contentMode_ = false;
         status_ = "Map mode";
         return;
@@ -259,6 +309,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                       ContentWorkspaceDocument::categoryName(kind), selectedContentCategory_ == kind)) {
             selectedContentCategory_ = kind;
             selectedContentDefinition_.reset();
+            resetContentEditState();
         }
     }
 
@@ -271,6 +322,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         if (ui.button({center.x + 8, definitionY, center.width - 16, 16},
                       key.id.value(), selectedContentDefinition_ == key)) {
             selectedContentDefinition_ = key;
+            resetContentEditState();
         }
         definitionY += 18;
     }
@@ -296,40 +348,41 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                 const auto authored = std::find_if(pack->visualImages.begin(), pack->visualImages.end(),
                                                    [&](const auto& value) { return value.id == key.id; });
                 if (authored != pack->visualImages.end()) {
-                if (contentTextKey_ != key) {
-                    contentTextKey_ = key;
-                    contentTextBuffer_ = authored->relativePath;
-                    contentTextFocus_ = false;
-                }
-                ui.label("relativePath", right.x + 8, inspectorY);
-                if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
-                                 contentTextBuffer_, contentTextFocus_)) {
-                    contentTextFocus_ = true;
-                    contentTextFieldKind_ = 0;
-                }
-                if (ui.button({right.x + 8, inspectorY + 40, 112, 18},
-                              authored->root == game::presentation::VisualAssetRoot::gameAssets
-                                  ? "gameAssets" : "contentWorkspace",
-                              false) && contentWorkspace_->writable()) {
-                    auto updated = *authored;
-                    updated.root = authored->root == game::presentation::VisualAssetRoot::gameAssets
-                        ? game::presentation::VisualAssetRoot::contentWorkspace
-                        : game::presentation::VisualAssetRoot::gameAssets;
-                    std::string editError;
-                    if (!contentWorkspace_->updateVisualImage(key.id, updated, editError)) status_ = editError;
-                    else { refreshContentRegistry(); return; }
-                }
-                if (input.enterPressed && contentTextFocus_ && contentWorkspace_->writable()) {
-                    auto updated = *authored;
-                    updated.relativePath = contentTextBuffer_;
-                    std::string editError;
-                    if (contentWorkspace_->updateVisualImage(key.id, updated, editError)) {
-                        contentTextFocus_ = false;
-                        refreshContentRegistry();
-                        status_ = "Visual image updated";
-                        return;
-                    } else status_ = editError;
-                }
+                    if (contentEditKey_ != key) {
+                        resetContentEditState();
+                        contentEditKey_ = key;
+                        contentEditValues_[fieldVisualImagePath] = authored->relativePath;
+                    }
+                    ui.label("relativePath", right.x + 8, inspectorY);
+                    if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                     contentEditValues_[fieldVisualImagePath],
+                                     contentFocusedField_ == fieldVisualImagePath)) {
+                        contentFocusedField_ = fieldVisualImagePath;
+                    }
+                    if (ui.button({right.x + 8, inspectorY + 40, 112, 18},
+                                  authored->root == game::presentation::VisualAssetRoot::gameAssets
+                                      ? "gameAssets" : "contentWorkspace",
+                                  false) && contentWorkspace_->writable()) {
+                        auto updated = *authored;
+                        updated.root = authored->root == game::presentation::VisualAssetRoot::gameAssets
+                            ? game::presentation::VisualAssetRoot::contentWorkspace
+                            : game::presentation::VisualAssetRoot::gameAssets;
+                        std::string editError;
+                        if (!contentWorkspace_->updateVisualImage(key.id, updated, editError)) status_ = editError;
+                        else { refreshContentRegistry(); return; }
+                    }
+                    if (input.enterPressed && contentFocusedField_ == fieldVisualImagePath &&
+                        contentWorkspace_->writable()) {
+                        auto updated = *authored;
+                        updated.relativePath = contentEditValues_[fieldVisualImagePath];
+                        std::string editError;
+                        if (contentWorkspace_->updateVisualImage(key.id, updated, editError)) {
+                            refreshContentRegistry();
+                            status_ = "Visual image updated";
+                            return;
+                        }
+                        status_ = editError;
+                    }
                 }
             }
         } else if (key.kind == ContentDefinitionKind::staticSprite) {
@@ -338,40 +391,87 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                 const auto value = std::find_if(pack->staticSprites.begin(), pack->staticSprites.end(),
                                                 [&](const auto& item) { return item.id == key.id; });
                 if (value != pack->staticSprites.end()) {
-                    if (contentTextKey_ != key) {
-                        contentTextKey_ = key;
-                        contentTextBuffer_ = std::string(value->imageId.value());
-                        contentTextField_ = std::to_string(value->anchor.x) + "," +
-                                            std::to_string(value->anchor.y);
-                        contentTextFocus_ = false;
+                    if (contentEditKey_ != key) {
+                        resetContentEditState();
+                        contentEditKey_ = key;
+                        contentEditValues_[fieldStaticImageId] = std::string(value->imageId.value());
+                        contentStaticSourceEnabled_ = value->source.has_value();
+                        const auto source = value->source.value_or(core::RectI{});
+                        contentEditValues_[fieldStaticSourceXY] = rectPositionText(source);
+                        contentEditValues_[fieldStaticSourceWH] = rectSizeText(source);
+                        contentEditValues_[fieldStaticAnchorXY] = pointText(value->anchor);
                     }
-                    ui.label("Static sprite imageId", right.x + 8, inspectorY);
+                    ui.label("imageId", right.x + 8, inspectorY);
                     if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
-                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
-                        contentTextFocus_ = true;
-                        contentTextFieldKind_ = 0;
+                                     contentEditValues_[fieldStaticImageId],
+                                     contentFocusedField_ == fieldStaticImageId)) {
+                        contentFocusedField_ = fieldStaticImageId;
                     }
-                    ui.label("anchor x,y", right.x + 8, inspectorY + 40);
-                    if (ui.textField({right.x + 8, inspectorY + 54, right.width - 16, 20},
-                                     contentTextField_, contentTextFocus_ && contentTextFieldKind_ == 1)) {
-                        contentTextFocus_ = true;
-                        contentTextFieldKind_ = 1;
+                    ui.label("source rectangle", right.x + 8, inspectorY + 40);
+                    if (ui.button({right.x + 8, inspectorY + 54, 112, 18},
+                                  contentStaticSourceEnabled_ ? "SOURCE ON" : "SOURCE OFF",
+                                  contentStaticSourceEnabled_) && contentWorkspace_->writable()) {
+                        auto updated = *value;
+                        if (updated.source) updated.source.reset();
+                        else updated.source = core::RectI{0, 0, 1, 1};
+                        std::string editError;
+                        if (!contentWorkspace_->updateStaticSprite(key.id, updated, editError)) status_ = editError;
+                        else { refreshContentRegistry(); return; }
                     }
-                    if (input.enterPressed && contentTextFocus_ && contentWorkspace_->writable()) {
+                    if (contentStaticSourceEnabled_) {
+                        ui.label("source x,y", right.x + 8, inspectorY + 78);
+                        if (ui.textField({right.x + 8, inspectorY + 92, right.width - 16, 20},
+                                         contentEditValues_[fieldStaticSourceXY],
+                                         contentFocusedField_ == fieldStaticSourceXY)) {
+                            contentFocusedField_ = fieldStaticSourceXY;
+                        }
+                        ui.label("source w,h", right.x + 8, inspectorY + 116);
+                        if (ui.textField({right.x + 8, inspectorY + 130, right.width - 16, 20},
+                                         contentEditValues_[fieldStaticSourceWH],
+                                         contentFocusedField_ == fieldStaticSourceWH)) {
+                            contentFocusedField_ = fieldStaticSourceWH;
+                        }
+                    } else {
+                        ui.label("disabled: full decoded image", right.x + 8, inspectorY + 80);
+                    }
+                    const int anchorY = inspectorY + (contentStaticSourceEnabled_ ? 154 : 104);
+                    ui.label("anchor x,y", right.x + 8, anchorY);
+                    if (ui.textField({right.x + 8, anchorY + 14, right.width - 16, 20},
+                                     contentEditValues_[fieldStaticAnchorXY],
+                                     contentFocusedField_ == fieldStaticAnchorXY)) {
+                        contentFocusedField_ = fieldStaticAnchorXY;
+                    }
+                    if (input.enterPressed && contentFocusedField_ >= fieldStaticImageId &&
+                        contentFocusedField_ <= fieldStaticAnchorXY && contentWorkspace_->writable()) {
                         auto updated = *value;
                         std::string editError;
                         bool accepted = false;
-                        if (contentTextFieldKind_ == 0) {
-                            updated.imageId = simulation::DefinitionId{contentTextBuffer_};
+                        if (contentFocusedField_ == fieldStaticImageId) {
+                            updated.imageId = simulation::DefinitionId{contentEditValues_[fieldStaticImageId]};
                             accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
-                        } else if (const auto parsed = parseIntegerList<2>(contentTextField_)) {
+                        } else if (!contentStaticSourceEnabled_) {
+                            editError = "source is disabled; enable it before editing source fields";
+                        } else if (contentFocusedField_ == fieldStaticSourceXY) {
+                            const auto parsed = parseIntegerList<2>(contentEditValues_[fieldStaticSourceXY]);
+                            if (parsed) {
+                                if (!updated.source) updated.source = core::RectI{0, 0, 1, 1};
+                                updated.source->x = (*parsed)[0];
+                                updated.source->y = (*parsed)[1];
+                                accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
+                            } else editError = "source x,y must contain two comma-separated integers";
+                        } else if (contentFocusedField_ == fieldStaticSourceWH) {
+                            const auto parsed = parseIntegerList<2>(contentEditValues_[fieldStaticSourceWH]);
+                            if (parsed) {
+                                if (!updated.source) updated.source = core::RectI{0, 0, 1, 1};
+                                updated.source->width = (*parsed)[0];
+                                updated.source->height = (*parsed)[1];
+                                accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
+                            } else editError = "source w,h must contain two comma-separated integers";
+                        } else if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldStaticAnchorXY])) {
                             updated.anchor = {(*parsed)[0], (*parsed)[1]};
                             accepted = contentWorkspace_->updateStaticSprite(key.id, updated, editError);
-                        } else {
-                            editError = "anchor must contain two comma-separated integers";
-                        }
+                        } else editError = "anchor must contain two comma-separated integers";
                         if (accepted) {
-                            contentTextFocus_ = false;
                             refreshContentRegistry();
                             status_ = "Static sprite updated";
                             return;
@@ -385,16 +485,39 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                 const auto value = std::find_if(pack->animations.begin(), pack->animations.end(),
                                                 [&](const auto& item) { return item.id == key.id; });
                 if (value != pack->animations.end()) {
-                    if (contentTextKey_ != key) {
-                        contentTextKey_ = key;
-                        contentTextBuffer_ = std::string(value->imageId.value());
-                        contentTextFocus_ = false;
+                    if (contentEditKey_ != key) {
+                        resetContentEditState();
+                        contentEditKey_ = key;
+                        selectedAnimationFrameIndex_ = 0;
+                        selectedAnimationMarkerIndex_ = 0;
+                        contentFrameScroll_ = 0;
+                        contentMarkerScroll_ = 0;
+                        contentEditValues_[fieldAnimationImageId] = std::string(value->imageId.value());
                     }
-                    ui.label("Animation imageId", right.x + 8, inspectorY);
+                    if (!value->frames.empty()) {
+                        selectedAnimationFrameIndex_ = std::min(selectedAnimationFrameIndex_, value->frames.size() - 1);
+                    } else {
+                        selectedAnimationFrameIndex_ = 0;
+                    }
+                    const auto frameIndex = value->frames.empty() ? noContentIndex : selectedAnimationFrameIndex_;
+                    if (frameIndex != noContentIndex && contentEditFrame_ != frameIndex) {
+                        contentFocusedField_ = -1;
+                        contentEditFrame_ = frameIndex;
+                        const auto& frame = value->frames[frameIndex];
+                        contentEditValues_[fieldAnimationFrameSourceXY] = rectPositionText(frame.source);
+                        contentEditValues_[fieldAnimationFrameSourceWH] = rectSizeText(frame.source);
+                        contentEditValues_[fieldAnimationFrameAnchorXY] = pointText(frame.anchor);
+                        contentEditValues_[fieldAnimationFrameOffsetXY] = pointText(frame.drawOffset);
+                        contentEditValues_[fieldAnimationFrameDuration] = std::to_string(frame.durationTicks);
+                        selectedAnimationMarkerIndex_ = frame.markers.empty() ? 0 :
+                            std::min(selectedAnimationMarkerIndex_, frame.markers.size() - 1);
+                        contentEditMarker_ = noContentIndex;
+                    }
+                    ui.label("imageId", right.x + 8, inspectorY);
                     if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
-                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
-                        contentTextFocus_ = true;
-                        contentTextFieldKind_ = 0;
+                                     contentEditValues_[fieldAnimationImageId],
+                                     contentFocusedField_ == fieldAnimationImageId)) {
+                        contentFocusedField_ = fieldAnimationImageId;
                     }
                     if (ui.button({right.x + 8, inspectorY + 40, 92, 18},
                                   value->loop ? "LOOP ON" : "LOOP OFF", value->loop) &&
@@ -405,39 +528,195 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                         if (!contentWorkspace_->updateAnimation(key.id, updated, editError)) status_ = editError;
                         else { refreshContentRegistry(); status_ = "Animation loop updated"; return; }
                     }
-                    if (input.enterPressed && contentTextFocus_ && contentTextFieldKind_ == 0 &&
+                    if (input.enterPressed && contentFocusedField_ == fieldAnimationImageId &&
                         contentWorkspace_->writable()) {
                         auto updated = *value;
-                        updated.imageId = simulation::DefinitionId{contentTextBuffer_};
+                        updated.imageId = simulation::DefinitionId{contentEditValues_[fieldAnimationImageId]};
                         std::string editError;
                         if (contentWorkspace_->updateAnimation(key.id, updated, editError)) {
-                            contentTextFocus_ = false;
                             refreshContentRegistry();
                             status_ = "Animation updated";
                             return;
                         } else status_ = editError;
                     }
-                    ui.label(std::to_string(value->frames.size()) + " frame(s)", right.x + 8, inspectorY + 64);
-                    if (ui.button({right.x + 8, inspectorY + 80, 92, 18}, "ADD FRAME") &&
+                    const int frameListTop = inspectorY + 66;
+                    ui.label("FRAMES (authored order)", right.x + 8, frameListTop);
+                    const int frameRows = 5;
+                    const int frameRowTop = frameListTop + 14;
+                    const int maxFrameScroll = std::max(0, static_cast<int>(value->frames.size()) - frameRows);
+                    if (ui.pointerInside({right.x, frameRowTop, right.width, frameRows * 18}) &&
+                        input.pointer.wheelDelta != 0) {
+                        contentFrameScroll_ = std::clamp(contentFrameScroll_ - input.pointer.wheelDelta / 120,
+                                                         0, maxFrameScroll);
+                    }
+                    for (int row = 0; row < frameRows; ++row) {
+                        const auto index = contentFrameScroll_ + static_cast<std::size_t>(row);
+                        if (index >= value->frames.size()) break;
+                        if (ui.button({right.x + 8, frameRowTop + row * 18, right.width - 16, 16},
+                                      "Frame " + std::to_string(index), index == frameIndex)) {
+                            selectedAnimationFrameIndex_ = index;
+                            selectedAnimationMarkerIndex_ = 0;
+                            resetContentEditState();
+                        }
+                    }
+                    const int frameButtonsY = frameRowTop + frameRows * 18 + 2;
+                    if (ui.button({right.x + 8, frameButtonsY, 82, 18}, "ADD FRAME") &&
                         contentWorkspace_->writable()) {
+                        const auto newIndex = value->frames.size();
                         std::string editError;
                         if (!contentWorkspace_->addAnimationFrame(key.id,
                                 game::content::AuthoredAnimationFrame{{0, 0, 1, 1}, {0, 0}, {0, 0}, 1, {}},
                                 editError)) status_ = editError;
-                        else { refreshContentRegistry(); status_ = "Animation frame added"; return; }
+                        else { selectedAnimationFrameIndex_ = newIndex; refreshContentRegistry(); status_ = "Animation frame added"; return; }
                     }
-                    if (ui.button({right.x + 104, inspectorY + 80, 112, 18}, "REMOVE LAST") &&
+                    if (ui.button({right.x + 96, frameButtonsY, 82, 18}, "REMOVE FRAME") &&
                         contentWorkspace_->writable() && !value->frames.empty()) {
+                        const auto removed = std::min(selectedAnimationFrameIndex_, value->frames.size() - 1);
+                        const auto next = removed == 0 ? 0 : removed - 1;
                         std::string editError;
-                        if (!contentWorkspace_->removeAnimationFrame(key.id, value->frames.size() - 1, editError)) status_ = editError;
-                        else { refreshContentRegistry(); status_ = "Animation frame removed"; return; }
+                        if (!contentWorkspace_->removeAnimationFrame(key.id, removed, editError)) status_ = editError;
+                        else { selectedAnimationFrameIndex_ = next; refreshContentRegistry(); status_ = "Animation frame removed"; return; }
                     }
-                    if (value->frames.size() > 1 &&
-                        ui.button({right.x + 8, inspectorY + 104, 208, 18}, "MOVE FIRST DOWN") &&
-                        contentWorkspace_->writable()) {
+                    if (ui.button({right.x + 184, frameButtonsY, 32, 18}, "UP") &&
+                        frameIndex != noContentIndex && frameIndex > 0 && contentWorkspace_->writable()) {
                         std::string editError;
-                        if (!contentWorkspace_->moveAnimationFrame(key.id, 0, 1, editError)) status_ = editError;
-                        else { refreshContentRegistry(); status_ = "Animation frame reordered"; return; }
+                        if (!contentWorkspace_->moveAnimationFrame(key.id, frameIndex, frameIndex - 1, editError)) status_ = editError;
+                        else { --selectedAnimationFrameIndex_; refreshContentRegistry(); status_ = "Animation frame moved up"; return; }
+                    }
+                    if (ui.button({right.x + 184, frameButtonsY + 22, 32, 18}, "DOWN") &&
+                        frameIndex != noContentIndex && frameIndex + 1 < value->frames.size() && contentWorkspace_->writable()) {
+                        std::string editError;
+                        if (!contentWorkspace_->moveAnimationFrame(key.id, frameIndex, frameIndex + 1, editError)) status_ = editError;
+                        else { ++selectedAnimationFrameIndex_; refreshContentRegistry(); status_ = "Animation frame moved down"; return; }
+                    }
+                    if (frameIndex != noContentIndex) {
+                        const auto& frame = value->frames[frameIndex];
+                        const int frameY = frameButtonsY + 44;
+                        ui.label("source x,y", right.x + 8, frameY);
+                        if (ui.textField({right.x + 8, frameY + 12, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationFrameSourceXY],
+                                         contentFocusedField_ == fieldAnimationFrameSourceXY)) {
+                            contentFocusedField_ = fieldAnimationFrameSourceXY;
+                        }
+                        ui.label("source w,h", right.x + 8, frameY + 36);
+                        if (ui.textField({right.x + 8, frameY + 48, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationFrameSourceWH],
+                                         contentFocusedField_ == fieldAnimationFrameSourceWH)) {
+                            contentFocusedField_ = fieldAnimationFrameSourceWH;
+                        }
+                        ui.label("anchor x,y", right.x + 8, frameY + 72);
+                        if (ui.textField({right.x + 8, frameY + 84, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationFrameAnchorXY],
+                                         contentFocusedField_ == fieldAnimationFrameAnchorXY)) {
+                            contentFocusedField_ = fieldAnimationFrameAnchorXY;
+                        }
+                        ui.label("drawOffset x,y", right.x + 8, frameY + 108);
+                        if (ui.textField({right.x + 8, frameY + 120, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationFrameOffsetXY],
+                                         contentFocusedField_ == fieldAnimationFrameOffsetXY)) {
+                            contentFocusedField_ = fieldAnimationFrameOffsetXY;
+                        }
+                        ui.label("durationTicks", right.x + 8, frameY + 144);
+                        if (ui.textField({right.x + 8, frameY + 156, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationFrameDuration],
+                                         contentFocusedField_ == fieldAnimationFrameDuration)) {
+                            contentFocusedField_ = fieldAnimationFrameDuration;
+                        }
+                        if (input.enterPressed && contentFocusedField_ >= fieldAnimationFrameSourceXY &&
+                            contentFocusedField_ <= fieldAnimationFrameDuration && contentWorkspace_->writable()) {
+                            auto updated = frame;
+                            std::string editError;
+                            bool accepted = false;
+                            if (contentFocusedField_ == fieldAnimationFrameSourceXY) {
+                                if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldAnimationFrameSourceXY])) {
+                                    updated.source.x = (*parsed)[0]; updated.source.y = (*parsed)[1]; accepted = true;
+                                } else editError = "frame source x,y must contain two comma-separated integers";
+                            } else if (contentFocusedField_ == fieldAnimationFrameSourceWH) {
+                                if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldAnimationFrameSourceWH])) {
+                                    updated.source.width = (*parsed)[0]; updated.source.height = (*parsed)[1]; accepted = true;
+                                } else editError = "frame source w,h must contain two comma-separated integers";
+                            } else if (contentFocusedField_ == fieldAnimationFrameAnchorXY) {
+                                if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldAnimationFrameAnchorXY])) {
+                                    updated.anchor = {(*parsed)[0], (*parsed)[1]}; accepted = true;
+                                } else editError = "frame anchor x,y must contain two comma-separated integers";
+                            } else if (contentFocusedField_ == fieldAnimationFrameOffsetXY) {
+                                if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldAnimationFrameOffsetXY])) {
+                                    updated.drawOffset = {(*parsed)[0], (*parsed)[1]}; accepted = true;
+                                } else editError = "frame drawOffset x,y must contain two comma-separated integers";
+                            } else if (const auto parsed = parseUnsigned(contentEditValues_[fieldAnimationFrameDuration])) {
+                                updated.durationTicks = *parsed; accepted = true;
+                            } else editError = "frame durationTicks must be an unsigned 32-bit integer";
+                            if (accepted && !contentWorkspace_->updateAnimationFrame(key.id, frameIndex, updated, editError)) accepted = false;
+                            if (accepted) { refreshContentRegistry(); status_ = "Animation frame updated"; return; }
+                            if (!editError.empty()) status_ = editError;
+                        }
+                        const int markerY = frameY + 184;
+                        ui.label("MARKERS", right.x + 8, markerY);
+                        const int markerRows = 3;
+                        const int markerTop = markerY + 14;
+                        const int maxMarkerScroll = std::max(0, static_cast<int>(frame.markers.size()) - markerRows);
+                        if (ui.pointerInside({right.x, markerTop, right.width, markerRows * 18}) &&
+                            input.pointer.wheelDelta != 0) {
+                            contentMarkerScroll_ = std::clamp(contentMarkerScroll_ - input.pointer.wheelDelta / 120,
+                                                              0, maxMarkerScroll);
+                        }
+                        for (int row = 0; row < markerRows; ++row) {
+                            const auto markerIndex = contentMarkerScroll_ + static_cast<std::size_t>(row);
+                            if (markerIndex >= frame.markers.size()) break;
+                            if (ui.button({right.x + 8, markerTop + row * 18, right.width - 16, 16},
+                                          "Marker " + std::to_string(markerIndex),
+                                          markerIndex == selectedAnimationMarkerIndex_)) {
+                                selectedAnimationMarkerIndex_ = markerIndex;
+                                resetContentEditState();
+                            }
+                        }
+                        const auto markerIndex = frame.markers.empty() ? noContentIndex :
+                            std::min(selectedAnimationMarkerIndex_, frame.markers.size() - 1);
+                        if (markerIndex != noContentIndex && contentEditMarker_ != markerIndex) {
+                            contentFocusedField_ = -1;
+                            contentEditMarker_ = markerIndex;
+                            contentEditValues_[fieldAnimationMarker] = frame.markers[markerIndex];
+                        }
+                        const int markerEditY = markerTop + markerRows * 18 + 2;
+                        ui.label("selected marker", right.x + 8, markerEditY);
+                        if (ui.textField({right.x + 8, markerEditY + 12, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationMarker],
+                                         contentFocusedField_ == fieldAnimationMarker)) {
+                            contentFocusedField_ = fieldAnimationMarker;
+                        }
+                        if (ui.button({right.x + 8, markerEditY + 36, 92, 18}, "REMOVE MARKER") &&
+                            markerIndex != noContentIndex && contentWorkspace_->writable()) {
+                            std::string editError;
+                            if (!contentWorkspace_->removeAnimationMarker(key.id, frameIndex, markerIndex, editError)) status_ = editError;
+                            else {
+                                selectedAnimationMarkerIndex_ = markerIndex == 0 ? 0 : markerIndex - 1;
+                                refreshContentRegistry(); status_ = "Animation marker removed"; return;
+                            }
+                        }
+                        if (input.enterPressed && contentFocusedField_ == fieldAnimationMarker &&
+                            markerIndex != noContentIndex && contentWorkspace_->writable()) {
+                            std::string editError;
+                            if (!contentWorkspace_->updateAnimationMarker(key.id, frameIndex, markerIndex,
+                                    contentEditValues_[fieldAnimationMarker], editError)) status_ = editError;
+                            else { refreshContentRegistry(); status_ = "Animation marker updated"; return; }
+                        }
+                        ui.label("new marker", right.x + 8, markerEditY + 58);
+                        if (ui.textField({right.x + 8, markerEditY + 70, right.width - 16, 20},
+                                         contentEditValues_[fieldAnimationNewMarker],
+                                         contentFocusedField_ == fieldAnimationNewMarker)) {
+                            contentFocusedField_ = fieldAnimationNewMarker;
+                        }
+                        if (ui.button({right.x + 8, markerEditY + 94, 92, 18}, "ADD MARKER") &&
+                            contentWorkspace_->writable()) {
+                            const auto newMarkerIndex = frame.markers.size();
+                            std::string editError;
+                            if (!contentWorkspace_->addAnimationMarker(key.id, frameIndex,
+                                    contentEditValues_[fieldAnimationNewMarker], editError)) status_ = editError;
+                            else {
+                                selectedAnimationMarkerIndex_ = newMarkerIndex;
+                                refreshContentRegistry(); status_ = "Animation marker added"; return;
+                            }
+                        }
                     }
                 }
             }
@@ -447,26 +726,25 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                 const auto value = std::find_if(pack->enemyVisuals.begin(), pack->enemyVisuals.end(),
                                                 [&](const auto& item) { return item.id == key.id; });
                 if (value != pack->enemyVisuals.end()) {
-                    if (contentTextKey_ != key) {
-                        contentTextKey_ = key;
-                        contentTextBuffer_ = value->idle.defaultAnimation
+                    if (contentEditKey_ != key) {
+                        resetContentEditState();
+                        contentEditKey_ = key;
+                        contentEditValues_[fieldEnemyIdleDefault] = value->idle.defaultAnimation
                             ? std::string(value->idle.defaultAnimation->value()) : std::string{};
-                        contentTextField_ = "action.custom";
-                        contentTextFocus_ = false;
+                        contentEditValues_[fieldEnemyActionId] = "action.custom";
                     }
                     ui.label("EnemyVisual idle default", right.x + 8, inspectorY);
                     if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
-                                     contentTextBuffer_, contentTextFocus_ && contentTextFieldKind_ == 0)) {
-                        contentTextFocus_ = true;
-                        contentTextFieldKind_ = 0;
+                                     contentEditValues_[fieldEnemyIdleDefault],
+                                     contentFocusedField_ == fieldEnemyIdleDefault)) {
+                        contentFocusedField_ = fieldEnemyIdleDefault;
                     }
-                    if (input.enterPressed && contentTextFocus_ && contentTextFieldKind_ == 0 &&
+                    if (input.enterPressed && contentFocusedField_ == fieldEnemyIdleDefault &&
                         contentWorkspace_->writable()) {
                         auto updated = *value;
-                        updated.idle.defaultAnimation = simulation::DefinitionId{contentTextBuffer_};
+                        updated.idle.defaultAnimation = simulation::DefinitionId{contentEditValues_[fieldEnemyIdleDefault]};
                         std::string editError;
                         if (contentWorkspace_->updateEnemyVisual(key.id, updated, editError)) {
-                            contentTextFocus_ = false;
                             refreshContentRegistry();
                             status_ = "Enemy visual idle binding updated";
                             return;
@@ -480,14 +758,14 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                              " (arbitrary VisualActionId)", right.x + 8, inspectorY + 56);
                     ui.label("new action id", right.x + 8, inspectorY + 76);
                     if (ui.textField({right.x + 8, inspectorY + 90, right.width - 16, 20},
-                                     contentTextField_, contentTextFocus_ && contentTextFieldKind_ == 1)) {
-                        contentTextFocus_ = true;
-                        contentTextFieldKind_ = 1;
+                                     contentEditValues_[fieldEnemyActionId],
+                                     contentFocusedField_ == fieldEnemyActionId)) {
+                        contentFocusedField_ = fieldEnemyActionId;
                     }
                     if (ui.button({right.x + 8, inspectorY + 114, right.width - 16, 18}, "ADD ACTION (IDLE)") &&
                         contentWorkspace_->writable()) {
                         game::content::AuthoredEnemyAttackVisual action;
-                        action.visualActionId = simulation::DefinitionId{contentTextField_};
+                        action.visualActionId = simulation::DefinitionId{contentEditValues_[fieldEnemyActionId]};
                         action.clips = value->idle;
                         std::string editError;
                         if (!contentWorkspace_->addEnemyVisualAction(key.id, action, editError)) status_ = editError;
@@ -509,21 +787,57 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         } else ui.label("Read-only category in 18A", right.x + 8, inspectorY);
     }
     if (ui.button({right.x + 8, right.height - 64, right.width - 16, 20}, "VALIDATE WORKSPACE")) {
-        status_ = validateWorkspace() ? "Workspace valid" : "Workspace invalid; see diagnostics";
+        (void)validateWorkspace();
     }
     ui.label(contentWorkspace_->dirty() ? "Workspace dirty *" : "Workspace clean", right.x + 8, right.height - 38);
     const auto& diagnostics = contentWorkspace_->diagnostics();
     ui.label("VALIDATION", status.x + 8, status.y + 4);
     if (diagnostics.empty()) {
-        ui.label(contentWorkspace_->valid() ? "OK" : "No compiled registry", status.x + 88, status.y + 4);
+        ui.label(contentWorkspace_->valid() ? "CONTENT OK" : "CONTENT INVALID", status.x + 88, status.y + 4);
     } else {
-        ui.label(std::to_string(diagnostics.size()) + " diagnostic(s)", status.x + 88, status.y + 4);
-        int diagnosticY = right.height - 130;
-        for (const auto& diagnostic : diagnostics) {
-            if (diagnosticY > right.height - 8) break;
-            std::string line = game::content::formatContentWorkspaceDiagnostic(diagnostic);
-            ui.label(line.substr(0, 34), right.x + 8, diagnosticY);
-            diagnosticY += 12;
+        ui.label("CONTENT: " + std::to_string(diagnostics.size()) + " diagnostic(s)",
+                 status.x + 88, status.y + 4);
+    }
+    if (!visualValidationAttempted_) {
+        ui.label("ASSET: not validated", status.x + 250, status.y + 4);
+    } else if (!contentWorkspace_->compiledRegistry()) {
+        ui.label("ASSET: skipped (content invalid)", status.x + 250, status.y + 4);
+    } else if (visualDiagnostics_.empty()) {
+        ui.label("ASSET: OK", status.x + 250, status.y + 4);
+    } else {
+        ui.label("ASSET: " + std::to_string(visualDiagnostics_.size()) + " diagnostic(s)",
+                 status.x + 250, status.y + 4);
+    }
+
+    const int diagnosticsTop = right.height - 222;
+    ui.label("CONTENT VALIDATION", right.x + 8, diagnosticsTop);
+    int diagnosticY = diagnosticsTop + 14;
+    for (std::size_t index = 0; index < diagnostics.size() && index < 3; ++index) {
+        const auto line = game::content::formatContentWorkspaceDiagnostic(diagnostics[index]);
+        ui.label(line.substr(0, 38), right.x + 8, diagnosticY);
+        diagnosticY += 12;
+    }
+    if (diagnostics.size() > 3) {
+        ui.label("... +" + std::to_string(diagnostics.size() - 3) + " more", right.x + 8, diagnosticY);
+    }
+    const int assetDiagnosticsTop = right.height - 152;
+    ui.label("ASSET VALIDATION", right.x + 8, assetDiagnosticsTop);
+    if (!visualValidationAttempted_) {
+        ui.label("Not run - press Validate", right.x + 8, assetDiagnosticsTop + 14);
+    } else if (!contentWorkspace_->compiledRegistry()) {
+        ui.label("Skipped - content invalid", right.x + 8, assetDiagnosticsTop + 14);
+    } else if (visualDiagnostics_.empty()) {
+        ui.label("OK", right.x + 8, assetDiagnosticsTop + 14);
+    } else {
+        int assetY = assetDiagnosticsTop + 14;
+        for (std::size_t index = 0; index < visualDiagnostics_.size() && index < 3; ++index) {
+            const auto line = game::presentation::formatVisualContentDiagnostic(visualDiagnostics_[index]);
+            ui.label(line.substr(0, 38), right.x + 8, assetY);
+            assetY += 12;
+        }
+        if (visualDiagnostics_.size() > 3) {
+            ui.label("... +" + std::to_string(visualDiagnostics_.size() - 3) + " more",
+                     right.x + 8, assetY);
         }
     }
 }
@@ -673,8 +987,8 @@ void EditorApp::shellCommand(EditorShellCommand command){
     else if(command==EditorShellCommand::redo){std::string error;if(!document_.redo(error))status_=error;}
     else if(command==EditorShellCommand::toggleGrid)document_.viewport().showGrid=!document_.viewport().showGrid;
     else if(command==EditorShellCommand::playtest)togglePlaytest();
-    else if(command==EditorShellCommand::mapMode){contentMode_=false;status_="Map mode";}
-    else if(command==EditorShellCommand::contentMode){contentMode_=true;status_="Content mode";}
+    else if(command==EditorShellCommand::mapMode){resetContentEditState();contentMode_=false;status_="Map mode";}
+    else if(command==EditorShellCommand::contentMode){resetContentEditState();contentMode_=true;status_="Content mode";}
     else if(command==EditorShellCommand::saveAll){std::string error;if(!saveAll(error))status_=error;}
     else if(command==EditorShellCommand::validateWorkspace){status_=validateWorkspace()?"Workspace valid":"Workspace invalid; see diagnostics";}
     else frameMap(viewportBounds_);
@@ -683,12 +997,37 @@ bool EditorApp::open(const std::filesystem::path& path,std::string& error){auto 
 bool EditorApp::save(std::string& error){if(contentMode_)return saveAll(error);return document_.save(content_,error);}bool EditorApp::saveAs(const std::filesystem::path& path,std::string& error){if(contentMode_){error="Content workspace Save As is not supported; save the selected workspace files";return false;}return document_.saveAs(path,content_,error);}
 bool EditorApp::autosave(std::string& error){error.clear();if(!document_.dirty())return true;const auto path=document_.autosavePath();if(!path)return true;const bool saved=document_.saveBackup(*path,content_,error);if(saved)status_="Autosave backup written: "+path->string();return saved;}
 bool EditorApp::saveAll(std::string& error){if(contentWorkspace_&&contentWorkspace_->dirty()){if(!contentWorkspace_->saveAll(error))return false;status_="Content workspace saved";}refreshContentRegistry();if(!contentMode_&&document_.dirty())return document_.save(content_,error);error.clear();return true;}
-bool EditorApp::validateWorkspace(){const bool valid=contentWorkspace_&&contentWorkspace_->validateWorkspace();refreshContentRegistry();return valid;}
+bool EditorApp::validateWorkspace(){const bool contentValid=contentWorkspace_&&contentWorkspace_->validateWorkspace();refreshContentRegistry();const bool visualValid=runVisualValidation();if(!contentValid){status_="Workspace invalid; asset validation skipped";}else if(!visualValid){status_="Content valid; visual asset diagnostics reported";}else{status_="Workspace and visual assets valid";}return contentValid&&visualValid;}
 void EditorApp::refreshContentRegistry(){
     if (!contentWorkspace_) return;
     if (contentWorkspace_->compiledRegistry()) content_ = *contentWorkspace_->compiledRegistry();
     else content_ = game::GameContentRegistry{};
     runtimeTilesets_ = game::RuntimeTilesetCatalog(content_.tilesets());
+    visualValidationAttempted_ = false;
+    visualValidationRevision_ = noContentIndex;
+    visualDiagnostics_.clear();
+    resetContentEditState();
+}
+void EditorApp::resetContentEditState() noexcept {
+    contentEditKey_.reset();
+    contentEditValues_.fill({});
+    contentEditFrame_ = noContentIndex;
+    contentEditMarker_ = noContentIndex;
+    contentFocusedField_ = -1;
+    contentStaticSourceEnabled_ = false;
+}
+bool EditorApp::runVisualValidation(){
+    visualDiagnostics_.clear();
+    visualValidationAttempted_ = true;
+    visualValidationRevision_ = contentWorkspace_ ? contentWorkspace_->revision() : noContentIndex;
+    if (!contentWorkspace_ || !contentWorkspace_->compiledRegistry() || !decoder_) return false;
+    const std::optional<std::filesystem::path> workspaceRoot = contentWorkspace_->writable()
+        ? std::optional<std::filesystem::path>{contentWorkspace_->root()} : std::nullopt;
+    game::presentation::VisualContentLoader loader(*decoder_);
+    const auto loaded = loader.load(*contentWorkspace_->compiledRegistry(),
+                                    {assetRoot_, workspaceRoot});
+    visualDiagnostics_ = loaded.diagnostics;
+    return static_cast<bool>(loaded);
 }
 void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}std::string error;if(!playtest_.start(document_.data(),content_,error)){status_=error;return;}status_="Playtest active: runtime world built from document snapshot";}
 std::string EditorApp::windowTitle() const{std::string title=contentMode_?"Dungeon Underworld - Content Studio - ":"Dungeon Underworld - Map Maker - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?"Builtin content":"Content workspace");else title.append(document_.data().id.value());if(hasUnsavedChanges())title+=" *";return title;}

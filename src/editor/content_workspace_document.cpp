@@ -309,6 +309,7 @@ bool ContentWorkspaceDocument::createContentFile(const std::filesystem::path& re
     if (existsError) { error = "could not inspect content file path"; return false; }
     files_.push_back({path, {}, true});
     origins_.push_back({});
+    ++revision_;
     (void)rebuild();
     error.clear();
     return true;
@@ -348,6 +349,7 @@ bool ContentWorkspaceDocument::mutateFile(
     const auto fileIndex = static_cast<std::size_t>(file - files_.data());
     origins_[fileIndex] = parsed.origins;
     file->dirty = true;
+    ++revision_;
     (void)rebuild();
     error.clear();
     return true;

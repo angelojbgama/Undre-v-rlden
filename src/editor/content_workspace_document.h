@@ -3,6 +3,7 @@
 #include "game/content/content_workspace.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -75,6 +76,7 @@ public:
         return compiledRegistry_.has_value() && diagnostics_.empty();
     }
     [[nodiscard]] bool dirty() const noexcept;
+    [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
 
     [[nodiscard]] std::vector<ContentDefinitionKey> index() const;
     [[nodiscard]] const game::content::ContentSourceLocation* sourceFor(
@@ -177,6 +179,7 @@ private:
     game::content::ContentSourceMap sources_;
     std::optional<game::GameContentRegistry> compiledRegistry_;
     std::vector<game::content::ContentWorkspaceDiagnostic> diagnostics_;
+    std::uint64_t revision_{};
 };
 
 } // namespace underworld::editor

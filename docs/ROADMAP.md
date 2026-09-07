@@ -1499,7 +1499,10 @@ results. It provides typed authoring operations for visual images, static sprite
 animations and flexible enemy visual profiles, including frame/marker editing and
 Slime-like idle-plus-death profiles. Save All writes only dirty files as canonical v5
 JSON using atomic replacement; semantic errors remain editable and saveable but block
-the derived registry and playtest.
+the derived registry and playtest. Static sprite source rectangles and all animation
+frame fields are editable through the typed inspector; explicit validation also
+reports VisualContentLoader asset/decode/bounds diagnostics without changing Content
+JSON v5.
 
 The browser lists all twenty-five categories in deterministic order; categories
 without an 18A inspector are read-only. Builtin content is read-only and an explicit

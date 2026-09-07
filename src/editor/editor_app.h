@@ -7,10 +7,15 @@
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
 #include "game/game_content.h"
+#include "game/presentation/visual_content_loader.h"
 
+#include <array>
+#include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace underworld::platform { class ImageDecoder; }
 namespace underworld::render { class BitmapFont; class Image; }
@@ -46,6 +51,11 @@ public:
     [[nodiscard]] bool contentMode() const noexcept { return contentMode_; }
     [[nodiscard]] ContentWorkspaceDocument* contentWorkspace() noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
     [[nodiscard]] const ContentWorkspaceDocument* contentWorkspace() const noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
+    [[nodiscard]] const std::vector<game::presentation::VisualContentDiagnostic>&
+        visualDiagnostics() const noexcept { return visualDiagnostics_; }
+    [[nodiscard]] bool visualValidationAttempted() const noexcept {
+        return visualValidationAttempted_;
+    }
 
     [[nodiscard]] const render::Framebuffer& framebuffer() const noexcept { return *framebuffer_; }
     [[nodiscard]] EditorDocument& document() noexcept { return document_; }
@@ -90,10 +100,14 @@ private:
     void updateStatus(core::RectI viewport, const EditorInputState& input);
     void togglePlaytest();
     void refreshContentRegistry();
+    void resetContentEditState() noexcept;
+    [[nodiscard]] bool runVisualValidation();
 
     game::GameContentRegistry content_;
     EditorDocument document_;
     std::optional<ContentWorkspaceDocument> contentWorkspace_;
+    platform::ImageDecoder* decoder_{};
+    std::filesystem::path assetRoot_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
@@ -122,12 +136,20 @@ private:
     bool contentMode_{};
     ContentDefinitionKind selectedContentCategory_{ContentDefinitionKind::visualImage};
     std::optional<ContentDefinitionKey> selectedContentDefinition_;
-    std::optional<ContentDefinitionKey> contentTextKey_;
-    std::string contentTextField_;
-    std::string contentTextBuffer_;
-    bool contentTextFocus_{};
-    int contentTextFieldKind_{};
+    std::optional<ContentDefinitionKey> contentEditKey_;
+    std::array<std::string, 16> contentEditValues_{};
+    std::size_t selectedAnimationFrameIndex_{};
+    std::size_t selectedAnimationMarkerIndex_{};
+    std::size_t contentEditFrame_{static_cast<std::size_t>(-1)};
+    std::size_t contentEditMarker_{static_cast<std::size_t>(-1)};
+    int contentFocusedField_{-1};
+    bool contentStaticSourceEnabled_{};
     int contentCategoryScroll_{};
+    int contentFrameScroll_{};
+    int contentMarkerScroll_{};
+    std::vector<game::presentation::VisualContentDiagnostic> visualDiagnostics_;
+    std::uint64_t visualValidationRevision_{static_cast<std::uint64_t>(-1)};
+    bool visualValidationAttempted_{};
     std::string status_;
 };
 

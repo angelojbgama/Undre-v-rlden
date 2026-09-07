@@ -96,5 +96,8 @@ Save writes only dirty files, emits canonical v5 JSON and uses an atomic tempora
 replacement. Opening a mixed v1-v5 workspace does not rewrite untouched legacy files;
 only a modified file is upgraded by the encoder. Builtin content is exposed as a
 read-only document. Content Studio 18A provides typed authoring for visual images,
-static sprites, animations and flexible enemy visual profiles; image preview, asset
-import, timeline editing and gameplay definition inspectors remain future work.
+static sprites (including optional source rectangles and anchors), animations
+(including complete frame/marker data) and flexible enemy visual profiles; image
+preview, asset import, timeline editing and gameplay definition inspectors remain
+future work. Explicit workspace validation also runs `VisualContentLoader` against
+the selected asset roots without changing the authored JSON format.

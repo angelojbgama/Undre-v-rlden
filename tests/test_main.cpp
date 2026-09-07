@@ -29,6 +29,7 @@
 #include "editor/editor_commands.h"
 #include "editor/editor_document.h"
 #include "editor/editor_playtest.h"
+#include "editor/editor_app.h"
 #include "editor/content_workspace_document.h"
 #include "game/command_builder.h"
 #include "game/audit/audit_session.h"
@@ -7725,6 +7726,7 @@ void testPhase18ContentStudioFoundation() {
     namespace editor = underworld::editor;
     namespace presentation = underworld::game::presentation;
     namespace simulation = underworld::simulation;
+    namespace core = underworld::core;
     const auto root = std::filesystem::temp_directory_path() / "underworld_phase18_content_studio";
     std::error_code fsError;
     std::filesystem::remove_all(root, fsError);
@@ -7830,6 +7832,34 @@ void testPhase18ContentStudioFoundation() {
            "18A authors arbitrary EnemyVisual action mappings");
     expect(document->addStaticSprite(slimeFile, {{"visual.studio.icon"}, slimeImage.id, std::nullopt, {8, 8}}, error),
            "18A creates a typed static sprite definition");
+    auto staticEdited = content::AuthoredStaticSprite{{"visual.studio.icon"}, slimeImage.id,
+                                                       core::RectI{2, 3, 8, 9}, {4, 5}};
+    const auto staticRevision = document->revision();
+    expect(document->updateStaticSprite(staticEdited.id, staticEdited, error) &&
+               document->revision() > staticRevision && document->mergedAuthored() &&
+               document->mergedAuthored()->staticSprites.front().source == staticEdited.source &&
+               document->mergedAuthored()->staticSprites.front().anchor == staticEdited.anchor,
+           "18A edits a StaticSprite source rectangle and anchor through the document API");
+    staticEdited.source.reset();
+    expect(document->updateStaticSprite(staticEdited.id, staticEdited, error) &&
+               document->mergedAuthored() && !document->mergedAuthored()->staticSprites.front().source,
+           "18A disables a StaticSprite source rectangle to restore full-image semantics");
+    staticEdited.source = core::RectI{2, 3, 8, 9};
+    expect(document->updateStaticSprite(staticEdited.id, staticEdited, error),
+           "18A restores an optional StaticSprite source rectangle without raw JSON editing");
+    const auto fullFrame = content::AuthoredAnimationFrame{{3, 4, 10, 11}, {5, 6}, {7, 8}, 9, {"full"}};
+    expect(document->updateAnimationFrame(idle.id, 0, fullFrame, error) && document->mergedAuthored() &&
+               document->mergedAuthored()->animations.front().frames.front().source == fullFrame.source &&
+               document->mergedAuthored()->animations.front().frames.front().anchor == fullFrame.anchor &&
+               document->mergedAuthored()->animations.front().frames.front().drawOffset == fullFrame.drawOffset &&
+               document->mergedAuthored()->animations.front().frames.front().durationTicks == fullFrame.durationTicks &&
+               document->mergedAuthored()->animations.front().frames.front().markers == fullFrame.markers,
+           "18A edits every authored Animation frame field through the typed API");
+    const auto markerIndex = fullFrame.markers.size();
+    expect(document->addAnimationMarker(idle.id, 0, "temporary", error) &&
+               document->updateAnimationMarker(idle.id, 0, markerIndex, "temporary.edited", error) &&
+               document->removeAnimationMarker(idle.id, 0, markerIndex, error),
+           "18A adds edits and removes an Animation marker through the typed API");
 
     expect(document->saveAll(error) && std::filesystem::exists(slimeFile) &&
                readBytes(slimeFile).find("\"version\": 5") != std::string::npos,
@@ -7876,6 +7906,96 @@ void testPhase18ContentStudioFoundation() {
     expect(mapDocument.data().id.value() == "map.studio.test" && document->files().size() == 4,
            "18A preserves Map mode state while a content workspace remains open");
 
+    std::filesystem::remove_all(root, fsError);
+}
+
+void testPhase18StudioVisualValidation() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+    namespace core = underworld::core;
+    const auto root = std::filesystem::temp_directory_path() / "underworld_phase18_asset_validation";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+
+    content::AuthoredContentPack pack;
+    pack.visualImages.push_back({{"image.studio.validation"},
+                                 presentation::VisualAssetRoot::contentWorkspace,
+                                 "assets/validation.png"});
+    const content::AuthoredAnimationFrame validFrame{{0, 0, 16, 16}, {8, 15}, {0, 0}, 2, {}};
+    pack.animations.push_back({{"animation.studio.validation"}, {"image.studio.validation"},
+                               {validFrame}, true});
+    pack.staticSprites.push_back({{"visual.studio.validation"}, {"image.studio.validation"},
+                                  core::RectI{0, 0, 16, 16}, {8, 8}});
+    const auto sourcePath = root / "visuals.json";
+    std::string error;
+    expect(content::writeAuthoredContentJsonFile(sourcePath, pack, error),
+           "18A asset validation writes a structured visual fixture");
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && document->compiledRegistry(),
+           "18A asset validation opens a semantically valid workspace");
+    if (!document || !document->compiledRegistry()) {
+        std::filesystem::remove_all(root, fsError);
+        return;
+    }
+
+    SyntheticVisualDecoder decoder;
+    editor::EditorApp app(decoder, root / "game-assets", *document->compiledRegistry(),
+                          std::move(document));
+    app.shellCommand(editor::EditorShellCommand::contentMode);
+    decoder.paths.clear();
+    expect(app.validateWorkspace() && app.visualValidationAttempted() &&
+               app.visualDiagnostics().empty() && decoder.paths.size() == 1 &&
+               decoder.paths.front() == root / "assets/validation.png",
+           "18A Studio validation reuses VisualContentLoader with the workspace root");
+    const auto decodeCount = decoder.paths.size();
+    for (int tick = 0; tick < 3; ++tick) app.updateAndRender({});
+    expect(decoder.paths.size() == decodeCount,
+           "18A visual asset validation is not repeated during render frames");
+
+    const auto invalidFrame = content::AuthoredAnimationFrame{{60, 60, 8, 8}, {0, 0}, {0, 0}, 2, {}};
+    expect(app.contentWorkspace()->updateAnimationFrame({"animation.studio.validation"}, 0,
+                                                         invalidFrame, error) &&
+               !app.validateWorkspace() && !app.visualDiagnostics().empty() &&
+               app.visualDiagnostics().front().code == "frame_out_of_bounds" &&
+               presentation::formatVisualContentDiagnostic(app.visualDiagnostics().front()).find(
+                   "animation.studio.validation") != std::string::npos,
+           "18A Studio exposes VisualContentLoader frame bounds diagnostics");
+    expect(app.contentWorkspace()->updateAnimationFrame({"animation.studio.validation"}, 0,
+                                                         validFrame, error),
+           "18A repairs a visual asset frame through the document API");
+
+    content::AuthoredAnimation invalid{{"animation.studio.invalid"}, {"image.missing"},
+                                       {validFrame}, true};
+    decoder.paths.clear();
+    expect(app.contentWorkspace()->addAnimation(sourcePath, invalid, error) &&
+               !app.validateWorkspace() && app.visualDiagnostics().empty() &&
+               decoder.paths.empty(),
+           "18A skips VisualContentLoader when semantic content validation is invalid");
+    content::AuthoredVisualImage missing{{"image.missing"},
+                                         presentation::VisualAssetRoot::contentWorkspace,
+                                         "assets/missing.png"};
+    expect(app.contentWorkspace()->addVisualImage(sourcePath, missing, error) &&
+               app.validateWorkspace() && app.visualDiagnostics().empty(),
+           "18A reruns asset validation after semantic references are fixed");
+
+    auto failingDocument = editor::ContentWorkspaceDocument::open(root, error);
+    expect(failingDocument && failingDocument->compiledRegistry(),
+           "18A opens the workspace for decoder failure validation");
+    if (failingDocument && failingDocument->compiledRegistry()) {
+        FailingVisualDecoder failingDecoder;
+        editor::EditorApp failingApp(failingDecoder, root / "game-assets",
+                                     *failingDocument->compiledRegistry(),
+                                     std::move(failingDocument));
+        expect(!failingApp.validateWorkspace() && !failingApp.visualDiagnostics().empty() &&
+                   failingApp.visualDiagnostics().front().code == "image_decode_failed" &&
+                   presentation::formatVisualContentDiagnostic(
+                       failingApp.visualDiagnostics().front()).find("validation.png") !=
+                       std::string::npos,
+               "18A Studio exposes decoder failure context through the shared formatter");
+    }
     std::filesystem::remove_all(root, fsError);
 }
 
@@ -7957,6 +8077,7 @@ int main() {
         testPhase16InteractiveWorld();
         testPhase17VisualContentBoundary();
         testPhase18ContentStudioFoundation();
+        testPhase18StudioVisualValidation();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

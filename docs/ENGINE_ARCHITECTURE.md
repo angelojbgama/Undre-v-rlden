@@ -1871,3 +1871,13 @@ Builtin content is read-only, while `--content <workspace>` supplies the editabl
 workspace root. The same document and compiler APIs are suitable for future human or
 LLM authored DTOs; no reflection, generic editor framework or raw JSON editor is
 introduced.
+
+Explicit workspace validation has two layers. Content diagnostics come from the
+shared workspace validator/compiler. When that derived registry is valid, the Studio
+invokes `VisualContentLoader` with the editor's game-asset root and (for external
+workspaces) the document root. Its diagnostics are cached by the document's tooling
+revision, so rendering does not repeatedly decode images; any authored mutation
+invalidates the cache. Invalid semantic content skips asset loading and is shown as
+such. Static sprite source rectangles, animation frame fields and opaque markers are
+edited through typed document operations; uncommitted buffers are scoped to the
+selected definition/frame/marker and are cancelled on selection changes or Escape.
