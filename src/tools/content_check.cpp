@@ -29,6 +29,6 @@ int main(int argc, char** argv) {
               + authored.playerProgressions.size() + authored.rewardProfiles.size()
               + authored.rewardGrants.size() + authored.shops.size()
               + authored.authoringDescriptors.size() + authored.tileSemantics.size()
-              + authored.stamps.size() << '\n';
+              + authored.stamps.size() + authored.presentationEffects.size() << '\n';
     return 0;
 }

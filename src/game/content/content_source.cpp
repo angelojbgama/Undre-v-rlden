@@ -83,6 +83,7 @@ validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry) {
         else if (category == "progressions") present = registry.progressions().find(id) != nullptr;
         else if (category == "attacks") present = registry.attacks().find(id) != nullptr;
         else if (category == "projectiles") present = registry.projectiles().find(id) != nullptr;
+        else if (category == "presentationEffects") present = registry.presentationEffects().find(id) != nullptr;
         if (!present) {
             diagnostics.push_back({ContentWorkspaceDiagnosticStage::compile, {}, {}, 0, 0, {},
                                    "runtime_requirement", category, id,
@@ -97,6 +98,7 @@ validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry) {
     require("attacks", gameplay::creatures::skullArrowAttackId());
     require("projectiles", gameplay::playerArrowProjectileId());
     require("projectiles", gameplay::creatures::skullArrowProjectileId());
+    require("presentationEffects", {"effect.player.hit"});
     return diagnostics;
 }
 

@@ -52,7 +52,10 @@ StringTable collectStrings(const MapData& data) {
         addString(table.values, link.id); addString(table.values, link.targetMapId.value());
         addString(table.values, link.targetSpawnId.value());
     }
-    for (const auto& region : data.regions) { addString(table.values, region.id.value()); }
+    for (const auto& region : data.regions) {
+        addString(table.values, region.id.value());
+        if (region.environmentEffectId) addString(table.values, region.environmentEffectId->value());
+    }
     for (const auto& rule : data.worldRules) {
         addString(table.values, rule.id.value());
         if (!rule.trigger.definitionTarget.empty()) addString(table.values, rule.trigger.definitionTarget.value());
@@ -192,6 +195,8 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
     for (const auto& region : data.regions) {
         regions.writeU32(strings.index(region.id.value()));
         writeArea(regions, region.bounds);
+        regions.writeU8(region.environmentEffectId ? 1 : 0);
+        if (region.environmentEffectId) regions.writeU32(strings.index(region.environmentEffectId->value()));
     }
     appendChunk(chunks, {'R','E','G','N'}, std::move(regions));
     ByteWriter worldRules; worldRules.writeU32(static_cast<std::uint32_t>(data.worldRules.size()));
@@ -374,7 +379,17 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         for (std::uint32_t i = 0; i < count; ++i) {
             simulation::DefinitionId id; world::AabbI bounds{};
             if (!readId(in, strings, id) || !readArea(in, bounds)) return fail("invalid REGN record");
-            data.regions.push_back({std::move(id), bounds});
+            std::optional<simulation::DefinitionId> environment;
+            if (minor >= 3) {
+                std::uint8_t hasEffect{};
+                if (!in.readU8(hasEffect) || hasEffect > 1) return fail("invalid REGN environment effect");
+                if (hasEffect) {
+                    simulation::DefinitionId effect;
+                    if (!readId(in, strings, effect)) return fail("invalid REGN environment effect id");
+                    environment = std::move(effect);
+                }
+            }
+            data.regions.push_back({std::move(id), bounds, std::move(environment)});
         }
         if (in.remaining() != 0) return fail("trailing REGN data");
     }
@@ -411,7 +426,8 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             if (!readCount(in, MapLimits::maximumPlacements, actionCount)) return fail("invalid WRLD action count");
             for (std::uint32_t j = 0; j < actionCount; ++j) {
                 WorldAction action; std::uint8_t state{};
-                if (!in.readU8(kind) || kind > 3 || !in.readU8(instanceTarget) || instanceTarget > 2) {
+                if (!in.readU8(kind) || kind > 4 || (kind == 4 && minor < 3) ||
+                    !in.readU8(instanceTarget) || instanceTarget > 2) {
                     return fail("invalid WRLD action");
                 }
                 targetValid = true;

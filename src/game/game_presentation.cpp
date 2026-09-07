@@ -5,6 +5,7 @@
 #include "engine/render/framebuffer.h"
 #include "engine/render/renderer_2d.h"
 #include "game/actor_render_order.h"
+#include "game/presentation/presentation_effect_renderer.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -21,6 +22,10 @@ void outline(render::Renderer2D& renderer, world::AabbI box,
     renderer.fillRect({x, y + box.height - 1, box.width, 1}, color);
     renderer.fillRect({x, y, 1, box.height}, color);
     renderer.fillRect({x + box.width - 1, y, 1, box.height}, color);
+}
+
+core::LogicalPointI toLogical(core::WorldPointI world, core::WorldPointI camera) noexcept {
+    return {world.x - camera.x, world.y - camera.y};
 }
 
 void drawWrappedText(render::Renderer2D& renderer, const render::BitmapFont& font,
@@ -83,9 +88,9 @@ void GamePresentation::followPlayer(core::WorldPointI playerFeet, int worldWidth
 void GamePresentation::renderLayer(render::Renderer2D& renderer, const world::RuntimeMap& map,
                                    const world::TileLayer& layer,
                                    render::VisibleTileRange visible,
-                                   const TilesetVisualCatalog& tilesets) const {
+                                   const TilesetVisualCatalog& tilesets,
+                                   core::WorldPointI cameraPosition) const {
     if (!layer.visible() || visible.empty()) { return; }
-    const auto cameraPosition = camera_.position();
     for (int y = visible.firstY; y <= visible.lastY; ++y) {
         for (int x = visible.firstX; x <= visible.lastX; ++x) {
             const world::TileCell& cell = layer.cell(x, y);
@@ -107,7 +112,8 @@ void GamePresentation::renderLayer(render::Renderer2D& renderer, const world::Ru
 }
 
 void GamePresentation::renderActors(render::Renderer2D& renderer,
-                                    const GamePresentationFrame& frame) const {
+                                    const GamePresentationFrame& frame,
+                                    core::WorldPointI cameraPosition) const {
     enum class ActorKind { player, enemy, npc, object, pickup };
     struct Actor { int sortY; simulation::EntityHandle handle; ActorKind kind; std::size_t index{}; };
     const auto& world = frame.world;
@@ -135,21 +141,20 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
     });
     for (const Actor& actor : actors) {
         if (actor.kind == ActorKind::player) {
-            if (!frame.playerSpriteVisible) { continue; }
-            const auto logical = camera_.worldToLogical(frame.player.feetPosition());
+            const auto logical = toLogical(frame.player.feetPosition(), cameraPosition);
             render::drawAnimator(renderer, frame.playerVisual.animator(), {logical.x, logical.y},
                                  frame.playerVisual.flipX());
         } else if (actor.kind == ActorKind::enemy) {
-            const auto logical = camera_.worldToLogical(enemies[actor.index].instance.feetPosition());
+            const auto logical = toLogical(enemies[actor.index].instance.feetPosition(), cameraPosition);
             render::drawAnimator(renderer, frame.enemyVisuals[actor.index].animator(),
                                  {logical.x, logical.y}, frame.enemyVisuals[actor.index].flipX());
         } else if (actor.kind == ActorKind::npc) {
             const auto& npc = npcs[actor.index].instance;
             const auto& visualSet = frame.npcVisuals.require(npc.definition().visualSetId);
-            const auto logical = camera_.worldToLogical(npc.position());
+            const auto logical = toLogical(npc.position(), cameraPosition);
             renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20}, visualSet.markerColor);
         } else if (actor.kind == ActorKind::object) {
-            const auto logical = camera_.worldToLogical(objects[actor.index].instance.position());
+            const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);
             render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
                                  {logical.x, logical.y});
         } else {
@@ -158,15 +163,15 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
             if (found == frame.pickupVisuals.end()) {
                 throw std::runtime_error("pickup visual definition was not registered");
             }
-            const auto logical = camera_.worldToLogical(pickup.position());
+            const auto logical = toLogical(pickup.position(), cameraPosition);
             renderer.drawImage(*found->second, logical.x - 8, logical.y - 8);
         }
     }
 }
 
 void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
-                                         const GamePresentationFrame& frame) const {
-    const auto cameraPosition = camera_.position();
+                                         const GamePresentationFrame& frame,
+                                         core::WorldPointI cameraPosition) const {
     for (const auto& projectile : frame.projectiles.projectiles()) {
         if (!projectile.definition) { continue; }
         const auto found = frame.projectileVisuals.find(projectile.definition->visualId);
@@ -181,17 +186,18 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
 }
 
 void GamePresentation::renderEffects(render::Renderer2D& renderer,
-                                     const GamePresentationFrame& frame) const {
+                                     const GamePresentationFrame& frame,
+                                     core::WorldPointI cameraPosition) const {
     for (const auto& effect : frame.effects.effects()) {
-        const auto logical = camera_.worldToLogical(effect.position);
+        const auto logical = toLogical(effect.position, cameraPosition);
         render::drawAnimator(renderer, effect.animator, {logical.x, logical.y});
     }
 }
 
 void GamePresentation::renderDebug(render::Renderer2D& renderer,
                                    const GamePresentationFrame& frame,
-                                   render::VisibleTileRange visible) const {
-    const auto cameraPosition = camera_.position();
+                                   render::VisibleTileRange visible,
+                                   core::WorldPointI cameraPosition) const {
     const auto& map = frame.world.map();
     if (frame.collisionOverlay && !visible.empty()) {
         constexpr core::ColorRGBA8 fill{255, 24, 32, 72};
@@ -411,7 +417,14 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
     framebuffer.clear({28, 13, 22, 255});
     render::Renderer2D renderer(framebuffer);
     const auto& map = frame.world.map();
-    const auto visible = camera_.visibleTiles(map.widthTiles(), map.heightTiles(), map.tileSize());
+    const auto baseCameraPosition = camera_.position();
+    const core::WorldPointI cameraPosition{
+        baseCameraPosition.x - frame.presentationEffects.cameraOffset.x,
+        baseCameraPosition.y - frame.presentationEffects.cameraOffset.y};
+    render::Camera2D effectiveCamera(core::GameMetrics::logicalWidth,
+                                     core::GameMetrics::logicalHeight);
+    effectiveCamera.setPosition(cameraPosition);
+    const auto visible = effectiveCamera.visibleTiles(map.widthTiles(), map.heightTiles(), map.tileSize());
     std::size_t groundLayer = 0;
     std::size_t foregroundLayer = map.layerCount();
     std::vector<std::size_t> lowLayers;
@@ -423,14 +436,18 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
     for (std::size_t index = 0; index < map.layerCount(); ++index) {
         if (index != groundLayer && index != foregroundLayer) { lowLayers.push_back(index); }
     }
-    if (groundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(groundLayer), visible, frame.tilesetVisuals); }
-    for (const auto layer : lowLayers) { renderLayer(renderer, map, map.layer(layer), visible, frame.tilesetVisuals); }
-    renderActors(renderer, frame);
-    renderProjectiles(renderer, frame);
-    if (foregroundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(foregroundLayer), visible, frame.tilesetVisuals); }
-    renderEffects(renderer, frame);
-    renderDebug(renderer, frame, visible);
+    if (groundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(groundLayer), visible, frame.tilesetVisuals, cameraPosition); }
+    for (const auto layer : lowLayers) { renderLayer(renderer, map, map.layer(layer), visible, frame.tilesetVisuals, cameraPosition); }
+    renderActors(renderer, frame, cameraPosition);
+    renderProjectiles(renderer, frame, cameraPosition);
+    if (foregroundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(foregroundLayer), visible, frame.tilesetVisuals, cameraPosition); }
+    renderEffects(renderer, frame, cameraPosition);
+    const auto playerLogical = toLogical(frame.player.feetPosition(), cameraPosition);
+    presentation::PresentationEffectRenderer::applyWorld(
+        framebuffer, frame.presentationEffects, playerLogical);
+    renderDebug(renderer, frame, visible, cameraPosition);
     renderHud(renderer, frame);
+    presentation::PresentationEffectRenderer::applyFinal(framebuffer, frame.presentationEffects);
 }
 
 } // namespace underworld::game

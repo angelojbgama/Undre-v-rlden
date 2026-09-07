@@ -103,6 +103,53 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                             [](const auto& value) { return value.id; });
     const auto shops = ids(pack.shops, report, ContentKind::shop,
                            [](const auto& value) { return value.id; });
+    static_cast<void>(ids(pack.presentationEffects, report, ContentKind::presentationEffect,
+                          [](const auto& value) { return value.id; }));
+
+    for (const auto& value : pack.presentationEffects) {
+        const bool validLifetime = value.lifetime == presentation::PresentationEffectLifetime::transient ||
+                                   value.lifetime == presentation::PresentationEffectLifetime::persistent;
+        if (!validLifetime) error(report, ContentKind::presentationEffect, value.id,
+                                  "invalid_lifetime", "presentation effect lifetime is invalid", "lifetime");
+        if (value.lifetime == presentation::PresentationEffectLifetime::transient &&
+            (value.durationTicks == 0 || value.durationTicks > 100000))
+            error(report, ContentKind::presentationEffect, value.id, "invalid_duration",
+                  "transient presentation effect duration is outside bounds", "durationTicks");
+        if (value.lifetime == presentation::PresentationEffectLifetime::persistent && value.fade)
+            error(report, ContentKind::presentationEffect, value.id, "invalid_persistent_fade",
+                  "persistent presentation effects cannot contain fades", "fade");
+        if (value.priority < -1000 || value.priority > 1000)
+            error(report, ContentKind::presentationEffect, value.id, "invalid_priority",
+                  "presentation effect priority is outside bounds", "priority");
+        if (!value.cameraShake && !value.overlay && !value.visionMask && !value.fade)
+            error(report, ContentKind::presentationEffect, value.id, "empty_effect",
+                  "presentation effect must define at least one primitive", "definition");
+        if (value.cameraShake) {
+            if (value.cameraShake->amplitudePixels <= 0 || value.cameraShake->amplitudePixels > 64)
+                error(report, ContentKind::presentationEffect, value.id, "invalid_amplitude",
+                      "camera shake amplitude is outside bounds", "cameraShake.amplitudePixels");
+            if (value.lifetime == presentation::PresentationEffectLifetime::persistent)
+                error(report, ContentKind::presentationEffect, value.id, "persistent_camera_shake",
+                      "persistent presentation effects cannot contain camera shake", "cameraShake");
+        }
+        if (value.overlay) {
+            const auto validMode = value.overlay->mode == presentation::PresentationOverlayMode::constant ||
+                value.overlay->mode == presentation::PresentationOverlayMode::linearFadeOut ||
+                value.overlay->mode == presentation::PresentationOverlayMode::pulse;
+            if (!validMode) error(report, ContentKind::presentationEffect, value.id, "invalid_overlay_mode",
+                                   "overlay mode is invalid", "overlay.mode");
+            if (value.overlay->mode == presentation::PresentationOverlayMode::pulse &&
+                (value.overlay->pulsePeriodTicks == 0 || value.overlay->pulsePeriodTicks > 100000))
+                error(report, ContentKind::presentationEffect, value.id, "invalid_pulse_period",
+                      "pulse period must be positive and bounded", "overlay.pulsePeriodTicks");
+        }
+        if (value.visionMask && (value.visionMask->innerRadiusPixels < 0 ||
+            value.visionMask->outerRadiusPixels <= 0 ||
+            value.visionMask->outerRadiusPixels < value.visionMask->innerRadiusPixels ||
+            value.visionMask->outerRadiusPixels > 4096))
+            error(report, ContentKind::presentationEffect, value.id, "invalid_vision_mask",
+                  "vision mask radii are invalid", "visionMask");
+    }
 
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||

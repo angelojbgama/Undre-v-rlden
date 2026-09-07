@@ -1330,6 +1330,52 @@ manual authored geometry after a `.umap` is opened.
 Content Studio, Visual Content Boundary, Puzzle Engine, encounter waves, boss phases,
 LLM authoring and networking remain future work. The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
+
+### Phase 15 — Presentation Feedback Foundation — DONE
+
+Phase 15 is the presentation-only feedback boundary. It does not create gameplay
+status effects and it does not make presentation state authoritative:
+
+```text
+authoritative gameplay/events
+        ↓
+PresentationEffectRequested / feedback controller
+        ↓
+PresentationEffectSystem
+        ↓
+GamePresentation / framebuffer
+```
+
+15A — Presentation Effect Runtime — DONE. The fixed-tick runtime supports keyed
+transient effects, source-tracked persistent effects, deterministic camera shake,
+world/final overlays, player-relative vision masks and linear fades.
+
+15B — Authored Presentation Effects — DONE. Presentation effects are the twentieth
+authored content category. Content JSON v3 is emitted while readers remain compatible
+with v1/v2; builtin is still the transitional default source and workspaces may mix
+v1, v2 and v3 files.
+
+15C — Presentation Cue Integration — DONE. Player damage and authored world-rule
+presentation cues reach the presentation layer through `SimulationEvent`; the world
+`EffectSystem` remains responsible for world-space animated VFX.
+
+15D — Environment / World Integration — DONE. UMAP v2 and DMAP 1.3 preserve optional
+region environment effects and presentation actions, while readers retain UMAP v1 and
+DMAP 1.0/1.1/1.2 compatibility. DSAV remains 1.7 and does not persist transient or
+derived presentation state.
+
+The next architectural decisions are deliberately deferred in this order:
+
+```text
+Phase 16 — Puzzle / Interactive World Expansion
+Phase 17 — Visual Content Boundary
+Phase 18 — Content Studio
+Phase 19 — Advanced Semantic Authoring
+Phase 20 — LLM Authoring
+```
+
+Status effects, poison/blindness gameplay, audio, scripting, GPU post-processing,
+networking and multiplayer remain out of scope.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

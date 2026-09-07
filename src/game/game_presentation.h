@@ -17,6 +17,7 @@
 #include "game/tilesets.h"
 #include "game/world_object_visual.h"
 #include "game/maps/runtime_world.h"
+#include "game/presentation/presentation_effects.h"
 
 #include <memory>
 #include <string_view>
@@ -34,6 +35,7 @@ struct GamePresentationFrame final {
     const std::vector<EnemyVisualInstance>& enemyVisuals;
     const std::vector<WorldObjectVisualInstance>& objectVisuals;
     const EffectSystem& effects;
+    const presentation::PresentationEffectFrame& presentationEffects;
     const gameplay::ProjectileSystem& projectiles;
     const TilesetVisualCatalog& tilesetVisuals;
     const gameplay::npcs::NpcVisualCatalog& npcVisuals;
@@ -57,7 +59,6 @@ struct GamePresentationFrame final {
     const gameplay::Hitbox& activeSword;
     std::string_view lastEvent;
     bool collisionOverlay{};
-    bool playerSpriteVisible{true};
 };
 
 class GamePresentation final {
@@ -74,12 +75,16 @@ public:
 private:
     void renderLayer(render::Renderer2D& renderer, const world::RuntimeMap& map,
                      const world::TileLayer& layer, render::VisibleTileRange visible,
-                     const TilesetVisualCatalog& tilesets) const;
-    void renderActors(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
-    void renderProjectiles(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
-    void renderEffects(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
+                     const TilesetVisualCatalog& tilesets,
+                     core::WorldPointI cameraPosition) const;
+    void renderActors(render::Renderer2D& renderer, const GamePresentationFrame& frame,
+                      core::WorldPointI cameraPosition) const;
+    void renderProjectiles(render::Renderer2D& renderer, const GamePresentationFrame& frame,
+                           core::WorldPointI cameraPosition) const;
+    void renderEffects(render::Renderer2D& renderer, const GamePresentationFrame& frame,
+                       core::WorldPointI cameraPosition) const;
     void renderDebug(render::Renderer2D& renderer, const GamePresentationFrame& frame,
-                     render::VisibleTileRange visible) const;
+                     render::VisibleTileRange visible, core::WorldPointI cameraPosition) const;
     void renderHud(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
     void renderShopOverlay(render::Renderer2D& renderer, const GamePresentationFrame& frame) const;
 

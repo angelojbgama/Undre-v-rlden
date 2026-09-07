@@ -83,6 +83,9 @@
 #include "game/maps/authored_map.h"
 #include "game/maps/region_tracker.h"
 #include "game/save/save_data.h"
+#include "game/presentation/presentation_effect_renderer.h"
+#include "game/presentation/presentation_feedback_controller.h"
+#include "game/presentation/presentation_effects.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -5513,8 +5516,9 @@ void testPhase13AJsonFoundation() {
            "content JSON decodes typed item fields and optional category arrays");
     expect(!decodeAuthoredContentJson(R"({"format":"wrong","version":1})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":2})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content,
-           "content JSON rejects wrong format identifiers and unsupported versions");
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content,
+           "content JSON accepts v1-v3 and rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
@@ -6692,6 +6696,326 @@ void testPhase14WorldClosure() {
     expect(arenaSessionPassed, "vertical authored arena slice passes through GameSession");
 }
 
+void testPhase15PresentationFeedback() {
+    namespace presentation = underworld::game::presentation;
+    namespace content = underworld::game::content;
+    namespace maps = underworld::game::maps;
+    namespace gameplay = underworld::game::gameplay;
+    namespace simulation = underworld::simulation;
+    namespace core = underworld::core;
+    namespace render = underworld::render;
+    namespace game = underworld::game;
+    namespace editor = underworld::editor;
+
+    presentation::PresentationEffectCatalog catalog;
+    presentation::PresentationEffectDefinition hit;
+    hit.id = {"effect.test.hit"};
+    hit.lifetime = presentation::PresentationEffectLifetime::transient;
+    hit.durationTicks = 6;
+    hit.priority = 20;
+    hit.cameraShake = presentation::CameraShakeDefinition{4};
+    hit.overlay = presentation::ColorOverlayDefinition{
+        {255, 0, 0, 128}, presentation::PresentationOverlayMode::linearFadeOut, 0,
+        presentation::PresentationCompositionLayer::world};
+    catalog.add(hit);
+    presentation::PresentationEffectDefinition other;
+    other.id = {"effect.test.other"};
+    other.lifetime = presentation::PresentationEffectLifetime::transient;
+    other.durationTicks = 8;
+    other.priority = 30;
+    other.overlay = presentation::ColorOverlayDefinition{
+        {255, 255, 255, 200}, presentation::PresentationOverlayMode::pulse, 4,
+        presentation::PresentationCompositionLayer::final};
+    catalog.add(other);
+    presentation::PresentationEffectDefinition dark;
+    dark.id = {"effect.test.dark"};
+    dark.lifetime = presentation::PresentationEffectLifetime::persistent;
+    dark.priority = 10;
+    dark.visionMask = presentation::VisionMaskDefinition{2, 4, 220, {0, 0, 0, 255}};
+    catalog.add(dark);
+    auto playerHit = hit;
+    playerHit.id = {"effect.player.hit"};
+    catalog.add(playerHit);
+    auto environmentDark = dark;
+    environmentDark.id = {"effect.environment.dark"};
+    catalog.add(environmentDark);
+    presentation::PresentationEffectDefinition heavyImpact;
+    heavyImpact.id = {"effect.world.heavy_impact"};
+    heavyImpact.lifetime = presentation::PresentationEffectLifetime::transient;
+    heavyImpact.durationTicks = 12;
+    heavyImpact.priority = 80;
+    heavyImpact.cameraShake = presentation::CameraShakeDefinition{6};
+    heavyImpact.overlay = presentation::ColorOverlayDefinition{
+        {255, 255, 255, 160}, presentation::PresentationOverlayMode::linearFadeOut, 0,
+        presentation::PresentationCompositionLayer::final};
+    catalog.add(heavyImpact);
+    presentation::PresentationEffectDefinition fade;
+    fade.id = {"effect.test.fade"};
+    fade.lifetime = presentation::PresentationEffectLifetime::transient;
+    fade.durationTicks = 4;
+    fade.priority = 40;
+    fade.fade = presentation::FadeDefinition{{0, 0, 0, 255}, 0, 255};
+    catalog.add(fade);
+
+    presentation::PresentationEffectSystem effects(catalog);
+    expect(effects.play({"effect.test.hit"}) && effects.isActive({"effect.test.hit"}),
+           "presentation transient effect starts on play");
+    const auto initialHit = effects.resolveFrame();
+    effects.advance(3);
+    expect(effects.play({"effect.test.hit"}) && effects.resolveFrame().worldOverlays.size() == 1,
+           "presentation transient retrigger restarts one keyed instance");
+    effects.advance(6);
+    expect(!effects.isActive({"effect.test.hit"}),
+           "presentation transient lifetime expires in fixed ticks");
+    expect(effects.play({"effect.test.hit"}) && effects.play({"effect.test.other"}) &&
+               (effects.advance(1), true) &&
+               effects.isActive({"effect.test.hit"}) && effects.isActive({"effect.test.other"}) &&
+               effects.resolveFrame().finalOverlays.size() == 1,
+           "different presentation effect IDs coexist with deterministic composition layers");
+    const auto sourceA = presentation::PresentationEffectSourceKey{
+        presentation::PresentationEffectSourceKind::region, simulation::MapId{"map.test"},
+        {"region.a"}};
+    const auto sourceB = presentation::PresentationEffectSourceKey{
+        presentation::PresentationEffectSourceKind::region, simulation::MapId{"map.test"},
+        {"region.b"}};
+    expect(effects.activatePersistent({"effect.test.dark"}, sourceA) &&
+               effects.activatePersistent({"effect.test.dark"}, sourceB) &&
+               effects.persistentSourceCount({"effect.test.dark"}) == 2,
+           "persistent presentation effects track multiple structured sources");
+    expect(effects.deactivatePersistent({"effect.test.dark"}, sourceA) &&
+               effects.isActive({"effect.test.dark"}) &&
+               effects.deactivatePersistent({"effect.test.dark"}, sourceB) &&
+               !effects.isActive({"effect.test.dark"}),
+           "persistent presentation effects remain until their final source leaves");
+
+    presentation::PresentationEffectCatalog shakeCatalog;
+    presentation::PresentationEffectDefinition shake;
+    shake.id = {"effect.test.shake"};
+    shake.lifetime = presentation::PresentationEffectLifetime::transient;
+    shake.durationTicks = 12;
+    shake.cameraShake = presentation::CameraShakeDefinition{64};
+    shakeCatalog.add(shake);
+    presentation::PresentationEffectSystem shakeA(shakeCatalog);
+    presentation::PresentationEffectSystem shakeB(shakeCatalog);
+    static_cast<void>(shakeA.play(shake.id));
+    static_cast<void>(shakeB.play(shake.id));
+    bool deterministicShake = true;
+    bool boundedShake = true;
+    for (int tick = 0; tick < 8; ++tick) {
+        const auto frameA = shakeA.resolveFrame();
+        const auto frameB = shakeB.resolveFrame();
+        deterministicShake = deterministicShake && frameA.cameraOffset == frameB.cameraOffset;
+        boundedShake = boundedShake && std::abs(frameA.cameraOffset.x) <= 12 &&
+            std::abs(frameA.cameraOffset.y) <= 12;
+        shakeA.advance();
+        shakeB.advance();
+    }
+    expect(deterministicShake && boundedShake,
+           "camera shake uses a deterministic pattern and defensive clamp");
+    static_cast<void>(effects.play({"effect.test.fade"}));
+    static_cast<void>(effects.advance(1));
+    const auto pulseFrame = effects.resolveFrame();
+    expect(!initialHit.worldOverlays.empty() && !pulseFrame.fades.empty() &&
+               pulseFrame.fades.front().alpha > 0,
+           "presentation frame exposes transient overlay and final fade data");
+
+    render::Framebuffer maskBuffer(8, 8);
+    maskBuffer.clear({255, 255, 255, 255});
+    presentation::PresentationEffectFrame maskFrame;
+    maskFrame.visionMask = presentation::ResolvedVisionMask{
+        {"effect.test.dark"}, 10, 1, 3, 200, {0, 0, 0, 255}};
+    presentation::PresentationEffectRenderer::applyWorld(maskBuffer, maskFrame, {4, 4});
+    expect(maskBuffer.pixels()[static_cast<std::size_t>(4 * 8 + 4)] ==
+               core::ColorRGBA8{255, 255, 255, 255} &&
+               maskBuffer.pixels().front().r < 255,
+           "vision mask preserves its inner center and darkens pixels outside the radius");
+    render::Framebuffer layerBuffer(4, 4);
+    layerBuffer.clear({255, 255, 255, 255});
+    presentation::PresentationEffectFrame layerFrame;
+    layerFrame.worldOverlays.push_back({{"effect.world"}, 1, {0, 0, 0, 255},
+                                        presentation::PresentationCompositionLayer::world});
+    layerFrame.finalOverlays.push_back({{"effect.final"}, 1, {255, 0, 0, 255},
+                                        presentation::PresentationCompositionLayer::final});
+    presentation::PresentationEffectRenderer::applyWorld(layerBuffer, layerFrame, {0, 0});
+    const bool worldLayerBeforeHud = layerBuffer.pixels().front() == core::ColorRGBA8{0, 0, 0, 255} &&
+        layerBuffer.pixels()[1] == core::ColorRGBA8{0, 0, 0, 255};
+    render::Renderer2D(layerBuffer).setPixel(0, 0, {255, 255, 255, 255});
+    presentation::PresentationEffectRenderer::applyFinal(layerBuffer, layerFrame);
+    expect(worldLayerBeforeHud && layerBuffer.pixels().front() == core::ColorRGBA8{255, 0, 0, 255} &&
+               layerBuffer.pixels()[1] == core::ColorRGBA8{255, 0, 0, 255},
+           "world and final presentation layers compose around HUD timing");
+
+    auto builtin = content::makeBuiltinAuthoredContent();
+    const auto builtinJson = content::encodeAuthoredContentJson(builtin);
+    const auto decodedBuiltin = content::decodeAuthoredContentJson(builtinJson);
+    expect(decodedBuiltin.content && decodedBuiltin.content->presentationEffects.size() ==
+               builtin.presentationEffects.size() && content::encodeAuthoredContentJson(
+                   *decodedBuiltin.content) == builtinJson,
+           "content JSON v3 roundtrips authored presentation effects deterministically");
+    const auto invalidV2Effect = content::decodeAuthoredContentJson(
+        R"({"format":"dungeon-underworld-content","version":2,"presentationEffects":[]})");
+    expect(!invalidV2Effect.content && !invalidV2Effect.diagnostics.empty(),
+           "content schema v2 rejects the presentation effect category");
+    auto compiledBuiltin = content::compileContent(builtin);
+    expect(compiledBuiltin.registry && compiledBuiltin.registry->presentationEffects().find(
+               {"effect.player.hit"}) != nullptr,
+           "presentation effects compile into the shared GameContentRegistry catalog");
+    const auto decodedCompiled = decodedBuiltin.content
+        ? content::compileContent(*decodedBuiltin.content) : content::ContentCompileResult{};
+    expect(decodedCompiled.registry && compiledBuiltin.registry &&
+               decodedCompiled.registry->presentationEffects().definitions() ==
+                   compiledBuiltin.registry->presentationEffects().definitions(),
+           "direct and decoded registries remain equivalent for presentation effects");
+    auto invalidPresentation = builtin;
+    invalidPresentation.presentationEffects.front().durationTicks = 0;
+    invalidPresentation.presentationEffects.front().lifetime =
+        presentation::PresentationEffectLifetime::transient;
+    expect(content::ContentValidator{}.validate(invalidPresentation).hasErrors(),
+           "presentation effect validation rejects an invalid transient duration");
+
+    simulation::EventBuffer feedbackEvents;
+    const simulation::EntityHandle player{7, 1};
+    maps::MapData feedbackMap;
+    feedbackMap.id = simulation::MapId{"map.presentation"};
+    feedbackMap.regions.push_back({{"region.dark"}, {0, 0, 32, 32}, {"effect.environment.dark"}});
+    presentation::PresentationFeedbackController feedback;
+    feedbackEvents.emit(simulation::MapEntered{feedbackMap.id});
+    feedbackEvents.emit(simulation::RegionEntered{feedbackMap.id, {"region.dark"}});
+    feedbackEvents.emit(simulation::EntityDamaged{{1, 1}, player, 1, 9, 1});
+    feedback.consume(feedbackEvents, feedbackMap, player, effects);
+    expect(effects.isActive({"effect.environment.dark"}) &&
+               effects.isActive({"effect.player.hit"}),
+           "damage cues and region environment cues reach the presentation runtime");
+    feedbackEvents.clear();
+    feedbackEvents.emit(simulation::EntityDamaged{{1, 1}, {8, 1}, 1, 9, 2});
+    feedback.consume(feedbackEvents, feedbackMap, player, effects);
+    expect(effects.isActive({"effect.player.hit"}),
+           "damage to non-player entities does not retrigger the player hit binding");
+    feedbackEvents.clear();
+    feedbackEvents.emit(simulation::RegionExited{feedbackMap.id, {"region.dark"}});
+    feedback.consume(feedbackEvents, feedbackMap, player, effects);
+    expect(!effects.isActive({"effect.environment.dark"}),
+           "region exit releases the corresponding persistent presentation source");
+
+    editor::EditorDocument editorDocument = editor::EditorDocument::newMap(
+        simulation::MapId{"map.presentation.editor"}, 4, 3, 16, false);
+    editorDocument.commandRegions().push_back({{1}, "region.editor", {0, 0, 32, 32}, {}});
+    std::string editorError;
+    const bool boundEnvironmentEffect = editorDocument.setRegionEnvironmentEffect(
+        {"region.editor"}, {"effect.environment.dark"}, editorError);
+    expect(boundEnvironmentEffect && editorError.empty() &&
+               editorDocument.authoredSource().regions.front().environmentEffectId ==
+                   simulation::DefinitionId{"effect.environment.dark"},
+           "Map Maker document can author a region presentation environment binding");
+
+    maps::WorldRuleDefinition cueRule;
+    cueRule.id = {"rule.presentation.cue"};
+    cueRule.trigger = {maps::WorldTriggerKind::regionEntered, {"region.impact"}, {}};
+    cueRule.actions.push_back({maps::WorldActionKind::playPresentationEffect,
+                               {"effect.world.heavy_impact"}, {}});
+    gameplay::dialogue::DialogueFlagSet flags;
+    std::vector<gameplay::WorldRuleState> ruleState;
+    feedbackEvents.clear();
+    feedbackEvents.emit(simulation::RegionEntered{feedbackMap.id, {"region.impact"}});
+    expect(gameplay::WorldLogicSystem{}.consume({cueRule}, feedbackMap.id, flags,
+                                                feedbackEvents, ruleState),
+           "World Logic accepts a presentation cue action without renderer access");
+    const bool cueEmitted = std::any_of(feedbackEvents.events().begin(),
+        feedbackEvents.events().end(), [](const auto& event) {
+            return std::holds_alternative<simulation::PresentationEffectRequested>(event);
+        });
+    feedback.consume(feedbackEvents, feedbackMap, player, effects);
+    expect(cueEmitted && effects.isActive({"effect.world.heavy_impact"}),
+           "World Logic presentation cue flows through EventBuffer to effects");
+
+    auto authored = maps::authoredMapFromMapData(makeSyntheticMap("map.presentation.umap", "map.presentation"));
+    authored.regions.push_back({{"region.dark"}, {0, 0, 64, 48}, {"effect.environment.dark"}});
+    authored.regions.push_back({{"region.impact"}, {0, 0, 64, 48}, {}});
+    maps::WorldRuleDefinition authoredCue;
+    authoredCue.id = {"rule.presentation.impact"};
+    authoredCue.trigger = {maps::WorldTriggerKind::regionEntered, {"region.impact"}, {}};
+    authoredCue.actions.push_back({maps::WorldActionKind::playPresentationEffect,
+                                   {"effect.world.heavy_impact"}, {}});
+    authored.worldRules.push_back(authoredCue);
+    const auto authoredJson = maps::encodeAuthoredMapJson(authored);
+    const auto decodedAuthored = maps::decodeAuthoredMapJson(authoredJson);
+    const auto compiledAuthored = compiledBuiltin.registry && decodedAuthored.source ?
+        maps::compileAuthoredMap(*decodedAuthored.source, *compiledBuiltin.registry) :
+        maps::MapCompileResult{};
+    expect(decodedAuthored.source && maps::encodeAuthoredMapJson(*decodedAuthored.source) == authoredJson &&
+               compiledAuthored.map && compiledAuthored.map->regions.front().environmentEffectId &&
+               compiledAuthored.map->worldRules.back().actions.front().kind ==
+                   maps::WorldActionKind::playPresentationEffect,
+           "UMAP v2 preserves region environment bindings and presentation actions through MapCompiler");
+    std::string legacyUmap = maps::encodeAuthoredMapJson(
+        maps::authoredMapFromMapData(makeSyntheticMap("map.presentation.legacy", "map.presentation.legacy")));
+    const auto legacyVersion = legacyUmap.find("\"version\"");
+    const auto legacyValue = legacyVersion == std::string::npos
+        ? std::string::npos : legacyUmap.find('2', legacyVersion);
+    if (legacyValue != std::string::npos) legacyUmap.replace(legacyValue, 1, "1");
+    const auto legacyDecoded = maps::decodeAuthoredMapJson(legacyUmap);
+    auto incompatibleUmap = authoredJson;
+    const auto incompatibleVersion = incompatibleUmap.find("\"version\"");
+    const auto incompatibleValue = incompatibleVersion == std::string::npos
+        ? std::string::npos : incompatibleUmap.find('2', incompatibleVersion);
+    if (incompatibleValue != std::string::npos) incompatibleUmap.replace(incompatibleValue, 1, "1");
+    const auto incompatibleDecoded = maps::decodeAuthoredMapJson(incompatibleUmap);
+    expect(legacyDecoded.source.has_value(), "UMAP v1 remains readable");
+    expect(!incompatibleDecoded.source.has_value(),
+           "UMAP v1 rejects presentation-only v2 fields");
+    if (compiledAuthored.map && compiledBuiltin.registry) {
+        const auto dmapPath = std::filesystem::temp_directory_path() /
+            "underworld_phase15_presentation.dmap";
+        std::string ioError;
+        std::error_code fsError;
+        std::filesystem::remove(dmapPath, fsError);
+        const auto catalogs = game::mapValidationCatalogs(*compiledBuiltin.registry);
+        const bool written = maps::writeDmap(dmapPath, *compiledAuthored.map, ioError);
+        const auto loaded = written ? maps::readDmap(dmapPath, &catalogs) : maps::DmapLoadResult{};
+        expect(loaded && loaded.data.regions.front().environmentEffectId &&
+                   loaded.data.worldRules.back().actions.front().kind ==
+                       maps::WorldActionKind::playPresentationEffect,
+               "DMAP 1.3 roundtrips presentation region and world-rule data");
+        auto incompatibleDmap = maps::serializeDmap(*compiledAuthored.map);
+        if (incompatibleDmap.size() >= 8) {
+            incompatibleDmap[6] = 2;
+            incompatibleDmap[7] = 0;
+        }
+        expect(!maps::deserializeDmap(incompatibleDmap),
+               "DMAP 1.2 rejects presentation-only world-rule actions");
+        std::filesystem::remove(dmapPath, fsError);
+    }
+    auto legacyDmap = maps::serializeDmap(
+        maps::mapDataFromAuthored(maps::authoredMapFromMapData(
+            makeSyntheticMap("map.presentation.dmap12", "map.presentation.dmap12"))));
+    if (legacyDmap.size() >= 8) {
+        legacyDmap[6] = 2;
+        legacyDmap[7] = 0;
+    }
+    const auto legacyDmapLoaded = maps::deserializeDmap(legacyDmap);
+    expect(legacyDmapLoaded && legacyDmapLoaded.data.regions.empty(),
+           "DMAP 1.2 remains readable without presentation environment bindings");
+
+    const auto mixedRoot = std::filesystem::temp_directory_path() / "underworld_phase15_content_versions";
+    std::error_code mixedError;
+    std::filesystem::remove_all(mixedRoot, mixedError);
+    std::filesystem::create_directories(mixedRoot);
+    const auto writeText = [](const std::filesystem::path& path, std::string_view text) {
+        std::ofstream output(path, std::ios::binary);
+        output << text;
+        return output.good();
+    };
+    const bool mixedWritten =
+        writeText(mixedRoot / "v1.json", R"({"format":"dungeon-underworld-content","version":1,"items":[]})") &&
+        writeText(mixedRoot / "v2.json", R"({"format":"dungeon-underworld-content","version":2,"objects":[]})") &&
+        writeText(mixedRoot / "v3.json", R"({"format":"dungeon-underworld-content","version":3,"presentationEffects":[{"id":"effect.mixed","lifetime":"persistent","durationTicks":0,"priority":1,"visionMask":{"innerRadiusPixels":1,"outerRadiusPixels":2,"outsideAlpha":100,"color":{"r":0,"g":0,"b":0,"a":255}}}]})");
+    const auto mixed = content::loadContentWorkspaceDirectory(mixedRoot);
+    expect(mixedWritten && mixed.workspace && mixed.diagnostics.empty() &&
+               mixed.workspace->authored.presentationEffects.size() == 1,
+           "content workspace merges v1, v2 and v3 files without reinterpretation");
+    std::filesystem::remove_all(mixedRoot, mixedError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -6766,6 +7090,7 @@ int main() {
         testPhase13B1ContentWorkspace();
         testPhase14AuthoredMapFoundation();
         testPhase14WorldClosure();
+        testPhase15PresentationFeedback();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

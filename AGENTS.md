@@ -1903,3 +1903,17 @@ O Block G (plataforma gráfica Linux) está implementado no working tree e valid
 por build Docker e smoke X11/WSLg. O próximo incremento continua sendo H — seeded
 stress playtest; o build Windows/MSVC e o smoke manual Windows permanecem gates
 dependentes do host Windows.
+
+## Estado atual — Phase 15 Presentation Feedback Foundation
+
+Phase 15 está concluída no checkpoint atual. Presentation feedback é derivado de
+`SimulationEvent` e nunca é autoridade de gameplay. Use `PresentationEffectDefinition`
+via `AuthoredContentPack`/Content JSON v3, `PresentationEffectSystem` para efeitos de
+tela/câmera e `PresentationEffectRenderer` para composição no framebuffer. O
+`EffectSystem` existente continua reservado a VFX em coordenadas de mundo.
+
+UMAP v2 e DMAP 1.3 podem associar efeitos persistentes a regiões e emitir cues
+transientes por World Logic; UMAP/DMAP readers preservam compatibilidade anterior e
+DSAV 1.7 não persiste estado de apresentação. Não introduzir StatusEffectSystem,
+poison/blindness gameplay, audio, scripting, GPU post-processing, Content Studio,
+Visual Content Boundary, LLM ou networking neste bloco.

@@ -13,6 +13,7 @@
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/tilesets.h"
+#include "game/presentation/presentation_effects.h"
 
 #include <cstdint>
 #include <optional>
@@ -98,6 +99,7 @@ struct MapLink final {
 struct MapRegionDefinition final {
     simulation::DefinitionId id{};
     world::AabbI bounds{};
+    std::optional<simulation::DefinitionId> environmentEffectId{};
     [[nodiscard]] bool operator==(const MapRegionDefinition&) const noexcept = default;
 };
 
@@ -105,7 +107,8 @@ enum class WorldTriggerKind { mapEntered, regionEntered, regionExited, encounter
                               encounterCompleted, objectOpened };
 enum class WorldConditionKind { flagSet, flagNotSet, encounterCompleted,
                                 encounterNotCompleted, doorState };
-enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState };
+enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState,
+                             playPresentationEffect };
 struct WorldTrigger final {
     WorldTriggerKind kind{WorldTriggerKind::mapEntered};
     simulation::DefinitionId definitionTarget{};
@@ -167,6 +170,7 @@ struct MapValidationCatalogs final {
     const TilesetCatalog* tilesets{};
     const gameplay::npcs::NpcCatalog* npcs{};
     const gameplay::rpg::RewardGrantCatalog* rewardGrants{};
+    const presentation::PresentationEffectCatalog* presentationEffects{};
 };
 
 struct MapValidationResult final {

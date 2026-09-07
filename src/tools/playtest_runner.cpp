@@ -10,6 +10,9 @@
 #include "game/content/content_compiler.h"
 #include "game/maps/dmap.h"
 #include "game/maps/official_maps.h"
+#include "game/gameplay/world_logic.h"
+#include "game/presentation/presentation_effects.h"
+#include "game/presentation/presentation_feedback_controller.h"
 
 #include <algorithm>
 #include <cmath>
@@ -576,6 +579,58 @@ bool runWorldLogic(ScenarioContext& context) {
     return finished;
 }
 
+bool runPresentationFeedback(ScenarioContext& context) {
+    namespace presentation = game::presentation;
+    namespace maps = game::maps;
+    namespace gameplay = game::gameplay;
+    if (!runBaseline(context)) { return false; }
+    const auto compiled = game::content::compileContent(game::content::makeBuiltinAuthoredContent());
+    if (!context.require(compiled.registry.has_value(), "builtin presentation content did not compile")) {
+        return false;
+    }
+    presentation::PresentationEffectSystem effects(compiled.registry->presentationEffects());
+    presentation::PresentationFeedbackController feedback;
+    game::maps::MapData map;
+    map.id = simulation::MapId{"map.playtest.presentation"};
+    map.regions.push_back({simulation::DefinitionId{"region.playtest.dark"}, {0, 0, 64, 64},
+                           simulation::DefinitionId{"effect.environment.dark"}});
+    const simulation::EntityHandle player{11, 1};
+    simulation::EventBuffer events;
+    events.emit(simulation::MapEntered{map.id});
+    events.emit(simulation::RegionEntered{map.id, {"region.playtest.dark"}});
+    events.emit(simulation::EntityDamaged{{12, 1}, player, 1, 9, 1});
+    feedback.consume(events, map, player, effects);
+    if (!context.require(effects.isActive({"effect.environment.dark"}) &&
+                         effects.isActive({"effect.player.hit"}),
+                         "presentation feedback did not resolve region and player-damage cues")) {
+        return false;
+    }
+    events.clear();
+    events.emit(simulation::RegionExited{map.id, {"region.playtest.dark"}});
+    feedback.consume(events, map, player, effects);
+    if (!context.require(!effects.isActive({"effect.environment.dark"}),
+                         "presentation feedback retained a stale environment source")) {
+        return false;
+    }
+    maps::WorldRuleDefinition rule;
+    rule.id = {"rule.playtest.presentation"};
+    rule.trigger = {maps::WorldTriggerKind::regionEntered, {"region.playtest.impact"}, {}};
+    rule.actions.push_back({maps::WorldActionKind::playPresentationEffect,
+                            {"effect.world.heavy_impact"}, {}});
+    gameplay::dialogue::DialogueFlagSet flags;
+    std::vector<gameplay::WorldRuleState> state;
+    events.clear();
+    events.emit(simulation::RegionEntered{map.id, {"region.playtest.impact"}});
+    const bool consumed = gameplay::WorldLogicSystem{}.consume(
+        {rule}, map.id, flags, events, state);
+    feedback.consume(events, map, player, effects);
+    if (!context.require(consumed && effects.isActive({"effect.world.heavy_impact"}),
+                         "presentation World Logic cue did not reach the effect runtime")) {
+        return false;
+    }
+    return context.step();
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -848,6 +903,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runQuest(context);
     } else if (name == "world_logic") {
         passed = runWorldLogic(context);
+    } else if (name == "presentation_feedback") {
+        passed = runPresentationFeedback(context);
     } else if (name == "rewards_loot") {
         passed = runRewards(context);
     } else {
@@ -863,7 +920,7 @@ const std::vector<std::string> allScenarios{
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "rewards_loot"};
+        "presentation_feedback", "rewards_loot"};
 
 } // namespace
 

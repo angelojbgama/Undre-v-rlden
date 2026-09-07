@@ -71,6 +71,9 @@ authoring::StampDefinition compileStamp(const AuthoredStamp& v) {
     for (const auto& cell : v.cells) result.cells.push_back({cell.x, cell.y, cell.tileId});
     return result;
 }
+presentation::PresentationEffectDefinition compilePresentationEffect(const AuthoredPresentationEffect& v) {
+    return {v.id, v.lifetime, v.durationTicks, v.priority, v.cameraShake, v.overlay, v.visionMask, v.fade};
+}
 
 } // namespace
 
@@ -99,6 +102,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         registry.authoringDescriptors_ = authored.authoringDescriptors;
         for (const auto& value : authored.tileSemantics) registry.authoringSemantics_.addTile(compileTileSemantic(value));
         for (const auto& value : authored.stamps) registry.authoringSemantics_.addStamp(compileStamp(value));
+        for (const auto& value : authored.presentationEffects) registry.presentationEffects_.add(compilePresentationEffect(value));
         result.registry.emplace(std::move(registry));
     } catch (const std::exception& exception) {
         result.report.diagnostics.push_back({ContentDiagnosticSeverity::error, "catalog_rejected", exception.what(), ContentKind::tileset, {}, "registry"});

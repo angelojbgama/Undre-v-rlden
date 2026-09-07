@@ -15,6 +15,7 @@
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/world_objects.h"
 #include "game/tilesets.h"
+#include "game/presentation/presentation_effects.h"
 
 #include <optional>
 #include <string>
@@ -61,6 +62,18 @@ struct AuthoredShopOffer final { simulation::DefinitionId itemId{}; std::optiona
 struct AuthoredShop final { simulation::DefinitionId id{}; std::vector<AuthoredShopOffer> offers; };
 struct AuthoringDescriptor final { simulation::DefinitionId definitionId{}; std::string displayName; AuthoringCategory category{AuthoringCategory::enemy}; std::vector<std::string> tags; };
 
+struct AuthoredPresentationEffect final {
+    simulation::DefinitionId id{};
+    presentation::PresentationEffectLifetime lifetime{presentation::PresentationEffectLifetime::transient};
+    std::uint32_t durationTicks{};
+    int priority{};
+    std::optional<presentation::CameraShakeDefinition> cameraShake{};
+    std::optional<presentation::ColorOverlayDefinition> overlay{};
+    std::optional<presentation::VisionMaskDefinition> visionMask{};
+    std::optional<presentation::FadeDefinition> fade{};
+    [[nodiscard]] bool operator==(const AuthoredPresentationEffect&) const noexcept = default;
+};
+
 struct AuthoredTileSemantic final { simulation::DefinitionId id{}; simulation::DefinitionId tilesetId{}; std::uint32_t sourceIndex{}; std::string family; authoring::TileRole role{authoring::TileRole::unknown}; authoring::TileTopology topology{authoring::TileTopology::unknown}; authoring::EdgeProfile north{authoring::EdgeProfile::unknown}; authoring::EdgeProfile east{authoring::EdgeProfile::unknown}; authoring::EdgeProfile south{authoring::EdgeProfile::unknown}; authoring::EdgeProfile west{authoring::EdgeProfile::unknown}; std::string preferredLayer; bool flipXAllowed{}; authoring::SemanticConfidence visualConfidence{authoring::SemanticConfidence::confirmed}; authoring::SemanticConfidence semanticConfidence{authoring::SemanticConfidence::unverified}; authoring::SemanticConfidence gameplayConfidence{authoring::SemanticConfidence::unverified}; };
 struct AuthoredStampCell final { int x{}; int y{}; simulation::DefinitionId tileId{}; };
 struct AuthoredStamp final { simulation::DefinitionId id{}; std::string displayName; std::uint32_t width{}; std::uint32_t height{}; std::vector<AuthoredStampCell> cells; core::PointI anchor{}; bool flipXAllowed{}; bool atomic{}; authoring::SemanticConfidence confidence{authoring::SemanticConfidence::unverified}; };
@@ -72,6 +85,7 @@ struct AuthoredContentPack final {
     std::vector<AuthoredNpcVisualSet> npcVisuals; std::vector<AuthoredDialogue> dialogues; std::vector<AuthoredQuest> quests;
     std::vector<AuthoringDescriptor> authoringDescriptors; std::vector<AuthoredTileSemantic> tileSemantics; std::vector<AuthoredStamp> stamps;
     std::vector<AuthoredPlayerProgression> playerProgressions; std::vector<AuthoredRewardProfile> rewardProfiles; std::vector<AuthoredRewardGrant> rewardGrants; std::vector<AuthoredShop> shops;
+    std::vector<AuthoredPresentationEffect> presentationEffects;
 };
 
 } // namespace underworld::game::content

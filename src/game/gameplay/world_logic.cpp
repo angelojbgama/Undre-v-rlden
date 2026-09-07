@@ -101,6 +101,8 @@ bool WorldLogicSystem::consume(const std::vector<maps::WorldRuleDefinition>& rul
                     } else {
                         success = false;
                     }
+                } else if (action.kind == maps::WorldActionKind::playPresentationEffect) {
+                    events.emit(simulation::PresentationEffectRequested{mapId, target});
                 }
             }
         }

@@ -92,7 +92,8 @@ EditorDocument::EditorDocument(maps::MapData data) : data_(std::move(data)) {
     synchronizeEditorState();
     initializeAllocator();
     for (const auto& region : data_.regions) {
-        regions_.push_back({allocatePersistentId(), std::string(region.id.value()), region.bounds});
+        regions_.push_back({allocatePersistentId(), std::string(region.id.value()), region.bounds,
+                            region.environmentEffectId});
     }
 }
 
@@ -270,7 +271,11 @@ bool EditorDocument::saveBackup(const std::filesystem::path& path,
             const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
                 [&](const auto& value) { return value.id.value() == region.regionId; });
             if (found == authored.regions.end()) {
-                authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+                authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds,
+                                            region.environmentEffectId});
+            } else {
+                found->bounds = region.bounds;
+                found->environmentEffectId = region.environmentEffectId;
             }
         }
         for (const auto& [instance, overrides] : propertyOverrides_) {
@@ -316,7 +321,11 @@ bool EditorDocument::exportDmap(const std::filesystem::path& path,
         const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
             [&](const auto& value) { return value.id.value() == region.regionId; });
         if (found == authored.regions.end()) {
-            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds,
+                                        region.environmentEffectId});
+        } else {
+            found->bounds = region.bounds;
+            found->environmentEffectId = region.environmentEffectId;
         }
     }
     const auto compiled = maps::compileAuthoredMap(authored, content);
@@ -362,6 +371,24 @@ bool EditorDocument::redo(std::string& error) {
 simulation::PersistentInstanceId EditorDocument::allocatePersistentId() noexcept {
     if (nextPersistentId_ == 0) { return {}; }
     return {nextPersistentId_++};
+}
+
+bool EditorDocument::setRegionEnvironmentEffect(
+    const simulation::DefinitionId& regionId,
+    std::optional<simulation::DefinitionId> effectId, std::string& error) {
+    error.clear();
+    if (regionId.empty()) { error = "region id cannot be empty"; return false; }
+    if (effectId && effectId->empty()) { error = "environment effect id cannot be empty"; return false; }
+    const auto found = std::find_if(regions_.begin(), regions_.end(),
+        [&](const auto& value) { return value.regionId == regionId.value(); });
+    if (found == regions_.end()) { error = "region does not exist"; return false; }
+    found->environmentEffectId = std::move(effectId);
+    // Region commands expose the editor's placement view directly.  Synchronize
+    // that view before rebuilding the authored source so a newly-created region
+    // is not lost when this binding is changed before the next Save.
+    synchronizeAuthoredSource();
+    commitAuthoredMutation();
+    return true;
 }
 
 bool EditorDocument::hasExperimentalData() const noexcept {
@@ -565,7 +592,11 @@ ValidationReport EditorDocument::validate(const game::GameContentRegistry& conte
         const auto found = std::find_if(authored.regions.begin(), authored.regions.end(),
             [&](const auto& value) { return value.id.value() == region.regionId; });
         if (found == authored.regions.end()) {
-            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+            authored.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds,
+                                        region.environmentEffectId});
+        } else {
+            found->bounds = region.bounds;
+            found->environmentEffectId = region.environmentEffectId;
         }
     }
     const auto base = maps::validateMapData(maps::mapDataFromAuthored(authored), &catalogs);
@@ -648,7 +679,11 @@ void EditorDocument::synchronizeAuthoredSource() {
         const auto found = std::find_if(authoredSource_.regions.begin(), authoredSource_.regions.end(),
             [&](const auto& value) { return value.id.value() == region.regionId; });
         if (found == authoredSource_.regions.end()) {
-            authoredSource_.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds});
+            authoredSource_.regions.push_back({simulation::DefinitionId{region.regionId}, region.bounds,
+                                               region.environmentEffectId});
+        } else {
+            found->bounds = region.bounds;
+            found->environmentEffectId = region.environmentEffectId;
         }
     }
     authoredSource_.placementOverrides.clear();

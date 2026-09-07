@@ -326,6 +326,9 @@ JsonValue encodeRegion(const MapRegionDefinition& value) {
     JsonObject objectValue;
     put(objectValue, "id", idValue(value.id.value()));
     put(objectValue, "bounds", areaValue(value.bounds));
+    if (value.environmentEffectId) {
+        put(objectValue, "environmentEffectId", idValue(value.environmentEffectId->value()));
+    }
     return ::underworld::game::maps::objectValue(std::move(objectValue));
 }
 
@@ -333,12 +336,20 @@ bool decodeRegion(const JsonValue& value, Reader& reader, std::string_view path,
                   MapRegionDefinition& output) {
     const auto* objectValue = object(value, reader, path);
     if (objectValue == nullptr) return false;
-    allowed(*objectValue, reader, path, {"id", "bounds"});
+    allowed(*objectValue, reader, path, {"id", "bounds", "environmentEffectId"});
     const auto* id = required(*objectValue, value, reader, path, "id");
     const auto* bounds = required(*objectValue, value, reader, path, "bounds");
     bool good = id != nullptr && readId(*id, reader, std::string(path) + ".id", output.id);
     good = bounds != nullptr &&
            readArea(*bounds, reader, std::string(path) + ".bounds", output.bounds) && good;
+    if (const auto* effect = field(*objectValue, "environmentEffectId")) {
+        simulation::DefinitionId decoded;
+        if (readId(*effect, reader, std::string(path) + ".environmentEffectId", decoded)) {
+            output.environmentEffectId = std::move(decoded);
+        } else {
+            good = false;
+        }
+    }
     return good;
 }
 
@@ -369,6 +380,7 @@ const char* actionName(WorldActionKind value) {
     case WorldActionKind::clearFlag: return "clearFlag";
     case WorldActionKind::startEncounter: return "startEncounter";
     case WorldActionKind::setDoorState: return "setDoorState";
+    case WorldActionKind::playPresentationEffect: return "playPresentationEffect";
     }
     return "setFlag";
 }
@@ -499,6 +511,7 @@ bool decodeAction(const JsonValue& value, Reader& reader, std::string_view path,
     else if (good && text == "clearFlag") output.kind = WorldActionKind::clearFlag;
     else if (good && text == "startEncounter") output.kind = WorldActionKind::startEncounter;
     else if (good && text == "setDoorState") output.kind = WorldActionKind::setDoorState;
+    else if (good && text == "playPresentationEffect") output.kind = WorldActionKind::playPresentationEffect;
     else if (good) {
         reader.error(*kind, std::string(path) + ".kind", "unknown_enum",
                      "unknown world action");
@@ -988,7 +1001,7 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
     const auto& geometry = source.geometry;
     JsonObject root;
     put(root, "format", stringValue("dungeon-underworld-map-source"));
-    put(root, "version", unsignedValue(1));
+    put(root, "version", unsignedValue(2));
     put(root, "id", idValue(geometry.id.value()));
     put(root, "width", unsignedValue(geometry.width));
     put(root, "height", unsignedValue(geometry.height));
@@ -1092,10 +1105,53 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
         good = false;
     }
     std::uint64_t schemaVersion{};
-    if (version == nullptr || !parseUnsigned(*version, schemaVersion) || schemaVersion != 1) {
+    if (version == nullptr || !parseUnsigned(*version, schemaVersion) ||
+        (schemaVersion != 1 && schemaVersion != 2)) {
         if (version != nullptr) reader.error(*version, "version", "unsupported_version",
                                               "unsupported map schema version");
         good = false;
+    }
+    if (schemaVersion == 1) {
+        if (const auto* regionsValue = field(*root, "regions")) {
+            if (const auto* regions = std::get_if<JsonArray>(&regionsValue->value)) {
+                for (std::size_t index = 0; index < regions->size(); ++index) {
+                    if (const auto* region = std::get_if<JsonObject>(&(*regions)[index].value)) {
+                        if (const auto* environment = field(*region, "environmentEffectId")) {
+                            reader.error(*environment, "regions[" + std::to_string(index) +
+                                             "].environmentEffectId", "unsupported_version",
+                                         "environment effect bindings require map schema version 2");
+                            good = false;
+                        }
+                    }
+                }
+            }
+        }
+        if (const auto* rulesValue = field(*root, "worldRules")) {
+            if (const auto* rules = std::get_if<JsonArray>(&rulesValue->value)) {
+                for (std::size_t ruleIndex = 0; ruleIndex < rules->size(); ++ruleIndex) {
+                    const auto* rule = std::get_if<JsonObject>(&(*rules)[ruleIndex].value);
+                    if (rule == nullptr) continue;
+                    const auto* actionsValue = field(*rule, "actions");
+                    const auto* actions = actionsValue == nullptr ? nullptr :
+                        std::get_if<JsonArray>(&actionsValue->value);
+                    if (actions == nullptr) continue;
+                    for (std::size_t actionIndex = 0; actionIndex < actions->size(); ++actionIndex) {
+                        const auto* action = std::get_if<JsonObject>(&(*actions)[actionIndex].value);
+                        if (action == nullptr) continue;
+                        const auto* kind = field(*action, "kind");
+                        const auto* text = kind == nullptr ? nullptr :
+                            std::get_if<std::string>(&kind->value);
+                        if (text != nullptr && *text == "playPresentationEffect") {
+                            reader.error(*kind, "worldRules[" + std::to_string(ruleIndex) +
+                                             "].actions[" + std::to_string(actionIndex) +
+                                             "].kind", "unsupported_version",
+                                         "presentation effect actions require map schema version 2");
+                            good = false;
+                        }
+                    }
+                }
+            }
+        }
     }
     good = id != nullptr && readMapId(*id, reader, "id", source.geometry.id) && good;
     good = width != nullptr && readU32(*width, reader, "width", source.geometry.width,

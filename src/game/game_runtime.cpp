@@ -37,6 +37,7 @@
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/player_visual.h"
+#include "game/presentation/presentation_feedback_controller.h"
 #include "game/world_object_visual.h"
 #include "game/maps/dmap.h"
 #include "game/maps/map_catalog.h"
@@ -492,14 +493,16 @@ struct GameRuntime::State final {
 
 
     void consumeSimulationEvents() {
+        const auto mapData = std::find_if(knownMapData.begin(), knownMapData.end(),
+            [&](const auto& value) { return value.id == activeWorld().id(); });
+        if (mapData != knownMapData.end()) {
+            presentationFeedback.consume(events, *mapData, player.entityHandle(), presentationEffects);
+        }
         for (const simulation::SimulationEvent& event : events.events()) {
             if (const auto* damaged = std::get_if<simulation::EntityDamaged>(&event)) {
                 std::ostringstream text;
                 text << "DAMAGE " << damaged->amount << " HP " << damaged->remainingHealth;
                 lastEvent = text.str();
-                if (damaged->target == player.entityHandle()) {
-                    playerDamageBlinkTicksRemaining_ = playerDamageBlinkDurationTicks;
-                }
             } else if (std::holds_alternative<simulation::EntityDefeated>(event)) {
                 lastEvent = "ENTITY DEFEATED";
             } else if (const auto* impact = std::get_if<simulation::ProjectileImpact>(&event)) {
@@ -526,6 +529,7 @@ struct GameRuntime::State final {
 
     void clearMapTransients() {
         effects->clear();
+        presentationEffects.clearAll();
     }
 
     void commitTransitionIfRequested() {
@@ -577,9 +581,7 @@ struct GameRuntime::State final {
 
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
-        if (playerDamageBlinkTicksRemaining_ > 0) {
-            --playerDamageBlinkTicksRemaining_;
-        }
+        presentationEffects.advance();
         // Kept in the Runtime until dialogue/inventory pause semantics are
         // fully owned by the Session. This preserves the old rule that the
         // player's invulnerability timer advances even while those overlays
@@ -617,20 +619,14 @@ struct GameRuntime::State final {
         const auto view = buildGameViewModel(
             player, session.playerItems(), itemCatalog, session.inventoryOverlay(), session.bankOverlay(),
             session.derivedPlayerStats(), session.shopOverlay(), content.shops());
+        const auto presentationFrame = presentationEffects.resolveFrame();
         presentation.render(framebuffer, {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
+            presentationFrame,
             session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, enemyVisualCatalog, objectVisualCatalog,
             projectileVisuals, pickupVisuals, itemVisuals, font, hudHeartImage, hudMoneyImage,
-            session.dialogue(), view, combatDebug, session.activeSword(), lastEvent, collisionOverlay,
-            playerSpriteVisibleDuringInvulnerability()});
-    }
-
-    [[nodiscard]] bool playerSpriteVisibleDuringInvulnerability() const noexcept {
-        constexpr std::uint32_t blinkCadenceTicks = 4;
-        if (playerDamageBlinkTicksRemaining_ == 0) { return true; }
-        const auto elapsed = playerDamageBlinkDurationTicks - playerDamageBlinkTicksRemaining_;
-        return (elapsed / blinkCadenceTicks) % 2 == 0;
+            session.dialogue(), view, combatDebug, session.activeSword(), lastEvent, collisionOverlay});
     }
 
 
@@ -667,6 +663,8 @@ struct GameRuntime::State final {
     std::filesystem::path savePath;
     GamePresentation presentation;
     GameContentRegistry content;
+    presentation::PresentationEffectSystem presentationEffects{content.presentationEffects()};
+    presentation::PresentationFeedbackController presentationFeedback;
     GameSession session;
     const gameplay::Player& player{session.player()};
     RuntimeTilesetCatalog runtimeTilesets{content.tilesets()};
@@ -698,8 +696,6 @@ struct GameRuntime::State final {
     maps::MapCatalog mapCatalog;
     std::vector<maps::MapData> knownMapData;
     const simulation::EventBuffer& events{session.events()};
-    static constexpr std::uint32_t playerDamageBlinkDurationTicks = 12;
-    std::uint32_t playerDamageBlinkTicksRemaining_{};
     CommandBuilder commandBuilder;
     simulation::Tick lastTick{};
     std::uint32_t lastSequence{};

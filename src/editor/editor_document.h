@@ -93,6 +93,7 @@ struct RegionPlacement final {
     simulation::PersistentInstanceId id{};
     std::string regionId;
     world::AabbI bounds{};
+    std::optional<simulation::DefinitionId> environmentEffectId{};
 };
 
 enum class ValidationSeverity { error, warning };
@@ -189,6 +190,9 @@ public:
     [[nodiscard]] simulation::PersistentInstanceId allocatePersistentId() noexcept;
     [[nodiscard]] const std::vector<RegionPlacement>& regions() const noexcept { return regions_; }
     [[nodiscard]] std::vector<RegionPlacement>& commandRegions() noexcept { return regions_; }
+    bool setRegionEnvironmentEffect(const simulation::DefinitionId& regionId,
+                                    std::optional<simulation::DefinitionId> effectId,
+                                    std::string& error);
     [[nodiscard]] const std::unordered_map<std::uint64_t, PropertyOverrideSet>&
         propertyOverrides() const noexcept { return propertyOverrides_; }
     [[nodiscard]] std::unordered_map<std::uint64_t, PropertyOverrideSet>&

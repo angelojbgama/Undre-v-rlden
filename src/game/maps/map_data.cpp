@@ -189,6 +189,14 @@ MapValidationResult validateMapData(const MapData& data,
             !areaInsideMap(data, region.bounds)) {
             return failure("map region id or bounds are invalid or outside the map");
         }
+        if (region.environmentEffectId) {
+            if (catalogs && catalogs->presentationEffects) {
+                const auto* effect = catalogs->presentationEffects->find(*region.environmentEffectId);
+                if (!effect || effect->lifetime != presentation::PresentationEffectLifetime::persistent) {
+                    return failure("map region environment effect is unknown or not persistent");
+                }
+            }
+        }
     }
     std::unordered_set<std::string> ruleIds;
     const auto objectById = [&](simulation::PersistentInstanceId id) {
@@ -292,6 +300,18 @@ MapValidationResult validateMapData(const MapData& data,
                     const auto* definition = catalogs->objects->find(object->definitionId);
                     if (definition == nullptr || !definition->door) {
                         return failure("door action target is not door-capable");
+                    }
+                }
+                break;
+            }
+            case WorldActionKind::playPresentationEffect: {
+                if (target.empty() || action.instanceTarget) {
+                    return failure("presentation effect action has an invalid target");
+                }
+                if (catalogs && catalogs->presentationEffects) {
+                    const auto* effect = catalogs->presentationEffects->find(target);
+                    if (!effect || effect->lifetime != presentation::PresentationEffectLifetime::transient) {
+                        return failure("presentation effect action references an unknown or persistent effect");
                     }
                 }
                 break;

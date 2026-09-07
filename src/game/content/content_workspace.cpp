@@ -36,6 +36,7 @@ std::string categoryOf(ContentKind kind) {
     case ContentKind::rewardProfile: return "rewardProfiles";
     case ContentKind::rewardGrant: return "rewardGrants";
     case ContentKind::shop: return "shops";
+    case ContentKind::presentationEffect: return "presentationEffects";
     }
     return {};
 }
@@ -169,6 +170,7 @@ ContentWorkspaceLoadResult loadContentWorkspaceFiles(
         mergeCategory(file, "authoringDescriptors", file.content.authoringDescriptors, merged.authoringDescriptors, sources, result, [](const auto& v) { return v.definitionId; });
         mergeCategory(file, "tileSemantics", file.content.tileSemantics, merged.tileSemantics, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "stamps", file.content.stamps, merged.stamps, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "presentationEffects", file.content.presentationEffects, merged.presentationEffects, sources, result, [](const auto& v) { return v.id; });
     }
     if (!result.diagnostics.empty()) return result;
 

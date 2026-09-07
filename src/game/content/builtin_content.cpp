@@ -91,6 +91,19 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"reward.enemy.skull"}, 40, {{{"pickup.money"}, 10000, 1, 1}, {{"pickup.heart"}, 2500, 1, 1}}}};
     pack.rewardGrants = {{{"reward.quest.scholar.path"}, 40, 25, {{{"item.life_potion"}, 2}, {{"item.training_armor"}, 1}}}};
     pack.shops = {{{"shop.development.general"}, {{{"item.life_potion"}, 25, 10}, {{"item.training_armor"}, 150, 60}, {{"item.power_charm"}, 200, 80}}}};
+    pack.presentationEffects = {
+        {{"effect.player.hit"}, presentation::PresentationEffectLifetime::transient, 6, 50,
+         presentation::CameraShakeDefinition{2},
+         presentation::ColorOverlayDefinition{{220, 32, 32, 76}, presentation::PresentationOverlayMode::linearFadeOut, 0, presentation::PresentationCompositionLayer::world},
+         std::nullopt, std::nullopt},
+        {{"effect.world.heavy_impact"}, presentation::PresentationEffectLifetime::transient, 24, 80,
+         presentation::CameraShakeDefinition{6},
+         presentation::ColorOverlayDefinition{{255, 255, 255, 100}, presentation::PresentationOverlayMode::linearFadeOut, 0, presentation::PresentationCompositionLayer::final},
+         std::nullopt, std::nullopt},
+        {{"effect.environment.dark"}, presentation::PresentationEffectLifetime::persistent, 0, 10,
+         std::nullopt,
+         presentation::ColorOverlayDefinition{{0, 0, 24, 32}, presentation::PresentationOverlayMode::constant, 0, presentation::PresentationCompositionLayer::world},
+         presentation::VisionMaskDefinition{48, 72, 220, {0, 0, 0, 255}}, std::nullopt}};
     pack.npcVisuals = {{{"visual.npc.guard"}, {70, 150, 240, 255}}, {{"visual.npc.scholar"}, {220, 180, 70, 255}}, {{"visual.npc.merchant"}, {120, 210, 120, 255}}};
     pack.npcs = {
         {{"npc.guard"}, {"visual.npc.guard"}, {{-14, -28, 28, 22}, true}, {"dialogue.guard.greeting"}, {"npc", "guard"}},

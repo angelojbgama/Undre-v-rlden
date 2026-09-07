@@ -1583,7 +1583,7 @@ Não há manifest, hot reload, mutação de registry ou autoria visual genérica
 
 ## Authored World Source Boundary
 
-`UMAP v1` is the authored map source and `DMAP 1.2` is the compiled/runtime map
+`UMAP v2` is the authored map source and `DMAP 1.3` is the compiled/runtime map
 serialization. The production boundary is:
 
 ```text
@@ -1595,7 +1595,7 @@ MapCompiler
        ↓
 MapData
        ↓
-DMAP 1.2
+DMAP 1.3
        ↓
 RuntimeWorld
 ```
@@ -1623,6 +1623,46 @@ placement IDs. The current implementation deliberately does not add a scripting 
 Puzzle Engine, encounter waves, Visual Content Boundary, Content Studio or LLM
 integration. Door and encounter presentation remains constrained by the current
 hardcoded runtime visual capabilities.
+
+## Presentation Feedback Foundation — Phase 15
+
+Presentation feedback is derived from authoritative simulation state and never writes
+gameplay state back into the simulation:
+
+```text
+SimulationEvent
+      ├── QuestSystem
+      └── WorldLogicSystem
+                ↓
+       PresentationEffectRequested
+                ↓
+PresentationFeedbackController
+                ↓
+PresentationEffectSystem
+                ↓
+PresentationEffectFrame
+                ↓
+GamePresentation → Framebuffer
+```
+
+`PresentationEffectSystem` owns only fixed-tick presentation state. Transient effects
+are keyed by effect ID and retrigger by restarting their lifetime; persistent effects
+are keyed by effect ID plus structured region sources. Camera shake is deterministic,
+linear-decay and applied as an offset to an effective render camera. The base camera,
+player position, collision, AI, regions, world rules and saves are not changed.
+
+The renderer applies world-layer effects after world-space VFX and before debug/HUD,
+then applies final-layer fades/overlays after HUD. Vision masks are CPU passes over the
+small logical framebuffer and are centered on the player's logical position, not on the
+viewport center. Deterministic priority/ID ordering avoids dependence on container
+iteration order.
+
+The existing `EffectSystem` remains the world-space animated VFX system. It is not
+merged with `PresentationEffectSystem`; an impact may consume both systems in the
+future. Content JSON v3 supplies presentation effect definitions, while authored UMAP
+v2/DMAP 1.3 regions may bind a persistent environment effect and world rules may emit
+a transient presentation cue. DSAV 1.7 remains unchanged: presentation state is
+cleared/rebuilt on map activation and load rather than persisted.
 ## Equipment and derived player stats
 
 Equipment is Player-owned gameplay state. Equipment items remain normal

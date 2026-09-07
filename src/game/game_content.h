@@ -9,6 +9,7 @@
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
+#include "game/presentation/presentation_effects.h"
 #include "game/authoring/authoring_semantics.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
@@ -64,6 +65,7 @@ public:
     [[nodiscard]] const gameplay::rpg::RewardProfileCatalog& rewards() const noexcept { return rewards_; }
     [[nodiscard]] const gameplay::rpg::RewardGrantCatalog& rewardGrants() const noexcept { return rewardGrants_; }
     [[nodiscard]] const gameplay::rpg::ShopCatalog& shops() const noexcept { return shops_; }
+    [[nodiscard]] const presentation::PresentationEffectCatalog& presentationEffects() const noexcept { return presentationEffects_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -94,6 +96,7 @@ private:
     gameplay::rpg::RewardProfileCatalog rewards_;
     gameplay::rpg::RewardGrantCatalog rewardGrants_;
     gameplay::rpg::ShopCatalog shops_;
+    presentation::PresentationEffectCatalog presentationEffects_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };
