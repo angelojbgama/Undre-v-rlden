@@ -79,6 +79,18 @@ void Animator::updateTicks(std::uint64_t ticks,
     }
 }
 
+void Animator::stepFrame(int direction) noexcept {
+    if (!clip_ || direction == 0) return;
+    const auto frameCount = clip_->frames().size();
+    if (direction < 0) {
+        if (frameIndex_ > 0) --frameIndex_;
+    } else if (frameIndex_ + 1U < frameCount) {
+        ++frameIndex_;
+    }
+    elapsedFrameTicks_ = 0;
+    playing_ = false;
+}
+
 const AnimationClip& Animator::clip() const {
     if (!clip_) {
         throw std::logic_error("animator has no clip");

@@ -180,6 +180,8 @@ if errorlevel 1 goto :build_failed
 echo Compiling map editor application...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_app.obj" "src\editor\editor_app.cpp"
 if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\visual_preview.obj" "src\editor\visual_preview.cpp"
+if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_launch.obj" "src\editor\editor_launch.cpp"
 if errorlevel 1 goto :build_failed
 
@@ -364,11 +366,11 @@ if errorlevel 1 goto :build_failed
 
 echo Linking map_editor.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
-    "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" ^
+    "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" "build\obj\sprite.obj" "build\obj\animation.obj" ^
     "build\obj\bitmap_font.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\runtime_map.obj" ^
     "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\json.obj" ^
-    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\presentation_effects.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
+    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\presentation_effects.obj" "build\obj\visual_content_loader.obj" "build\obj\world_object_visual.obj" "build\obj\enemy_visual.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
@@ -376,7 +378,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" ^
     "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
-    "build\obj\editor_app.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
+    "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib comdlg32.lib
 if errorlevel 1 goto :build_failed
 

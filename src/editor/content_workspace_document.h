@@ -81,6 +81,18 @@ public:
     [[nodiscard]] std::vector<ContentDefinitionKey> index() const;
     [[nodiscard]] const game::content::ContentSourceLocation* sourceFor(
         const ContentDefinitionKey& key) const noexcept;
+    [[nodiscard]] const game::content::AuthoredVisualImage* visualImage(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredStaticSprite* staticSprite(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredAnimation* animation(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredEnemyVisual* enemyVisual(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredWorldObjectVisual* objectVisual(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const game::content::AuthoredNpcVisualSet* npcVisual(
+        const simulation::DefinitionId& id) const noexcept;
     [[nodiscard]] static const std::vector<ContentDefinitionKind>& categoryOrder() noexcept;
     [[nodiscard]] static const char* categoryName(ContentDefinitionKind kind) noexcept;
     [[nodiscard]] static std::optional<ContentDefinitionKind> categoryFromName(
@@ -145,6 +157,22 @@ public:
     [[nodiscard]] bool removeEnemyVisualAction(const simulation::DefinitionId& id,
                                                const simulation::DefinitionId& actionId,
                                                std::string& error);
+
+    [[nodiscard]] bool addObjectVisual(const std::filesystem::path& file,
+                                       game::content::AuthoredWorldObjectVisual value,
+                                       std::string& error);
+    [[nodiscard]] bool updateObjectVisual(const simulation::DefinitionId& id,
+                                          game::content::AuthoredWorldObjectVisual value,
+                                          std::string& error);
+    [[nodiscard]] bool removeObjectVisual(const simulation::DefinitionId& id, std::string& error);
+
+    [[nodiscard]] bool addNpcVisual(const std::filesystem::path& file,
+                                    game::content::AuthoredNpcVisualSet value,
+                                    std::string& error);
+    [[nodiscard]] bool updateNpcVisual(const simulation::DefinitionId& id,
+                                       game::content::AuthoredNpcVisualSet value,
+                                       std::string& error);
+    [[nodiscard]] bool removeNpcVisual(const simulation::DefinitionId& id, std::string& error);
 
     [[nodiscard]] bool removeDefinition(const ContentDefinitionKey& key, std::string& error);
 

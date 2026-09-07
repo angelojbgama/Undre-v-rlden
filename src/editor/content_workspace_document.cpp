@@ -238,6 +238,36 @@ const game::content::ContentSourceLocation* ContentWorkspaceDocument::sourceFor(
     return kind ? sources_.find(game::content::contentCategoryName(*kind), key.id) : nullptr;
 }
 
+const game::content::AuthoredVisualImage* ContentWorkspaceDocument::visualImage(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->visualImages, id) : nullptr;
+}
+
+const game::content::AuthoredStaticSprite* ContentWorkspaceDocument::staticSprite(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->staticSprites, id) : nullptr;
+}
+
+const game::content::AuthoredAnimation* ContentWorkspaceDocument::animation(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->animations, id) : nullptr;
+}
+
+const game::content::AuthoredEnemyVisual* ContentWorkspaceDocument::enemyVisual(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->enemyVisuals, id) : nullptr;
+}
+
+const game::content::AuthoredWorldObjectVisual* ContentWorkspaceDocument::objectVisual(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->objectVisuals, id) : nullptr;
+}
+
+const game::content::AuthoredNpcVisualSet* ContentWorkspaceDocument::npcVisual(
+    const simulation::DefinitionId& id) const noexcept {
+    return mergedAuthored_ ? findId(mergedAuthored_->npcVisuals, id) : nullptr;
+}
+
 std::filesystem::path ContentWorkspaceDocument::resolveDocumentPath(
     const std::filesystem::path& path) const {
     if (path.is_absolute()) return absoluteNormal(path);
@@ -376,7 +406,9 @@ bool ContentWorkspaceDocument::addDefinition(
         if (std::string_view(category) == "visualImages") return containsId(local->authored.visualImages, id);
         if (std::string_view(category) == "staticSprites") return containsId(local->authored.staticSprites, id);
         if (std::string_view(category) == "animations") return containsId(local->authored.animations, id);
-        return containsId(local->authored.enemyVisuals, id);
+        if (std::string_view(category) == "enemyVisuals") return containsId(local->authored.enemyVisuals, id);
+        if (std::string_view(category) == "objectVisuals") return containsId(local->authored.objectVisuals, id);
+        return containsId(local->authored.npcVisuals, id);
     }()) { error = "definition ID already exists"; return false; }
     return mutateFile(path, [&](AuthoredContentPack& pack) { mutation(pack); return true; }, error);
 }
@@ -569,6 +601,62 @@ bool ContentWorkspaceDocument::removeEnemyVisualAction(const simulation::Definit
         }, error);
 }
 
+bool ContentWorkspaceDocument::addObjectVisual(
+    const std::filesystem::path& file, game::content::AuthoredWorldObjectVisual value,
+    std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::objectVisual, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.objectVisuals.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateObjectVisual(
+    const simulation::DefinitionId& id, game::content::AuthoredWorldObjectVisual value,
+    std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::objectVisual, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.objectVisuals, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeObjectVisual(const simulation::DefinitionId& id,
+                                                  std::string& error) {
+    return removeDefinition({ContentDefinitionKind::objectVisual, id}, error);
+}
+
+bool ContentWorkspaceDocument::addNpcVisual(
+    const std::filesystem::path& file, game::content::AuthoredNpcVisualSet value,
+    std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::npcVisual, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.npcVisuals.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateNpcVisual(
+    const simulation::DefinitionId& id, game::content::AuthoredNpcVisualSet value,
+    std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::npcVisual, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.npcVisuals, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeNpcVisual(const simulation::DefinitionId& id,
+                                               std::string& error) {
+    return removeDefinition({ContentDefinitionKind::npcVisual, id}, error);
+}
+
 bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key, std::string& error) {
     return mutateDefinition(key.kind, key.id,
         [key](AuthoredContentPack& pack) {
@@ -583,6 +671,8 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
             case ContentDefinitionKind::staticSprite: return erase(pack.staticSprites);
             case ContentDefinitionKind::animation: return erase(pack.animations);
             case ContentDefinitionKind::enemyVisual: return erase(pack.enemyVisuals);
+            case ContentDefinitionKind::objectVisual: return erase(pack.objectVisuals);
+            case ContentDefinitionKind::npcVisual: return erase(pack.npcVisuals);
             default: return false;
             }
         }, error);

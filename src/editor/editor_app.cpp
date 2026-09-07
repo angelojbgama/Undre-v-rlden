@@ -5,6 +5,7 @@
 #include "engine/render/bitmap_font.h"
 #include "engine/render/image.h"
 #include "engine/render/renderer_2d.h"
+#include "engine/render/sprite.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_source.h"
 
@@ -12,6 +13,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <sstream>
@@ -45,7 +47,33 @@ enum ContentEditField : int {
     fieldAnimationMarker,
     fieldAnimationNewMarker,
     fieldEnemyIdleDefault,
-    fieldEnemyActionId
+    fieldEnemyIdleDown,
+    fieldEnemyIdleUp,
+    fieldEnemyIdleSide,
+    fieldEnemyOptionalDefault,
+    fieldEnemyOptionalDown,
+    fieldEnemyOptionalUp,
+    fieldEnemyOptionalSide,
+    fieldEnemyActionDefault,
+    fieldEnemyActionDown,
+    fieldEnemyActionUp,
+    fieldEnemyActionSide,
+    fieldEnemyActionId,
+    fieldObjectIdle,
+    fieldObjectOpened,
+    fieldObjectDestroying,
+    fieldObjectActivationInactive,
+    fieldObjectActivationActive,
+    fieldObjectDoorLocked,
+    fieldObjectDoorClosed,
+    fieldObjectDoorOpen,
+    fieldNpcMarker,
+    fieldNpcIdleDefault,
+    fieldNpcIdleDown,
+    fieldNpcIdleUp,
+    fieldNpcIdleSide,
+    fieldPreviewGridOrigin,
+    fieldPreviewGridCell
 };
 
 int parsePositive(const std::string& value) {
@@ -126,6 +154,7 @@ EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::pat
       contentWorkspace_(std::move(contentWorkspace)),
       decoder_(&decoder),
       assetRoot_(assetRoot),
+      visualPreview_(decoder, assetRoot),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
     if (!contentWorkspace_) contentWorkspace_ = ContentWorkspaceDocument::fromBuiltin(
         game::content::makeBuiltinAuthoredContent());
@@ -278,7 +307,11 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
 void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& input,
                                   core::RectI left, core::RectI center, core::RectI right,
                                   core::RectI status) {
-    if (input.escapePressed) resetContentEditState();
+    if (input.escapePressed) {
+        resetContentEditState();
+        previewRectangleDragging_ = false;
+        previewPanning_ = false;
+    }
     if (visualValidationAttempted_ && contentWorkspace_ &&
         visualValidationRevision_ != contentWorkspace_->revision()) {
         visualValidationAttempted_ = false;
@@ -286,6 +319,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
     }
     if (ui.button({left.x + 8, 8, 78, 20}, "MAP")) {
         resetContentEditState();
+        resetContentPreviewState();
         contentMode_ = false;
         status_ = "Map mode";
         return;
@@ -310,23 +344,30 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
             selectedContentCategory_ = kind;
             selectedContentDefinition_.reset();
             resetContentEditState();
+            resetContentPreviewState();
         }
     }
 
     ui.label("DEFINITIONS", center.x + 8, 38);
     const auto allDefinitions = contentWorkspace_->index();
     int definitionY = 54;
+    const int definitionBottom = center.y + std::min(center.height - 24, 126);
     for (const auto& key : allDefinitions) {
         if (key.kind != selectedContentCategory_) continue;
-        if (definitionY + 18 >= center.y + center.height) break;
+        if (definitionY + 18 >= definitionBottom) break;
         if (ui.button({center.x + 8, definitionY, center.width - 16, 16},
                       key.id.value(), selectedContentDefinition_ == key)) {
             selectedContentDefinition_ = key;
             resetContentEditState();
+            resetContentPreviewState();
         }
         definitionY += 18;
     }
     if (definitionY == 54) ui.label("No definitions", center.x + 8, definitionY);
+    const int previewTop = std::max(definitionBottom + 8, definitionY + 8);
+    drawContentPreview(ui, input,
+                       {center.x + 8, previewTop, center.width - 16,
+                        std::max(1, center.height - previewTop - 8)});
 
     ui.label("INSPECTOR", right.x + 8, 10);
     if (!selectedContentDefinition_) {
@@ -721,67 +762,308 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                 }
             }
         } else if (key.kind == ContentDefinitionKind::enemyVisual) {
-            const auto* pack = contentWorkspace_->mergedAuthored() ? &*contentWorkspace_->mergedAuthored() : nullptr;
-            if (pack) {
-                const auto value = std::find_if(pack->enemyVisuals.begin(), pack->enemyVisuals.end(),
-                                                [&](const auto& item) { return item.id == key.id; });
-                if (value != pack->enemyVisuals.end()) {
-                    if (contentEditKey_ != key) {
-                        resetContentEditState();
-                        contentEditKey_ = key;
-                        contentEditValues_[fieldEnemyIdleDefault] = value->idle.defaultAnimation
-                            ? std::string(value->idle.defaultAnimation->value()) : std::string{};
-                        contentEditValues_[fieldEnemyActionId] = "action.custom";
+            const auto* value = contentWorkspace_->enemyVisual(key.id);
+            if (value) {
+                if (contentEditKey_ != key) {
+                    resetContentEditState();
+                    contentEditKey_ = key;
+                    contentEditValues_[fieldEnemyActionId] = "action.custom";
+                }
+                const auto bindingText = [&](const std::optional<simulation::DefinitionId>& id) {
+                    return id ? std::string(id->value()) : std::string{};
+                };
+                const auto loadBindingFields = [&](const game::presentation::DirectionalAnimationRef& binding,
+                                                   int base) {
+                    contentEditValues_[base] = bindingText(binding.defaultAnimation);
+                    contentEditValues_[base + 1] = bindingText(binding.down);
+                    contentEditValues_[base + 2] = bindingText(binding.up);
+                    contentEditValues_[base + 3] = bindingText(binding.side);
+                };
+                const auto drawBinding = [&](const char* label,
+                                             const game::presentation::DirectionalAnimationRef& binding,
+                                             int base, int y) {
+                    ui.label(label, right.x + 8, y);
+                    const char* names[] = {"default", "down", "up", "side"};
+                    for (int index = 0; index < 4; ++index) {
+                        const int rowY = y + 14 + index * 30;
+                        ui.label(names[index], right.x + 8, rowY);
+                        if (ui.textField({right.x + 62, rowY - 3, right.width - 70, 20},
+                                         contentEditValues_[base + index],
+                                         contentFocusedField_ == base + index)) {
+                            contentFocusedField_ = base + index;
+                        }
                     }
-                    ui.label("EnemyVisual idle default", right.x + 8, inspectorY);
-                    if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
-                                     contentEditValues_[fieldEnemyIdleDefault],
-                                     contentFocusedField_ == fieldEnemyIdleDefault)) {
-                        contentFocusedField_ = fieldEnemyIdleDefault;
+                    static_cast<void>(binding);
+                };
+                bool optionalStateChanged = false;
+                const auto stateButton = [&](PreviewClipState state, const char* label, int x,
+                                             bool enabled) {
+                    if (ui.button({x, inspectorY + 140, 54, 18}, label,
+                                  previewClipState_ == state)) {
+                        if (enabled) {
+                            resetContentEditState();
+                            previewClipState_ = state;
+                            previewActionId_ = {};
+                        } else if (contentWorkspace_->writable()) {
+                            auto updated = *value;
+                            if (state == PreviewClipState::move) updated.move = {};
+                            if (state == PreviewClipState::hurt) updated.hurt = {};
+                            if (state == PreviewClipState::death) updated.death = {};
+                            if (state == PreviewClipState::dead) updated.dead = {};
+                            std::string editError;
+                            if (contentWorkspace_->updateEnemyVisual(key.id, updated, editError)) {
+                                previewClipState_ = state;
+                                previewActionId_ = {};
+                                refreshContentRegistry();
+                                status_ = "Optional enemy visual state enabled";
+                                optionalStateChanged = true;
+                                return;
+                            }
+                            status_ = editError;
+                        }
                     }
-                    if (input.enterPressed && contentFocusedField_ == fieldEnemyIdleDefault &&
-                        contentWorkspace_->writable()) {
-                        auto updated = *value;
-                        updated.idle.defaultAnimation = simulation::DefinitionId{contentEditValues_[fieldEnemyIdleDefault]};
+                };
+                ui.label("IDLE (required fallback)", right.x + 8, inspectorY);
+                if (contentBindingState_ != PreviewClipState::idle || !contentBindingAction_.empty()) {
+                    contentBindingState_ = PreviewClipState::idle;
+                    contentBindingAction_ = {};
+                    loadBindingFields(value->idle, fieldEnemyIdleDefault);
+                } else if (contentEditValues_[fieldEnemyIdleDefault].empty() &&
+                           contentEditValues_[fieldEnemyIdleDown].empty() &&
+                           contentEditValues_[fieldEnemyIdleUp].empty() &&
+                           contentEditValues_[fieldEnemyIdleSide].empty()) {
+                    loadBindingFields(value->idle, fieldEnemyIdleDefault);
+                }
+                drawBinding("", value->idle, fieldEnemyIdleDefault, inspectorY);
+                const int stateY = inspectorY + 140;
+                stateButton(PreviewClipState::move, "MOVE", right.x + 8, value->move.has_value());
+                if (!optionalStateChanged) stateButton(PreviewClipState::hurt, "HURT", right.x + 66, value->hurt.has_value());
+                if (!optionalStateChanged) stateButton(PreviewClipState::death, "DEATH", right.x + 124, value->death.has_value());
+                if (!optionalStateChanged) stateButton(PreviewClipState::dead, "DEAD", right.x + 182, value->dead.has_value());
+                if (optionalStateChanged) return;
+                ui.label("optional states can be enabled in preview", right.x + 8, stateY + 22);
+                const auto optionalBinding = [&]() -> const game::presentation::DirectionalAnimationRef* {
+                    if (previewClipState_ == PreviewClipState::move && value->move) return &*value->move;
+                    if (previewClipState_ == PreviewClipState::hurt && value->hurt) return &*value->hurt;
+                    if (previewClipState_ == PreviewClipState::death && value->death) return &*value->death;
+                    if (previewClipState_ == PreviewClipState::dead && value->dead) return &*value->dead;
+                    return nullptr;
+                }();
+                if (optionalBinding) {
+                    const int optionalBase = fieldEnemyOptionalDefault;
+                    if (contentBindingState_ != previewClipState_ || !contentBindingAction_.empty()) {
+                        contentBindingState_ = previewClipState_;
+                        contentBindingAction_ = {};
+                        loadBindingFields(*optionalBinding, optionalBase);
+                    }
+                    drawBinding("SELECTED OPTIONAL STATE", *optionalBinding, optionalBase, stateY + 38);
+                }
+                if (previewClipState_ == PreviewClipState::action && !previewActionId_.empty()) {
+                    const auto action = std::find_if(value->attacks.begin(), value->attacks.end(),
+                        [&](const auto& item) { return item.visualActionId == previewActionId_; });
+                    if (action != value->attacks.end()) {
+                        if (contentBindingState_ != PreviewClipState::action ||
+                            contentBindingAction_ != previewActionId_) {
+                            contentBindingState_ = PreviewClipState::action;
+                            contentBindingAction_ = previewActionId_;
+                            loadBindingFields(action->clips, fieldEnemyActionDefault);
+                        }
+                        drawBinding("SELECTED ACTION", action->clips,
+                                    fieldEnemyActionDefault, stateY + 38);
+                    }
+                }
+                if (input.enterPressed && contentWorkspace_->writable()) {
+                    auto updated = *value;
+                    game::presentation::DirectionalAnimationRef* target = nullptr;
+                    int base = -1;
+                    if (contentFocusedField_ >= fieldEnemyIdleDefault && contentFocusedField_ <= fieldEnemyIdleSide) {
+                        target = &updated.idle; base = fieldEnemyIdleDefault;
+                    } else if (contentFocusedField_ >= fieldEnemyOptionalDefault &&
+                               contentFocusedField_ <= fieldEnemyOptionalSide) {
+                        if (previewClipState_ == PreviewClipState::move) { if (!updated.move) updated.move = {}; target = &*updated.move; }
+                        if (previewClipState_ == PreviewClipState::hurt) { if (!updated.hurt) updated.hurt = {}; target = &*updated.hurt; }
+                        if (previewClipState_ == PreviewClipState::death) { if (!updated.death) updated.death = {}; target = &*updated.death; }
+                        if (previewClipState_ == PreviewClipState::dead) { if (!updated.dead) updated.dead = {}; target = &*updated.dead; }
+                        base = fieldEnemyOptionalDefault;
+                    } else if (contentFocusedField_ >= fieldEnemyActionDefault &&
+                               contentFocusedField_ <= fieldEnemyActionSide) {
+                        const auto actionId = previewActionId_;
+                        const auto it = std::find_if(updated.attacks.begin(), updated.attacks.end(),
+                            [&](const auto& action) { return action.visualActionId == actionId; });
+                        if (it != updated.attacks.end()) { target = &it->clips; base = fieldEnemyActionDefault; }
+                    }
+                    if (target && base >= 0) {
+                        auto& slot = contentEditValues_[contentFocusedField_];
+                        std::optional<simulation::DefinitionId>* destinations[] = {
+                            &target->defaultAnimation, &target->down, &target->up, &target->side};
+                        auto& destination = destinations[contentFocusedField_ - base];
+                        if (slot.empty()) destination->reset();
+                        else *destination = simulation::DefinitionId{slot};
                         std::string editError;
                         if (contentWorkspace_->updateEnemyVisual(key.id, updated, editError)) {
                             refreshContentRegistry();
-                            status_ = "Enemy visual idle binding updated";
+                            status_ = "Enemy visual binding updated";
                             return;
-                        } else status_ = editError;
-                    }
-                    ui.label("optional states: " + std::string(value->move ? "move " : "") +
-                             std::string(value->hurt ? "hurt " : "") +
-                             std::string(value->death ? "death " : "") +
-                             std::string(value->dead ? "dead" : ""), right.x + 8, inspectorY + 40);
-                    ui.label("actions " + std::to_string(value->attacks.size()) +
-                             " (arbitrary VisualActionId)", right.x + 8, inspectorY + 56);
-                    ui.label("new action id", right.x + 8, inspectorY + 76);
-                    if (ui.textField({right.x + 8, inspectorY + 90, right.width - 16, 20},
-                                     contentEditValues_[fieldEnemyActionId],
-                                     contentFocusedField_ == fieldEnemyActionId)) {
-                        contentFocusedField_ = fieldEnemyActionId;
-                    }
-                    if (ui.button({right.x + 8, inspectorY + 114, right.width - 16, 18}, "ADD ACTION (IDLE)") &&
-                        contentWorkspace_->writable()) {
-                        game::content::AuthoredEnemyAttackVisual action;
-                        action.visualActionId = simulation::DefinitionId{contentEditValues_[fieldEnemyActionId]};
-                        action.clips = value->idle;
-                        std::string editError;
-                        if (!contentWorkspace_->addEnemyVisualAction(key.id, action, editError)) status_ = editError;
-                        else { refreshContentRegistry(); status_ = "Enemy visual action added"; return; }
-                    }
-                    int actionY = inspectorY + 138;
-                    for (const auto& action : value->attacks) {
-                        if (actionY + 18 >= right.height - 80) break;
-                        ui.label(std::string(action.visualActionId.value()), right.x + 8, actionY);
-                        if (ui.button({right.x + right.width - 74, actionY - 2, 66, 18}, "REMOVE")) {
-                            std::string editError;
-                            if (!contentWorkspace_->removeEnemyVisualAction(key.id, action.visualActionId, editError)) status_ = editError;
-                            else { refreshContentRegistry(); status_ = "Enemy visual action removed"; return; }
                         }
-                        actionY += 20;
+                        status_ = editError;
                     }
+                }
+                ui.label("actions (arbitrary VisualActionId)", right.x + 8, stateY + 180);
+                ui.label("new action id", right.x + 8, stateY + 196);
+                if (ui.textField({right.x + 8, stateY + 210, right.width - 16, 20},
+                                 contentEditValues_[fieldEnemyActionId],
+                                 contentFocusedField_ == fieldEnemyActionId)) {
+                    contentFocusedField_ = fieldEnemyActionId;
+                }
+                if (ui.button({right.x + 8, stateY + 234, right.width - 16, 18}, "ADD ACTION (IDLE)") &&
+                    contentWorkspace_->writable()) {
+                    game::content::AuthoredEnemyAttackVisual action;
+                    action.visualActionId = simulation::DefinitionId{contentEditValues_[fieldEnemyActionId]};
+                    action.clips = value->idle;
+                    std::string editError;
+                    if (!contentWorkspace_->addEnemyVisualAction(key.id, action, editError)) status_ = editError;
+                    else { refreshContentRegistry(); status_ = "Enemy visual action added"; return; }
+                }
+                int actionY = stateY + 258;
+                for (const auto& action : value->attacks) {
+                    if (actionY + 18 >= right.height - 80) break;
+                    if (ui.button({right.x + 8, actionY, right.width - 80, 18},
+                                  std::string(action.visualActionId.value()).substr(0, 24),
+                                  previewClipState_ == PreviewClipState::action && previewActionId_ == action.visualActionId)) {
+                        resetContentEditState();
+                        previewClipState_ = PreviewClipState::action;
+                        previewActionId_ = action.visualActionId;
+                    }
+                    if (ui.button({right.x + right.width - 66, actionY, 58, 18}, "REMOVE")) {
+                        std::string editError;
+                        if (!contentWorkspace_->removeEnemyVisualAction(key.id, action.visualActionId, editError)) status_ = editError;
+                        else { refreshContentRegistry(); status_ = "Enemy visual action removed"; return; }
+                    }
+                    actionY += 20;
+                }
+            }
+        } else if (key.kind == ContentDefinitionKind::objectVisual) {
+            const auto* value = contentWorkspace_->objectVisual(key.id);
+            if (value) {
+                if (contentEditKey_ != key) {
+                    resetContentEditState();
+                    contentEditKey_ = key;
+                    const auto text = [](const auto& id) { return id ? std::string(id->value()) : std::string{}; };
+                    contentEditValues_[fieldObjectIdle] = std::string(value->idleAnimationId.value());
+                    contentEditValues_[fieldObjectOpened] = text(value->openedAnimationId);
+                    contentEditValues_[fieldObjectDestroying] = text(value->destroyingAnimationId);
+                    contentEditValues_[fieldObjectActivationInactive] = text(value->activationInactiveAnimationId);
+                    contentEditValues_[fieldObjectActivationActive] = text(value->activationActiveAnimationId);
+                    contentEditValues_[fieldObjectDoorLocked] = text(value->doorLockedAnimationId);
+                    contentEditValues_[fieldObjectDoorClosed] = text(value->doorClosedAnimationId);
+                    contentEditValues_[fieldObjectDoorOpen] = text(value->doorOpenAnimationId);
+                }
+                const std::array<std::pair<const char*, int>, 8> fields{{
+                    {"idle", fieldObjectIdle}, {"opened", fieldObjectOpened},
+                    {"destroying", fieldObjectDestroying}, {"activation inactive", fieldObjectActivationInactive},
+                    {"activation active", fieldObjectActivationActive}, {"door locked", fieldObjectDoorLocked},
+                    {"door closed", fieldObjectDoorClosed}, {"door open", fieldObjectDoorOpen}}};
+                int fieldY = inspectorY;
+                for (const auto& [label, field] : fields) {
+                    ui.label(label, right.x + 8, fieldY);
+                    if (ui.textField({right.x + 8, fieldY + 14, right.width - 16, 20},
+                                     contentEditValues_[field], contentFocusedField_ == field)) {
+                        contentFocusedField_ = field;
+                    }
+                    fieldY += 38;
+                }
+                if (input.enterPressed && contentFocusedField_ >= fieldObjectIdle &&
+                    contentFocusedField_ <= fieldObjectDoorOpen && contentWorkspace_->writable()) {
+                    auto updated = *value;
+                    const auto idOrNone = [&](int field) -> std::optional<simulation::DefinitionId> {
+                        if (contentEditValues_[field].empty()) return std::nullopt;
+                        return simulation::DefinitionId{contentEditValues_[field]};
+                    };
+                    if (contentFocusedField_ == fieldObjectIdle) {
+                        updated.idleAnimationId = simulation::DefinitionId{contentEditValues_[fieldObjectIdle]};
+                    } else if (contentFocusedField_ == fieldObjectOpened) updated.openedAnimationId = idOrNone(fieldObjectOpened);
+                    else if (contentFocusedField_ == fieldObjectDestroying) updated.destroyingAnimationId = idOrNone(fieldObjectDestroying);
+                    else if (contentFocusedField_ == fieldObjectActivationInactive) updated.activationInactiveAnimationId = idOrNone(fieldObjectActivationInactive);
+                    else if (contentFocusedField_ == fieldObjectActivationActive) updated.activationActiveAnimationId = idOrNone(fieldObjectActivationActive);
+                    else if (contentFocusedField_ == fieldObjectDoorLocked) updated.doorLockedAnimationId = idOrNone(fieldObjectDoorLocked);
+                    else if (contentFocusedField_ == fieldObjectDoorClosed) updated.doorClosedAnimationId = idOrNone(fieldObjectDoorClosed);
+                    else updated.doorOpenAnimationId = idOrNone(fieldObjectDoorOpen);
+                    std::string editError;
+                    if (contentWorkspace_->updateObjectVisual(key.id, updated, editError)) {
+                        refreshContentRegistry();
+                        status_ = "Object visual updated";
+                        return;
+                    }
+                    status_ = editError;
+                }
+            }
+        } else if (key.kind == ContentDefinitionKind::npcVisual) {
+            const auto* value = contentWorkspace_->npcVisual(key.id);
+            if (value) {
+                if (contentEditKey_ != key) {
+                    resetContentEditState();
+                    contentEditKey_ = key;
+                    contentEditValues_[fieldNpcMarker] = std::to_string(value->markerColor.r) + "," +
+                        std::to_string(value->markerColor.g) + "," + std::to_string(value->markerColor.b) + "," +
+                        std::to_string(value->markerColor.a);
+                    if (value->idle) {
+                        const auto text = [](const auto& id) { return id ? std::string(id->value()) : std::string{}; };
+                        contentEditValues_[fieldNpcIdleDefault] = text(value->idle->defaultAnimation);
+                        contentEditValues_[fieldNpcIdleDown] = text(value->idle->down);
+                        contentEditValues_[fieldNpcIdleUp] = text(value->idle->up);
+                        contentEditValues_[fieldNpcIdleSide] = text(value->idle->side);
+                    }
+                }
+                ui.label("marker r,g,b,a", right.x + 8, inspectorY);
+                if (ui.textField({right.x + 8, inspectorY + 14, right.width - 16, 20},
+                                 contentEditValues_[fieldNpcMarker], contentFocusedField_ == fieldNpcMarker)) {
+                    contentFocusedField_ = fieldNpcMarker;
+                }
+                ui.label("idle directional (optional)", right.x + 8, inspectorY + 42);
+                const std::array<std::pair<const char*, int>, 4> fields{{
+                    {"default", fieldNpcIdleDefault}, {"down", fieldNpcIdleDown},
+                    {"up", fieldNpcIdleUp}, {"side", fieldNpcIdleSide}}};
+                int fieldY = inspectorY + 58;
+                for (const auto& [label, field] : fields) {
+                    ui.label(label, right.x + 8, fieldY);
+                    if (ui.textField({right.x + 62, fieldY - 3, right.width - 70, 20},
+                                     contentEditValues_[field], contentFocusedField_ == field)) {
+                        contentFocusedField_ = field;
+                    }
+                    fieldY += 28;
+                }
+                if (input.enterPressed && contentWorkspace_->writable() &&
+                    ((contentFocusedField_ >= fieldNpcMarker && contentFocusedField_ <= fieldNpcIdleSide))) {
+                    auto updated = *value;
+                    bool accepted = true;
+                    std::string editError;
+                    if (contentFocusedField_ == fieldNpcMarker) {
+                        const auto color = parseIntegerList<4>(contentEditValues_[fieldNpcMarker]);
+                        if (!color || std::any_of(color->begin(), color->end(), [](int channel) { return channel < 0 || channel > 255; })) {
+                            accepted = false;
+                            editError = "NPC marker color must contain four integers in 0..255";
+                        } else {
+                            updated.markerColor = {static_cast<std::uint8_t>((*color)[0]),
+                                                   static_cast<std::uint8_t>((*color)[1]),
+                                                   static_cast<std::uint8_t>((*color)[2]),
+                                                   static_cast<std::uint8_t>((*color)[3])};
+                        }
+                    } else {
+                        if (!updated.idle) updated.idle = {};
+                        auto& destination = *updated.idle;
+                        std::optional<simulation::DefinitionId>* destinations[] = {
+                            &destination.defaultAnimation, &destination.down,
+                            &destination.up, &destination.side};
+                        auto& text = contentEditValues_[contentFocusedField_];
+                        if (text.empty()) destinations[contentFocusedField_ - fieldNpcIdleDefault]->reset();
+                        else *destinations[contentFocusedField_ - fieldNpcIdleDefault] = simulation::DefinitionId{text};
+                    }
+                    if (accepted && contentWorkspace_->updateNpcVisual(key.id, updated, editError)) {
+                        refreshContentRegistry();
+                        status_ = "NPC visual updated";
+                        return;
+                    }
+                    if (!accepted || !editError.empty()) status_ = editError;
                 }
             }
         } else ui.label("Read-only category in 18A", right.x + 8, inspectorY);
@@ -838,6 +1120,412 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         if (visualDiagnostics_.size() > 3) {
             ui.label("... +" + std::to_string(visualDiagnostics_.size() - 3) + " more",
                      right.x + 8, assetY);
+        }
+    }
+}
+
+void EditorApp::drawContentPreview(EditorUiContext& ui, const EditorInputState& input,
+                                    core::RectI canvas) {
+    const auto isVisual = selectedContentDefinition_ &&
+        (selectedContentDefinition_->kind == ContentDefinitionKind::visualImage ||
+         selectedContentDefinition_->kind == ContentDefinitionKind::staticSprite ||
+         selectedContentDefinition_->kind == ContentDefinitionKind::animation ||
+         selectedContentDefinition_->kind == ContentDefinitionKind::enemyVisual ||
+         selectedContentDefinition_->kind == ContentDefinitionKind::objectVisual ||
+         selectedContentDefinition_->kind == ContentDefinitionKind::npcVisual);
+    if (!isVisual || canvas.width < 32 || canvas.height < 64) {
+        ui.label("VISUAL PREVIEW", canvas.x + 4, canvas.y + 4);
+        ui.label("Select a visual definition", canvas.x + 4, canvas.y + 22);
+        return;
+    }
+
+    VisualPreviewRequest request;
+    request.key = *selectedContentDefinition_;
+    request.frameIndex = selectedAnimationFrameIndex_;
+    request.state = previewClipState_;
+    request.actionId = previewActionId_;
+    request.facing = previewFacing_;
+    if (request.key.kind == ContentDefinitionKind::enemyVisual &&
+        request.state == PreviewClipState::action && request.actionId.empty()) {
+        if (const auto* visual = contentWorkspace_->enemyVisual(request.key.id);
+            visual && !visual->attacks.empty()) request.actionId = visual->attacks.front().visualActionId;
+    }
+    visualPreview_.prepare(*contentWorkspace_, request);
+    visualPreview_.advanceTicks(input.previewTicks);
+
+    ui.label("VISUAL PREVIEW", canvas.x + 4, canvas.y + 4);
+    if (request.key.kind == ContentDefinitionKind::visualImage) {
+        if (const auto* definition = contentWorkspace_->visualImage(request.key.id)) {
+            const auto root = definition->root == game::presentation::VisualAssetRoot::gameAssets
+                ? "gameAssets" : "contentWorkspace";
+            ui.label(std::string(root) + ":" + definition->relativePath,
+                     canvas.x + 132, canvas.y + 4);
+        }
+    }
+    const int toolbarY = canvas.y + 18;
+    if (ui.button({canvas.x + 4, toolbarY, 38, 18}, "FIT", previewViewport_.zoomStep < 0)) {
+        previewViewport_.zoomStep = -1;
+        previewViewport_.pan = {};
+    }
+    const int zoomLabels[] = {1, 2, 4, 8};
+    for (int index = 0; index < 4; ++index) {
+        if (ui.button({canvas.x + 46 + index * 34, toolbarY, 30, 18},
+                      std::to_string(zoomLabels[index]) + "x", previewViewport_.zoomStep == index)) {
+            previewViewport_.zoomStep = index;
+            previewViewport_.pan = {};
+        }
+    }
+    if (ui.button({canvas.x + 184, toolbarY, 54, 18},
+                  previewViewport_.gridEnabled ? "GRID ON" : "GRID OFF", previewViewport_.gridEnabled)) {
+        previewViewport_.gridEnabled = !previewViewport_.gridEnabled;
+    }
+    if (request.key.kind == ContentDefinitionKind::staticSprite &&
+        ui.button({canvas.x + 390, toolbarY, 76, 18}, "FULL IMAGE")) {
+        if (const auto* value = contentWorkspace_->staticSprite(request.key.id);
+            value && contentWorkspace_->writable()) {
+            auto updated = *value;
+            updated.source.reset();
+            std::string error;
+            if (contentWorkspace_->updateStaticSprite(updated.id, updated, error)) {
+                refreshContentRegistry();
+                status_ = "Static sprite uses full image";
+                return;
+            }
+            status_ = error;
+        }
+    }
+    if (request.key.kind == ContentDefinitionKind::animation && previewSelectionRect_) {
+        const auto addFrames = [&](const std::vector<core::RectI>& rectangles) {
+            if (!contentWorkspace_->writable() || rectangles.empty()) return false;
+            std::string error;
+            std::size_t index = contentWorkspace_->animation(request.key.id)
+                ? contentWorkspace_->animation(request.key.id)->frames.size() : 0;
+            for (const auto& rectangle : rectangles) {
+                if (!contentWorkspace_->addAnimationFrame(
+                        request.key.id,
+                        game::content::AuthoredAnimationFrame{rectangle, {0, 0}, {0, 0}, 1, {}},
+                        error)) {
+                    status_ = error;
+                    return false;
+                }
+                selectedAnimationFrameIndex_ = index++;
+            }
+            refreshContentRegistry();
+            status_ = rectangles.size() == 1 ? "Animation frame added from selection"
+                                             : "Animation cells added as frames";
+            return true;
+        };
+        if (ui.button({canvas.x + 390, toolbarY, 70, 18}, "ADD CELL") &&
+            addFrames({*previewSelectionRect_})) return;
+        if (ui.button({canvas.x + 464, toolbarY, 70, 18}, "ADD CELLS") &&
+            addFrames(previewGridSelections(*previewSelectionRect_, previewViewport_.gridOrigin,
+                                             previewViewport_.gridCell))) return;
+    }
+    const bool hasClip = visualPreview_.hasClip();
+    if (hasClip) {
+        if (ui.button({canvas.x + 244, toolbarY, 48, 18},
+                      visualPreview_.playing() ? "PAUSE" : "PLAY", visualPreview_.playing())) {
+            visualPreview_.setPlaying(!visualPreview_.playing());
+        }
+        if (ui.button({canvas.x + 296, toolbarY, 36, 18}, "RESTART")) visualPreview_.restart();
+        if (ui.button({canvas.x + 336, toolbarY, 22, 18}, "<")) visualPreview_.stepFrame(-1);
+        if (ui.button({canvas.x + 362, toolbarY, 22, 18}, ">")) visualPreview_.stepFrame(1);
+    }
+
+    const int gridY = toolbarY + 22;
+    ui.label("GRID ORIGIN", canvas.x + 4, gridY + 4);
+    if (contentEditValues_[fieldPreviewGridOrigin].empty()) {
+        contentEditValues_[fieldPreviewGridOrigin] = pointText(previewViewport_.gridOrigin);
+    }
+    if (ui.textField({canvas.x + 72, gridY, 72, 20}, contentEditValues_[fieldPreviewGridOrigin],
+                     contentFocusedField_ == fieldPreviewGridOrigin)) {
+        contentFocusedField_ = fieldPreviewGridOrigin;
+    }
+    ui.label("CELL", canvas.x + 150, gridY + 4);
+    if (contentEditValues_[fieldPreviewGridCell].empty()) {
+        contentEditValues_[fieldPreviewGridCell] = pointText(previewViewport_.gridCell);
+    }
+    if (ui.textField({canvas.x + 184, gridY, 72, 20}, contentEditValues_[fieldPreviewGridCell],
+                     contentFocusedField_ == fieldPreviewGridCell)) {
+        contentFocusedField_ = fieldPreviewGridCell;
+    }
+    if (input.enterPressed && contentFocusedField_ == fieldPreviewGridOrigin) {
+        if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldPreviewGridOrigin])) {
+            previewViewport_.gridOrigin = {(*parsed)[0], (*parsed)[1]};
+        } else status_ = "grid origin must contain two comma-separated integers";
+    } else if (input.enterPressed && contentFocusedField_ == fieldPreviewGridCell) {
+        if (const auto parsed = parseIntegerList<2>(contentEditValues_[fieldPreviewGridCell]);
+            parsed && (*parsed)[0] > 0 && (*parsed)[1] > 0) {
+            previewViewport_.gridCell = {(*parsed)[0], (*parsed)[1]};
+        } else status_ = "grid cell must contain two positive integers";
+    }
+
+    const int stateY = gridY + 24;
+    if (request.key.kind == ContentDefinitionKind::enemyVisual) {
+        const auto stateButton = [&](PreviewClipState state, const char* text, int x, bool available) {
+            if (available && ui.button({x, stateY, 54, 18}, text, previewClipState_ == state)) {
+                resetContentEditState();
+                previewClipState_ = state;
+                previewActionId_ = {};
+            }
+        };
+        const auto* visual = contentWorkspace_->enemyVisual(request.key.id);
+        stateButton(PreviewClipState::idle, "IDLE", canvas.x + 4, visual != nullptr);
+        stateButton(PreviewClipState::move, "MOVE", canvas.x + 62, visual && visual->move.has_value());
+        stateButton(PreviewClipState::hurt, "HURT", canvas.x + 120, visual && visual->hurt.has_value());
+        stateButton(PreviewClipState::death, "DEATH", canvas.x + 178, visual && visual->death.has_value());
+        stateButton(PreviewClipState::dead, "DEAD", canvas.x + 236, visual && visual->dead.has_value());
+        int actionX = canvas.x + 294;
+        if (visual) for (const auto& action : visual->attacks) {
+            if (actionX + 56 > canvas.x + canvas.width) break;
+            if (ui.button({actionX, stateY, 54, 18}, std::string(action.visualActionId.value()).substr(0, 8),
+                          previewClipState_ == PreviewClipState::action && previewActionId_ == action.visualActionId)) {
+                previewClipState_ = PreviewClipState::action;
+                previewActionId_ = action.visualActionId;
+            }
+            actionX += 58;
+        }
+    } else if (request.key.kind == ContentDefinitionKind::objectVisual) {
+        const auto* visual = contentWorkspace_->objectVisual(request.key.id);
+        const auto stateButton = [&](PreviewClipState state, const char* text, int x,
+                                     bool available) {
+            if (available && ui.button({x, stateY, 64, 18}, text,
+                                       previewClipState_ == state)) {
+                resetContentEditState();
+                previewClipState_ = state;
+            }
+        };
+        stateButton(PreviewClipState::idle, "IDLE", canvas.x + 4, visual != nullptr);
+        stateButton(PreviewClipState::opened, "OPENED", canvas.x + 72, visual && visual->openedAnimationId.has_value());
+        stateButton(PreviewClipState::destroying, "DESTROY", canvas.x + 140, visual && visual->destroyingAnimationId.has_value());
+        stateButton(PreviewClipState::activationInactive, "ACT OFF", canvas.x + 208, visual && visual->activationInactiveAnimationId.has_value());
+        stateButton(PreviewClipState::activationActive, "ACT ON", canvas.x + 276, visual && visual->activationActiveAnimationId.has_value());
+        stateButton(PreviewClipState::doorLocked, "LOCKED", canvas.x + 344, visual && visual->doorLockedAnimationId.has_value());
+        stateButton(PreviewClipState::doorClosed, "CLOSED", canvas.x + 412, visual && visual->doorClosedAnimationId.has_value());
+        stateButton(PreviewClipState::doorOpen, "OPEN", canvas.x + 480, visual && visual->doorOpenAnimationId.has_value());
+    } else if (request.key.kind == ContentDefinitionKind::npcVisual || visualPreview_.hasClip()) {
+        const char* labels[] = {"DOWN", "UP", "LEFT", "RIGHT"};
+        for (int index = 0; index < 4; ++index) {
+            if (ui.button({canvas.x + 4 + index * 58, stateY, 54, 18}, labels[index],
+                          static_cast<int>(previewFacing_) == index)) {
+                resetContentEditState();
+                previewFacing_ = static_cast<game::gameplay::FacingDirection>(index);
+            }
+        }
+    }
+
+    const int imageTop = stateY + 22;
+    const core::RectI imageCanvas{canvas.x, imageTop, canvas.width,
+                                  std::max(1, canvas.height - imageTop - 4)};
+    handleContentPreview(ui, input, imageCanvas);
+    render::Renderer2D renderer(*framebuffer_);
+    renderer.fillRect(imageCanvas, {12, 15, 21, 255});
+    const auto* image = visualPreview_.image();
+    if (image) {
+        const auto transform = makeVisualPreviewTransform(previewViewport_, imageCanvas,
+                                                           {image->width(), image->height()});
+        const core::RectI imageRect{0, 0, image->width(), image->height()};
+        const core::RectI imageDestination{
+            transform.imageOrigin.x, transform.imageOrigin.y,
+            std::max(1, static_cast<int>(std::lround(image->width() * transform.scale))),
+            std::max(1, static_cast<int>(std::lround(image->height() * transform.scale)))};
+        renderer.drawImageRegionNearest(*image, imageRect, imageDestination);
+
+        if (previewViewport_.gridEnabled) {
+            for (const auto& cell : previewGridSelections(imageRect, previewViewport_.gridOrigin,
+                                                          previewViewport_.gridCell)) {
+                const auto screen = previewImageRectToScreen(transform, cell);
+                renderer.fillRect({screen.x, screen.y, 1, std::max(1, screen.height)},
+                                  {90, 120, 150, 120});
+                renderer.fillRect({screen.x, screen.y, std::max(1, screen.width), 1},
+                                  {90, 120, 150, 120});
+            }
+        }
+
+        auto drawFrameOutline = [&](core::RectI source, core::ColorRGBA8 color, int thickness) {
+            const auto screen = previewImageRectToScreen(transform, source);
+            outline(renderer, screen, color);
+            for (int offset = 1; offset < thickness; ++offset) {
+                outline(renderer, {screen.x + offset, screen.y + offset,
+                                   std::max(1, screen.width - offset * 2),
+                                   std::max(1, screen.height - offset * 2)}, color);
+            }
+        };
+        if (selectedContentDefinition_->kind == ContentDefinitionKind::staticSprite) {
+            if (const auto* value = contentWorkspace_->staticSprite(selectedContentDefinition_->id)) {
+                drawFrameOutline(value->source.value_or(imageRect), selectedColor, 2);
+            }
+        } else if (selectedContentDefinition_->kind == ContentDefinitionKind::animation) {
+            if (const auto* value = contentWorkspace_->animation(selectedContentDefinition_->id)) {
+                for (std::size_t index = 0; index < value->frames.size(); ++index) {
+                    drawFrameOutline(value->frames[index].source,
+                                     index == selectedAnimationFrameIndex_ ? selectedColor : core::ColorRGBA8{80, 200, 240, 220},
+                                     index == selectedAnimationFrameIndex_ ? 2 : 1);
+                }
+                if (selectedAnimationFrameIndex_ < value->frames.size()) {
+                    const auto& frame = value->frames[selectedAnimationFrameIndex_];
+                    const auto anchor = previewImageToScreen(transform,
+                        {frame.source.x + frame.anchor.x, frame.source.y + frame.anchor.y});
+                    renderer.fillRect({anchor.x - 3, anchor.y, 7, 1}, selectedColor);
+                    renderer.fillRect({anchor.x, anchor.y - 3, 1, 7}, selectedColor);
+                }
+            }
+        } else if (selectedContentDefinition_->kind == ContentDefinitionKind::visualImage) {
+            drawFrameOutline(imageRect, {110, 220, 180, 220}, 1);
+        }
+
+        if (previewRectangleDragging_) {
+            if (const auto selection = previewDragRectangle(transform, previewRectangleStart_,
+                                                            previewRectangleCurrent_,
+                                                            {image->width(), image->height()},
+                                                            previewViewport_.gridEnabled,
+                                                            previewViewport_.gridOrigin,
+                                                            previewViewport_.gridCell)) {
+                drawFrameOutline(*selection, {255, 150, 70, 255}, 2);
+            }
+        }
+
+        const auto sourceFitsImage = [&](core::RectI source) {
+            const auto right = static_cast<std::int64_t>(source.x) + source.width;
+            const auto bottom = static_cast<std::int64_t>(source.y) + source.height;
+            return !source.empty() && source.x >= 0 && source.y >= 0 &&
+                   right <= image->width() && bottom <= image->height();
+        };
+        const auto drawPlayback = [&]() {
+            const bool staticSprite = selectedContentDefinition_->kind ==
+                                      ContentDefinitionKind::staticSprite;
+            if (!visualPreview_.hasClip() && !staticSprite) return;
+            const core::RectI playback{imageCanvas.x + imageCanvas.width - 112,
+                                       imageCanvas.y + imageCanvas.height - 112, 108, 108};
+            renderer.fillRect(playback, {24, 28, 36, 255});
+            const core::PointI origin{playback.x + playback.width / 2,
+                                     playback.y + playback.height / 2};
+            renderer.fillRect({origin.x - 1, playback.y + 4, 2, playback.height - 8},
+                              {100, 105, 115, 220});
+            renderer.fillRect({playback.x + 4, origin.y - 1, playback.width - 8, 2},
+                              {100, 105, 115, 220});
+            const int scale = 2;
+            if (staticSprite) {
+                const auto* value = contentWorkspace_->staticSprite(selectedContentDefinition_->id);
+                if (!value || (value->source && !sourceFitsImage(*value->source))) return;
+                const auto source = value->source.value_or(core::RectI{0, 0, image->width(), image->height()});
+                const auto anchor = value->anchor;
+                const int drawX = origin.x - anchor.x * scale;
+                const int drawY = origin.y - anchor.y * scale;
+                renderer.drawImageRegionNearest(*image, source,
+                                                {drawX, drawY, source.width * scale,
+                                                 source.height * scale});
+                renderer.fillRect({origin.x - 3, origin.y, 7, 1}, {255, 220, 80, 255});
+                renderer.fillRect({origin.x, origin.y - 3, 1, 7}, {255, 220, 80, 255});
+                return;
+            }
+            const auto& frame = visualPreview_.animator().currentFrame().sprite;
+            const int drawX = origin.x + (frame.drawOffset.x - frame.anchor.x) * scale;
+            const int drawY = origin.y + (frame.drawOffset.y - frame.anchor.y) * scale;
+            renderer.drawImageRegionNearest(*image, frame.source,
+                                            {drawX, drawY, frame.source.width * scale,
+                                             frame.source.height * scale}, visualPreview_.flipX());
+        };
+        drawPlayback();
+    }
+
+    if (!visualPreview_.diagnostics().empty()) {
+        const auto& diagnostic = visualPreview_.diagnostics().front();
+        ui.label(game::presentation::formatVisualContentDiagnostic(diagnostic).substr(0, 54),
+                 canvas.x + 4, canvas.y + canvas.height - 14);
+    } else if (visualPreview_.hasClip()) {
+        const auto& animator = visualPreview_.animator();
+        ui.label("Frame " + std::to_string(animator.frameIndex() + 1) + "/" +
+                     std::to_string(animator.clip().frames().size()) + " tick " +
+                     std::to_string(animator.elapsedFrameTicks()) + "/" +
+                     std::to_string(animator.currentFrame().durationTicks),
+                 canvas.x + 4, canvas.y + canvas.height - 14);
+        if (!visualPreview_.markerEvents().empty()) {
+            ui.label("marker: " + std::string(visualPreview_.markerEvents().back().marker),
+                     canvas.x + 160, canvas.y + canvas.height - 14);
+        }
+    } else if (image) {
+        ui.label(std::to_string(image->width()) + "x" + std::to_string(image->height()),
+                 canvas.x + 4, canvas.y + canvas.height - 14);
+    }
+}
+
+void EditorApp::handleContentPreview(EditorUiContext& ui, const EditorInputState& input,
+                                     core::RectI canvas) {
+    if (!selectedContentDefinition_ || !visualPreview_.image()) return;
+    const auto* image = visualPreview_.image();
+    const auto transform = makeVisualPreviewTransform(previewViewport_, canvas,
+                                                       {image->width(), image->height()});
+    const core::PointI pointer{input.pointer.x, input.pointer.y};
+    const bool inside = ui.pointerInside(canvas);
+    if (inside && input.pointer.wheelDelta != 0) {
+        previewViewport_.zoomStep = std::clamp(previewViewport_.zoomStep - input.pointer.wheelDelta / 120,
+                                               -1, 3);
+    }
+    if (inside && (input.pointer.middlePressed || (input.space && input.pointer.leftPressed))) {
+        previewPanning_ = true;
+        previewPanPointerStart_ = pointer;
+        previewPanStart_ = previewViewport_.pan;
+    }
+    if (previewPanning_) {
+        if (input.pointer.middleDown || (input.space && input.pointer.leftDown)) {
+            previewViewport_.pan = {previewPanStart_.x + pointer.x - previewPanPointerStart_.x,
+                                    previewPanStart_.y + pointer.y - previewPanPointerStart_.y};
+        } else previewPanning_ = false;
+    }
+    if (inside && input.pointer.leftPressed && !input.space) {
+        previewRectangleDragging_ = true;
+        previewRectangleStart_ = pointer;
+        previewRectangleCurrent_ = pointer;
+        if (selectedContentDefinition_->kind == ContentDefinitionKind::animation) {
+            if (const auto* animation = contentWorkspace_->animation(selectedContentDefinition_->id)) {
+                for (std::size_t index = 0; index < animation->frames.size(); ++index) {
+                    const auto frame = previewImageRectToScreen(transform, animation->frames[index].source);
+                    if (pointer.x >= frame.x && pointer.y >= frame.y &&
+                        pointer.x < frame.x + frame.width && pointer.y < frame.y + frame.height) {
+                        selectedAnimationFrameIndex_ = index;
+                        contentEditFrame_ = noContentIndex;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (previewRectangleDragging_ && input.pointer.leftDown) previewRectangleCurrent_ = pointer;
+    if (previewRectangleDragging_ && input.pointer.leftReleased) {
+        previewRectangleDragging_ = false;
+        const auto selection = previewDragRectangle(transform, previewRectangleStart_,
+                                                    previewRectangleCurrent_,
+                                                    {image->width(), image->height()},
+                                                    previewViewport_.gridEnabled,
+                                                    previewViewport_.gridOrigin,
+                                                    previewViewport_.gridCell);
+        if (!selection) return;
+        previewSelectionRect_ = *selection;
+        std::string error;
+        if (selectedContentDefinition_->kind == ContentDefinitionKind::staticSprite) {
+            if (auto value = contentWorkspace_->staticSprite(selectedContentDefinition_->id);
+                value && contentWorkspace_->writable()) {
+                auto updated = *value;
+                updated.source = *selection;
+                if (contentWorkspace_->updateStaticSprite(updated.id, updated, error)) {
+                    refreshContentRegistry();
+                    previewSelectionRect_ = *selection;
+                    status_ = "Static sprite source selected";
+                } else status_ = error;
+            }
+        } else if (selectedContentDefinition_->kind == ContentDefinitionKind::animation) {
+            if (auto value = contentWorkspace_->animation(selectedContentDefinition_->id);
+                value && selectedAnimationFrameIndex_ < value->frames.size() &&
+                contentWorkspace_->writable()) {
+                auto updated = *value;
+                updated.frames[selectedAnimationFrameIndex_].source = *selection;
+                if (contentWorkspace_->updateAnimation(updated.id, updated, error)) {
+                    refreshContentRegistry();
+                    previewSelectionRect_ = *selection;
+                    status_ = "Animation frame source selected";
+                } else status_ = error;
+            }
         }
     }
 }
@@ -980,15 +1668,19 @@ void EditorApp::drawNewMapDialog(EditorUiContext& ui,const EditorInputState& inp
 void EditorApp::frameMap(core::RectI viewport) noexcept{const double mapWidth=static_cast<double>(document_.data().width)*document_.data().tileSize,mapHeight=static_cast<double>(document_.data().height)*document_.data().tileSize;std::size_t best=0;for(std::size_t i=0;i<zoomSteps.size();++i)if(mapWidth*zoomSteps[i]<=viewport.width&&mapHeight*zoomSteps[i]<=viewport.height)best=i;document_.viewport().zoomStep=best;document_.viewport().worldX=(mapWidth-viewport.width/zoom())/2.0;document_.viewport().worldY=(mapHeight-viewport.height/zoom())/2.0;}
 
 void EditorApp::execute(std::unique_ptr<EditorCommand> command){std::string error;if(!document_.execute(std::move(command),error))status_=error;}
-void EditorApp::cancelActiveGesture() noexcept{drag_={};}
+void EditorApp::cancelActiveGesture() noexcept{
+    drag_={};
+    previewPanning_=false;
+    previewRectangleDragging_=false;
+}
 void EditorApp::shellCommand(EditorShellCommand command){
     if(command==EditorShellCommand::newMap){playtest_.stop();newMapDialog_=true;}
     else if(command==EditorShellCommand::undo)document_.undo();
     else if(command==EditorShellCommand::redo){std::string error;if(!document_.redo(error))status_=error;}
     else if(command==EditorShellCommand::toggleGrid)document_.viewport().showGrid=!document_.viewport().showGrid;
     else if(command==EditorShellCommand::playtest)togglePlaytest();
-    else if(command==EditorShellCommand::mapMode){resetContentEditState();contentMode_=false;status_="Map mode";}
-    else if(command==EditorShellCommand::contentMode){resetContentEditState();contentMode_=true;status_="Content mode";}
+    else if(command==EditorShellCommand::mapMode){resetContentEditState();resetContentPreviewState();contentMode_=false;status_="Map mode";}
+    else if(command==EditorShellCommand::contentMode){resetContentEditState();resetContentPreviewState();contentMode_=true;status_="Content mode";}
     else if(command==EditorShellCommand::saveAll){std::string error;if(!saveAll(error))status_=error;}
     else if(command==EditorShellCommand::validateWorkspace){status_=validateWorkspace()?"Workspace valid":"Workspace invalid; see diagnostics";}
     else frameMap(viewportBounds_);
@@ -1007,6 +1699,8 @@ void EditorApp::refreshContentRegistry(){
     visualValidationRevision_ = noContentIndex;
     visualDiagnostics_.clear();
     resetContentEditState();
+    visualPreview_.invalidate();
+    previewSelectionRect_.reset();
 }
 void EditorApp::resetContentEditState() noexcept {
     contentEditKey_.reset();
@@ -1015,6 +1709,16 @@ void EditorApp::resetContentEditState() noexcept {
     contentEditMarker_ = noContentIndex;
     contentFocusedField_ = -1;
     contentStaticSourceEnabled_ = false;
+    contentBindingState_ = PreviewClipState::idle;
+    contentBindingAction_ = {};
+}
+void EditorApp::resetContentPreviewState() noexcept {
+    previewClipState_ = PreviewClipState::idle;
+    previewActionId_ = {};
+    previewFacing_ = game::gameplay::FacingDirection::down;
+    previewPanning_ = false;
+    previewRectangleDragging_ = false;
+    previewSelectionRect_.reset();
 }
 bool EditorApp::runVisualValidation(){
     visualDiagnostics_.clear();

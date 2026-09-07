@@ -47,9 +47,11 @@ bool safeRelativePath(const std::string& value) {
     return true;
 }
 
-std::filesystem::path resolvePath(const VisualImageDefinition& definition,
-                                  const VisualAssetRoots& roots,
-                                  VisualContentLoadResult& result) {
+std::optional<std::filesystem::path> resolvePath(
+    const VisualImageDefinition& definition,
+    const VisualAssetRoots& roots,
+    std::vector<VisualContentDiagnostic>& diagnostics) {
+    VisualContentLoadResult result;
     const std::filesystem::path* root = nullptr;
     if (definition.root == VisualAssetRoot::gameAssets) {
         root = &roots.gameAssetsRoot;
@@ -59,19 +61,22 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
         diagnostic(result, VisualContentDiagnosticStage::resolve, "workspace_root_missing",
                    definition.id, definition.relativePath,
                    "contentWorkspace visual asset requires a workspace root", definition.root);
-        return {};
+        diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+        return std::nullopt;
     }
     if (root->empty()) {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "asset_root_missing",
                    definition.id, definition.relativePath, "visual asset root is empty",
                    definition.root);
-        return {};
+        diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+        return std::nullopt;
     }
     if (!safeRelativePath(definition.relativePath)) {
         diagnostic(result, VisualContentDiagnosticStage::resolve, "invalid_asset_path",
                    definition.id, definition.relativePath,
                    "visual asset path must be a normalized relative path", definition.root);
-        return {};
+        diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+        return std::nullopt;
     }
     const auto absoluteRoot = std::filesystem::absolute(*root).lexically_normal();
     const auto candidate = (absoluteRoot / definition.relativePath).lexically_normal();
@@ -79,7 +84,8 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
         diagnostic(result, VisualContentDiagnosticStage::resolve, "asset_path_escape",
                    definition.id, definition.relativePath,
                    "visual asset path escapes its selected asset root", definition.root);
-        return {};
+        diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+        return std::nullopt;
     }
     if (definition.root == VisualAssetRoot::contentWorkspace) {
         std::error_code error;
@@ -90,7 +96,8 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
                        definition.relativePath,
                        "content workspace visual assets may not use a symlink workspace root",
                        definition.root);
-            return {};
+            diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+            return std::nullopt;
         }
         error.clear();
         auto current = absoluteRoot;
@@ -103,7 +110,8 @@ std::filesystem::path resolvePath(const VisualImageDefinition& definition,
                            definition.relativePath,
                            "content workspace visual assets may not use symlink path components",
                            definition.root);
-                return {};
+                diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+                return std::nullopt;
             }
             error.clear();
         }
@@ -155,24 +163,6 @@ std::shared_ptr<const render::AnimationClip> makeClip(
     }
 }
 
-DirectionalAnimationClips directional(const DirectionalAnimationRef& reference,
-                                       const RuntimeAnimationCatalog& animations) {
-    const std::optional<simulation::DefinitionId>* candidates[] = {
-        &reference.defaultAnimation, &reference.down, &reference.up, &reference.side};
-    const auto resolve = [&](std::size_t requested) {
-        const std::optional<simulation::DefinitionId>* ordered[] = {
-            candidates[requested], &reference.defaultAnimation, &reference.down,
-            &reference.up, &reference.side};
-        for (const auto* candidate : ordered) {
-            if (candidate->has_value()) {
-                if (const auto* clip = animations.find(**candidate)) return *clip;
-            }
-        }
-        throw std::out_of_range("directional animation binding was not found");
-    };
-    return {resolve(1), resolve(2), resolve(3)};
-}
-
 std::size_t npcFacingIndex(gameplay::FacingDirection facing) noexcept {
     switch (facing) {
     case gameplay::FacingDirection::down: return 0;
@@ -201,6 +191,87 @@ const char* visualAssetRootName(VisualAssetRoot root) noexcept {
     case VisualAssetRoot::contentWorkspace: return "contentWorkspace";
     }
     return "unknown";
+}
+
+std::optional<std::filesystem::path> VisualAssetResolver::resolve(
+    const VisualImageDefinition& definition,
+    std::vector<VisualContentDiagnostic>& diagnostics) const {
+    return resolvePath(definition, roots_, diagnostics);
+}
+
+VisualImageDecodeResult decodeVisualImage(const VisualImageDefinition& definition,
+                                          platform::ImageDecoder& decoder,
+                                          const VisualAssetRoots& roots) {
+    VisualImageDecodeResult result;
+    result.path = VisualAssetResolver{roots}.resolve(definition, result.diagnostics);
+    if (!result.path) return result;
+    try {
+        result.image = std::make_shared<const render::Image>(decoder.decode(*result.path));
+    } catch (const std::exception& exception) {
+        result.diagnostics.push_back({VisualContentDiagnosticStage::decode,
+                                      "image_decode_failed", definition.id, definition.root,
+                                      definition.relativePath, exception.what()});
+    }
+    return result;
+}
+
+std::shared_ptr<const render::AnimationClip> buildVisualAnimationClip(
+    const AnimationDefinition& definition,
+    const std::shared_ptr<const render::SpriteSheet>& sheet,
+    const render::Image& image,
+    std::vector<VisualContentDiagnostic>& diagnostics) {
+    VisualContentLoadResult result;
+    const auto clip = makeClip(definition, sheet, image, result);
+    diagnostics.insert(diagnostics.end(), result.diagnostics.begin(), result.diagnostics.end());
+    return clip;
+}
+
+std::optional<simulation::DefinitionId> resolveDirectionalAnimationId(
+    const DirectionalAnimationRef& reference,
+    gameplay::FacingDirection facing) noexcept {
+    const std::optional<simulation::DefinitionId>* exact = nullptr;
+    switch (facing) {
+    case gameplay::FacingDirection::down: exact = &reference.down; break;
+    case gameplay::FacingDirection::up: exact = &reference.up; break;
+    case gameplay::FacingDirection::left:
+    case gameplay::FacingDirection::right: exact = &reference.side; break;
+    }
+    const std::optional<simulation::DefinitionId>* candidates[] = {
+        exact, &reference.defaultAnimation, &reference.down, &reference.up, &reference.side};
+    for (const auto* candidate : candidates) {
+        if (candidate != nullptr && candidate->has_value()) return *candidate;
+    }
+    return std::nullopt;
+}
+
+std::optional<DirectionalAnimationClips> resolveDirectionalAnimationClips(
+    const DirectionalAnimationRef& reference,
+    const RuntimeAnimationCatalog& animations,
+    std::vector<VisualContentDiagnostic>& diagnostics,
+    const simulation::DefinitionId& ownerId) {
+    DirectionalAnimationClips result{};
+    const gameplay::FacingDirection directions[] = {
+        gameplay::FacingDirection::down,
+        gameplay::FacingDirection::up,
+        gameplay::FacingDirection::left};
+    for (std::size_t index = 0; index < std::size(directions); ++index) {
+        const auto animationId = resolveDirectionalAnimationId(reference, directions[index]);
+        if (!animationId) {
+            diagnostics.push_back({VisualContentDiagnosticStage::compile,
+                                   "missing_directional_animation", ownerId, std::nullopt, {},
+                                   "directional binding has no authored animation"});
+            return std::nullopt;
+        }
+        const auto* clip = animations.find(*animationId);
+        if (!clip) {
+            diagnostics.push_back({VisualContentDiagnosticStage::compile,
+                                   "unknown_animation", ownerId, std::nullopt, {},
+                                   "directional binding references an unavailable animation"});
+            return std::nullopt;
+        }
+        result[index] = *clip;
+    }
+    return result;
 }
 
 std::string formatVisualContentDiagnostic(const VisualContentDiagnostic& diagnostic) {
@@ -321,17 +392,12 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
                        simulation::DefinitionIdHash> sheets;
 
     for (const auto* entry : orderedEntries(registry.visualImages().values())) {
-        const auto path = resolvePath(entry->second, roots, result);
-        if (path.empty()) continue;
-        try {
-            auto image = std::make_shared<const render::Image>(decoder_.decode(path));
-            images.emplace(entry->first, image);
-            sheets.emplace(entry->first, std::make_shared<const render::SpriteSheet>(image));
-        } catch (const std::exception& exception) {
-            diagnostic(result, VisualContentDiagnosticStage::decode, "image_decode_failed",
-                       entry->first, entry->second.relativePath, exception.what(),
-                       entry->second.root);
-        }
+        const auto decoded = decodeVisualImage(entry->second, decoder_, roots);
+        result.diagnostics.insert(result.diagnostics.end(), decoded.diagnostics.begin(),
+                                  decoded.diagnostics.end());
+        if (!decoded.image) continue;
+        images.emplace(entry->first, decoded.image);
+        sheets.emplace(entry->first, std::make_shared<const render::SpriteSheet>(decoded.image));
     }
     for (const auto* entry : orderedEntries(registry.animations().values())) {
         const auto image = images.find(entry->second.imageId);
@@ -341,7 +407,8 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
                        entry->first, {}, "animation image was not decoded");
             continue;
         }
-        const auto clip = makeClip(entry->second, sheet->second, *image->second, result);
+        const auto clip = buildVisualAnimationClip(entry->second, sheet->second, *image->second,
+                                                   result.diagnostics);
         if (clip) runtime.animations.add(entry->first, clip);
     }
     for (const auto* entry : orderedEntries(registry.staticSprites().values())) {
@@ -366,13 +433,47 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
         for (const auto* entry : orderedEntries(registry.enemyVisuals().values())) {
             EnemyVisualSet set;
             set.id = entry->first;
-            set.idle = directional(entry->second.idle, runtime.animations);
-            set.walk = entry->second.move ? directional(*entry->second.move, runtime.animations) : set.idle;
-            set.death = entry->second.death ? directional(*entry->second.death, runtime.animations) : set.idle;
-            if (entry->second.hurt) set.hurt = directional(*entry->second.hurt, runtime.animations);
-            if (entry->second.dead) set.dead = directional(*entry->second.dead, runtime.animations);
-            for (const auto& attack : entry->second.attacks)
-                set.attacks.emplace(attack.visualActionId, directional(attack.clips, runtime.animations));
+            const auto idle = resolveDirectionalAnimationClips(entry->second.idle,
+                                                                runtime.animations,
+                                                                result.diagnostics, entry->first);
+            if (!idle) continue;
+            set.idle = *idle;
+            if (entry->second.move) {
+                const auto move = resolveDirectionalAnimationClips(*entry->second.move,
+                                                                    runtime.animations,
+                                                                    result.diagnostics, entry->first);
+                if (!move) continue;
+                set.walk = *move;
+            } else set.walk = set.idle;
+            if (entry->second.death) {
+                const auto death = resolveDirectionalAnimationClips(*entry->second.death,
+                                                                      runtime.animations,
+                                                                      result.diagnostics, entry->first);
+                if (!death) continue;
+                set.death = *death;
+            } else set.death = set.idle;
+            if (entry->second.hurt) {
+                const auto hurt = resolveDirectionalAnimationClips(*entry->second.hurt,
+                                                                    runtime.animations,
+                                                                    result.diagnostics, entry->first);
+                if (!hurt) continue;
+                set.hurt = *hurt;
+            }
+            if (entry->second.dead) {
+                const auto dead = resolveDirectionalAnimationClips(*entry->second.dead,
+                                                                    runtime.animations,
+                                                                    result.diagnostics, entry->first);
+                if (!dead) continue;
+                set.dead = *dead;
+            }
+            for (const auto& attack : entry->second.attacks) {
+                const auto clips = resolveDirectionalAnimationClips(attack.clips,
+                                                                      runtime.animations,
+                                                                      result.diagnostics,
+                                                                      entry->first);
+                if (!clips) continue;
+                set.attacks.emplace(attack.visualActionId, *clips);
+            }
             runtime.enemies.add(std::move(set));
         }
         for (const auto* entry : orderedEntries(registry.objectVisuals().values())) {
@@ -390,7 +491,13 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
         }
         for (const auto* entry : orderedEntries(registry.npcVisuals().values())) {
             RuntimeNpcVisualSet set{entry->first, entry->second.markerColor, std::nullopt};
-            if (entry->second.idle) set.idle = directional(*entry->second.idle, runtime.animations);
+            if (entry->second.idle) {
+                const auto idle = resolveDirectionalAnimationClips(*entry->second.idle,
+                                                                    runtime.animations,
+                                                                    result.diagnostics, entry->first);
+                if (!idle) continue;
+                set.idle = *idle;
+            }
             runtime.npcs.add(std::move(set));
         }
 

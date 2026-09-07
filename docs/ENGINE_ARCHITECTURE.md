@@ -1881,3 +1881,35 @@ invalidates the cache. Invalid semantic content skips asset loading and is shown
 such. Static sprite source rectangles, animation frame fields and opaque markers are
 edited through typed document operations; uncommitted buffers are scoped to the
 selected definition/frame/marker and are cancelled on selection changes or Escape.
+
+## Visual authoring preview — Phase 18B
+
+The Studio preview is a presentation/tooling service, not a second renderer:
+
+```text
+Authored VisualImage / Animation
+             ↓
+shared secure VisualAssetResolver
+             ↓
+ImageDecoder (lazy, cached)
+             ↓
+EditorVisualPreview
+   ├ source-rectangle canvas
+   ├ grid/pan/nearest-neighbor zoom
+   └ shared AnimationClip + Animator playback
+```
+
+`VisualContentLoader` and the Studio share path containment, workspace/game-assets
+root selection, image decoding and animation-clip construction. The Studio may
+preview a locally resolvable selected definition while unrelated workspace errors
+remain editable; full asset validation still runs through `VisualContentLoader` on
+the explicit Validate command. Preview ticks come from the editor timer, not paint
+frequency. Pan, zoom, grid, selected frame, playback and facing are editor-only and
+never enter Content JSON or gameplay/save state.
+
+The spritesheet canvas authoring operations are deliberately bounded: mouse drags
+are clamped to decoded image bounds, grid multi-cell additions use authored row-major
+order, and no automatic slicing, asset import, timeline/curve system or image
+preview database is introduced. Flexible character profiles continue to require only
+`idle`; optional move/hurt/death/dead states and arbitrary visual action IDs use the
+same exact/default/deterministic-direction fallback as runtime.

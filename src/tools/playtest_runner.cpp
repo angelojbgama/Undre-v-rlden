@@ -2,6 +2,8 @@
 #include "engine/core/game_metrics.h"
 #include "engine/core/image_data.h"
 #include "engine/render/framebuffer.h"
+#include "editor/content_workspace_document.h"
+#include "editor/visual_preview.h"
 #include "game/audit/audit_session.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/world_objects.h"
@@ -874,6 +876,68 @@ bool runVisualContent(ScenarioContext& context) {
     return resolved && context.step();
 }
 
+bool runContentStudioVisuals(ScenarioContext& context) {
+    namespace content = game::content;
+    namespace editor = underworld::editor;
+    namespace presentation = game::presentation;
+    namespace simulation = underworld::simulation;
+    if (!runBaseline(context)) { return false; }
+
+    content::AuthoredContentPack authored;
+    authored.visualImages.push_back({{"image.studio.playtest"},
+                                     presentation::VisualAssetRoot::contentWorkspace,
+                                     "assets/studio.png"});
+    authored.animations.push_back({{"animation.studio.idle"}, {"image.studio.playtest"},
+                                   {{{0, 0, 16, 16}, {8, 15}, {}, 2, {}}}, true});
+    authored.animations.push_back({{"animation.studio.death"}, {"image.studio.playtest"},
+                                   {{{16, 0, 16, 16}, {8, 15}, {}, 1, {"dead"}}}, false});
+    content::AuthoredEnemyVisual slime;
+    slime.id = {"visual.enemy.studio.slime"};
+    slime.idle.defaultAnimation = {"animation.studio.idle"};
+    slime.death = presentation::DirectionalAnimationRef{};
+    slime.death->defaultAnimation = {"animation.studio.death"};
+    authored.enemyVisuals.push_back(slime);
+    const auto root = std::filesystem::temp_directory_path() /
+                      "underworld_playtest_content_studio_visuals";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root, error);
+    std::string writeError;
+    const auto source = root / "visuals.json";
+    if (!context.require(content::writeAuthoredContentJsonFile(source, authored, writeError),
+                         "content studio playtest could not write authored visual source")) {
+        std::filesystem::remove_all(root, error);
+        return false;
+    }
+    auto document = editor::ContentWorkspaceDocument::open(root, writeError);
+    if (!context.require(document && document->valid(),
+                         "content studio playtest could not open valid workspace")) {
+        std::filesystem::remove_all(root, error);
+        return false;
+    }
+    SyntheticImageDecoder decoder;
+    editor::EditorVisualPreview preview(decoder, root / "game-assets");
+    editor::VisualPreviewRequest request;
+    request.key = {editor::ContentDefinitionKind::animation, {"animation.studio.idle"}};
+    preview.prepare(*document, request);
+    const bool resolved = context.require(preview.hasClip() && decoder.paths.size() == 1,
+                                          "content studio preview resolves one authored image lazily");
+    const bool math = context.require(
+        editor::previewGridSelections({0, 16, 32, 16}, {0, 0}, {16, 16}).size() == 2,
+        "content studio preview exposes deterministic grid cell selection");
+    preview.advanceTicks(2);
+    const bool playback = context.require(preview.animator().frameIndex() == 0,
+                                           "content studio preview advances through runtime animator semantics");
+    request.key = {editor::ContentDefinitionKind::enemyVisual, {"visual.enemy.studio.slime"}};
+    request.state = editor::PreviewClipState::death;
+    preview.prepare(*document, request);
+    const bool profile = context.require(preview.hasClip() &&
+                                             preview.animator().clip().id() == "animation.studio.death",
+                                         "content studio playtest previews an idle-plus-death Slime profile");
+    std::filesystem::remove_all(root, error);
+    return resolved && math && playback && profile && context.step();
+}
+
 bool runPickup(ScenarioContext& context, std::string_view definition) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
@@ -1150,6 +1214,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
         passed = runPresentationFeedback(context);
     } else if (name == "visual_content") {
         passed = runVisualContent(context);
+    } else if (name == "content_studio_visuals") {
+        passed = runContentStudioVisuals(context);
     } else if (name == "interactive_world") {
         passed = runInteractiveWorld(context);
     } else if (name == "rewards_loot") {
@@ -1167,7 +1233,7 @@ const std::vector<std::string> allScenarios{
     "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
     "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
         "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "presentation_feedback", "interactive_world", "visual_content", "rewards_loot"};
+        "presentation_feedback", "interactive_world", "visual_content", "content_studio_visuals", "rewards_loot"};
 
 } // namespace
 

@@ -4,6 +4,7 @@
 #include "editor/editor_playtest.h"
 #include "editor/editor_ui.h"
 #include "editor/content_workspace_document.h"
+#include "editor/visual_preview.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
 #include "game/game_content.h"
@@ -102,12 +103,18 @@ private:
     void refreshContentRegistry();
     void resetContentEditState() noexcept;
     [[nodiscard]] bool runVisualValidation();
+    void drawContentPreview(EditorUiContext& ui, const EditorInputState& input,
+                            core::RectI canvas);
+    void resetContentPreviewState() noexcept;
+    void handleContentPreview(EditorUiContext& ui, const EditorInputState& input,
+                              core::RectI canvas);
 
     game::GameContentRegistry content_;
     EditorDocument document_;
     std::optional<ContentWorkspaceDocument> contentWorkspace_;
     platform::ImageDecoder* decoder_{};
     std::filesystem::path assetRoot_;
+    EditorVisualPreview visualPreview_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
@@ -137,7 +144,7 @@ private:
     ContentDefinitionKind selectedContentCategory_{ContentDefinitionKind::visualImage};
     std::optional<ContentDefinitionKey> selectedContentDefinition_;
     std::optional<ContentDefinitionKey> contentEditKey_;
-    std::array<std::string, 16> contentEditValues_{};
+    std::array<std::string, 40> contentEditValues_{};
     std::size_t selectedAnimationFrameIndex_{};
     std::size_t selectedAnimationMarkerIndex_{};
     std::size_t contentEditFrame_{static_cast<std::size_t>(-1)};
@@ -147,6 +154,19 @@ private:
     int contentCategoryScroll_{};
     int contentFrameScroll_{};
     int contentMarkerScroll_{};
+    PreviewClipState previewClipState_{PreviewClipState::idle};
+    simulation::DefinitionId previewActionId_{};
+    PreviewClipState contentBindingState_{PreviewClipState::idle};
+    simulation::DefinitionId contentBindingAction_{};
+    game::gameplay::FacingDirection previewFacing_{game::gameplay::FacingDirection::down};
+    VisualPreviewViewport previewViewport_{};
+    bool previewPanning_{};
+    core::PointI previewPanPointerStart_{};
+    core::PointI previewPanStart_{};
+    bool previewRectangleDragging_{};
+    core::PointI previewRectangleStart_{};
+    core::PointI previewRectangleCurrent_{};
+    std::optional<core::RectI> previewSelectionRect_;
     std::vector<game::presentation::VisualContentDiagnostic> visualDiagnostics_;
     std::uint64_t visualValidationRevision_{static_cast<std::uint64_t>(-1)};
     bool visualValidationAttempted_{};

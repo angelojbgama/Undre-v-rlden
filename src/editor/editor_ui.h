@@ -37,6 +37,7 @@ struct EditorInputState final {
     bool escapePressed{};
     bool backspacePressed{};
     bool focusLost{};
+    std::uint64_t previewTicks{};
     std::string textInput;
 };
 

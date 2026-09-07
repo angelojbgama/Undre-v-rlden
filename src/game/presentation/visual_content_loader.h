@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace underworld::game::presentation {
@@ -111,6 +112,48 @@ struct VisualContentLoadResult final {
         return content.has_value() && diagnostics.empty();
     }
 };
+
+class VisualAssetResolver final {
+public:
+    explicit VisualAssetResolver(VisualAssetRoots roots) : roots_(std::move(roots)) {}
+
+    [[nodiscard]] std::optional<std::filesystem::path> resolve(
+        const VisualImageDefinition& definition,
+        std::vector<VisualContentDiagnostic>& diagnostics) const;
+
+private:
+    VisualAssetRoots roots_;
+};
+
+struct VisualImageDecodeResult final {
+    std::shared_ptr<const render::Image> image;
+    std::optional<std::filesystem::path> path;
+    std::vector<VisualContentDiagnostic> diagnostics;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return image != nullptr && diagnostics.empty();
+    }
+};
+
+[[nodiscard]] VisualImageDecodeResult decodeVisualImage(
+    const VisualImageDefinition& definition, platform::ImageDecoder& decoder,
+    const VisualAssetRoots& roots);
+
+[[nodiscard]] std::shared_ptr<const render::AnimationClip> buildVisualAnimationClip(
+    const AnimationDefinition& definition,
+    const std::shared_ptr<const render::SpriteSheet>& sheet,
+    const render::Image& image,
+    std::vector<VisualContentDiagnostic>& diagnostics);
+
+[[nodiscard]] std::optional<simulation::DefinitionId> resolveDirectionalAnimationId(
+    const DirectionalAnimationRef& reference,
+    gameplay::FacingDirection facing) noexcept;
+
+[[nodiscard]] std::optional<DirectionalAnimationClips> resolveDirectionalAnimationClips(
+    const DirectionalAnimationRef& reference,
+    const RuntimeAnimationCatalog& animations,
+    std::vector<VisualContentDiagnostic>& diagnostics,
+    const simulation::DefinitionId& ownerId);
 
 class VisualContentLoader final {
 public:

@@ -31,6 +31,7 @@
 #include "editor/editor_playtest.h"
 #include "editor/editor_app.h"
 #include "editor/content_workspace_document.h"
+#include "editor/visual_preview.h"
 #include "game/command_builder.h"
 #include "game/audit/audit_session.h"
 #include "game/audit/audit_snapshot.h"
@@ -7999,6 +8000,157 @@ void testPhase18StudioVisualValidation() {
     std::filesystem::remove_all(root, fsError);
 }
 
+void testPhase18BVisualPreview() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+    namespace core = underworld::core;
+    const auto root = std::filesystem::temp_directory_path() / "underworld_phase18b_preview";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+    content::AuthoredContentPack authored;
+    authored.visualImages.push_back({{"image.preview"}, presentation::VisualAssetRoot::contentWorkspace,
+                                     "assets/preview.png"});
+    authored.animations.push_back({{"animation.preview"}, {"image.preview"},
+                                   {{{0, 0, 16, 16}, {8, 15}, {2, 3}, 2, {}},
+                                    {{16, 0, 16, 16}, {8, 15}, {-1, 0}, 3, {"release"}}}, true});
+    authored.animations.push_back({{"animation.preview.death"}, {"image.preview"},
+                                   {{{32, 0, 16, 16}, {8, 15}, {0, 0}, 1, {}}}, false});
+    authored.animations.push_back({{"animation.preview.action"}, {"image.preview"},
+                                   {{{48, 0, 16, 16}, {8, 15}, {0, 0}, 1, {}}}, true});
+    authored.staticSprites.push_back({{"sprite.preview"}, {"image.preview"},
+                                      core::RectI{16, 0, 16, 16}, {8, 15}});
+    content::AuthoredEnemyVisual enemy;
+    enemy.id = {"visual.enemy.preview"};
+    enemy.idle.defaultAnimation = {"animation.preview"};
+    enemy.death = presentation::DirectionalAnimationRef{};
+    enemy.death->defaultAnimation = {"animation.preview.death"};
+    enemy.attacks.push_back({{"attack.sword"}, {{"animation.preview.action"}, {}, {}, {}}});
+    authored.enemyVisuals.push_back(enemy);
+    content::AuthoredWorldObjectVisual object;
+    object.id = {"visual.object.preview"};
+    object.idleAnimationId = {"animation.preview"};
+    object.activationActiveAnimationId = {"animation.preview.action"};
+    authored.objectVisuals.push_back(object);
+    content::AuthoredNpcVisualSet npc;
+    npc.id = {"visual.npc.preview"};
+    npc.markerColor = {10, 20, 30, 255};
+    npc.idle = enemy.idle;
+    authored.npcVisuals.push_back(npc);
+    const auto file = root / "visuals.json";
+    std::string error;
+    expect(content::writeAuthoredContentJsonFile(file, authored, error),
+           "18B writes a preview workspace fixture");
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && document->valid(), "18B opens the preview workspace through the authored pipeline");
+    if (!document) { std::filesystem::remove_all(root, fsError); return; }
+
+    editor::VisualPreviewViewport viewport;
+    viewport.zoomStep = 0;
+    const auto transform = editor::makeVisualPreviewTransform(viewport, {0, 0, 128, 128}, {64, 64});
+    expect(editor::previewImageToScreen(transform, {16, 16}) == core::PointI{48, 48} &&
+               editor::previewScreenToImage(transform, {48, 48}) == core::PointI{16, 16},
+           "18B preview coordinate conversion respects nearest-neighbor zoom");
+    expect(editor::previewDragRectangle(transform, {48, 48}, {64, 64}, {64, 64}, false,
+                                         {0, 0}, {16, 16}) == std::optional<core::RectI>{core::RectI{16, 16, 16, 16}},
+           "18B preview mouse drag produces an inclusive-exclusive source rectangle");
+    expect(editor::previewDragRectangle(transform, {12, 12}, {52, 52}, {64, 64}, false,
+                                         {0, 0}, {16, 16}) == std::optional<core::RectI>{core::RectI{0, 0, 20, 20}},
+           "18B preview drag clamps source rectangles inside the image");
+    expect(editor::previewGridSelections({0, 16, 48, 16}, {0, 0}, {16, 16}) ==
+               std::vector<core::RectI>{{0, 16, 16, 16}, {16, 16, 16, 16}, {32, 16, 16, 16}},
+           "18B grid cell expansion is deterministic and row-major");
+
+    SyntheticVisualDecoder decoder;
+    editor::EditorVisualPreview preview(decoder, root / "game-assets");
+    editor::VisualPreviewRequest request;
+    request.key = {editor::ContentDefinitionKind::animation, {"animation.preview"}};
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.image() && decoder.paths.size() == 1 &&
+               preview.animator().frameIndex() == 0,
+           "18B preview lazily resolves one image and builds the shared AnimationClip");
+    const auto decodeCount = decoder.paths.size();
+    preview.prepare(*document, request);
+    preview.advanceTicks(1);
+    expect(decoder.paths.size() == decodeCount && preview.animator().frameIndex() == 0,
+           "18B preview cache avoids decoding on repeated paint/prepare calls");
+    preview.advanceTicks(1);
+    expect(preview.animator().frameIndex() == 1 && !preview.markerEvents().empty() &&
+               preview.markerEvents().front().marker == "release",
+           "18B preview playback reuses frame timing and exposes authored markers");
+    preview.setPlaying(false);
+    preview.advanceTicks(8);
+    expect(preview.animator().frameIndex() == 1,
+           "18B paused preview ignores injected preview ticks");
+    preview.restart();
+    expect(preview.animator().frameIndex() == 0 && preview.animator().elapsedFrameTicks() == 0,
+           "18B preview restart returns to frame zero");
+    preview.stepFrame(1);
+    expect(preview.animator().frameIndex() == 1 && !preview.playing(),
+           "18B paused preview supports deterministic frame stepping");
+
+    request = {};
+    request.key = {editor::ContentDefinitionKind::staticSprite, {"sprite.preview"}};
+    preview.prepare(*document, request);
+    expect(preview.image() && !preview.hasClip() && preview.diagnostics().empty(),
+           "18B StaticSprite preview resolves an isolated source without an animation clip");
+    auto invalidSprite = *document->staticSprite({"sprite.preview"});
+    invalidSprite.source = core::RectI{60, 60, 8, 8};
+    expect(document->updateStaticSprite(invalidSprite.id, invalidSprite, error),
+           "18B accepts a temporary invalid StaticSprite source edit");
+    preview.prepare(*document, request);
+    expect(!preview.diagnostics().empty() && preview.diagnostics().front().code ==
+               "source_out_of_bounds",
+           "18B StaticSprite preview reports source bounds diagnostics before drawing");
+    auto validSprite = *document->staticSprite({"sprite.preview"});
+    validSprite.source = core::RectI{16, 0, 16, 16};
+    expect(document->updateStaticSprite(validSprite.id, validSprite, error),
+           "18B restores the StaticSprite source after bounds validation");
+
+    request.key = {editor::ContentDefinitionKind::enemyVisual, {"visual.enemy.preview"}};
+    request.state = editor::PreviewClipState::idle;
+    request.actionId = {};
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview" &&
+               !preview.flipX(), "18B flexible enemy preview resolves required idle binding");
+    request.state = editor::PreviewClipState::death;
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview.death",
+           "18B optional enemy death state previews without requiring move or attack states");
+    request.state = editor::PreviewClipState::action;
+    request.actionId = {"attack.sword"};
+    request.facing = underworld::game::gameplay::FacingDirection::right;
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview.action" &&
+               preview.flipX(), "18B arbitrary enemy action uses authored side/facing policy");
+
+    request = {};
+    request.key = {editor::ContentDefinitionKind::objectVisual, {"visual.object.preview"}};
+    request.state = editor::PreviewClipState::activationActive;
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview.action",
+           "18B object visual preview resolves authored activation state");
+    request = {};
+    request.key = {editor::ContentDefinitionKind::npcVisual, {"visual.npc.preview"}};
+    request.facing = underworld::game::gameplay::FacingDirection::down;
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview",
+           "18B NPC visual preview resolves directional idle while retaining marker fallback data");
+
+    auto changed = *document->visualImage({"image.preview"});
+    changed.relativePath = "assets/preview-renamed.png";
+    const auto pathDecodeCount = decoder.paths.size();
+    expect(document->updateVisualImage(changed.id, changed, error),
+           "18B visual image path edit increments preview revision");
+    preview.prepare(*document, request);
+    expect(decoder.paths.size() == pathDecodeCount + 1 &&
+               decoder.paths.back() == root / "assets/preview-renamed.png",
+           "18B authored image path changes invalidate the lazy preview cache");
+    std::filesystem::remove_all(root, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -8078,6 +8230,7 @@ int main() {
         testPhase17VisualContentBoundary();
         testPhase18ContentStudioFoundation();
         testPhase18StudioVisualValidation();
+        testPhase18BVisualPreview();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

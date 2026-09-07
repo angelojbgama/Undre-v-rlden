@@ -79,8 +79,11 @@ remains the transitional default source; an explicit workspace replaces it witho
 an overlay. Presentation effects, object activation and visual definitions are
 data-driven capabilities, not authoritative gameplay state. Player visuals, HUD/font
 assets, tileset loading and generic impact VFX remain fixed presentation concerns in
-this phase. Content Studio 18A now provides the first typed workspace-document shell;
-the remaining Studio slices and LLM tooling remain future work.
+this phase. Content Studio 18A provides the typed workspace-document shell and 18B
+adds editor-only spritesheet selection, grid/pan/zoom and AnimationClip/Animator
+playback through the same secure asset resolver used by runtime. Preview state is not
+serialized. Asset import, automatic slicing, complex timelines and gameplay
+definition inspectors remain future work.
 
 ## Content Studio source ownership
 
@@ -97,7 +100,10 @@ replacement. Opening a mixed v1-v5 workspace does not rewrite untouched legacy f
 only a modified file is upgraded by the encoder. Builtin content is exposed as a
 read-only document. Content Studio 18A provides typed authoring for visual images,
 static sprites (including optional source rectangles and anchors), animations
-(including complete frame/marker data) and flexible enemy visual profiles; image
-preview, asset import, timeline editing and gameplay definition inspectors remain
-future work. Explicit workspace validation also runs `VisualContentLoader` against
-the selected asset roots without changing the authored JSON format.
+(including complete frame/marker data) and flexible enemy visual profiles. Phase 18B
+adds editor-only spritesheet selection, grid/pan/zoom and playback; these settings
+are not serialized. The preview uses the same secure asset resolver and immutable
+animation-clip construction as runtime, while asset import, automatic slicing,
+complex timelines and gameplay definition inspectors remain future work. Explicit
+workspace validation continues to run `VisualContentLoader` against the selected
+asset roots without changing the authored JSON format.

@@ -129,7 +129,7 @@ FASE 17 — Visual Content Boundary                     DONE
 17D — External Visual Content Vertical Slice          DONE
 FASE 18 — Content Studio                              IN PROGRESS
 18A — Content Studio Foundation                       DONE
-18B — Visual Asset + Animation Authoring              FUTURE
+18B — Visual Asset + Animation Authoring              DONE
 18C — Gameplay Content Editors                        FUTURE
 18D — Unified Content/Map Workflow                    FUTURE
 ```
@@ -1509,12 +1509,22 @@ without an 18A inspector are read-only. Builtin content is read-only and an expl
 `--content` workspace is editable. The unified shell preserves the existing MAP mode
 and keeps both map and content documents alive when switching modes.
 
-18B — Visual Asset + Animation Authoring — FUTURE.
+18B — Visual Asset + Animation Authoring — DONE. The CONTENT mode now uses a shared
+secure visual asset resolver and a lazy preview cache. Visual images can be viewed
+with nearest-neighbor FIT/1x/2x/4x/8x zoom, pan, grid snapping and bounded mouse
+rectangle selection. Static sprites and animation frames expose source overlays;
+animations reuse the runtime `AnimationClip`/`Animator` path for play/pause/restart,
+frame stepping, markers and authored anchor/drawOffset playback. Flexible enemy,
+object and NPC visual profiles have typed binding/state inspectors, including
+optional states, arbitrary visual actions, directional fallback and NPC marker
+fallback. Preview ticks come from a dedicated editor timer and are never driven by
+paint frequency. Grid/viewport state is editor-only and is not serialized.
 18C — Gameplay Content Editors — FUTURE.
 18D — Unified Content/Map Workflow — FUTURE.
 
-The next phase is not started here. Asset previews/import, hot reload, gameplay
-inspectors, node graphs, LLM authoring, scripting and networking remain deferred.
+The next phase is not started here. Asset import, automatic slicing, complex timeline
+editing, hot reload, gameplay inspectors, node graphs, LLM authoring, scripting and
+networking remain deferred.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and
