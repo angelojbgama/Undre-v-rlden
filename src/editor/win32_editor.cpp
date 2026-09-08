@@ -198,7 +198,8 @@ private:
             value = 0x10000U + ((pendingHighSurrogate_ - 0xd800U) << 10U) + (value - 0xdc00U);
             pendingHighSurrogate_ = 0;
         } else if (pendingHighSurrogate_ != 0) pendingHighSurrogate_ = 0;
-        if (value >= 32U && value != 127U && value != '\r' && value != '\n' && value != '\t') core::appendUtf8Codepoint(input_.textInput, value);
+        if (value >= 32U && value != 127U && value != '\r' && value != '\n' && value != '\t')
+            static_cast<void>(core::appendUtf8Codepoint(input_.textInput, value));
     }
 
     void modifiers() { input_.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0; input_.control = (GetKeyState(VK_CONTROL) & 0x8000) != 0; input_.alt = (GetKeyState(VK_MENU) & 0x8000) != 0; }

@@ -28,9 +28,17 @@ int readWidth(const std::string& text, std::string_view key, int fallback, int m
 
 std::filesystem::path defaultEditorPreferencesPath() {
 #ifdef _WIN32
-    if (const wchar_t* local = _wgetenv(L"LOCALAPPDATA"); local && *local) {
-        return std::filesystem::path(local) / "DungeonUnderworld" / "ContentStudio" / "settings.json";
+    wchar_t* local = nullptr;
+    std::size_t localLength = 0;
+    const bool hasLocalAppData = _wdupenv_s(&local, &localLength, L"LOCALAPPDATA") == 0 &&
+                                 local != nullptr && *local != L'\0';
+    if (hasLocalAppData) {
+        const auto result = std::filesystem::path(local) / "DungeonUnderworld" /
+                            "ContentStudio" / "settings.json";
+        std::free(local);
+        return result;
     }
+    std::free(local);
 #else
     if (const char* config = std::getenv("XDG_CONFIG_HOME"); config && *config) {
         return std::filesystem::path(config) / "DungeonUnderworld" / "ContentStudio" / "settings.json";

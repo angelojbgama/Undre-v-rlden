@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
 namespace underworld::editor {
 namespace {
@@ -213,7 +214,7 @@ std::optional<EditorDocument> EditorDocument::open(
         document.dirty_ = false;
         document.initializeAllocator();
         document.synchronizeAuthoredSource();
-        return document;
+        return std::optional<EditorDocument>{std::move(document)};
     }
     const auto catalogs = game::mapValidationCatalogs(content);
     auto loaded = maps::readDmap(path, &catalogs);
@@ -221,7 +222,7 @@ std::optional<EditorDocument> EditorDocument::open(
     EditorDocument document(std::move(loaded.data));
     document.filePath_ = path;
     document.dirty_ = false;
-    return document;
+    return std::optional<EditorDocument>{std::move(document)};
 }
 
 EditorDocument EditorDocument::fromAuthoredSource(maps::AuthoredMapSource source) {

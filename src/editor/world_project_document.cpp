@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace underworld::editor {
 namespace {
@@ -70,7 +71,7 @@ std::optional<WorldProjectDocument> WorldProjectDocument::open(
         project.projectDirty_ = false;
         project.activeIndex_ = 0;
         error.clear();
-        return project;
+        return std::optional<WorldProjectDocument>{std::move(project)};
     } catch (const std::exception& exception) { error = exception.what(); return std::nullopt; }
 }
 

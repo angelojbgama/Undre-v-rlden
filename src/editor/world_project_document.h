@@ -18,6 +18,10 @@ struct ProjectPlacementUsage final {
 class WorldProjectDocument final {
 public:
     explicit WorldProjectDocument(EditorDocument initial);
+    WorldProjectDocument(const WorldProjectDocument&) = delete;
+    WorldProjectDocument& operator=(const WorldProjectDocument&) = delete;
+    WorldProjectDocument(WorldProjectDocument&&) noexcept = default;
+    WorldProjectDocument& operator=(WorldProjectDocument&&) noexcept = default;
 
     static WorldProjectDocument newProject(EditorDocument initial);
     static WorldProjectDocument fromStandalone(EditorDocument map);

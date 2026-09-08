@@ -122,6 +122,12 @@ public:
 
 class CommandHistory final {
 public:
+    CommandHistory() = default;
+    CommandHistory(const CommandHistory&) = delete;
+    CommandHistory& operator=(const CommandHistory&) = delete;
+    CommandHistory(CommandHistory&&) noexcept = default;
+    CommandHistory& operator=(CommandHistory&&) noexcept = default;
+
     bool execute(std::unique_ptr<EditorCommand> command, EditorDocument& document,
                  std::string& error);
     bool undo(EditorDocument& document);
@@ -139,6 +145,10 @@ class EditorDocument final {
 public:
     EditorDocument();
     explicit EditorDocument(maps::MapData data);
+    EditorDocument(const EditorDocument&) = delete;
+    EditorDocument& operator=(const EditorDocument&) = delete;
+    EditorDocument(EditorDocument&&) noexcept = default;
+    EditorDocument& operator=(EditorDocument&&) noexcept = default;
 
     static EditorDocument newMap(simulation::MapId id, std::uint32_t width,
                                  std::uint32_t height, std::uint16_t tileSize = 16,
