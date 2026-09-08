@@ -129,3 +129,9 @@ workspace ownership, merge, validation and compiler pipeline. Semantic-invalid
 documents remain structurally saveable while compilation is unavailable; map compile
 and playtest use only the current valid registry and never silently fall back to a
 builtin or stale registry.
+
+## Editor language boundary
+
+Content Studio localization is outside this format. The `pt-BR`/`en-US` preference is
+stored in a user settings file; it is never written into Content JSON, definition IDs,
+authored display names or dialogue text. Content JSON remains v5 and language-independent.

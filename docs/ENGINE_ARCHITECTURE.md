@@ -2011,3 +2011,21 @@ Future LLM  ──┘
 
 Phase 18D does not add advanced autotiling, a procedural rule solver, asset import,
 hot reload, a dialogue/quest graph, scripting, audio, networking or LLM integration.
+
+## Content Studio localization and preferences
+
+The editor language is a tooling preference, not authored game content. The shell owns
+an `EditorPreferences` value and an `EditorLocalization` catalog. `EditorTextId` is the
+typed boundary for normal menus, labels, commands, status text and enum display names;
+`pt-BR` is the first-run default and `en-US` is the second supported language. The
+Win32 shell persists the selection in a user-writable Content Studio settings file and
+rebuilds its native menu when the language changes. Tests inject a filesystem path, so
+repository documents never receive personal settings.
+
+UTF-8 is decoded into Unicode codepoints before bitmap-font lookup and text-field edits.
+The existing 7x9 font remains the renderer and gains a small Latin accent treatment for
+Portuguese; no installed system font or third-party typography dependency is required.
+`DefinitionId`, map/save/content formats, authored `displayName`, dialogue text and all
+runtime serialization remain language-independent. Editor language is therefore not
+game content localization and does not dirty an `EditorDocument` or
+`ContentWorkspaceDocument`.

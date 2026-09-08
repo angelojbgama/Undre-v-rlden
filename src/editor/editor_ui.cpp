@@ -1,6 +1,7 @@
 #include "editor/editor_ui.h"
 
 #include "engine/core/color_rgba8.h"
+#include "engine/core/utf8.h"
 #include "engine/render/bitmap_font.h"
 #include "engine/render/renderer_2d.h"
 
@@ -21,7 +22,14 @@ void EditorUiContext::panel(core::RectI bounds) const {
 }
 
 void EditorUiContext::label(std::string_view text, int x, int y) const {
-    if (font_) { render::drawText(renderer_, *font_, text, x, y); }
+    if (font_) {
+        const auto localized = localization_.localize(text);
+        render::drawText(renderer_, *font_, localized, x, y);
+    }
+}
+
+void EditorUiContext::labelRaw(std::string_view text, int x, int y) const {
+    if (font_) render::drawText(renderer_, *font_, text, x, y);
 }
 
 bool EditorUiContext::button(core::RectI bounds, std::string_view text, bool active) const {
@@ -31,21 +39,37 @@ bool EditorUiContext::button(core::RectI bounds, std::string_view text, bool act
     return hovered && input_.pointer.leftPressed;
 }
 
+bool EditorUiContext::buttonRaw(core::RectI bounds, std::string_view text, bool active) const {
+    const bool hovered = pointerInside(bounds);
+    renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
+    labelRaw(text, bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
+    return hovered && input_.pointer.leftPressed;
+}
+
 bool EditorUiContext::toggle(core::RectI bounds, std::string_view text, bool value) const {
     return button(bounds, text, value);
 }
 
 bool EditorUiContext::textField(core::RectI bounds, std::string& value, bool active,
                                std::size_t maximumLength) const {
-    const bool clicked = button(bounds, value, active);
+    const bool hovered = pointerInside(bounds);
+    renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
+    if (font_) render::drawText(renderer_, *font_, value, bounds.x + 4,
+                                bounds.y + (bounds.height - 9) / 2);
     if (active) {
-        for (const char character : input_.textInput) {
-            if (value.size() >= maximumLength) break;
-            if (character >= 32 && character < 127) value.push_back(character);
+        std::size_t offset = 0;
+        while (offset < input_.textInput.size() && core::utf8CodepointCount(value) < maximumLength) {
+            const std::size_t before = offset;
+            const auto codepoint = core::decodeUtf8Codepoint(input_.textInput, offset);
+            if (offset == before) ++offset;
+            if (codepoint && *codepoint >= 32U && *codepoint != 127U && *codepoint != '\n' &&
+                *codepoint != '\r' && *codepoint != '\t') {
+                static_cast<void>(core::appendUtf8Codepoint(value, *codepoint));
+            }
         }
-        if (input_.backspacePressed && !value.empty()) value.pop_back();
+        if (input_.backspacePressed) static_cast<void>(core::eraseLastUtf8Codepoint(value));
     }
-    return clicked;
+    return hovered && input_.pointer.leftPressed;
 }
 
 bool EditorUiContext::pointerInside(core::RectI bounds) const noexcept {

@@ -1534,6 +1534,14 @@ The next phase is not started here. Asset import, automatic slicing, complex tim
 editing, hot reload, node graphs, LLM authoring, scripting, audio and networking remain
 deferred. Phase 19 is reserved for advanced semantic authoring and Phase 20 for LLM
 authoring.
+
+The Content Studio shell also has an editor-only localization boundary. `EditorPreferences`
+stores the selected `EditorLanguage` outside authored JSON/UMAP/DMAP/DSAV, defaults to
+`pt-BR` and persists `pt-BR`/`en-US` between runs. `EditorLocalization` owns the typed
+`EditorTextId` catalog and the Win32 Settings > Language menu; switching language rebuilds
+only the native menu and presentation state, never authored documents. Portuguese UI text
+uses UTF-8-safe editor input and the bitmap font's small Latin accent extension. This is
+tool localization only: game content, IDs, dialogue and runtime language remain unchanged.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

@@ -19,6 +19,10 @@ if not exist "build\obj\game.obj" (
 
 set "COMMON_FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /EHsc /Zc:__cplusplus /utf-8 /I src /c"
 
+echo Compiling UTF-8 core utilities...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\utf8.obj" "src\engine\core\utf8.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling authored content boundary...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\json.obj" "src\engine\data\json.cpp"
 if errorlevel 1 goto :build_failed
@@ -100,7 +104,7 @@ if errorlevel 1 goto :build_failed
 echo Linking game.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" "build\obj\sprite.obj" ^
-    "build\obj\animation.obj" "build\obj\bitmap_font.obj" "build\obj\camera_2d.obj" "build\obj\asset_manager.obj" ^
+    "build\obj\animation.obj" "build\obj\bitmap_font.obj" "build\obj\utf8.obj" "build\obj\camera_2d.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" ^
     "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" "build\obj\runtime_world.obj" "build\obj\save_data.obj" ^

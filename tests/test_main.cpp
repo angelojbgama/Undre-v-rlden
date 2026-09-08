@@ -49,7 +49,11 @@
 #include "game/content/content_workspace.h"
 #include "game/content/content_source.h"
 #include "editor/editor_launch.h"
+#include "editor/editor_localization.h"
+#include "editor/editor_preferences.h"
+#include "editor/editor_ui.h"
 #include "engine/data/json.h"
+#include "engine/core/utf8.h"
 #include "game/game_session.h"
 #include "game/game_view_model.h"
 #include "game/actor_render_order.h"
@@ -490,6 +494,9 @@ void testBitmapFontMapping() {
            "font explicitly maps known punctuation");
     expect(font.glyphSource('@') == font.glyphSource('?'),
            "unknown glyph falls back to question mark");
+    expect(font.glyphSource(0x00e3U) == font.glyphSource('a') &&
+               font.glyphSource(0x00c7U) == font.glyphSource('C'),
+           "bitmap font resolves Portuguese accented codepoints to extended glyph rendering");
     expect(font.advance() == 7 && font.lineHeight() == 9,
            "font uses fixed 7x9 metrics");
 }
@@ -8517,6 +8524,71 @@ void testPhase18DUnifiedStudioWorkflow() {
     std::filesystem::remove_all(root, fsError);
 }
 
+void testEditorLocalization() {
+    using namespace underworld;
+    using editor::EditorLanguage;
+    using editor::EditorLocalization;
+    using editor::EditorTextId;
+    EditorLocalization portuguese;
+    EditorLocalization english(EditorLanguage::englishUnitedStates);
+    expect(portuguese.language() == EditorLanguage::portugueseBrazil &&
+               portuguese.text(EditorTextId::settings) == "Configurações" &&
+               portuguese.text(EditorTextId::contentMode) == "Modo Conteúdo" &&
+               english.text(EditorTextId::settings) == "Settings" &&
+               english.text(EditorTextId::contentMode) == "Content Mode",
+           "Content Studio localization provides Portuguese default and English catalog");
+    bool catalogsComplete = true;
+    for (const auto id : EditorLocalization::allTextIds()) {
+        catalogsComplete = catalogsComplete && !portuguese.text(id).empty() && !english.text(id).empty();
+    }
+    expect(catalogsComplete && EditorLocalization::catalogComplete(EditorLanguage::portugueseBrazil) &&
+               EditorLocalization::catalogComplete(EditorLanguage::englishUnitedStates),
+           "Content Studio localization catalogs contain every registered text ID");
+    portuguese.setLanguage(EditorLanguage::englishUnitedStates);
+    expect(portuguese.text(EditorTextId::save) == "Save" && portuguese.localize("Frame 2") == "Frame 2",
+           "Content Studio localization switches language without changing authored identifiers");
+    expect(portuguese.localize("meleeHitbox") == "Melee" &&
+               portuguese.localize("consumable") == "Consumable" &&
+               portuguese.localize("relativePath") == "Relative Path",
+           "Content Studio English catalog localizes enum values and inspector fields");
+    portuguese.setLanguage(EditorLanguage::portugueseBrazil);
+    expect(portuguese.localize("Frame 2") == "Quadro 2" &&
+               portuguese.localize("enemy.studio.slime") == "enemy.studio.slime",
+           "Content Studio localization translates UI prefixes but preserves content IDs");
+
+    const auto path = std::filesystem::temp_directory_path() / "underworld_editor_localization_settings.json";
+    std::error_code fsError;
+    std::filesystem::remove(path, fsError);
+    const auto defaults = editor::loadEditorPreferences(path);
+    std::string error;
+    editor::EditorPreferences saved;
+    saved.language = EditorLanguage::englishUnitedStates;
+    expect(defaults.language == EditorLanguage::portugueseBrazil &&
+               editor::saveEditorPreferences(path, saved, error) && error.empty() &&
+               editor::loadEditorPreferences(path).language == EditorLanguage::englishUnitedStates,
+           "Content Studio language preference defaults to Portuguese and persists English");
+    {
+        std::ofstream corrupt(path, std::ios::binary | std::ios::trunc);
+        corrupt << "not valid settings";
+    }
+    expect(editor::loadEditorPreferences(path).language == EditorLanguage::portugueseBrazil,
+           "Corrupt Content Studio preferences safely fall back to Portuguese");
+    std::filesystem::remove(path, fsError);
+
+    std::string utf8 = "Missão";
+    expect(core::utf8CodepointCount(utf8) == 6 && core::eraseLastUtf8Codepoint(utf8) && utf8 == "Missã" &&
+               core::appendUtf8Codepoint(utf8, 0x006fU) && utf8 == "Missão",
+           "UTF-8 editor text editing counts codepoints and backspaces safely");
+    render::Framebuffer framebuffer(32, 16);
+    editor::EditorInputState input;
+    input.textInput = "çã";
+    render::Renderer2D renderer(framebuffer);
+    editor::EditorUiContext ui(renderer, nullptr, input, portuguese);
+    std::string field;
+    (void)ui.textField({0, 0, 20, 9}, field, true, 2);
+    expect(field == "çã", "Editor text fields accept Portuguese UTF-8 input");
+}
+
 int main() {
     try {
         testMetrics();
@@ -8600,6 +8672,7 @@ int main() {
         testPhase18BVisualPreview();
         testPhase18CGameplayContentEditors();
         testPhase18DUnifiedStudioWorkflow();
+        testEditorLocalization();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

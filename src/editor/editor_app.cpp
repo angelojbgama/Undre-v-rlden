@@ -241,7 +241,7 @@ core::PointI EditorApp::worldToScreen(core::WorldPointI world,core::RectI viewpo
 void EditorApp::updateAndRender(const EditorInputState& input){
     if(input.focusLost)cancelActiveGesture();
     render::Renderer2D renderer(*framebuffer_);framebuffer_->clear(background);
-    EditorUiContext ui(renderer,font_.get(),input);drawShell(ui,input);
+    EditorUiContext ui(renderer,font_.get(),input,localization_);drawShell(ui,input);
     updateStatus(viewportBounds_,input);
 }
 
@@ -267,7 +267,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     ui.label("LAYERS",8,26);int y=40;
     for(std::size_t i=0;i<document_.data().layers.size();++i){
         const auto& layer=document_.data().layers[i];
-        if(ui.button({8,y,110,18},layer.name,i==document_.activeLayer())) {
+        if(ui.buttonRaw({8,y,110,18},layer.name,i==document_.activeLayer())) {
             document_.activeLayer()=i;
             layerNameEdit_=layer.name;
             layerNameFocused_=false;
@@ -375,7 +375,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         });
         for(const auto& descriptor:entries){
             if(y+18>viewportHeight-210)break;
-            if(ui.button({8,y,174,18},descriptor.label,selectedDefinition_==descriptor.id&&document_.activeTool()==EditorTool::entityPlace)){
+            if(ui.buttonRaw({8,y,174,18},descriptor.label,selectedDefinition_==descriptor.id&&document_.activeTool()==EditorTool::entityPlace)){
                 selectedDefinition_=descriptor.id;selectedCategory_=descriptor.category;document_.activeTool()=EditorTool::entityPlace;
             }y+=20;
         }
@@ -398,7 +398,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if (mapPaletteTab_ == MapPaletteTab::semantics) {
         ui.label("SEMANTIC TILES",8,y+8); y+=20;
         if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
-        if(ui.button({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
+        if(ui.buttonRaw({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
         if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
         rawPalette_=semanticFamilies[semanticFamilyIndex_]=="RAW"; y+=22;
     } else if (mapPaletteTab_ == MapPaletteTab::tiles) {
@@ -408,7 +408,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         ui.label("STAMPS",8,y+8); y+=20;
         const auto& stamp=semantics.stamps()[std::min(selectedStamp_,semantics.stamps().size()-1)];
         if(ui.button({8,y,28,18},"<")) selectedStamp_=(selectedStamp_+semantics.stamps().size()-1)%semantics.stamps().size();
-        if(ui.button({38,y,116,18},stamp.displayName,document_.activeTool()==EditorTool::stampPlace)) document_.activeTool()=EditorTool::stampPlace;
+        if(ui.buttonRaw({38,y,116,18},stamp.displayName,document_.activeTool()==EditorTool::stampPlace)) document_.activeTool()=EditorTool::stampPlace;
         if(ui.button({156,y,26,18},">")) selectedStamp_=(selectedStamp_+1)%semantics.stamps().size();
         y+=22;
     }
@@ -417,7 +417,7 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if(selectedDefinition){
         ui.label("TILESET",8,y+8); y+=20;
         if(ui.button({8,y,28,18},"<"))selectTileset(-1);
-        if(ui.button({38,y,116,18},selectedDefinition->displayName,true)){}
+        if(ui.buttonRaw({38,y,116,18},selectedDefinition->displayName,true)){}
         if(ui.button({156,y,26,18},">"))selectTileset(1);
         y+=22;
     }
@@ -513,7 +513,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
     for (const auto& key : allDefinitions) {
         if (key.kind != selectedContentCategory_) continue;
         if (definitionY + 18 >= definitionBottom) break;
-        if (ui.button({center.x + 8, definitionY, center.width - 16, 16},
+        if (ui.buttonRaw({center.x + 8, definitionY, center.width - 16, 16},
                       key.id.value(), selectedContentDefinition_ == key)) {
             selectedContentDefinition_ = key;
             resetContentEditState();
@@ -597,7 +597,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         }
     } else {
         const auto& key = *selectedContentDefinition_;
-        ui.label(std::string(key.id.value()), right.x + 8, 30);
+        ui.labelRaw(key.id.value(), right.x + 8, 30);
         if (contentWorkspace_->writable() &&
             ui.button({right.x + right.width - 86, 30, 78, 20}, "NEW")) {
             selectedContentDefinition_.reset();
@@ -607,8 +607,8 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         }
         if (const auto* source = contentWorkspace_->sourceFor(key)) {
             ui.label("Source:", right.x + 8, 52);
-            ui.label(source->sourcePath.filename().string(), right.x + 8, 66);
-            if (!source->jsonPath.empty()) ui.label(source->jsonPath, right.x + 8, 80);
+            ui.labelRaw(source->sourcePath.filename().string(), right.x + 8, 66);
+            if (!source->jsonPath.empty()) ui.labelRaw(source->jsonPath, right.x + 8, 80);
         }
         ui.label(contentWorkspace_->writable() ? "Typed document API: editable" : "Builtin content - read only",
                  right.x + 8, 104);
@@ -1715,7 +1715,7 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
     auto showReadOnlyFields = [&](std::string_view title, std::initializer_list<std::pair<std::string_view, std::string>> values) {
         ui.label(title, panel.x + 8, inspectorY);
         int y = inspectorY + 24;
-        for (const auto& [name, value] : values) { ui.label(name, panel.x + 8, y); ui.label(value, panel.x + 104, y); y += 18; }
+        for (const auto& [name, value] : values) { ui.label(name, panel.x + 8, y); ui.labelRaw(value, panel.x + 104, y); y += 18; }
     };
     if (key.kind == ContentDefinitionKind::attack) {
         const auto* value = contentWorkspace_->attack(key.id);
@@ -3700,7 +3700,7 @@ bool EditorApp::runVisualValidation(){
     return static_cast<bool>(loaded);
 }
 void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}if(contentWorkspace_&&!contentWorkspace_->compiledRegistry()){status_="Playtest unavailable: Content Workspace is invalid";return;}std::string error;if(!playtest_.start(document_.data(),content_,error)){status_=error;return;}status_="Playtest active: runtime world built from document snapshot";}
-std::string EditorApp::windowTitle() const{std::string title=contentMode_?"Dungeon Underworld - Content Studio - ":"Dungeon Underworld - Map Maker - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?"Builtin content":"Content workspace");else title.append(document_.data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
+std::string EditorApp::windowTitle() const{std::string title="Dungeon Underworld - ";title += contentMode_ ? std::string(localization_.text(EditorTextId::contentStudio)) : std::string(localization_.text(EditorTextId::mapMaker));title += " - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?std::string(localization_.text(EditorTextId::builtinContent)):std::string(localization_.text(EditorTextId::contentWorkspace)));else title.append(document_.data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
 void EditorApp::updateStatus(core::RectI viewport,const EditorInputState& input){if(contentMode_)return;if(input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height){const auto world=screenToWorld({input.pointer.x,input.pointer.y},viewport);std::ostringstream out;out<<"World "<<world.x<<','<<world.y<<"  Tile "<<world.x/document_.data().tileSize<<','<<world.y/document_.data().tileSize<<"  Zoom "<<static_cast<int>(zoom()*100)<<'%';status_=out.str();}}
 
 } // namespace underworld::editor

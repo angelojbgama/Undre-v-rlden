@@ -2,6 +2,7 @@
 
 #include "editor/editor_commands.h"
 #include "editor/editor_playtest.h"
+#include "editor/editor_localization.h"
 #include "editor/editor_ui.h"
 #include "editor/content_workspace_document.h"
 #include "editor/visual_preview.h"
@@ -63,6 +64,9 @@ public:
     [[nodiscard]] const EditorDocument& document() const noexcept { return document_; }
     [[nodiscard]] std::string windowTitle() const;
     [[nodiscard]] const std::string& status() const noexcept { return status_; }
+    void setLanguage(EditorLanguage language) noexcept { localization_.setLanguage(language); }
+    [[nodiscard]] EditorLanguage language() const noexcept { return localization_.language(); }
+    [[nodiscard]] const EditorLocalization& localization() const noexcept { return localization_; }
 
 private:
     enum class MapPaletteTab { tiles, semantics, stamps, entities, rules, encounters };
@@ -200,6 +204,7 @@ private:
     std::uint64_t visualValidationRevision_{static_cast<std::uint64_t>(-1)};
     bool visualValidationAttempted_{};
     std::string status_;
+    EditorLocalization localization_;
 };
 
 } // namespace underworld::editor

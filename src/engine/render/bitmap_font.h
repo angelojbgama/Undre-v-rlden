@@ -2,6 +2,7 @@
 
 #include "engine/core/geometry.h"
 
+#include <cstdint>
 #include <memory>
 #include <string_view>
 #include <unordered_map>
@@ -16,6 +17,7 @@ public:
     explicit BitmapFont(std::shared_ptr<const Image> image);
 
     [[nodiscard]] core::RectI glyphSource(char character) const noexcept;
+    [[nodiscard]] core::RectI glyphSource(std::uint32_t codepoint) const noexcept;
     [[nodiscard]] int advance() const noexcept { return 7; }
     [[nodiscard]] int lineHeight() const noexcept { return 9; }
     [[nodiscard]] const Image& image() const noexcept { return *image_; }

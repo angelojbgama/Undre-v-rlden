@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/geometry.h"
+#include "editor/editor_localization.h"
 
 #include <cstdint>
 #include <string>
@@ -44,13 +45,17 @@ struct EditorInputState final {
 class EditorUiContext final {
 public:
     EditorUiContext(render::Renderer2D& renderer, const render::BitmapFont* font,
-                    const EditorInputState& input) noexcept
-        : renderer_(renderer), font_(font), input_(input) {}
+                    const EditorInputState& input,
+                    const EditorLocalization& localization) noexcept
+        : renderer_(renderer), font_(font), input_(input), localization_(localization) {}
 
     void panel(core::RectI bounds) const;
     void label(std::string_view text, int x, int y) const;
+    void labelRaw(std::string_view text, int x, int y) const;
     [[nodiscard]] bool button(core::RectI bounds, std::string_view text,
                               bool active = false) const;
+    [[nodiscard]] bool buttonRaw(core::RectI bounds, std::string_view text,
+                                 bool active = false) const;
     [[nodiscard]] bool toggle(core::RectI bounds, std::string_view text, bool value) const;
     [[nodiscard]] bool textField(core::RectI bounds, std::string& value, bool active,
                                  std::size_t maximumLength = 240) const;
@@ -60,6 +65,7 @@ private:
     render::Renderer2D& renderer_;
     const render::BitmapFont* font_{};
     const EditorInputState& input_;
+    const EditorLocalization& localization_;
 };
 
 } // namespace underworld::editor
