@@ -6686,8 +6686,8 @@ void testPhase14WorldClosure() {
         expect(initialized, "GameSession initializes the authored arena through the DMAP catalog");
         if (initialized) {
             arenaSession.tick(movementCommand(1, 0, 0));
-            const auto encounterState = arenaSession.worldState().encounters;
-            const auto encounter = std::find_if(encounterState.begin(), encounterState.end(),
+            const auto arenaEncounterState = arenaSession.worldState().encounters;
+            const auto encounter = std::find_if(arenaEncounterState.begin(), arenaEncounterState.end(),
                 [](const auto& value) { return value.encounterId == simulation::DefinitionId{"encounter.arena"}; });
             const bool entered = std::any_of(arenaSession.events().events().begin(),
                 arenaSession.events().events().end(), [](const auto& event) {
@@ -6697,7 +6697,7 @@ void testPhase14WorldClosure() {
                 arenaSession.events().events().end(), [](const auto& event) {
                     return std::holds_alternative<simulation::EncounterStarted>(event);
                 });
-            expect(entered && started && encounter != encounterState.end() &&
+            expect(entered && started && encounter != arenaEncounterState.end() &&
                        encounter->state == gameplay::EncounterState::active &&
                        arenaSession.world().doorState({3}) == gameplay::DoorState::locked &&
                        arenaSession.world().map().collision().isSolid(2, 1),
