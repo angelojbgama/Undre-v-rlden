@@ -103,6 +103,10 @@ echo Compiling authored map source...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\authored_map.obj" "src\game\maps\authored_map.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling authored world project source...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\authored_world.obj" "src\game\maps\authored_world.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling runtime world builder...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\runtime_world.obj" "src\game\maps\runtime_world.cpp"
 if errorlevel 1 goto :build_failed
@@ -193,6 +197,12 @@ echo Compiling editor preferences...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_preferences.obj" "src\editor\editor_preferences.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling editor layout and text helpers...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_layout.obj" "src\editor\editor_layout.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_text_layout.obj" "src\editor\editor_text_layout.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling map editor application...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_app.obj" "src\editor\editor_app.cpp"
 if errorlevel 1 goto :build_failed
@@ -207,6 +217,8 @@ if errorlevel 1 goto :build_failed
 
 echo Compiling editor playtest...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_playtest.obj" "src\editor\editor_playtest.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\world_project_document.obj" "src\editor\world_project_document.cpp"
 if errorlevel 1 goto :build_failed
 
 echo [15/40] Compiling combat data...
@@ -389,7 +401,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\bitmap_font.obj" "build\obj\utf8.obj" "build\obj\asset_manager.obj" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\runtime_map.obj" ^
     "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\json.obj" ^
-    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\presentation_effects.obj" "build\obj\visual_content_loader.obj" "build\obj\world_object_visual.obj" "build\obj\enemy_visual.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
+    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" "build\obj\runtime_world.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\presentation_effects.obj" "build\obj\visual_content_loader.obj" "build\obj\world_object_visual.obj" "build\obj\enemy_visual.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\world_pickups.obj" ^
@@ -397,7 +409,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
     "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" ^
     "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
-    "build\obj\editor_app.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\visual_preview.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
+    "build\obj\editor_app.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\world_project_document.obj" "build\obj\visual_preview.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib comdlg32.lib shell32.lib
 if errorlevel 1 goto :build_failed
 
@@ -410,7 +422,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" ^
+    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
@@ -444,12 +456,12 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" ^
+    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_playtest.obj" "build\obj\editor_launch.obj" ^
+    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\world_project_document.obj" "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_playtest.obj" "build\obj\editor_launch.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
@@ -478,7 +490,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
     "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
     "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" ^
+    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" ^
     "build\obj\game_launch.obj" "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^

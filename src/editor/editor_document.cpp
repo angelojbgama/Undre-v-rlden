@@ -224,6 +224,27 @@ std::optional<EditorDocument> EditorDocument::open(
     return document;
 }
 
+EditorDocument EditorDocument::fromAuthoredSource(maps::AuthoredMapSource source) {
+    EditorDocument document(maps::mapDataFromAuthored(source));
+    document.authoredSource_ = std::move(source);
+    for (const auto& authoredOverride : document.authoredSource_.placementOverrides) {
+        PropertyValue value;
+        switch (authoredOverride.value.kind) {
+        case maps::AuthoredPropertyValueKind::boolean: value = authoredOverride.value.booleanValue; break;
+        case maps::AuthoredPropertyValueKind::integer: value = authoredOverride.value.integerValue; break;
+        case maps::AuthoredPropertyValueKind::enumeration: value = EnumPropertyValue{authoredOverride.value.textValue}; break;
+        case maps::AuthoredPropertyValueKind::definitionReference: value = DefinitionReference{authoredOverride.value.definitionValue}; break;
+        case maps::AuthoredPropertyValueKind::instanceReference: value = InstanceReference{authoredOverride.value.instanceValue}; break;
+        }
+        document.propertyOverrides_[authoredOverride.instanceId.value]
+            [PropertyId{authoredOverride.propertyId}] = std::move(value);
+    }
+    document.dirty_ = false;
+    document.initializeAllocator();
+    document.synchronizeAuthoredSource();
+    return document;
+}
+
 bool EditorDocument::save(const game::GameContentRegistry& content, std::string& error) {
     if (!filePath_) { error = "document has no file path; use Save As"; return false; }
     if (filePath_->extension() != ".umap") {

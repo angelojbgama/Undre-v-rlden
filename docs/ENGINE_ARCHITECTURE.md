@@ -52,15 +52,16 @@ x64, MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK
 10.0.26100.0, C++20, `/W4`, 0 warnings e 347 checks, com `git diff --check` e
 smoke visual/interativo passando.
 
-A Fase 8 também está concluída: DMAP/DSAV v1, `MapData`, persistent IDs,
+A Fase 8 também está concluída: DMAP 1.4/DSAV 1.8, `MapData`, persistent IDs,
 `RuntimeWorldBuilder`, `MapCatalog`, `MapSession`, transições e deltas de sessão/save
 alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) foi fechada
 no checkpoint Linux atual: o editor possui validação revision-cached, culling de tiles,
 playtest por snapshot via `RuntimeWorldBuilder` e sidecar `.autosave.dmap` sem substituir
-o arquivo authored. A Fase 10 está em andamento; NPC foundation e dialogue data model
+o arquivo authored. A Fase 10 está concluída; NPC foundation e dialogue data model
 estão concluídos, assim como sessão/UI, conditions, actions e flags persistentes. A
 Fase 11 possui definições, estado runtime, progressão por eventos e persistência de
-quests; loot/XP permanecem deferidos. Networking e multiplayer estão fora de escopo.
+quests; loot/XP e rewards também estão implementados nas fases seguintes. Networking
+e multiplayer estão fora de escopo.
 
 ### 1.1 C++ nativo e dependências controladas
 
@@ -2001,16 +2002,53 @@ UMAP; DMAP is never written implicitly. The current in-memory authored documents
 be used for editor validation and playtest without a second map editor or a parallel
 renderer.
 
-Human authoring and future LLM authoring converge at the same boundary:
+Human authoring converges at the existing authored boundary:
 
 ```text
-Human Studio ─┐
-              ├→ Authored DTOs → validators → compiler → runtime
-Future LLM  ──┘
+Content Studio → Authored DTOs → validators → compiler → runtime
 ```
 
 Phase 18D does not add advanced autotiling, a procedural rule solver, asset import,
-hot reload, a dialogue/quest graph, scripting, audio, networking or LLM integration.
+hot reload, a dialogue/quest graph, scripting, audio, networking or generic
+authoring automation.
+
+## Content Studio world projects
+
+O Content Studio agora possui uma camada de projeto acima do documento de mapa:
+
+```text
+Content Studio
+        ↓
+WorldProjectDocument
+        ├── EditorDocument map A
+        ├── EditorDocument map B
+        └── ... na ordem authored
+        ↓
+AuthoredWorldSource (UWORLD v1)
+        ↓ validação + compiler
+MapData por MapId
+```
+
+`EditorDocument` continua representando um único mapa e mantém seu viewport,
+seleção, layer ativa e `CommandHistory`. `WorldProjectDocument` é a autoridade de
+persistência quando os mapas pertencem a um `.uworld`; UMAP continua disponível como
+fluxo standalone e pode ser importado para o projeto. `MapId` é estável depois da
+criação: links são referências estruturadas e remoção é bloqueada quando quebraria a
+entrada do projeto ou links existentes.
+
+`UWORLD v1` contém somente dados authored dos mapas e `entryMapId`. Preferências,
+layout e estado temporário do editor permanecem fora do arquivo. O writer é
+determinístico, estrito e atômico. Compile/export produz artefatos `DMAP 1.4`
+separados, um por mapa; DMAP não foi transformado em um container de mundo.
+
+### Multi-map playtest
+
+O playtest usa a fonte authored atual do `WorldProjectDocument`, não a última versão
+salva. Todos os mapas são compilados em memória e inseridos em um provider/catalog
+runtime. A sessão inicia no mapa ativo para iteração rápida (ou no `entryMapId` quando
+solicitado) e reutiliza `MapSession`, `MapLink` e `PendingMapTransition` para carregar
+o alvo. Há somente um `RuntimeWorld` ativo por vez; mapas não são simulados
+simultaneamente e o editor não mantém um sistema de transição paralelo.
 
 ## Content Studio localization and preferences
 

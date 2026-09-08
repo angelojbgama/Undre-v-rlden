@@ -247,8 +247,15 @@ CONCLUÍDA
 FASE 8 — `.dmap` + transições + save
 CONCLUÍDA
 
-FASE 9 — Map Maker
-IN PROGRESS — Block 1 authoring foundation
+FASE 9 — Map Maker / Content Studio
+CONCLUÍDA — produção authored de mapas e conteúdo
+
+FASE 18 — Content Studio
+CONCLUÍDA — workflow MAP/CONTENT
+
+ATUAL — Content Studio production tooling
+UWORLD v1, WorldProjectDocument multimapa, validação cross-map, export por DMAP e
+playtest multimapa em memória estão em evolução incremental.
 ```
 
 Baseline registrada:
@@ -259,25 +266,26 @@ Host: Visual Studio 2026 Community / Windows 11 10.0.22631.6199
 Windows SDK: 10.0.26100.0
 Language: C++20
 Warnings: 0
-Tests: PASS — 403 checks
+Portable tests: PASS — 2774 checks
 git diff --check: PASS
 Phase 6 code commit: 4fa4474a770f5c8e195d51161cb69c38277c4e99
 Phase 7 code commit: 7873e32222b1e8d72e996771a88a6890b0eb9220
 Phase 7 validation/fix commit: 7cc9da495d314de52ab097f890594dd7deb2d0a4
 Phase 8 foundation commits: 4d7d808a769b5739dc6a1e36d0e0134552b77155 + a3076f41b605b1835356d4bb0bcce4c430d9612c
 Phase 8 final code commit: d93e72429d77811c29e26c6350d5c892123b562b
-DMAP: v1.0
-DSAV: v1.0
-Windows smoke: PASS
+DMAP: v1.4
+DSAV: v1.8
+Windows smoke: PASS (historical baseline; not rerun in the current Linux/WSL environment)
 ```
 
 A Fase 7 foi validada no target Win32/x64 com `build.bat`, `/W4`, 0 warnings,
 347 checks e smoke visual/interativo. A validação também confirmou resize com integer
 scaling/letterbox, perda real de foco e encerramento por `WM_CLOSE` com exit code 0.
 
-A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.0, duas salas carregadas por
+A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.4/1.8, duas salas carregadas por
 MapId, transitions A→B→A, deltas de sessão, F5/F9, backup atômico e restart/load entre
-processos. A Fase 9 está em progresso por tarefa explícita; DMAP e DSAV continuam v1.0.
+processos. As fases posteriores adicionaram o Content Studio e a camada de projeto
+authored multimapa; DMAP e DSAV continuam formatos runtime separados.
 O Map Maker compartilha `GameContentRegistry`, incluindo `TilesetCatalog`: cada tile
 persiste `DefinitionId`, enquanto `world::TilesetId` é uma resolução runtime local.
 Packs licenciados continuam externos ao Git e são localizados por asset root + path relativo.
@@ -320,9 +328,10 @@ EnemyVisualSet / EnemyVisualInstance
 Evil Soldier melee + Skull ranged
 ```
 
-Ainda não existem editor, ECS completo, pathfinding, loot/XP ou IA avançada. DMAP v1,
-DSAV v1, duas salas, transitions e persistência de Chest/Crate/Pickup estão
-implementados. Nenhuma dependência externa foi adicionada e os assets licenciados
+O editor, o Content Studio, loot/XP e progressão já existem no estado atual. Ainda não
+existem ECS completo, pathfinding ou IA avançada. UWORLD v1 contém mapas authored,
+enquanto UMAP continua standalone e DMAP/DSAV continuam artefatos/estado runtime
+separados. Nenhuma dependência externa foi adicionada e os assets licenciados
 continuam fora do Git.
 
 ## Estado local prevalece
@@ -493,9 +502,10 @@ Não transformar `game.cpp` em depósito de todas as regras.
 
 ## 7.9 `editor`
 
-Só criar quando a fase de Map Maker realmente começar.
+O editor/Content Studio já existe e deve continuar separado do runtime do jogo.
 
-O editor compartilhará engine/mapa/assets/serialização, mas terá modelo de documento próprio.
+O editor compartilha engine/mapa/assets/serialização, mas mantém modelo de documento
+próprio, incluindo `WorldProjectDocument` para projetos multimapa.
 
 ---
 
@@ -1252,9 +1262,11 @@ quest/world flags
 
 ---
 
-# 18. Map Maker — Fase 9
+# 18. Map Maker e Content Studio — produção authored
 
-O editor será uma ferramenta central do projeto, mas somente depois de runtime + `.dmap` + transições estarem utilizáveis.
+O editor é uma ferramenta central de produção depois de runtime + `.dmap` +
+transições estarem utilizáveis. O Content Studio atual possui modos MAP/CONTENT e
+um projeto de mundo `.uworld` que mantém vários mapas authored em memória.
 
 Executável recomendado:
 
@@ -1284,13 +1296,13 @@ Capacidades implementadas no Block 1 incluem authoring por múltiplos tilesets: 
 imagens carregadas. Um mapa pode misturar packs na mesma layer. Ausência de imagem de
 pack opcional não troca o ID persistido nem impede mapas que não o usam.
 
-O conjunto jogável atual usa três DMAP 1.0 authored em `maps/gameplay/`: `map.dungeon.01`,
+O conjunto jogável atual usa três DMAP 1.4 authored em `maps/gameplay/`: `map.dungeon.01`,
 `map.dungeon.02` e `map.dungeon.03`. Eles são registrados simultaneamente pelo manifesto
 oficial e formam o grafo bidirecional 01 <-> 02 <-> 03. O startup normal usa
 `map.dungeon.01` com `entry.start`; `--map` e `--spawn` continuam disponíveis. Mapas de
 demo e o antigo playground não fazem mais parte da execução de produção.
 
-Capacidades previstas:
+Capacidades do workflow atual e em evolução:
 
 - new/open/save;
 - dirty state;
@@ -1313,6 +1325,11 @@ Capacidades previstas:
 - playtest in-memory;
 - autosave;
 - backup.
+
+Além do fluxo standalone `.umap`, `WorldProjectDocument` mantém um
+`EditorDocument` por mapa, `entryMapId`, links cross-map, validação global e exporta
+DMAP individual por mapa. Preferências e estado de layout permanecem tooling-only;
+o UWORLD não contém estado temporário do editor.
 
 O objetivo é que desenvolvimento futuro de conteúdo dependa cada vez menos de recompilar C++.
 
@@ -1536,12 +1553,14 @@ Ordem de desenvolvimento de referência:
 5  Combate mínimo                            DONE
 6  Criaturas / inimigo reutilizável          DONE
 7  Objetos + pickup + HUD + inventário       DONE
-8  .dmap + transições + save                NEXT
-9  Map Maker
-10 NPC + diálogo
-11 Quests
-12 RPG + XP + equipment + loot
-13 Headless + replay + auditoria determinística
+8  .dmap + transições + save                DONE
+9  Map Maker / Content Studio                 DONE
+10 NPC + diálogo                              DONE
+11 Quests                                     DONE
+12 RPG + XP + equipment + loot                DONE
+13 Headless + replay + auditoria determinística DONE
+14–18 Authored content, runtime e Studio      DONE
+atualização contínua: tooling de produção e conteúdo concreto do jogo
 ```
 
 A ordem pode ser refinada, mas não deve ser ignorada sem análise de dependências.

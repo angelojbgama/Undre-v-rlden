@@ -38,6 +38,10 @@ struct EditorInputState final {
     bool escapePressed{};
     bool backspacePressed{};
     bool focusLost{};
+    bool up{};
+    bool down{};
+    bool left{};
+    bool right{};
     std::uint64_t previewTicks{};
     std::string textInput;
 };
@@ -52,6 +56,8 @@ public:
     void panel(core::RectI bounds) const;
     void label(std::string_view text, int x, int y) const;
     void labelRaw(std::string_view text, int x, int y) const;
+    void labelInRect(core::RectI bounds, std::string_view text, bool fromEnd = false) const;
+    void labelRawInRect(core::RectI bounds, std::string_view text, bool fromEnd = false) const;
     [[nodiscard]] bool button(core::RectI bounds, std::string_view text,
                               bool active = false) const;
     [[nodiscard]] bool buttonRaw(core::RectI bounds, std::string_view text,

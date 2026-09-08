@@ -168,6 +168,22 @@ private:
     core::WorldPointI after_{};
 };
 
+class SetMapLinkTargetCommand final : public EditorCommand {
+public:
+    SetMapLinkTargetCommand(std::string linkId, simulation::MapId targetMapId,
+                            simulation::SpawnId targetSpawnId)
+        : linkId_(std::move(linkId)), targetMapId_(std::move(targetMapId)),
+          targetSpawnId_(std::move(targetSpawnId)) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Set Map Link Target"; }
+private:
+    std::string linkId_;
+    simulation::MapId targetMapId_;
+    simulation::SpawnId targetSpawnId_;
+    std::optional<std::pair<simulation::MapId, simulation::SpawnId>> previous_;
+};
+
 class DeleteEntityCommand final : public EditorCommand {
 public:
     DeleteEntityCommand(SelectionKind kind, simulation::PersistentInstanceId id,

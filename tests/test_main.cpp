@@ -52,6 +52,9 @@
 #include "editor/editor_localization.h"
 #include "editor/editor_preferences.h"
 #include "editor/editor_ui.h"
+#include "editor/editor_layout.h"
+#include "editor/editor_text_layout.h"
+#include "editor/world_project_document.h"
 #include "engine/data/json.h"
 #include "engine/core/utf8.h"
 #include "game/game_session.h"
@@ -88,6 +91,7 @@
 #include "game/maps/reachability.h"
 #include "game/maps/runtime_world.h"
 #include "game/maps/authored_map.h"
+#include "game/maps/authored_world.h"
 #include "game/maps/region_tracker.h"
 #include "game/save/save_data.h"
 #include "game/presentation/presentation_effect_renderer.h"
@@ -492,8 +496,12 @@ void testBitmapFontMapping() {
            "font explicitly maps digits");
     expect(font.glyphSource('_') == underworld::core::RectI{98, 18, 7, 9},
            "font explicitly maps known punctuation");
-    expect(font.glyphSource('@') == font.glyphSource('?'),
-           "unknown glyph falls back to question mark");
+    expect(font.glyphSource('@') != font.glyphSource('?'),
+           "printable ASCII glyphs use a mapped source cell");
+    expect(font.usesProceduralGlyph('@') && !font.usesProceduralGlyph('A'),
+           "missing printable ASCII punctuation uses software bitmap glyphs");
+    expect(font.glyphSource(0x2603U) == font.glyphSource('?'),
+           "unknown Unicode glyph falls back to question mark");
     expect(font.glyphSource(0x00e3U) == font.glyphSource('a') &&
                font.glyphSource(0x00c7U) == font.glyphSource('C'),
            "bitmap font resolves Portuguese accented codepoints to extended glyph rendering");
@@ -8563,10 +8571,22 @@ void testEditorLocalization() {
     std::string error;
     editor::EditorPreferences saved;
     saved.language = EditorLanguage::englishUnitedStates;
+    saved.leftPanelWidth = 420;
+    saved.rightPanelWidth = 360;
     expect(defaults.language == EditorLanguage::portugueseBrazil &&
                editor::saveEditorPreferences(path, saved, error) && error.empty() &&
-               editor::loadEditorPreferences(path).language == EditorLanguage::englishUnitedStates,
-           "Content Studio language preference defaults to Portuguese and persists English");
+               editor::loadEditorPreferences(path).language == EditorLanguage::englishUnitedStates &&
+               editor::loadEditorPreferences(path).leftPanelWidth == 420 &&
+               editor::loadEditorPreferences(path).rightPanelWidth == 360,
+           "Content Studio language and panel-width preferences persist between runs");
+    {
+        std::ofstream invalidWidths(path, std::ios::binary | std::ios::trunc);
+        invalidWidths << R"({"language":"en-US","leftPanelWidth":1,"rightPanelWidth":9999})";
+    }
+    const auto clampedPreferences = editor::loadEditorPreferences(path);
+    expect(clampedPreferences.leftPanelWidth == editor::EditorLayoutMetrics::minimumLeft &&
+               clampedPreferences.rightPanelWidth == editor::EditorLayoutMetrics::maximumPanel,
+           "Invalid saved panel widths use safe clamped values");
     {
         std::ofstream corrupt(path, std::ios::binary | std::ios::trunc);
         corrupt << "not valid settings";
@@ -8587,6 +8607,173 @@ void testEditorLocalization() {
     std::string field;
     (void)ui.textField({0, 0, 20, 9}, field, true, 2);
     expect(field == "çã", "Editor text fields accept Portuguese UTF-8 input");
+}
+
+void testWorldProjectAndMultiMapPlaytest() {
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    const auto content = game::content::compileBuiltinContentOrThrow();
+
+    auto mapA = editor::EditorDocument::newMap(simulation::MapId{"map.a"}, 8, 6, 16, true);
+    const maps::MapLink link{"exit", {0, 0, 16, 16}, simulation::MapId{"map.b"},
+                             simulation::SpawnId{"entry.start"}};
+    std::string error;
+    expect(mapA.execute(std::make_unique<editor::PlaceEntityCommand>(link), error),
+           "world project fixture authors a cross-map link through an editor command");
+    auto project = editor::WorldProjectDocument::newProject(std::move(mapA));
+    expect(project.createMap(simulation::MapId{"map.b"}, 8, 6, 16, true, content, error) &&
+               project.maps().size() == 2 && project.entryMapId() == simulation::MapId{"map.a"},
+           "world project creates a second authored map and keeps the first entry map");
+    expect(project.setActiveMap(simulation::MapId{"map.a"}, error) &&
+               project.activeMapId() == simulation::MapId{"map.a"},
+           "world project switches active maps without replacing documents");
+    auto* mapB = project.findMap(simulation::MapId{"map.b"});
+    expect(mapB != nullptr && mapB->execute(std::make_unique<editor::PlaceEntityCommand>(
+               maps::PlayerSpawn{simulation::SpawnId{"entry.extra"}, {32, 32},
+                                 game::gameplay::FacingDirection::down}), error),
+           "map-local command history edits the second map");
+    expect(project.setActiveMap(simulation::MapId{"map.b"}, error) && project.activeDocument().data().playerSpawns.size() == 2 &&
+               project.activeDocument().undo() && project.activeDocument().data().playerSpawns.size() == 1,
+           "switching maps preserves per-map undo history");
+    expect(project.setActiveMap(simulation::MapId{"map.a"}, error) && project.activeDocument().data().links.size() == 1,
+           "returning to map A preserves its authored link and data");
+
+    const auto source = project.authoredSource();
+    const auto encoded = maps::encodeAuthoredWorldJson(source);
+    const auto decoded = maps::decodeAuthoredWorldJson(encoded);
+    expect(decoded.source && decoded.source->entryMapId == source.entryMapId &&
+               decoded.source->maps.size() == source.maps.size() &&
+               maps::encodeAuthoredWorldJson(*decoded.source) == encoded,
+           "UWORLD v1 round-trips multiple maps with canonical deterministic JSON");
+    expect(!maps::validateAuthoredWorld([&] { auto value = source; value.entryMapId = simulation::MapId{"missing"}; return value; }()).valid(),
+           "UWORLD validation rejects an entry map that is not present");
+    auto duplicateMap = source;
+    duplicateMap.maps.push_back(source.maps.front());
+    const auto duplicateResult = maps::validateAuthoredWorld(duplicateMap);
+    expect(!duplicateResult.valid() && duplicateResult.diagnostics.front().code == "duplicate_map_id",
+           "UWORLD validation rejects duplicate MapId values");
+    auto utf8World = source;
+    utf8World.maps[1].geometry.id = simulation::MapId{"map.café"};
+    utf8World.maps[0].geometry.links[0].targetMapId = utf8World.maps[1].geometry.id;
+    const auto utf8RoundTrip = maps::decodeAuthoredWorldJson(maps::encodeAuthoredWorldJson(utf8World));
+    expect(utf8RoundTrip.source && utf8RoundTrip.source->maps[1].geometry.id == simulation::MapId{"map.café"},
+           "UWORLD preserves UTF-8 MapId values");
+    auto brokenMap = source;
+    brokenMap.maps[0].geometry.links[0].targetMapId = simulation::MapId{"map.missing"};
+    const auto brokenMapResult = maps::validateAuthoredWorld(brokenMap);
+    expect(!brokenMapResult.valid() && brokenMapResult.diagnostics.front().code == "missing_target_map",
+           "UWORLD validation diagnoses a missing target map with a stable code");
+    auto brokenSpawn = source;
+    brokenSpawn.maps[0].geometry.links[0].targetSpawnId = simulation::SpawnId{"spawn.missing"};
+    const auto brokenSpawnResult = maps::validateAuthoredWorld(brokenSpawn);
+    expect(!brokenSpawnResult.valid() && brokenSpawnResult.diagnostics.front().code == "missing_target_spawn",
+           "UWORLD validation diagnoses a missing target spawn");
+    const std::string malformed = R"({"format":"dungeon-underworld-world-project","version":1,"entryMapId":"map.a","maps":[],"extra":1})";
+    expect(!maps::decodeAuthoredWorldJson(malformed).source,
+           "UWORLD decoder rejects unknown fields and an empty map set");
+    expect(!maps::decodeAuthoredWorldJson("{").source,
+           "UWORLD decoder rejects malformed JSON");
+    const std::string wrongVersion = R"({"format":"dungeon-underworld-world-project","version":2,"entryMapId":"map.a","maps":[]})";
+    expect(!maps::decodeAuthoredWorldJson(wrongVersion).source,
+           "UWORLD decoder rejects unsupported versions");
+
+    const auto root = std::filesystem::temp_directory_path() / "underworld_world_project_tests";
+    std::error_code fsError; std::filesystem::remove_all(root, fsError); std::filesystem::create_directories(root, fsError);
+    const auto worldPath = root / "Dungeon.uworld";
+    expect(project.saveAs(worldPath, content, error) && !project.dirty() &&
+               maps::readAuthoredWorldFile(worldPath).source.has_value(),
+           "world project saves atomically and clears dirty state only after success");
+    std::ifstream savedWorld(worldPath, std::ios::binary);
+    std::ostringstream savedWorldText; savedWorldText << savedWorld.rdbuf();
+    auto invalidWorld = project.authoredSource();
+    invalidWorld.entryMapId = simulation::MapId{"missing"};
+    const bool rejectedWrite = !maps::writeAuthoredWorldFile(worldPath, invalidWorld, error);
+    std::ifstream verifiedWorld(worldPath, std::ios::binary);
+    std::ostringstream verifiedWorldText; verifiedWorldText << verifiedWorld.rdbuf();
+    expect(rejectedWrite && savedWorldText.str() == verifiedWorldText.str(),
+           "UWORLD atomic validation failure does not truncate the authored project");
+    expect(project.setEntryMap(simulation::MapId{"map.b"}, error) && project.dirty() &&
+               !project.saveAs(root / "invalid.extension", content, error) && project.dirty(),
+           "failed world save preserves the dirty state");
+    expect(project.setEntryMap(simulation::MapId{"map.a"}, error) && project.save(content, error) && !project.dirty(),
+           "successful world save restores the saved clean state");
+    const auto exportDirectory = root / "runtime-export";
+    expect(project.exportDmaps(exportDirectory, content, error) &&
+               maps::readDmap(exportDirectory / "map.a.dmap") &&
+               maps::readDmap(exportDirectory / "map.b.dmap"),
+           "world project exports deterministic per-map DMAP runtime artifacts");
+    auto reopened = editor::WorldProjectDocument::open(worldPath, content, error);
+    expect(reopened && reopened->maps().size() == 2 && reopened->entryMapId() == simulation::MapId{"map.a"} &&
+               reopened->maps()[0].data().links[0].targetMapId == simulation::MapId{"map.b"},
+           "reopening UWORLD restores map order, entry map and cross-map link");
+    const auto standaloneMapPath = root / "standalone.umap";
+    const auto importedMapPath = root / "imported.umap";
+    expect(maps::writeAuthoredMapFile(standaloneMapPath,
+                                      maps::authoredMapFromMapData(project.maps()[0].data()), error) &&
+               maps::writeAuthoredMapFile(importedMapPath,
+                                          maps::authoredMapFromMapData(project.maps()[1].data()), error),
+           "standalone UMAP fixtures can be written for project import compatibility");
+    auto standalone = editor::EditorDocument::open(standaloneMapPath, content, error);
+    auto standaloneProject = standalone
+        ? std::optional<editor::WorldProjectDocument>{editor::WorldProjectDocument::fromStandalone(std::move(*standalone))}
+        : std::nullopt;
+    expect(standaloneProject && standaloneProject->importMap(importedMapPath, content, error) &&
+               standaloneProject->projectMode() && !standaloneProject->filePath() &&
+               !standaloneProject->save(content, error) && error.find("Save As") != std::string::npos,
+           "importing a UMAP promotes the project and requires explicit UWORLD Save As");
+    expect(project.createMap(simulation::MapId{"map.c"}, 8, 6, 16, true, content, error) &&
+               project.removeMap(simulation::MapId{"map.c"}, error),
+           "unreferenced project maps can be removed");
+    expect(!project.removeMap(simulation::MapId{"map.b"}, error) && error.find("targets it") != std::string::npos,
+           "referenced maps cannot be removed silently");
+    expect(!project.removeMap(simulation::MapId{"map.a"}, error) && error.find("entry") != std::string::npos,
+           "the entry map cannot be removed");
+
+    const auto layout = editor::makeEditorShellLayout(1000, 700, {900, 900});
+    expect(layout.viewport.width > 0 && layout.viewport.height > 0 && layout.left.width >= editor::EditorLayoutMetrics::minimumLeft &&
+               layout.right.width >= editor::EditorLayoutMetrics::minimumRight,
+           "resizable editor layout clamps panel widths while keeping a usable viewport");
+    const auto smallLayout = editor::makeEditorShellLayout(500, 350, {400, 400});
+    const auto largeLayout = editor::makeEditorShellLayout(1600, 900, {200, 300});
+    expect(smallLayout.viewport.width > 0 && smallLayout.viewport.height > 0 &&
+               largeLayout.viewport.width > smallLayout.viewport.width,
+           "editor layout remains usable at smaller and larger window sizes");
+    expect(editor::ellipsizeText("map.village-á", 70) == "map.vil...",
+           "editor ellipsis preserves whole UTF-8 codepoints");
+    expect(!editor::fitText("C:\\folder\\arquivo.json", 70, true).empty() &&
+               editor::fitText("C:\\folder\\arquivo.json", 70, true).front() == '.',
+           "editor text fields fit long paths inside their bounds");
+
+    editor::EditorPlaytestSession playtest;
+    expect(playtest.start(source, content, simulation::MapId{"map.a"}, error) && playtest.world() &&
+               playtest.world()->id() == simulation::MapId{"map.a"},
+           "multi-map playtest starts from the active authored map in memory");
+    simulation::PlayerCommand command; command.tick = 1;
+    playtest.tick(command);
+    expect(playtest.world() && playtest.world()->id() == simulation::MapId{"map.b"} &&
+               playtest.world()->spawn().id == simulation::SpawnId{"entry.start"},
+           "multi-map playtest crosses MapLink through the existing MapSession runtime logic");
+    auto* unsavedMapB = project.findMap(simulation::MapId{"map.b"});
+    auto* unsavedMapA = project.findMap(simulation::MapId{"map.a"});
+    expect(unsavedMapB != nullptr && unsavedMapA != nullptr &&
+               unsavedMapB->execute(std::make_unique<editor::PlaceEntityCommand>(
+                   maps::PlayerSpawn{simulation::SpawnId{"entry.unsaved"}, {48, 48},
+                                     game::gameplay::FacingDirection::down}), error) &&
+               unsavedMapA->execute(std::make_unique<editor::SetMapLinkTargetCommand>(
+                   "exit", simulation::MapId{"map.b"}, simulation::SpawnId{"entry.unsaved"}), error) &&
+               project.dirty(),
+           "unsaved edits to both maps remain available to project playtest");
+    const auto unsavedSource = project.authoredSource();
+    editor::EditorPlaytestSession unsavedPlaytest;
+    expect(unsavedPlaytest.start(unsavedSource, content, simulation::MapId{"map.a"}, error),
+           "playtest compiles the current in-memory project instead of requiring a saved file");
+    unsavedPlaytest.tick(command);
+    expect(unsavedPlaytest.world() && unsavedPlaytest.world()->id() == simulation::MapId{"map.b"} &&
+               unsavedPlaytest.world()->spawn().id == simulation::SpawnId{"entry.unsaved"},
+           "multi-map playtest transition resolves an unsaved target spawn");
+    std::filesystem::remove_all(root, fsError);
 }
 
 int main() {
@@ -8673,6 +8860,7 @@ int main() {
         testPhase18CGameplayContentEditors();
         testPhase18DUnifiedStudioWorkflow();
         testEditorLocalization();
+        testWorldProjectAndMultiMapPlaytest();
     } catch (const std::exception& exception) {
         ++failures;
         std::cerr << "UNEXPECTED EXCEPTION: " << exception.what() << '\n';

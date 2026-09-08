@@ -36,6 +36,9 @@ enum class EditorTextId {
     visualImages, staticSprites, animations, enemyVisuals, objectVisuals,
     missingDefinition, readOnlyCategory, fontUnavailable, initializationError,
     languagePortugueseBrazil, languageEnglish, unknown,
+    maps, newProject, importMap, removeMap, entryMap, setEntry, targetMap,
+    targetSpawn, goToTarget, openProject, saveProject, saveProjectAs,
+    validateProject, projectValid, projectInvalid, findInProject,
 };
 
 class EditorLocalization final {

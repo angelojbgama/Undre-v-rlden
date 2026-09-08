@@ -1488,4 +1488,16 @@ MapCompileResult compileAuthoredMap(const AuthoredMapSource& source,
     return {compiled, {}};
 }
 
+std::optional<AuthoredMapDiagnostic> validateAuthoredMapSource(
+    const AuthoredMapSource& source) {
+    if (const auto overrideError = validateAuthoredOverrides(source)) {
+        return AuthoredMapDiagnostic{AuthoredMapDiagnosticStage::validation, "invalid_override",
+            overrideError->second, overrideError->first, 1, 1};
+    }
+    const auto validation = validateMapData(mapDataFromAuthored(source));
+    if (!validation) return AuthoredMapDiagnostic{AuthoredMapDiagnosticStage::validation,
+        "invalid_map", validation.error, validation.path, 1, 1};
+    return std::nullopt;
+}
+
 } // namespace underworld::game::maps

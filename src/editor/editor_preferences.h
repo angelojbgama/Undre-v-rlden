@@ -9,6 +9,8 @@ namespace underworld::editor {
 
 struct EditorPreferences final {
     EditorLanguage language{EditorLanguage::portugueseBrazil};
+    int leftPanelWidth{190};
+    int rightPanelWidth{250};
 };
 
 [[nodiscard]] std::filesystem::path defaultEditorPreferencesPath();

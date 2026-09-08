@@ -15,12 +15,14 @@ namespace underworld::game::maps {
 class MapCatalog final {
 public:
     void add(simulation::MapId id, std::filesystem::path path);
+    void addData(MapData data);
     [[nodiscard]] const std::filesystem::path* find(const simulation::MapId& id) const noexcept;
     [[nodiscard]] DmapLoadResult load(const simulation::MapId& id,
                                       const MapValidationCatalogs* catalogs = nullptr) const;
     [[nodiscard]] std::string validateLinks(const MapValidationCatalogs* catalogs = nullptr) const;
 private:
     std::unordered_map<simulation::MapId, std::filesystem::path, simulation::MapIdHash> paths_;
+    std::unordered_map<simulation::MapId, MapData, simulation::MapIdHash> data_;
 };
 
 struct PendingMapTransition final {
@@ -40,6 +42,7 @@ public:
                const RuntimeWorldBuilder& builder, simulation::EntityHandlePool& handles,
                save::SessionWorldState& state)
         : maps_(maps), catalogs_(catalogs), builder_(builder), handles_(handles), state_(state) {}
+    ~MapSession();
     [[nodiscard]] TransitionResult activate(const simulation::MapId& mapId,
                                             const simulation::SpawnId& spawnId);
     [[nodiscard]] bool requestTransition(world::AabbI playerArea);

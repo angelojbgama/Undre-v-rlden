@@ -76,6 +76,14 @@ constexpr std::array entries{
     Entry{EditorTextId::initializationError,"Map Maker initialization error","Erro de inicialização do Editor de Mapas"},
     Entry{EditorTextId::languagePortugueseBrazil,"Português (Brasil)","Português (Brasil)"},
     Entry{EditorTextId::languageEnglish,"English","English"}, Entry{EditorTextId::unknown,"",""},
+    Entry{EditorTextId::maps,"Maps","MAPAS"}, Entry{EditorTextId::newProject,"New Project","Novo Projeto"},
+    Entry{EditorTextId::importMap,"Import Map","Importar Mapa"}, Entry{EditorTextId::removeMap,"Remove Map","Remover Mapa"},
+    Entry{EditorTextId::entryMap,"Entry Map","Mapa de Entrada"}, Entry{EditorTextId::setEntry,"Set Entry","Definir Entrada"},
+    Entry{EditorTextId::targetMap,"Target Map","Mapa Alvo"}, Entry{EditorTextId::targetSpawn,"Target Spawn","Spawn Alvo"},
+    Entry{EditorTextId::goToTarget,"Go To Target","Ir para o Alvo"}, Entry{EditorTextId::openProject,"Open Project...","Abrir Projeto..."},
+    Entry{EditorTextId::saveProject,"Save Project","Salvar Projeto"}, Entry{EditorTextId::saveProjectAs,"Save Project As...","Salvar Projeto Como..."},
+    Entry{EditorTextId::validateProject,"Validate Project","Validar Projeto"}, Entry{EditorTextId::projectValid,"Project valid","Projeto válido"},
+    Entry{EditorTextId::projectInvalid,"Project invalid","Projeto inválido"}, Entry{EditorTextId::findInProject,"FIND IN PROJECT","ENCONTRAR NO PROJETO"},
 };
 
 const Entry* find(EditorTextId id) noexcept {
@@ -224,6 +232,9 @@ std::string EditorLocalization::localize(std::string_view englishText) const {
             std::pair{"objectVisuals", "Visuais de Objetos"},
             std::pair{"CONTENT", "CONTEÚDO"}, std::pair{"MAP", "MAPA"}, std::pair{"CONTENT MODE", "MODO CONTEÚDO"},
             std::pair{"MAP MODE", "MODO MAPA"}, std::pair{"NEW", "NOVO"}, std::pair{"DELETE", "REMOVER"},
+            std::pair{"MAPS", "MAPAS"}, std::pair{"SET ENTRY", "DEFINIR ENTRADA"},
+            std::pair{"REMOVE MAP", "REMOVER MAPA"}, std::pair{"CYCLE TARGET MAP", "ALTERNAR MAPA ALVO"},
+            std::pair{"CYCLE TARGET SPAWN", "ALTERNAR SPAWN ALVO"}, std::pair{"GO TO TARGET", "IR PARA O ALVO"},
             std::pair{"DEL", "REMOVER"}, std::pair{"RECTANGLE", "RETÂNGULO"}, std::pair{"RECT", "RETÂNGULO"},
             std::pair{"SEM", "SEM"}, std::pair{"ENT", "ENT"}, std::pair{"TILE", "TILE"},
             std::pair{"PICK", "CONTA-GOTAS"}, std::pair{"COLL +", "COLISÃO +"}, std::pair{"COLL -", "COLISÃO -"},
@@ -299,7 +310,7 @@ std::string EditorLocalization::localize(std::string_view englishText) const {
             std::pair{"ASSET VALIDATION", "VALIDAÇÃO DE ASSETS"}, std::pair{"CONTENT VALIDATION", "VALIDAÇÃO DE CONTEÚDO"},
             std::pair{"CONTENT INVALID", "CONTEÚDO INVÁLIDO"}, std::pair{"CONTENT OK", "CONTEÚDO OK"},
             std::pair{"READ-ONLY", "SOMENTE LEITURA"}, std::pair{"Builtin content - read only", "Conteúdo integrado - somente leitura"},
-            std::pair{"Dungeon authored/runtime maps (*.umap;*.dmap)", "Mapas authored/runtime (*.umap;*.dmap)"},
+            std::pair{"Dungeon authored/runtime maps (*.uworld;*.umap;*.dmap)", "Mapas authored/runtime (*.uworld;*.umap;*.dmap)"},
             std::pair{"All files", "Todos os arquivos"},
             std::pair{"displayName", "nome de exibição"}, std::pair{"relativePath", "caminho relativo"},
             std::pair{"relativeAssetPath", "caminho relativo do asset"}, std::pair{"imageId", "ID da imagem"},
@@ -435,7 +446,13 @@ const std::vector<EditorTextId>& EditorLocalization::allTextIds() noexcept {
         EditorTextId::animations, EditorTextId::enemyVisuals, EditorTextId::objectVisuals,
         EditorTextId::missingDefinition, EditorTextId::readOnlyCategory, EditorTextId::fontUnavailable,
         EditorTextId::initializationError, EditorTextId::languagePortugueseBrazil,
-        EditorTextId::languageEnglish,
+        EditorTextId::languageEnglish, EditorTextId::maps, EditorTextId::newProject,
+        EditorTextId::importMap, EditorTextId::removeMap, EditorTextId::entryMap,
+        EditorTextId::setEntry, EditorTextId::targetMap, EditorTextId::targetSpawn,
+        EditorTextId::goToTarget, EditorTextId::openProject, EditorTextId::saveProject,
+        EditorTextId::saveProjectAs, EditorTextId::validateProject,
+        EditorTextId::projectValid, EditorTextId::projectInvalid,
+        EditorTextId::findInProject,
     };
     return ids;
 }

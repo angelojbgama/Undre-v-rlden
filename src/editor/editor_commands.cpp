@@ -466,6 +466,27 @@ bool MoveEntityCommand::set(EditorDocument& document, core::WorldPointI value) n
 bool MoveEntityCommand::apply(EditorDocument& document, std::string& error) { if(set(document,after_))return true;error="entity to move does not exist";return false; }
 void MoveEntityCommand::revert(EditorDocument& document) noexcept { static_cast<void>(set(document,before_)); }
 
+bool SetMapLinkTargetCommand::apply(EditorDocument& document, std::string& error) {
+    if (targetMapId_.empty() || targetSpawnId_.empty()) {
+        error = "map link target must identify a map and spawn"; return false;
+    }
+    const auto found = std::find_if(document.commandData().links.begin(),
+        document.commandData().links.end(), [&](const auto& link) { return link.id == linkId_; });
+    if (found == document.commandData().links.end()) { error = "map link does not exist"; return false; }
+    if (!previous_) previous_ = std::pair{found->targetMapId, found->targetSpawnId};
+    found->targetMapId = targetMapId_; found->targetSpawnId = targetSpawnId_;
+    error.clear(); return true;
+}
+
+void SetMapLinkTargetCommand::revert(EditorDocument& document) noexcept {
+    if (!previous_) return;
+    const auto found = std::find_if(document.commandData().links.begin(),
+        document.commandData().links.end(), [&](const auto& link) { return link.id == linkId_; });
+    if (found != document.commandData().links.end()) {
+        found->targetMapId = previous_->first; found->targetSpawnId = previous_->second;
+    }
+}
+
 DeleteEntityCommand::DeleteEntityCommand(SelectionKind kind, simulation::PersistentInstanceId id,
                                          std::string authoredId)
     : kind_(kind), id_(id), authoredId_(std::move(authoredId)) {}

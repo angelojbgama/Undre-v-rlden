@@ -1,10 +1,30 @@
 #include "editor/editor_preferences.h"
 
+#include "editor/editor_layout.h"
+
 #include <cstdlib>
+#include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <charconv>
 
 namespace underworld::editor {
+namespace {
+int readWidth(const std::string& text, std::string_view key, int fallback, int minimum) noexcept {
+    const auto marker = text.find('"' + std::string(key) + '"');
+    if (marker == std::string::npos) return fallback;
+    const auto colon = text.find(':', marker + key.size() + 2);
+    if (colon == std::string::npos) return fallback;
+    const auto begin = text.find_first_of("-0123456789", colon + 1);
+    if (begin == std::string::npos) return fallback;
+    const auto end = text.find_first_not_of("0123456789", begin + 1);
+    int value = fallback;
+    const auto parsed = std::from_chars(text.data() + begin,
+        text.data() + (end == std::string::npos ? text.size() : end), value);
+    if (parsed.ec != std::errc{}) return fallback;
+    return std::clamp(value, minimum, EditorLayoutMetrics::maximumPanel);
+}
+}
 
 std::filesystem::path defaultEditorPreferencesPath() {
 #ifdef _WIN32
@@ -40,6 +60,10 @@ EditorPreferences loadEditorPreferences(const std::filesystem::path& path) noexc
             preferences.language = EditorLanguage::englishUnitedStates;
         }
     }
+    preferences.leftPanelWidth = readWidth(value, "leftPanelWidth", preferences.leftPanelWidth,
+                                           EditorLayoutMetrics::minimumLeft);
+    preferences.rightPanelWidth = readWidth(value, "rightPanelWidth", preferences.rightPanelWidth,
+                                            EditorLayoutMetrics::minimumRight);
     return preferences;
 }
 
@@ -55,7 +79,12 @@ bool saveEditorPreferences(const std::filesystem::path& path,
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output) { error = "Could not write editor preferences"; return false; }
-        output << "{\n  \"language\": \"" << editorLanguageCode(preferences.language) << "\"\n}\n";
+        const auto widths = clampPanelWidths(EditorLayoutMetrics::minimumViewport +
+                                             preferences.leftPanelWidth + preferences.rightPanelWidth,
+                                             {preferences.leftPanelWidth, preferences.rightPanelWidth});
+        output << "{\n  \"language\": \"" << editorLanguageCode(preferences.language)
+               << "\",\n  \"leftPanelWidth\": " << widths.left
+               << ",\n  \"rightPanelWidth\": " << widths.right << "\n}\n";
         output.flush();
         if (!output) { error = "Could not flush editor preferences"; output.close(); std::filesystem::remove(temporary, filesystemError); return false; }
     }

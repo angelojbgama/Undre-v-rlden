@@ -153,6 +153,7 @@ public:
     static std::optional<EditorDocument> open(const std::filesystem::path& path,
                                                const game::GameContentRegistry& content,
                                                std::string& error);
+    static EditorDocument fromAuthoredSource(maps::AuthoredMapSource source);
     bool save(const game::GameContentRegistry& content, std::string& error);
     bool saveAs(const std::filesystem::path& path,
                 const game::GameContentRegistry& content, std::string& error);

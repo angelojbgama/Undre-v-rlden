@@ -28,7 +28,8 @@ namespace underworld::editor {
 namespace {
 constexpr wchar_t className[] = L"DungeonUnderworldMapMakerWindow";
 enum MenuId : UINT {
-    fileNew = 1001, fileOpen, fileSave, fileSaveAs, fileSaveAll, fileExit,
+    fileNew = 1001, fileNewProject, fileOpen, fileOpenProject, fileImportMap,
+    fileSave, fileSaveAs, fileSaveAll, fileExit,
     editUndo, editRedo, viewGrid, viewFrame, viewMap, viewContent, viewValidate,
     settingsLanguagePortuguese, settingsLanguageEnglish
 };
@@ -84,6 +85,7 @@ public:
           preferences_(loadEditorPreferences(preferencesPath_)),
           app_(decoder_, assetRoot, std::move(content), std::move(contentWorkspace)) {
         app_.setLanguage(preferences_.language);
+        app_.setPanelWidths({preferences_.leftPanelWidth, preferences_.rightPanelWidth});
     }
 
     int run() {
@@ -123,7 +125,10 @@ private:
         HMENU file = CreatePopupMenu(); HMENU edit = CreatePopupMenu(); HMENU view = CreatePopupMenu();
         HMENU settings = CreatePopupMenu(); HMENU language = CreatePopupMenu();
         appendMenuText(file, MF_STRING, fileNew, "&" + text(EditorTextId::newMap) + "\tCtrl+N");
+        appendMenuText(file, MF_STRING, fileNewProject, text(EditorTextId::newProject));
         appendMenuText(file, MF_STRING, fileOpen, "&" + text(EditorTextId::openMap));
+        appendMenuText(file, MF_STRING, fileOpenProject, text(EditorTextId::openProject));
+        appendMenuText(file, MF_STRING, fileImportMap, text(EditorTextId::importMap));
         appendMenuText(file, MF_STRING, fileSave, "&" + text(EditorTextId::save) + "\tCtrl+S");
         appendMenuText(file, MF_STRING, fileSaveAs, text(EditorTextId::saveAs));
         appendMenuText(file, MF_STRING, fileSaveAll, text(EditorTextId::saveAll));
@@ -177,8 +182,8 @@ private:
         case WM_MOUSEWHEEL: { POINT point{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; ScreenToClient(window_, &point); input_.pointer.x = point.x; input_.pointer.y = point.y; input_.pointer.wheelDelta += GET_WHEEL_DELTA_WPARAM(wp); InvalidateRect(window_, nullptr, FALSE); return 0; }
         case WM_CHAR: appendCharacter(static_cast<std::uint32_t>(wp)); InvalidateRect(window_, nullptr, FALSE); return 0;
         case WM_KEYDOWN: keyDown(wp); InvalidateRect(window_, nullptr, FALSE); return 0;
-        case WM_KEYUP: if (wp == VK_SPACE) input_.space = false; modifiers(); return 0;
-        case WM_KILLFOCUS: if (GetCapture() == window_) ReleaseCapture(); input_.pointer.leftDown = false; input_.pointer.middleDown = false; input_.space = false; pendingHighSurrogate_ = 0; input_.focusLost = true; InvalidateRect(window_, nullptr, FALSE); return 0;
+        case WM_KEYUP: if (wp == VK_SPACE) input_.space = false; if (wp == 'W' || wp == VK_UP) input_.up = false; if (wp == 'S' || wp == VK_DOWN) input_.down = false; if (wp == 'A' || wp == VK_LEFT) input_.left = false; if (wp == 'D' || wp == VK_RIGHT) input_.right = false; modifiers(); return 0;
+        case WM_KILLFOCUS: if (GetCapture() == window_) ReleaseCapture(); input_.pointer.leftDown = false; input_.pointer.middleDown = false; input_.space = false; input_.up = input_.down = input_.left = input_.right = false; pendingHighSurrogate_ = 0; input_.focusLost = true; InvalidateRect(window_, nullptr, FALSE); return 0;
         case WM_COMMAND: menuCommand(LOWORD(wp)); InvalidateRect(window_, nullptr, FALSE); return 0;
         case WM_TIMER: if (wp == autosaveTimerId) { std::string error; static_cast<void>(app_.autosave(error)); InvalidateRect(window_, nullptr, FALSE); } else if (wp == previewTimerId) { ++input_.previewTicks; InvalidateRect(window_, nullptr, FALSE); } return 0;
         case WM_CLOSE: if (confirmUnsaved()) DestroyWindow(window_); return 0;
@@ -197,11 +202,13 @@ private:
     }
 
     void modifiers() { input_.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0; input_.control = (GetKeyState(VK_CONTROL) & 0x8000) != 0; input_.alt = (GetKeyState(VK_MENU) & 0x8000) != 0; }
-    void keyDown(WPARAM key) { modifiers(); if (key == VK_SPACE) input_.space = true; else if (key == VK_DELETE) input_.deletePressed = true; else if (key == VK_HOME) input_.homePressed = true; else if (key == VK_RETURN) input_.enterPressed = true; else if (key == VK_ESCAPE) input_.escapePressed = true; else if (key == VK_BACK) input_.backspacePressed = true; else if (input_.control && key == 'D') input_.duplicatePressed = true; else if (input_.control && key == 'Z') input_.undoPressed = true; else if (input_.control && key == 'Y') input_.redoPressed = true; else if (input_.control && key == 'N') menuCommand(fileNew); else if (input_.control && key == 'O') menuCommand(fileOpen); else if (input_.control && key == 'S') menuCommand(fileSave); }
+    void keyDown(WPARAM key) { modifiers(); if (input_.control && key == 'D') input_.duplicatePressed = true; else if (input_.control && key == 'Z') input_.undoPressed = true; else if (input_.control && key == 'Y') input_.redoPressed = true; else if (input_.control && key == 'N') menuCommand(fileNew); else if (input_.control && key == 'O') menuCommand(fileOpen); else if (input_.control && key == 'S') menuCommand(fileSave); else if (key == 'W' || key == VK_UP) input_.up = true; else if (key == 'S' || key == VK_DOWN) input_.down = true; else if (key == 'A' || key == VK_LEFT) input_.left = true; else if (key == 'D' || key == VK_RIGHT) input_.right = true; else if (key == VK_SPACE) input_.space = true; else if (key == VK_DELETE) input_.deletePressed = true; else if (key == VK_HOME) input_.homePressed = true; else if (key == VK_RETURN) input_.enterPressed = true; else if (key == VK_ESCAPE) input_.escapePressed = true; else if (key == VK_BACK) input_.backspacePressed = true; }
 
     void menuCommand(UINT id) {
         if (id == fileNew) { if (confirmUnsaved()) app_.shellCommand(EditorShellCommand::newMap); }
-        else if (id == fileOpen) { if (confirmUnsaved()) openFile(); }
+        else if (id == fileNewProject) { if (confirmUnsaved()) app_.shellCommand(EditorShellCommand::newProject); }
+        else if (id == fileOpen || id == fileOpenProject) { if (confirmUnsaved()) openFile(); }
+        else if (id == fileImportMap) { importMapFile(); }
         else if (id == fileSave) save(false); else if (id == fileSaveAs) save(true);
         else if (id == fileSaveAll) { std::string error; if (!app_.saveAll(error)) showError(error); }
         else if (id == fileExit) SendMessageW(window_, WM_CLOSE, 0, 0);
@@ -219,21 +226,22 @@ private:
 
     std::optional<std::filesystem::path> fileDialog(bool saveDialog) {
         wchar_t buffer[32768]{}; OPENFILENAMEW dialog{}; dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = window_;
-        const std::string filterLabel = app_.localization().localize("Dungeon authored/runtime maps (*.umap;*.dmap)");
+        const std::string filterLabel = app_.localization().localize("Dungeon authored/runtime maps (*.uworld;*.umap;*.dmap)");
         const std::string allFilesLabel = app_.localization().localize("All files");
-        std::wstring filter = utf8ToWide(filterLabel); filter.push_back(L'\0'); filter += L"*.umap;*.dmap";
+        std::wstring filter = utf8ToWide(filterLabel); filter.push_back(L'\0'); filter += L"*.uworld;*.umap;*.dmap";
         filter.push_back(L'\0'); filter += utf8ToWide(allFilesLabel); filter.push_back(L'\0'); filter += L"*.*"; filter.push_back(L'\0'); filter.push_back(L'\0');
         dialog.lpstrFilter = filter.c_str();
-        dialog.lpstrFile = buffer; dialog.nMaxFile = static_cast<DWORD>(std::size(buffer)); dialog.lpstrDefExt = L"umap";
+        dialog.lpstrFile = buffer; dialog.nMaxFile = static_cast<DWORD>(std::size(buffer)); dialog.lpstrDefExt = app_.worldProject().projectMode() ? L"uworld" : L"umap";
         dialog.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | (saveDialog ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
         const BOOL result = saveDialog ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
         return result ? std::optional<std::filesystem::path>{buffer} : std::nullopt;
     }
     void openFile() { if (const auto path = fileDialog(false)) { std::string error; if (!app_.open(*path, error)) showError(error); } }
-    bool save(bool forceAs) { std::string error; if (app_.contentMode()) { if (!app_.save(error)) { showError(error); return false; } return true; } if (forceAs || !app_.document().filePath()) { const auto path = fileDialog(true); if (!path) return false; if (!app_.saveAs(*path, error)) { showError(error); return false; } } else if (!app_.save(error)) { showError(error); return false; } return true; }
+    void importMapFile() { if (const auto path = fileDialog(false)) { if (path->extension() == ".uworld") { showError("Import Map accepts a standalone UMAP or DMAP file"); return; } std::string error; if (!app_.importMap(*path, error)) showError(error); } }
+    bool save(bool forceAs) { std::string error; if (app_.contentMode()) { if (!app_.save(error)) { showError(error); return false; } return true; } if (forceAs || !app_.filePath()) { const auto path = fileDialog(true); if (!path) return false; if (!app_.saveAs(*path, error)) { showError(error); return false; } } else if (!app_.save(error)) { showError(error); return false; } return true; }
     bool confirmUnsaved() { if (!app_.hasUnsavedChanges()) return true; const std::wstring message = utf8ToWide(app_.localization().text(EditorTextId::saveChangesBeforeContinuing)); const std::wstring title = utf8ToWide(app_.localization().text(EditorTextId::contentStudio)); const int choice = MessageBoxW(window_, message.c_str(), title.c_str(), MB_YESNOCANCEL | MB_ICONWARNING); if (choice == IDCANCEL) return false; if (choice == IDYES) return save(false); return true; }
     void showError(const std::string& error) { const std::wstring wide = utf8ToWide(error); const std::wstring title = utf8ToWide(app_.localization().text(EditorTextId::contentStudio)); MessageBoxW(window_, wide.c_str(), title.c_str(), MB_OK | MB_ICONERROR); }
-    void paint() { PAINTSTRUCT ps{}; HDC dc = BeginPaint(window_, &ps); app_.updateAndRender(input_); const auto& surface = app_.framebuffer(); dib_.resize(surface.pixels().size()); for (std::size_t i = 0; i < surface.pixels().size(); ++i) { const auto p = surface.pixels()[i]; dib_[i] = static_cast<std::uint32_t>(p.b) | (static_cast<std::uint32_t>(p.g) << 8U) | (static_cast<std::uint32_t>(p.r) << 16U); } BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = surface.width(); info.bmiHeader.biHeight = -surface.height(); info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB; StretchDIBits(dc, 0, 0, surface.width(), surface.height(), 0, 0, surface.width(), surface.height(), dib_.data(), &info, DIB_RGB_COLORS, SRCCOPY); const std::wstring title = utf8ToWide(app_.windowTitle()); SetWindowTextW(window_, title.c_str()); EndPaint(window_, &ps); clearEdges(); }
+    void paint() { PAINTSTRUCT ps{}; HDC dc = BeginPaint(window_, &ps); app_.updateAndRender(input_); const auto widths = app_.panelWidths(); if (input_.pointer.leftReleased && (preferences_.leftPanelWidth != widths.left || preferences_.rightPanelWidth != widths.right)) { preferences_.leftPanelWidth = widths.left; preferences_.rightPanelWidth = widths.right; std::string preferencesError; static_cast<void>(saveEditorPreferences(preferencesPath_, preferences_, preferencesError)); } const auto& surface = app_.framebuffer(); dib_.resize(surface.pixels().size()); for (std::size_t i = 0; i < surface.pixels().size(); ++i) { const auto p = surface.pixels()[i]; dib_[i] = static_cast<std::uint32_t>(p.b) | (static_cast<std::uint32_t>(p.g) << 8U) | (static_cast<std::uint32_t>(p.r) << 16U); } BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = surface.width(); info.bmiHeader.biHeight = -surface.height(); info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB; StretchDIBits(dc, 0, 0, surface.width(), surface.height(), 0, 0, surface.width(), surface.height(), dib_.data(), &info, DIB_RGB_COLORS, SRCCOPY); const std::wstring title = utf8ToWide(app_.windowTitle()); SetWindowTextW(window_, title.c_str()); EndPaint(window_, &ps); clearEdges(); }
     void clearEdges() { input_.pointer.leftPressed = false; input_.pointer.leftReleased = false; input_.pointer.middlePressed = false; input_.pointer.middleReleased = false; input_.pointer.wheelDelta = 0; input_.deletePressed = false; input_.duplicatePressed = false; input_.undoPressed = false; input_.redoPressed = false; input_.homePressed = false; input_.enterPressed = false; input_.escapePressed = false; input_.backspacePressed = false; input_.focusLost = false; input_.previewTicks = 0; input_.textInput.clear(); }
 
     HINSTANCE instance_{}; int show_{}; HWND window_{}; bool registered_{};

@@ -669,8 +669,9 @@ MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK 10.0.26100.0
 C++20, `/W4`, 0 warnings, 347 checks, `git diff --check` e smoke visual/interativo
 passando. O smoke cobriu
 regressões das Fases 0–6, pickups, inventário, quick slots, HUD, chest, crate,
-Y-sort, resize/letterbox, perda de foco e `WM_CLOSE`. A Fase 8 permanece não
-iniciada e é a próxima etapa.
+Y-sort, resize/letterbox, perda de foco e `WM_CLOSE`. As fases posteriores de mapa,
+save, conteúdo authored e Content Studio estão concluídas; o foco atual é tooling
+de produção multimapa.
 
 ## Objetivo
 
@@ -725,8 +726,9 @@ ItemContainer aceita capacidade arbitrária
 BankStorage futuro = 50 slots, somente após persistência/save
 ```
 
-Banco funcional, `.dmap`, save, loot/XP, equipment stats e drops de inimigos não
-foram implementados.
+As fases posteriores adicionaram banco, `.dmap`, save, loot/XP, equipment stats e
+drops de inimigos; os detalhes históricos desta fase permanecem acima apenas como
+registro do escopo original.
 
 ---
 
@@ -734,13 +736,14 @@ foram implementados.
 
 ## Status
 
-**Concluída.** DMAP 1.0 alimenta o `game.exe`; duas salas são resolvidas por
+**Concluída.** DMAP 1.4 alimenta o `game.exe`; duas salas são resolvidas por
 `MapId`, construídas por `RuntimeWorldBuilder` e trocadas por `MapSession` em boundary
 de tick. `SessionWorldState` registra deltas de Chest, Crate e Pickup para A→B→A e é
-a mesma estrutura serializada por DSAV 1.0. F5/F9 são edges lógicos; save usa
+a mesma estrutura serializada por DSAV 1.8. F5/F9 são edges lógicos; save usa
 temporário + backup e load prepara o novo world antes do swap.
 
-Baseline de fechamento: MSVC 19.44 x64, C++20, `/W4`, 0 warnings, 403 checks,
+Baseline histórica de fechamento: MSVC 19.44 x64, C++20, `/W4`, 0 warnings.
+A validação portátil atual registra 2774 checks; a validação anterior incluiu
 `git diff --check` PASS e smoke Win32 incluindo DMAP, A→B→A, save, restart/load,
 resize/focus e `WM_CLOSE`.
 
@@ -791,13 +794,13 @@ Vertical slice com duas salas, transição e pelo menos um delta persistente.
 
 ## Status
 
-**IN PROGRESS — Block 1 / 9F.** O editor e runtime compartilham `TilesetCatalog` no
+**DONE — blocks 1–9F.** O editor e runtime compartilham `TilesetCatalog` no
 `GameContentRegistry`. Multi-tileset authoring está implementado: `MapTileReference`
 persiste `DefinitionId`, o runtime resolve `world::TilesetId` local e o Map Maker oferece
 selector, palette dinâmica, painting/rectangle/fill e eyedropper por pack. A validação
-rejeita tileset desconhecido, source index fora do atlas e tile size incompatível. DMAP e
-DSAV permanecem v1.0. O smoke interativo geral ainda é gate separado para declarar Block 1
-como concluído.
+rejeita tileset desconhecido, source index fora do atlas e tile size incompatível. DMAP
+1.4 e DSAV 1.8 permanecem os formatos runtime estáveis. O smoke interativo geral é uma
+validação de host separada e não altera o formato authored/runtime.
 
 O fechamento 9F adiciona uma sessão mínima de playtest em memória: ela copia o `MapData`,
 resolve o spawn pela política oficial e passa o snapshot pelo `RuntimeWorldBuilder` e
@@ -810,9 +813,8 @@ mutação/revisão, e o desenho de tiles continua limitado à faixa visível.
 O checkpoint semântico adiciona `AuthoringSemanticRegistry` para as 72 células visíveis
 do atlas Dungeon, oito stamps visuais, paleta/inspector semânticos e validação advisory
 separada da validação estrutural. `PlaceStampCommand` preserva undo/redo atômico e rejeita
-layer bloqueada ou placement fora dos limites antes de escrever. A aceitação final ainda
-requer rebuild MSVC `/W4`, testes e smokes Windows; não avançar formatos nem os itens
-deferred antes desse gate.
+layer bloqueada ou placement fora dos limites antes de escrever. O workflow atual mantém
+essa base e adiciona o projeto authored multimapa descrito no checkpoint de produção.
 
 O primeiro slice de Map Composition também está implementado sem alterar DMAP/DSAV:
 `MapBlueprint`/`RoomBlueprint` descrevem uma sala retangular in-memory, até quatro
@@ -1196,32 +1198,18 @@ porque talvez sejam úteis no futuro.
 
 ---
 
-# Ordem recomendada a partir do estado atual
+# Ordem de evolução a partir do estado atual
 
 ```text
-validar/checkpoint Fase 4 local
+preservar UMAP standalone
         ↓
-5A runtime identity + combat primitives
+WorldProjectDocument + UWORLD v1 multimapa
         ↓
-5B sword + Training Puppet
+validação cross-map + compile em memória
         ↓
-5C projectile + arrow + VFX
+export DMAP individual + playtest via MapSession
         ↓
-6A EnemyDefinition/runtime/factory
-        ↓
-6B BehaviorProfile/FSM
-        ↓
-6C attack selection
-        ↓
-6D death/events
-        ↓
-6E segundo perfil/inimigo
-        ↓
-7 objetos/pickup/HUD/inventário
-        ↓
-8 .dmap/transições/save
-        ↓
-9 Map Maker
+tooling de produção guiado por necessidades concretas do jogo
 ```
 
 Essa ordem prepara bases reutilizáveis imediatamente antes de seus consumidores reais, evitando tanto duplicação quanto overengineering.
@@ -1236,15 +1224,18 @@ Se o código real mostrar que uma pequena fundação simplifica várias etapas s
 
 Se uma abstração ainda não possui consumidores reais, preservar apenas a fronteira arquitetural e continuar construindo o próximo comportamento jogável.
 
-# Phase 9 current content checkpoint
+# Current authored content and tooling checkpoint
 
 Phase 9 Block 1 now uses three small authored gameplay maps (`map.dungeon.01` through
 `map.dungeon.03`) instead of generated demo rooms or the editor playground. The maps
-are linked in both directions, remain DMAP 1.0, and exercise the current enemy,
-object, pickup, spawn, collision, semantic-tile, and stamp authoring contracts.
+are linked in both directions and exercise the current enemy, object, pickup, spawn,
+collision, semantic-tile, and stamp authoring contracts. UMAP v3 remains the standalone
+authored format, while UWORLD v1 embeds ordered AuthoredMapSource values for the
+multi-map Content Studio workflow; DMAP 1.4 remains one runtime file per map.
 
-`MapComposer` remains a small composition foundation for deterministic room geometry;
-procedural generation, MapLogic, and LLM blueprint production remain deferred.
+`MapComposer` remains a small composition foundation for deterministic room geometry.
+Procedural generation and LLM blueprint production are outside the current product
+direction.
 
 ## Audit/playtest portability track — Block A
 
@@ -1311,7 +1302,8 @@ playtesting remains iterative; networking is out of scope.
 O conteúdo authored é representado por DTOs tipados dentro de `AuthoredContentPack`, validado com
 diagnósticos estruturados e compilado em um `GameContentRegistry` imutável. O builtin
 em C++ é a fonte authored default temporária; o workspace JSON externo é opt-in.
-Content Studio, LLM authoring e autoria visual completa continuam deferidos.
+Content Studio e a autoria visual necessária ao jogo agora estão concluídos; a
+evolução seguinte é orientada por necessidades concretas de produção.
 
 ### FASE 13 — External Authored Content
 
@@ -1353,10 +1345,9 @@ it does not regenerate manual authored geometry after a `.umap` is opened.
 14D — Stateful Doors — DONE.
 14E — Encounter Foundation — DONE.
 
-The full Content Studio, Puzzle Engine, encounter waves, boss phases, LLM authoring and
-networking remain future work. Content Studio 18A through 18D are closed; the single
-MAP/CONTENT shell now provides the unified authored workflow while advanced semantic
-authoring remains a later phase.
+The full Content Studio, puzzle engine, encounter waves, boss phases and networking
+remain outside this increment. Content Studio 18A through 18D are closed; the single
+MAP/CONTENT shell now provides the unified authored workflow.
 The Phase 14 closure suite and
 authored arena vertical slice are verified; no later phase is started here.
 
@@ -1394,14 +1385,12 @@ environment effects and presentation actions; the current writer emits UMAP v3 a
 DMAP 1.4, while readers retain UMAP v1/v2 and DMAP 1.0–1.3 compatibility. DSAV 1.8
 does not persist transient or derived presentation state.
 
-The next architectural decisions after Phase 15 were deliberately deferred in this
+The next architectural decisions after Phase 15 were deliberately delivered in this
 order:
 
 ```text
 Phase 17 — Visual Content Boundary (now complete)
 Phase 18 — Content Studio
-Phase 19 — Advanced Semantic Authoring
-Phase 20 — LLM Authoring
 ```
 
 Status effects, poison/blindness gameplay, audio, scripting, GPU post-processing,
@@ -1450,13 +1439,10 @@ The next architectural decisions remain deliberately separate:
 ```text
 Phase 17 — Visual Content Boundary (now complete)
 Phase 18 — Content Studio
-Phase 19 — Advanced Semantic Authoring
-Phase 20 — LLM Authoring
 ```
 
 Status effects, complex puzzle components, encounter waves, boss phases, audio,
-scripting, the remaining Content Studio slices, LLM integration and networking remain
-future work.
+scripting and networking remain outside the current product direction.
 
 ### Phase 17 — Visual Content Boundary — DONE
 
@@ -1480,8 +1466,8 @@ animators remain per-instance mutable state while clips/images are shared.
 system remains responsible for camera/screen effects, and this visual-content loader
 is a separate content-to-runtime asset boundary. Player visuals, HUD/font assets,
 tileset loading and generic impact VFX remain fixed game presentation assets by
-explicit Phase 17 scope; Content Studio, asset importing, hot reload, status effects,
-audio and LLM tooling are future work.
+explicit Phase 17 scope; automatic asset importing, hot reload, status effects and
+audio remain outside the current product direction.
 
 The current format status is:
 
@@ -1530,10 +1516,12 @@ definitions. Tilesets, authoring descriptors, tile semantics and stamps have typ
 document mutations and inspectors. Current content revisions invalidate map validation;
 compile/export/playtest never fall back silently to builtin or stale registries.
 
-The next phase is not started here. Asset import, automatic slicing, complex timeline
-editing, hot reload, node graphs, LLM authoring, scripting, audio and networking remain
-deferred. Phase 19 is reserved for advanced semantic authoring and Phase 20 for LLM
-authoring.
+After Phase 18, the focus is Content Studio production tooling and concrete game
+content production. The immediate direction is a multi-map authored world project,
+better daily authoring UX and in-memory project playtest. Asset import, automatic
+slicing, complex timeline editing, hot reload, node graphs, generic scripting, audio,
+procedural generation, semantic solvers, LLM authoring and networking are not part of
+this direction.
 
 The Content Studio shell also has an editor-only localization boundary. `EditorPreferences`
 stores the selected `EditorLanguage` outside authored JSON/UMAP/DMAP/DSAV, defaults to
@@ -1542,6 +1530,19 @@ stores the selected `EditorLanguage` outside authored JSON/UMAP/DMAP/DSAV, defau
 only the native menu and presentation state, never authored documents. Portuguese UI text
 uses UTF-8-safe editor input and the bitmap font's small Latin accent extension. This is
 tool localization only: game content, IDs, dialogue and runtime language remain unchanged.
+
+### Próximo foco — Content Studio production tooling
+
+Não há uma sequência obrigatória posterior de fases sem necessidade concreta. O foco
+após a Fase 18 é tornar o Content Studio a ferramenta de produção do jogo: um projeto
+`.uworld` mantém vários mapas authored na ordem estável, `WorldProjectDocument` mantém
+um `EditorDocument` vivo por mapa, e links entre mapas são validados antes de compile
+e playtest. O editor preserva UMAP standalone e exporta DMAP individual por mapa.
+
+O playtest compila o projeto atual em memória, inicia no mapa ativo e reutiliza
+`MapSession` para atravessar links. Preferências de tooling, layout redimensionável,
+browser de mapas, navegação de usos e diagnóstico contextual são incrementos de
+produção; novas features de gameplay entram somente quando houver necessidade real.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

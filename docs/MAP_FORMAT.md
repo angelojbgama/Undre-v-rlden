@@ -313,3 +313,49 @@ ou cache stale silenciosamente. Conteúdo builtin válido é read-only para edi�
 JSON, mas pode ser colocado e localizado em um UMAP editável. `FIND IN MAP` percorre
 as ocorrências da definição no mapa atual em ordem authored e retorna ao primeiro uso
 após o último.
+
+## UWORLD v1 — authored world project
+
+`UWORLD v1` é o formato authored de um projeto de mundo inteiro. É um JSON UTF-8
+estrito e canônico com a raiz:
+
+```json
+{
+  "format": "dungeon-underworld-world-project",
+  "version": 1,
+  "entryMapId": "map.village",
+  "maps": [ /* AuthoredMapSource completos */ ]
+}
+```
+
+Cada item de `maps` é semanticamente um `AuthoredMapSource` completo. O codec de
+mapa existente é reutilizado para codificar/decodificar esses objetos, portanto
+`UWORLD` não cria uma segunda representação da geometria, das layers, placements,
+regions, world rules, encounters ou overrides authored. A ordem do array é estável e
+é a ordem usada pelo Content Studio, pela validação e pela busca de usos. `entryMapId`
+deve referenciar exatamente um dos mapas e os `MapId` devem ser únicos e não vazios.
+
+O writer valida toda a estrutura antes de escrever, rejeita campos desconhecidos e
+faz a substituição por arquivo temporário e backup. Estado de editor — viewport,
+zoom, seleção, ferramenta, palette, scroll, locks e mapa atualmente ativo — não
+pertence ao `UWORLD`.
+
+Os formatos têm responsabilidades distintas:
+
+```text
+UWORLD v1  authored project containing multiple AuthoredMapSource values
+UMAP v3    standalone authored map source
+DMAP 1.4   compiled runtime artifact for exactly one map
+DSAV 1.8   mutable session/save state and world deltas
+```
+
+A validação global verifica o `entryMapId`, IDs duplicados e cada `MapLink`: o mapa
+alvo deve existir e o `targetSpawnId` deve existir no mapa alvo. A compilação de um
+projeto só produz `MapData` quando todos esses diagnósticos e a validação individual
+dos mapas passam. Exportar um projeto escreve DMAPs individuais, em ordem authored,
+com nomes determinísticos derivados do `MapId`; nunca agrupa mapas em um DMAP.
+
+O playtest do Content Studio compila o `UWORLD` atual em memória, inclusive alterações
+não salvas. Um `MapCatalog` em memória fornece os `MapData` compilados a um único
+`MapSession`, que mantém somente um `RuntimeWorld` ativo e reutiliza a mesma transição
+de `MapLink` do jogo.

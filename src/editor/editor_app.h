@@ -4,7 +4,9 @@
 #include "editor/editor_playtest.h"
 #include "editor/editor_localization.h"
 #include "editor/editor_ui.h"
+#include "editor/editor_layout.h"
 #include "editor/content_workspace_document.h"
+#include "editor/world_project_document.h"
 #include "editor/visual_preview.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
@@ -25,7 +27,7 @@ namespace underworld::render { class BitmapFont; class Image; }
 namespace underworld::editor {
 
 enum class EditorShellCommand {
-    newMap, undo, redo, toggleGrid, frameMap, playtest,
+    newMap, newProject, undo, redo, toggleGrid, frameMap, playtest,
     mapMode, contentMode, saveAll, validateWorkspace
 };
 
@@ -41,13 +43,14 @@ public:
     void cancelActiveGesture() noexcept;
     void shellCommand(EditorShellCommand command);
     [[nodiscard]] bool open(const std::filesystem::path& path, std::string& error);
+    [[nodiscard]] bool importMap(const std::filesystem::path& path, std::string& error);
     [[nodiscard]] bool save(std::string& error);
     [[nodiscard]] bool saveAs(const std::filesystem::path& path, std::string& error);
     [[nodiscard]] bool autosave(std::string& error);
     [[nodiscard]] bool saveAll(std::string& error);
     [[nodiscard]] bool validateWorkspace();
     [[nodiscard]] bool hasUnsavedChanges() const noexcept {
-        return document_.dirty() || (contentWorkspace_ && contentWorkspace_->dirty());
+        return worldProject_.dirty() || (contentWorkspace_ && contentWorkspace_->dirty());
     }
     [[nodiscard]] bool playtestActive() const noexcept { return playtest_.active(); }
     [[nodiscard]] bool contentMode() const noexcept { return contentMode_; }
@@ -60,8 +63,15 @@ public:
     }
 
     [[nodiscard]] const render::Framebuffer& framebuffer() const noexcept { return *framebuffer_; }
-    [[nodiscard]] EditorDocument& document() noexcept { return document_; }
-    [[nodiscard]] const EditorDocument& document() const noexcept { return document_; }
+    [[nodiscard]] EditorDocument& document() noexcept { return worldProject_.activeDocument(); }
+    [[nodiscard]] const EditorDocument& document() const noexcept { return worldProject_.activeDocument(); }
+    [[nodiscard]] WorldProjectDocument& worldProject() noexcept { return worldProject_; }
+    [[nodiscard]] const WorldProjectDocument& worldProject() const noexcept { return worldProject_; }
+    void setPanelWidths(EditorPanelWidths widths) noexcept;
+    [[nodiscard]] EditorPanelWidths panelWidths() const noexcept { return panelWidths_; }
+    [[nodiscard]] const std::optional<std::filesystem::path>& filePath() const noexcept {
+        return worldProject_.filePath();
+    }
     [[nodiscard]] std::string windowTitle() const;
     [[nodiscard]] const std::string& status() const noexcept { return status_; }
     void setLanguage(EditorLanguage language) noexcept { localization_.setLanguage(language); }
@@ -69,7 +79,7 @@ public:
     [[nodiscard]] const EditorLocalization& localization() const noexcept { return localization_; }
 
 private:
-    enum class MapPaletteTab { tiles, semantics, stamps, entities, rules, encounters };
+    enum class MapPaletteTab { maps, tiles, semantics, stamps, entities, rules, encounters };
     struct MapTileSelection final {
         TileCoordinate origin{};
         std::uint32_t width{};
@@ -122,9 +132,13 @@ private:
     void resetContentPreviewState() noexcept;
     void handleContentPreview(EditorUiContext& ui, const EditorInputState& input,
                               core::RectI canvas);
+    void drawMapBrowser(EditorUiContext& ui, const EditorInputState& input, core::RectI panel);
+    void drawMapLinkInspector(EditorUiContext& ui, core::RectI panel);
+    void handlePanelSplitters(const EditorInputState& input);
+    void centerOnWorldPoint(core::WorldPointI point) noexcept;
 
     game::GameContentRegistry content_;
-    EditorDocument document_;
+    WorldProjectDocument worldProject_;
     std::optional<ContentWorkspaceDocument> contentWorkspace_;
     platform::ImageDecoder* decoder_{};
     std::filesystem::path assetRoot_;
@@ -137,6 +151,8 @@ private:
     std::unique_ptr<render::BitmapFont> font_;
     std::unique_ptr<render::Framebuffer> framebuffer_;
     core::RectI viewportBounds_{};
+    EditorPanelWidths panelWidths_{};
+    enum class Splitter { none, left, right } activeSplitter_{Splitter::none};
     DragState drag_;
     simulation::DefinitionId selectedDefinition_{game::gameplay::creatures::soldierEnemyId()};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
@@ -150,6 +166,8 @@ private:
     std::string layerNameEdit_;
     bool layerNameFocused_{};
     int tilePaletteScroll_{};
+    int mapBrowserScroll_{};
+    int layerScroll_{};
     bool tileFlipX_{};
     std::size_t semanticFamilyIndex_{};
     std::size_t selectedStamp_{};
@@ -160,6 +178,7 @@ private:
     bool rawPalette_{};
     bool showCollision_{true};
     bool newMapDialog_{};
+    bool newMapIncludePlayerSpawn_{true};
     int newMapField_{};
     std::string newMapId_{"map.untitled"};
     std::string newMapWidth_{"32"};
@@ -171,6 +190,7 @@ private:
     std::optional<ContentDefinitionKey> findUsageKey_;
     std::size_t findUsageIndex_{};
     std::uint64_t findUsageMapRevision_{static_cast<std::uint64_t>(-1)};
+    std::uint64_t playtestTick_{};
     std::optional<ContentDefinitionKey> contentEditKey_;
     std::array<std::string, 160> contentEditValues_{};
     std::size_t selectedAnimationFrameIndex_{};
@@ -182,9 +202,12 @@ private:
     int contentFocusedField_{-1};
     bool contentStaticSourceEnabled_{};
     int contentCategoryScroll_{};
+    int contentDefinitionScroll_{};
     int contentFrameScroll_{};
     int contentMarkerScroll_{};
     int contentInspectorScroll_{};
+    int contentDiagnosticScroll_{};
+    int assetDiagnosticScroll_{};
     std::string newContentDefinitionId_;
     std::string newContentDefinitionFile_;
     PreviewClipState previewClipState_{PreviewClipState::idle};

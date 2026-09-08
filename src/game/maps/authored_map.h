@@ -80,6 +80,10 @@ struct MapCompileResult final {
                                         const AuthoredMapSource& source, std::string& error);
 [[nodiscard]] MapCompileResult compileAuthoredMap(const AuthoredMapSource& source,
                                                   const game::GameContentRegistry& content);
+// Structural validation shared by authored containers.  Content-reference
+// validation remains the responsibility of compileAuthoredMap().
+[[nodiscard]] std::optional<AuthoredMapDiagnostic> validateAuthoredMapSource(
+    const AuthoredMapSource& source);
 [[nodiscard]] MapData mapDataFromAuthored(const AuthoredMapSource& source);
 [[nodiscard]] AuthoredMapSource authoredMapFromMapData(const MapData& data);
 

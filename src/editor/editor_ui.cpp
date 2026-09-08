@@ -1,9 +1,13 @@
 #include "editor/editor_ui.h"
 
+#include "editor/editor_text_layout.h"
+
 #include "engine/core/color_rgba8.h"
 #include "engine/core/utf8.h"
 #include "engine/render/bitmap_font.h"
 #include "engine/render/renderer_2d.h"
+
+#include <algorithm>
 
 namespace underworld::editor {
 namespace {
@@ -32,17 +36,30 @@ void EditorUiContext::labelRaw(std::string_view text, int x, int y) const {
     if (font_) render::drawText(renderer_, *font_, text, x, y);
 }
 
+void EditorUiContext::labelInRect(core::RectI bounds, std::string_view text, bool fromEnd) const {
+    if (!font_) return;
+    const auto localized = localization_.localize(text);
+    render::drawText(renderer_, *font_, fitText(localized, std::max(0, bounds.width - 8), fromEnd),
+                     bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
+}
+
+void EditorUiContext::labelRawInRect(core::RectI bounds, std::string_view text, bool fromEnd) const {
+    if (!font_) return;
+    render::drawText(renderer_, *font_, fitText(text, std::max(0, bounds.width - 8), fromEnd),
+                     bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
+}
+
 bool EditorUiContext::button(core::RectI bounds, std::string_view text, bool active) const {
     const bool hovered = pointerInside(bounds);
     renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
-    label(text, bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
+    labelInRect(bounds, text);
     return hovered && input_.pointer.leftPressed;
 }
 
 bool EditorUiContext::buttonRaw(core::RectI bounds, std::string_view text, bool active) const {
     const bool hovered = pointerInside(bounds);
     renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
-    labelRaw(text, bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
+    labelRawInRect(bounds, text);
     return hovered && input_.pointer.leftPressed;
 }
 
@@ -54,8 +71,8 @@ bool EditorUiContext::textField(core::RectI bounds, std::string& value, bool act
                                std::size_t maximumLength) const {
     const bool hovered = pointerInside(bounds);
     renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
-    if (font_) render::drawText(renderer_, *font_, value, bounds.x + 4,
-                                bounds.y + (bounds.height - 9) / 2);
+    if (font_) render::drawText(renderer_, *font_, fitText(value, std::max(0, bounds.width - 8), active, font_->advance()),
+                                bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
     if (active) {
         std::size_t offset = 0;
         while (offset < input_.textInput.size() && core::utf8CodepointCount(value) < maximumLength) {

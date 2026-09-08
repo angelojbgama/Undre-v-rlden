@@ -6,6 +6,7 @@
 #include "engine/render/renderer_2d.h"
 
 #include <stdexcept>
+#include <array>
 #include <utility>
 
 namespace underworld::render {
@@ -25,7 +26,17 @@ BitmapFont::BitmapFont(std::shared_ptr<const Image> image) : image_(std::move(im
     for (int index = 0; index < 5; ++index) {
         glyphs_.emplace(punctuation[index], core::RectI{(10 + index) * 7, 18, 7, 9});
     }
-    // The final visible symbol in the source asset is intentionally left unmapped.
+    // The compact shipped sheet has a handful of punctuation glyphs. Every
+    // printable ASCII code nevertheless gets a stable, non-question-mark
+    // source cell so editor paths and diagnostics never turn into '?' merely
+    // because they contain a slash, colon, bracket or percent sign.
+    constexpr char safePunctuation[] = {'.', ',', '!', '_'};
+    for (int code = 32; code <= 126; ++code) {
+        if (glyphs_.contains(static_cast<char>(code))) continue;
+        glyphs_.emplace(static_cast<char>(code),
+                        glyphs_.at(safePunctuation[(code - 32) % 4]));
+        if (code != ' ') proceduralGlyphs_.emplace(static_cast<char>(code));
+    }
 }
 
 core::RectI BitmapFont::glyphSource(char character) const noexcept {
@@ -52,6 +63,10 @@ core::RectI BitmapFont::glyphSource(std::uint32_t codepoint) const noexcept {
     case 0x00e7: return glyphSource('c');
     default: return codepoint < 128U ? glyphSource(static_cast<char>(codepoint)) : glyphSource('?');
     }
+}
+
+bool BitmapFont::usesProceduralGlyph(char character) const noexcept {
+    return proceduralGlyphs_.contains(character);
 }
 
 namespace {
@@ -92,6 +107,51 @@ void drawAccent(Renderer2D& renderer, int x, int y, Accent accent) noexcept {
         renderer.fillRect({x + 4, y - 1, 1, 1}, white);
     }
 }
+
+std::array<std::string_view, 7> proceduralPattern(char character) noexcept {
+    switch (character) {
+    case '"': return {"01010", "01010", "00000", "00000", "00000", "00000", "00000"};
+    case '#': return {"01010", "11111", "01010", "11111", "01010", "00000", "00000"};
+    case '$': return {"00100", "01110", "10100", "01110", "00101", "11100", "00100"};
+    case '%': return {"11001", "11010", "00100", "01011", "10011", "00000", "00000"};
+    case '&': return {"01100", "10010", "10100", "01010", "10101", "10010", "01101"};
+    case '\'': return {"00100", "00100", "00000", "00000", "00000", "00000", "00000"};
+    case '(': return {"00110", "01000", "10000", "10000", "10000", "01000", "00110"};
+    case ')': return {"01100", "00010", "00001", "00001", "00001", "00010", "01100"};
+    case '*': return {"00100", "10101", "01110", "10101", "00100", "00000", "00000"};
+    case '+': return {"00100", "00100", "11111", "00100", "00100", "00000", "00000"};
+    case '-': return {"00000", "00000", "11111", "00000", "00000", "00000", "00000"};
+    case '/': return {"00001", "00010", "00100", "01000", "10000", "00000", "00000"};
+    case ':': return {"00000", "00100", "00000", "00000", "00100", "00000", "00000"};
+    case ';': return {"00000", "00100", "00000", "00000", "00100", "01000", "00000"};
+    case '<': return {"00010", "00100", "01000", "10000", "01000", "00100", "00010"};
+    case '=': return {"00000", "11111", "00000", "11111", "00000", "00000", "00000"};
+    case '>': return {"01000", "00100", "00010", "00001", "00010", "00100", "01000"};
+    case '@': return {"01110", "10001", "10111", "10101", "10111", "10000", "01111"};
+    case '[': return {"01110", "01000", "01000", "01000", "01000", "01000", "01110"};
+    case '\\': return {"10000", "01000", "00100", "00010", "00001", "00000", "00000"};
+    case ']': return {"01110", "00010", "00010", "00010", "00010", "00010", "01110"};
+    case '^': return {"00100", "01010", "10001", "00000", "00000", "00000", "00000"};
+    case '`': return {"01000", "00100", "00000", "00000", "00000", "00000", "00000"};
+    case '{': return {"00110", "00100", "01000", "00100", "00100", "00100", "00110"};
+    case '|': return {"00100", "00100", "00100", "00100", "00100", "00100", "00100"};
+    case '}': return {"01100", "00100", "00010", "00100", "00100", "00100", "01100"};
+    case '~': return {"00000", "01001", "10110", "00000", "00000", "00000", "00000"};
+    default: return {"00000", "00000", "00000", "00000", "00000", "00000", "00000"};
+    }
+}
+
+void drawProceduralGlyph(Renderer2D& renderer, char character, int x, int y) noexcept {
+    constexpr core::ColorRGBA8 white{255, 255, 255, 255};
+    const auto rows = proceduralPattern(character);
+    for (std::size_t row = 0; row < rows.size(); ++row) {
+        for (std::size_t column = 0; column < rows[row].size(); ++column) {
+            if (rows[row][column] == '1')
+                renderer.fillRect({x + 1 + static_cast<int>(column),
+                                   y + static_cast<int>(row), 1, 1}, white);
+        }
+    }
+}
 } // namespace
 
 void drawText(Renderer2D& renderer, const BitmapFont& font, std::string_view text,
@@ -109,7 +169,9 @@ void drawText(Renderer2D& renderer, const BitmapFont& font, std::string_view tex
         } else if (codepoint == ' ') {
             x += font.advance();
         } else {
-            renderer.drawImageRegion(font.image(), font.glyphSource(codepoint), x, y);
+            if (codepoint < 128U && font.usesProceduralGlyph(static_cast<char>(codepoint)))
+                drawProceduralGlyph(renderer, static_cast<char>(codepoint), x, y);
+            else renderer.drawImageRegion(font.image(), font.glyphSource(codepoint), x, y);
             drawAccent(renderer, x, y, accentFor(codepoint));
             x += font.advance();
         }

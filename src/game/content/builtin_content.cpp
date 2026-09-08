@@ -254,7 +254,7 @@ GameContentRegistry compileBuiltinContentOrThrow() {
         for (const auto& diagnostic : result.report.diagnostics) if (diagnostic.severity == ContentDiagnosticSeverity::error) message += " [" + diagnostic.code + "] " + diagnostic.message;
         throw std::runtime_error(message);
     }
-    return std::move(*result.registry);
+    return *result.registry;
 }
 
 } // namespace underworld::game::content
