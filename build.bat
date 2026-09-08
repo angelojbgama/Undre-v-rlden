@@ -189,6 +189,10 @@ echo Compiling map editor UI...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_ui.obj" "src\editor\editor_ui.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling editor icons...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_icons.obj" "src\editor\editor_icons.cpp"
+if errorlevel 1 goto :build_failed
+
 echo Compiling editor localization...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_localization.obj" "src\editor\editor_localization.cpp"
 if errorlevel 1 goto :build_failed
@@ -408,7 +412,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
     "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\creature_engine.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" "build\obj\game_session.obj" "build\obj\player.obj" "build\obj\player_items.obj" "build\obj\region_tracker.obj" ^
     "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" ^
-    "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" ^
+    "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_icons.obj" ^
     "build\obj\editor_app.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\world_project_document.obj" "build\obj\visual_preview.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib comdlg32.lib shell32.lib
 if errorlevel 1 goto :build_failed
@@ -461,7 +465,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\world_project_document.obj" "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_playtest.obj" "build\obj\editor_launch.obj" ^
+    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_icons.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\world_project_document.obj" "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_playtest.obj" "build\obj\editor_launch.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^

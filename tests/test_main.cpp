@@ -28,6 +28,7 @@
 #include "engine/world/tile_layer.h"
 #include "editor/editor_commands.h"
 #include "editor/editor_document.h"
+#include "editor/editor_icons.h"
 #include "editor/editor_playtest.h"
 #include "editor/editor_app.h"
 #include "editor/content_workspace_document.h"
@@ -8609,6 +8610,87 @@ void testEditorLocalization() {
     expect(field == "çã", "Editor text fields accept Portuguese UTF-8 input");
 }
 
+void testEditorResponsiveLayerWorkflow() {
+    using namespace underworld;
+    using editor::EditorIcon;
+
+    const auto columns = editor::equalColumns({10, 20, 100, 18}, 3, 4);
+    expect(columns.size() == 3 && columns[0].x == 10 && columns[0].width == 31 &&
+               columns[1].x == 45 && columns[1].width == 31 &&
+               columns[2].x == 80 && columns[2].width == 30,
+           "responsive layout distributes extra width deterministically across columns");
+    const auto narrowRow = editor::makeLayerRowLayout({8, 50, 174, 18});
+    const auto wideRow = editor::makeLayerRowLayout({8, 50, 334, 18});
+    expect(narrowRow.dragHandle.width == editor::EditorLayoutMetrics::layerDragHandleWidth &&
+               narrowRow.visibility.width == editor::EditorLayoutMetrics::layerVisibilityWidth &&
+               narrowRow.lock.width == editor::EditorLayoutMetrics::layerLockWidth &&
+               narrowRow.name.x > narrowRow.dragHandle.x &&
+               narrowRow.name.x + narrowRow.name.width <= narrowRow.visibility.x,
+           "layer row keeps fixed affordances separate from the flexible name bounds");
+    expect(wideRow.name.width > narrowRow.name.width &&
+               wideRow.name.x + wideRow.name.width <= wideRow.visibility.x,
+           "layer names consume additional panel width without overlapping icons");
+
+    const auto splitLeft = editor::splitFixedLeft({0, 0, 200, 20}, 32, 4);
+    const auto splitRight = editor::splitFixedRight({0, 0, 200, 20}, 32, 4);
+    expect(splitLeft.first.width == 32 && splitLeft.second.x == 36 &&
+               splitLeft.first.width + splitLeft.second.width + 4 == 200 &&
+               splitRight.second.width == 32 && splitRight.first.width + splitRight.second.width + 4 == 200,
+           "fixed utility controls leave the remaining row space flexible");
+
+    const auto first = editor::layerDropPreview({20, 5}, {10, 0, 100, 60}, 3, 2, 0);
+    const auto middle = editor::layerDropPreview({20, 39}, {10, 0, 100, 60}, 3, 0, 0);
+    const auto last = editor::layerDropPreview({20, 55}, {10, 0, 100, 60}, 3, 0, 0);
+    const auto scrolled = editor::layerDropPreview({20, 5}, {10, 0, 100, 40}, 4, 3, 20);
+    expect(first && first->hoveredIndex == 0 && first->targetIndex == 0 && !first->after &&
+               middle && middle->hoveredIndex == 1 && middle->targetIndex == 1 && middle->after &&
+               last && last->targetIndex == 2 && last->after &&
+               scrolled && scrolled->hoveredIndex == 1 &&
+               !editor::layerDropPreview({120, 5}, {10, 0, 100, 60}, 3, 0, 0),
+           "layer drop index respects before/after halves, scroll offset and list bounds");
+    expect(editor::clampScroll(-10, 200, 60) == 0 &&
+               editor::clampScroll(500, 200, 60) == 140 &&
+               editor::autoScrollLayerList(20, {20, 2}, {10, 0, 100, 60}, 200) == 12 &&
+               editor::autoScrollLayerList(20, {20, 58}, {10, 0, 100, 60}, 200) == 28,
+           "layer scrolling clamps and auto-scrolls at both list edges");
+
+    const auto tooltipTopRight = editor::placeTooltip({92, 1, 8, 18}, 80, 18, {0, 0, 100, 80});
+    const auto tooltipBottom = editor::placeTooltip({10, 78, 8, 2}, 40, 18, {0, 0, 100, 80});
+    expect(tooltipTopRight.x >= 0 && tooltipTopRight.y >= 0 &&
+               tooltipTopRight.x + tooltipTopRight.width <= 100 &&
+               tooltipTopRight.y + tooltipTopRight.height <= 80 &&
+               tooltipBottom.x >= 0 && tooltipBottom.y >= 0 &&
+               tooltipBottom.x + tooltipBottom.width <= 100 &&
+               tooltipBottom.y + tooltipBottom.height <= 80,
+           "tooltip placement stays inside the framebuffer near all edges");
+
+    const std::array<EditorIcon, 15> icons{{
+        EditorIcon::add, EditorIcon::remove, EditorIcon::visibilityOn,
+        EditorIcon::visibilityOff, EditorIcon::lock, EditorIcon::unlock,
+        EditorIcon::dragHandle, EditorIcon::moveUp, EditorIcon::moveDown,
+        EditorIcon::play, EditorIcon::save, EditorIcon::folder, EditorIcon::map,
+        EditorIcon::link, EditorIcon::warning,
+    }};
+    bool allIconsSupported = true;
+    for (const auto icon : icons) allIconsSupported = allIconsSupported && editor::isEditorIconSupported(icon);
+    expect(allIconsSupported, "all editor controls use a procedural icon renderer");
+
+    editor::EditorDocument map = editor::EditorDocument::newMap(
+        simulation::MapId{"map.layer.drag"}, 8, 8);
+    std::string error;
+    expect(map.execute(std::make_unique<editor::AddLayerCommand>(1, "Walls"), error) &&
+               map.execute(std::make_unique<editor::AddLayerCommand>(2, "Foreground"), error),
+           "layer drag fixture creates multiple layers through commands");
+    map.activeLayer() = 0;
+    const auto beforeStates = map.layerStates();
+    expect(map.execute(std::make_unique<editor::MoveLayerCommand>(0, 2), error) &&
+               map.data().layers[2].name == "Ground" && map.activeLayer() == 2 &&
+               map.layerStates()[2].visible == beforeStates[0].visible &&
+               map.undo() && map.data().layers[0].name == "Ground" && map.activeLayer() == 0 &&
+               map.redo(error) && map.data().layers[2].name == "Ground" && map.activeLayer() == 2,
+           "computed layer drops use one MoveLayerCommand and preserve undo/redo state");
+}
+
 void testWorldProjectAndMultiMapPlaytest() {
     namespace editor = underworld::editor;
     namespace game = underworld::game;
@@ -8860,6 +8942,7 @@ int main() {
         testPhase18CGameplayContentEditors();
         testPhase18DUnifiedStudioWorkflow();
         testEditorLocalization();
+        testEditorResponsiveLayerWorkflow();
         testWorldProjectAndMultiMapPlaytest();
     } catch (const std::exception& exception) {
         ++failures;

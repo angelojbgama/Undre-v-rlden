@@ -1,9 +1,12 @@
 #pragma once
 
+#include "engine/core/color_rgba8.h"
 #include "engine/core/geometry.h"
+#include "editor/editor_icons.h"
 #include "editor/editor_localization.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -50,10 +53,13 @@ class EditorUiContext final {
 public:
     EditorUiContext(render::Renderer2D& renderer, const render::BitmapFont* font,
                     const EditorInputState& input,
-                    const EditorLocalization& localization) noexcept
-        : renderer_(renderer), font_(font), input_(input), localization_(localization) {}
+                    const EditorLocalization& localization,
+                    core::RectI canvas = {}) noexcept
+        : renderer_(renderer), font_(font), input_(input), localization_(localization),
+          canvas_(canvas) {}
 
     void panel(core::RectI bounds) const;
+    void fillRect(core::RectI bounds, core::ColorRGBA8 color) const noexcept;
     void label(std::string_view text, int x, int y) const;
     void labelRaw(std::string_view text, int x, int y) const;
     void labelInRect(core::RectI bounds, std::string_view text, bool fromEnd = false) const;
@@ -62,16 +68,32 @@ public:
                               bool active = false) const;
     [[nodiscard]] bool buttonRaw(core::RectI bounds, std::string_view text,
                                  bool active = false) const;
+    [[nodiscard]] bool buttonWithIcon(core::RectI bounds, EditorIcon icon,
+                                      std::string_view text, bool active = false,
+                                      std::optional<EditorTextId> tooltipId = std::nullopt) const;
+    [[nodiscard]] bool iconButton(core::RectI bounds, EditorIcon icon,
+                                  bool active = false,
+                                  std::optional<EditorTextId> tooltipId = std::nullopt) const;
     [[nodiscard]] bool toggle(core::RectI bounds, std::string_view text, bool value) const;
     [[nodiscard]] bool textField(core::RectI bounds, std::string& value, bool active,
                                  std::size_t maximumLength = 240) const;
     [[nodiscard]] bool pointerInside(core::RectI bounds) const noexcept;
+    void tooltip(core::RectI bounds, EditorTextId textId) const;
+    void tooltipRaw(core::RectI bounds, std::string_view text) const;
+    void drawTooltip() const;
 
 private:
+    struct TooltipRequest final {
+        core::RectI anchor;
+        std::string text;
+    };
+
     render::Renderer2D& renderer_;
     const render::BitmapFont* font_{};
     const EditorInputState& input_;
     const EditorLocalization& localization_;
+    core::RectI canvas_{};
+    mutable std::optional<TooltipRequest> tooltip_;
 };
 
 } // namespace underworld::editor

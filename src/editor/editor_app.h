@@ -95,6 +95,13 @@ private:
         world::AabbI regionStart{};
         std::vector<TileCoordinate> stroke;
     };
+    struct LayerDragState final {
+        bool pending{};
+        bool active{};
+        std::size_t source{};
+        core::PointI pointerStart{};
+        std::optional<LayerDropPreview> preview;
+    };
 
     void drawShell(EditorUiContext& ui, const EditorInputState& input);
     void drawContentShell(EditorUiContext& ui, const EditorInputState& input,
@@ -154,6 +161,7 @@ private:
     EditorPanelWidths panelWidths_{};
     enum class Splitter { none, left, right } activeSplitter_{Splitter::none};
     DragState drag_;
+    LayerDragState layerDrag_;
     simulation::DefinitionId selectedDefinition_{game::gameplay::creatures::soldierEnemyId()};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
     simulation::DefinitionId selectedTileset_{"tileset.dungeon"};

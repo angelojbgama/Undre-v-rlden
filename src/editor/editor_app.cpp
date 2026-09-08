@@ -274,7 +274,9 @@ void EditorApp::updateAndRender(const EditorInputState& input){
         }
     }
     render::Renderer2D renderer(*framebuffer_);framebuffer_->clear(background);
-    EditorUiContext ui(renderer,font_.get(),input,localization_);drawShell(ui,input);
+    EditorUiContext ui(renderer, font_.get(), input, localization_,
+                       {0, 0, framebuffer_->width(), framebuffer_->height()});
+    drawShell(ui,input);
     updateStatus(viewportBounds_,input);
 }
 
@@ -285,60 +287,150 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     const auto left = layout.left; const auto right = layout.right;
     const auto status = layout.status; viewportBounds_ = layout.viewport;
     const int viewportHeight = layout.viewport.height;
+    const int controlHeight = EditorLayoutMetrics::compactButtonHeight;
     ui.panel(left);ui.panel(right);ui.panel(status);
 
     if (contentMode_) {
         drawContentShell(ui, input, left, layout.viewport, right, status);
         ui.labelInRect(status, status_, true);
+        ui.drawTooltip();
         return;
     }
 
-    if (ui.button({8, 2, 42, 18}, localization_.text(EditorTextId::maps), mapPaletteTab_ == MapPaletteTab::maps)) mapPaletteTab_ = MapPaletteTab::maps;
-    if (ui.button({52, 2, 42, 18}, "TILES", mapPaletteTab_ == MapPaletteTab::tiles)) mapPaletteTab_ = MapPaletteTab::tiles;
-    if (ui.button({96, 2, 42, 18}, "SEM", mapPaletteTab_ == MapPaletteTab::semantics)) mapPaletteTab_ = MapPaletteTab::semantics;
-    if (ui.button({140, 2, 42, 18}, "ENT", mapPaletteTab_ == MapPaletteTab::entities)) mapPaletteTab_ = MapPaletteTab::entities;
+    const core::RectI leftContent{left.x + EditorLayoutMetrics::panelPadding, left.y + 2,
+                                  std::max(0, left.width - EditorLayoutMetrics::panelPadding * 2),
+                                  std::max(0, left.height - 4)};
+    const std::array<std::pair<MapPaletteTab, EditorTextId>, 4> primaryTabs{{
+        {MapPaletteTab::maps, EditorTextId::maps},
+        {MapPaletteTab::tiles, EditorTextId::tiles},
+        {MapPaletteTab::semantics, EditorTextId::semantics},
+        {MapPaletteTab::entities, EditorTextId::entities},
+    }};
+    const auto primaryTabBounds = equalColumns({leftContent.x, leftContent.y,
+                                                 leftContent.width, controlHeight}, primaryTabs.size());
+    for (std::size_t index = 0; index < primaryTabs.size(); ++index) {
+        if (ui.button(primaryTabBounds[index], localization_.text(primaryTabs[index].second),
+                      mapPaletteTab_ == primaryTabs[index].first)) {
+            cancelActiveGesture();
+            mapPaletteTab_ = primaryTabs[index].first;
+        }
+    }
+    const std::array<std::pair<MapPaletteTab, EditorTextId>, 3> secondaryTabs{{
+        {MapPaletteTab::stamps, EditorTextId::stamps},
+        {MapPaletteTab::rules, EditorTextId::rules},
+        {MapPaletteTab::encounters, EditorTextId::encounters},
+    }};
+    const auto secondaryTabBounds = equalColumns({leftContent.x, leftContent.y + 22,
+                                                   leftContent.width, controlHeight}, secondaryTabs.size());
+    for (std::size_t index = 0; index < secondaryTabs.size(); ++index) {
+        if (ui.button(secondaryTabBounds[index], localization_.text(secondaryTabs[index].second),
+                      mapPaletteTab_ == secondaryTabs[index].first)) {
+            cancelActiveGesture();
+            mapPaletteTab_ = secondaryTabs[index].first;
+        }
+    }
     if (mapPaletteTab_ == MapPaletteTab::maps) {
         drawMapBrowser(ui, input, left);
     } else {
-    ui.label("LAYERS",8,26);
-    const int layerListTop = 40;
-    const int layerListHeight = std::max(20, std::min(160, viewportHeight - 300));
-    const int layerContentHeight = static_cast<int>(document().data().layers.size()) * 20;
-    const int layerMaxScroll = std::max(0, layerContentHeight - layerListHeight);
-    if (ui.pointerInside({0, layerListTop, left.width, layerListHeight}) && input.pointer.wheelDelta) {
-        layerScroll_ = std::clamp(layerScroll_ - (input.pointer.wheelDelta / 120) * 20,
-                                   0, layerMaxScroll);
+    if (input.escapePressed) layerDrag_ = {};
+    ui.label(localization_.text(EditorTextId::layers), leftContent.x, leftContent.y + 42);
+    const int layerListTop = leftContent.y + 58;
+    const int layerListHeight = std::max(20, std::min(180, viewportHeight - 300));
+    const int layerContentHeight = static_cast<int>(document().data().layers.size()) *
+                                   EditorLayoutMetrics::layerRowHeight;
+    const core::RectI layerListBounds{left.x, layerListTop, left.width, layerListHeight};
+    if (ui.pointerInside(layerListBounds) && input.pointer.wheelDelta) {
+        layerScroll_ = clampScroll(layerScroll_ - (input.pointer.wheelDelta / 120) *
+                                   EditorLayoutMetrics::layerRowHeight,
+                                   layerContentHeight, layerListHeight);
     }
-    layerScroll_ = std::clamp(layerScroll_, 0, layerMaxScroll);
+    layerScroll_ = clampScroll(layerScroll_, layerContentHeight, layerListHeight);
     for(std::size_t i=0;i<document().data().layers.size();++i){
-        const int y = layerListTop + static_cast<int>(i) * 20 - layerScroll_;
-        if (y < layerListTop || y + 18 > layerListTop + layerListHeight) continue;
+        const int y = layerListTop + static_cast<int>(i) * EditorLayoutMetrics::layerRowHeight - layerScroll_;
+        if (y < layerListTop || y + EditorLayoutMetrics::layerControlHeight >
+            layerListTop + layerListHeight) continue;
         const auto& layer=document().data().layers[i];
-        if(ui.buttonRaw({8,y,110,18},layer.name,i==document().activeLayer())) {
+        const auto row = makeLayerRowLayout({leftContent.x, y, leftContent.width,
+                                             EditorLayoutMetrics::layerControlHeight});
+        const bool dragging = layerDrag_.active && layerDrag_.source == i;
+        ui.fillRect(row.row, dragging ? core::ColorRGBA8{70, 78, 96, 255}
+                                      : core::ColorRGBA8{38, 44, 54, 255});
+        if (ui.iconButton(row.dragHandle, EditorIcon::dragHandle, dragging,
+                          EditorTextId::dragToReorder)) {
+            layerDrag_ = {true, false, i, {input.pointer.x, input.pointer.y}, std::nullopt};
+        }
+        if(ui.buttonRaw(row.name,layer.name,i==document().activeLayer())) {
             document().activeLayer()=i;
             layerNameEdit_=layer.name;
             layerNameFocused_=false;
         }
         auto& state=document().layerStates()[i];
-        if(ui.toggle({120,y,30,18},state.visible?"ON":"OFF",state.visible))state.visible=!state.visible;
-        if(ui.toggle({152,y,30,18},state.locked?"L":"U",state.locked))state.locked=!state.locked;
+        if(ui.iconButton(row.visibility, state.visible ? EditorIcon::visibilityOn :
+                         EditorIcon::visibilityOff, state.visible,
+                         state.visible ? EditorTextId::hideLayer : EditorTextId::showLayer)) {
+            state.visible=!state.visible;
+        }
+        if(ui.iconButton(row.lock, state.locked ? EditorIcon::lock : EditorIcon::unlock,
+                         state.locked, state.locked ? EditorTextId::unlockLayer :
+                         EditorTextId::lockLayer)) {
+            state.locked=!state.locked;
+        }
+    }
+    if (layerDrag_.pending && layerDrag_.source < document().data().layers.size() &&
+        input.pointer.leftDown) {
+        const core::PointI pointer{input.pointer.x, input.pointer.y};
+        if (!layerDrag_.active &&
+            (std::abs(pointer.x - layerDrag_.pointerStart.x) >= EditorLayoutMetrics::layerDragThreshold ||
+             std::abs(pointer.y - layerDrag_.pointerStart.y) >= EditorLayoutMetrics::layerDragThreshold)) {
+            layerDrag_.active = true;
+        }
+        if (layerDrag_.active) {
+            layerScroll_ = autoScrollLayerList(layerScroll_, pointer, layerListBounds,
+                                               layerContentHeight);
+            layerDrag_.preview = layerDropPreview(pointer, layerListBounds,
+                                                   document().data().layers.size(),
+                                                   layerDrag_.source, layerScroll_);
+        }
+    }
+    if (layerDrag_.active && input.pointer.leftReleased) {
+        layerDrag_.preview = layerDropPreview({input.pointer.x, input.pointer.y}, layerListBounds,
+                                               document().data().layers.size(),
+                                               layerDrag_.source, layerScroll_);
+        if (layerDrag_.preview && layerDrag_.preview->targetIndex != layerDrag_.source) {
+            execute(std::make_unique<MoveLayerCommand>(layerDrag_.source,
+                                                       layerDrag_.preview->targetIndex));
+        }
+        layerDrag_ = {};
+    } else if (!layerDrag_.active && input.pointer.leftReleased) {
+        layerDrag_ = {};
+    }
+    if (layerDrag_.active && layerDrag_.preview) {
+        const int indicatorY = std::clamp(layerDrag_.preview->indicatorY,
+                                          layerListBounds.y,
+                                          layerListBounds.y + layerListBounds.height - 2);
+        ui.fillRect({layerListBounds.x + 2, indicatorY,
+                     std::max(0, layerListBounds.width - 4), 2},
+                    core::ColorRGBA8{255, 220, 70, 255});
     }
     int y = layerListTop + layerListHeight + 4;
-    if (ui.button({8, y, 52, 18}, "ADD", false)) {
+    const auto layerButtons = equalColumns({leftContent.x, y, leftContent.width, controlHeight}, 2);
+    if (ui.buttonWithIcon(layerButtons[0], EditorIcon::add,
+                          localization_.text(EditorTextId::add), false,
+                          EditorTextId::addLayer)) {
         layerNameEdit_ = "Layer " + std::to_string(document().data().layers.size() + 1);
         execute(std::make_unique<AddLayerCommand>(document().data().layers.size(), layerNameEdit_));
     }
-    if (ui.button({64, y, 52, 18}, "DEL", false)) execute(std::make_unique<RemoveLayerCommand>(document().activeLayer()));
-    if (ui.button({120, y, 28, 18}, "<", false) && document().activeLayer() > 0)
-        execute(std::make_unique<MoveLayerCommand>(document().activeLayer(), document().activeLayer() - 1));
-    if (ui.button({152, y, 28, 18}, ">", false) && document().activeLayer() + 1 < document().data().layers.size())
-        execute(std::make_unique<MoveLayerCommand>(document().activeLayer(), document().activeLayer() + 1));
+    if (ui.buttonWithIcon(layerButtons[1], EditorIcon::remove,
+                          localization_.text(EditorTextId::remove), false,
+                          EditorTextId::removeLayer)) {
+        execute(std::make_unique<RemoveLayerCommand>(document().activeLayer()));
+    }
     y += 20;
     if (document().activeLayer() < document().data().layers.size()) {
         if (!layerNameFocused_ && layerNameEdit_.empty()) {
             layerNameEdit_ = document().data().layers[document().activeLayer()].name;
         }
-        if (ui.textField({8, y, 174, 18}, layerNameEdit_, layerNameFocused_)) {
+        if (ui.textField({leftContent.x, y, leftContent.width, 18}, layerNameEdit_, layerNameFocused_)) {
             layerNameFocused_=true;
         }
         if (input.escapePressed) {
@@ -350,38 +442,46 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         }
     }
     y += 22;
-    if(ui.button({8,y,85,18},"SELECT",document().activeTool()==EditorTool::select))document().activeTool()=EditorTool::select;
-    if(ui.button({97,y,85,18},"TILE",document().activeTool()==EditorTool::tilePencil)) { document().activeTool()=EditorTool::tilePencil; }
+    auto toolRow = [&](int rowY) { return equalColumns({leftContent.x, rowY, leftContent.width, controlHeight}, 2); };
+    auto buttons = toolRow(y);
+    if(ui.button(buttons[0],"SELECT",document().activeTool()==EditorTool::select))document().activeTool()=EditorTool::select;
+    if(ui.button(buttons[1],"TILE",document().activeTool()==EditorTool::tilePencil)) { document().activeTool()=EditorTool::tilePencil; }
     y+=20;
-    if(ui.button({8,y,85,18},"ERASE",document().activeTool()==EditorTool::tileErase))document().activeTool()=EditorTool::tileErase;
-    if(ui.button({97,y,85,18},"RECT",document().activeTool()==EditorTool::tileRectangle)) { document().activeTool()=EditorTool::tileRectangle; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"ERASE",document().activeTool()==EditorTool::tileErase))document().activeTool()=EditorTool::tileErase;
+    if(ui.button(buttons[1],"RECT",document().activeTool()==EditorTool::tileRectangle)) { document().activeTool()=EditorTool::tileRectangle; }
     y+=20;
-    if(ui.button({8,y,85,18},"FILL",document().activeTool()==EditorTool::tileFill))document().activeTool()=EditorTool::tileFill;
-    if(ui.button({97,y,85,18},tileFlipX_?"FLIP X ON":"FLIP X",tileFlipX_)) { tileFlipX_=!tileFlipX_; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"FILL",document().activeTool()==EditorTool::tileFill))document().activeTool()=EditorTool::tileFill;
+    if(ui.button(buttons[1],tileFlipX_?"FLIP X ON":"FLIP X",tileFlipX_)) { tileFlipX_=!tileFlipX_; }
     y+=20;
-    if(ui.button({8,y,85,18},"PICK",document().activeTool()==EditorTool::tileEyedropper)) { document().activeTool()=EditorTool::tileEyedropper; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"PICK",document().activeTool()==EditorTool::tileEyedropper)) { document().activeTool()=EditorTool::tileEyedropper; }
     y+=20;
-    if(ui.button({8,y,85,18},"COLL +",document().activeTool()==EditorTool::collisionPaint))document().activeTool()=EditorTool::collisionPaint;
-    if(ui.button({97,y,85,18},"COLL -",document().activeTool()==EditorTool::collisionErase)) { document().activeTool()=EditorTool::collisionErase; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"COLL +",document().activeTool()==EditorTool::collisionPaint))document().activeTool()=EditorTool::collisionPaint;
+    if(ui.button(buttons[1],"COLL -",document().activeTool()==EditorTool::collisionErase)) { document().activeTool()=EditorTool::collisionErase; }
     y+=24;
-    if(ui.button({8,y,85,18},"COLL R+",document().activeTool()==EditorTool::collisionRectangle))document().activeTool()=EditorTool::collisionRectangle;
-    if(ui.button({97,y,85,18},"COLL R-",document().activeTool()==EditorTool::collisionRectangleErase)) { document().activeTool()=EditorTool::collisionRectangleErase; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"COLL R+",document().activeTool()==EditorTool::collisionRectangle))document().activeTool()=EditorTool::collisionRectangle;
+    if(ui.button(buttons[1],"COLL R-",document().activeTool()==EditorTool::collisionRectangleErase)) { document().activeTool()=EditorTool::collisionRectangleErase; }
     y+=20;
-    if(ui.button({8,y,85,18},"COLL F+",document().activeTool()==EditorTool::collisionFill))document().activeTool()=EditorTool::collisionFill;
-    if(ui.button({97,y,85,18},"COLL F-",document().activeTool()==EditorTool::collisionFillErase)) { document().activeTool()=EditorTool::collisionFillErase; }
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"COLL F+",document().activeTool()==EditorTool::collisionFill))document().activeTool()=EditorTool::collisionFill;
+    if(ui.button(buttons[1],"COLL F-",document().activeTool()==EditorTool::collisionFillErase)) { document().activeTool()=EditorTool::collisionFillErase; }
     y+=24;
-    if(ui.button({8,y,85,18},"ENTITY",document().activeTool()==EditorTool::entityPlace))document().activeTool()=EditorTool::entityPlace;
-    if(ui.button({97,y,85,18},"REGION",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"ENTITY",document().activeTool()==EditorTool::entityPlace))document().activeTool()=EditorTool::entityPlace;
+    if(ui.button(buttons[1],"REGION",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
     y+=20;
-    if(ui.button({8,y,85,18},"STAMP",document().activeTool()==EditorTool::stampPlace))document().activeTool()=EditorTool::stampPlace;
-    if(ui.button({97,y,85,18},"SELECT TILES",document().activeTool()==EditorTool::tileSelection))document().activeTool()=EditorTool::tileSelection;
+    buttons = toolRow(y);
+    if(ui.button(buttons[0],"STAMP",document().activeTool()==EditorTool::stampPlace))document().activeTool()=EditorTool::stampPlace;
+    if(ui.button(buttons[1],"SELECT TILES",document().activeTool()==EditorTool::tileSelection))document().activeTool()=EditorTool::tileSelection;
     y+=24;
-    if(ui.button({8,y,85,18},"RULES",mapPaletteTab_==MapPaletteTab::rules))mapPaletteTab_=MapPaletteTab::rules;
-    if(ui.button({97,y,85,18},"ENCOUNTERS",mapPaletteTab_==MapPaletteTab::encounters))mapPaletteTab_=MapPaletteTab::encounters;
     y+=24;
 
     if (mapPaletteTab_ == MapPaletteTab::entities) {
-        ui.label("CONTENT",8,y);y+=14;
+        ui.label("CONTENT",leftContent.x,y);y+=14;
         struct PaletteEntry final { simulation::DefinitionId id; std::string label; game::AuthoringCategory category; };
         std::vector<PaletteEntry> entries;
         const auto addEntry = [&](simulation::DefinitionId id, game::AuthoringCategory category,
@@ -422,61 +522,76 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         });
         for(const auto& descriptor:entries){
             if(y+18>viewportHeight-210)break;
-            if(ui.buttonRaw({8,y,174,18},descriptor.label,selectedDefinition_==descriptor.id&&document().activeTool()==EditorTool::entityPlace)){
+            if(ui.buttonRaw({leftContent.x,y,leftContent.width,18},descriptor.label,selectedDefinition_==descriptor.id&&document().activeTool()==EditorTool::entityPlace)){
                 selectedDefinition_=descriptor.id;selectedCategory_=descriptor.category;document().activeTool()=EditorTool::entityPlace;
             }y+=20;
         }
-        if(ui.button({8,y,174,18},"Player Spawn",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.player_spawn")){
+        if(ui.button({leftContent.x,y,leftContent.width,18},"Player Spawn",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.player_spawn")){
             selectedDefinition_=simulation::DefinitionId{"world.player_spawn"};document().activeTool()=EditorTool::entityPlace;
         }y+=20;
-        if(ui.button({8,y,174,18},"Map Link",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
+        if(ui.button({leftContent.x,y,leftContent.width,18},"Map Link",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
             selectedDefinition_=simulation::DefinitionId{"world.map_link"};document().activeTool()=EditorTool::entityPlace;
         }y+=20;
-        if(ui.button({8,y,174,18},"Region",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
+        if(ui.button({leftContent.x,y,leftContent.width,18},"Region",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
         y += 20;
     }
-    if (ui.button({8, y, 174, 18}, playtest_.active() ? "STOP PLAYTEST" : "PLAYTEST",
+    if (ui.button({leftContent.x, y, leftContent.width, 18}, playtest_.active() ? "STOP PLAYTEST" : "PLAYTEST",
                   playtest_.active())) {
         togglePlaytest();
     }
 
     const auto& semantics = content_.authoringSemantics();
     static const std::array<std::string, 6> semanticFamilies{"ALL", "masonry", "ledge", "architectural_detail", "detail", "RAW"};
+    const auto cycleBounds = [&](int rowY) {
+        constexpr int arrowWidth = 28;
+        const int gap = EditorLayoutMetrics::controlGap;
+        const int centerX = leftContent.x + arrowWidth + gap;
+        const int rightX = leftContent.x + std::max(0, leftContent.width - arrowWidth);
+        return std::array<core::RectI, 3>{{
+            {leftContent.x, rowY, std::min(arrowWidth, leftContent.width), controlHeight},
+            {centerX, rowY, std::max(0, rightX - gap - centerX), controlHeight},
+            {rightX, rowY, std::min(arrowWidth, std::max(0, leftContent.x + leftContent.width - rightX)), controlHeight},
+        }};
+    };
     if (mapPaletteTab_ == MapPaletteTab::semantics) {
-        ui.label("SEMANTIC TILES",8,y+8); y+=20;
-        if(ui.button({8,y,28,18},"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
-        if(ui.buttonRaw({38,y,116,18},semanticFamilies[semanticFamilyIndex_],true)){}
-        if(ui.button({156,y,26,18},">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
+        ui.label("SEMANTIC TILES",leftContent.x,y+8); y+=20;
+        const auto controls = cycleBounds(y);
+        if(ui.button(controls[0],"<")) semanticFamilyIndex_=(semanticFamilyIndex_+semanticFamilies.size()-1)%semanticFamilies.size();
+        if(ui.buttonRaw(controls[1],semanticFamilies[semanticFamilyIndex_],true)){}
+        if(ui.button(controls[2],">")) semanticFamilyIndex_=(semanticFamilyIndex_+1)%semanticFamilies.size();
         rawPalette_=semanticFamilies[semanticFamilyIndex_]=="RAW"; y+=22;
     } else if (mapPaletteTab_ == MapPaletteTab::tiles) {
         rawPalette_=true;
     }
     if(mapPaletteTab_ == MapPaletteTab::stamps && !semantics.stamps().empty()) {
-        ui.label("STAMPS",8,y+8); y+=20;
+        ui.label("STAMPS",leftContent.x,y+8); y+=20;
         const auto& stamp=semantics.stamps()[std::min(selectedStamp_,semantics.stamps().size()-1)];
-        if(ui.button({8,y,28,18},"<")) selectedStamp_=(selectedStamp_+semantics.stamps().size()-1)%semantics.stamps().size();
-        if(ui.buttonRaw({38,y,116,18},stamp.displayName,document().activeTool()==EditorTool::stampPlace)) document().activeTool()=EditorTool::stampPlace;
-        if(ui.button({156,y,26,18},">")) selectedStamp_=(selectedStamp_+1)%semantics.stamps().size();
+        const auto controls = cycleBounds(y);
+        if(ui.button(controls[0],"<")) selectedStamp_=(selectedStamp_+semantics.stamps().size()-1)%semantics.stamps().size();
+        if(ui.buttonRaw(controls[1],stamp.displayName,document().activeTool()==EditorTool::stampPlace)) document().activeTool()=EditorTool::stampPlace;
+        if(ui.button(controls[2],">")) selectedStamp_=(selectedStamp_+1)%semantics.stamps().size();
         y+=22;
     }
     if (mapPaletteTab_ == MapPaletteTab::tiles || mapPaletteTab_ == MapPaletteTab::semantics) {
     const auto* selectedDefinition=content_.tilesets().find(selectedTileset_);
     if(selectedDefinition){
-        ui.label("TILESET",8,y+8); y+=20;
-        if(ui.button({8,y,28,18},"<"))selectTileset(-1);
-        if(ui.buttonRaw({38,y,116,18},selectedDefinition->displayName,true)){}
-        if(ui.button({156,y,26,18},">"))selectTileset(1);
+        ui.label("TILESET",leftContent.x,y+8); y+=20;
+        const auto controls = cycleBounds(y);
+        if(ui.button(controls[0],"<"))selectTileset(-1);
+        if(ui.buttonRaw(controls[1],selectedDefinition->displayName,true)){}
+        if(ui.button(controls[2],">"))selectTileset(1);
         y+=22;
     }
-    if(const auto* tileset=selectedTilesetVisual()){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label(rawPalette_?"RAW TILES":"SEMANTIC TILES",8,paletteTop-12);
+    if(const auto* tileset=selectedTilesetVisual()){const int paletteTop=std::max(y+24,viewportHeight-204);ui.label(rawPalette_?"RAW TILES":"SEMANTIC TILES",leftContent.x,paletteTop-12);
         const int paletteHeight=std::max(18,viewportHeight-paletteTop);
-        const int paletteColumns=std::max(1,std::min(10,static_cast<int>(selectedDefinition->columns)));
+        const int paletteColumns=std::max(1,std::min(static_cast<int>(selectedDefinition->columns),
+                                                     std::max(1,leftContent.width / 17)));
         std::vector<std::uint32_t> paletteTiles;
         for(std::uint32_t index=0;index<selectedDefinition->tileCount();++index){ const auto* semantic=semantics.findTile(selectedTileset_,index); if(rawPalette_ || (semantic && (semanticFamilies[semanticFamilyIndex_]=="ALL" || semantic->family==semanticFamilies[semanticFamilyIndex_]))) paletteTiles.push_back(index); }
         const int contentHeight=((static_cast<int>(paletteTiles.size())+paletteColumns-1)/paletteColumns)*17;
         const int maxScroll=std::max(0,contentHeight-paletteHeight);
-        if(ui.pointerInside({0,paletteTop,left.width,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
-        for(std::size_t paletteIndex=0;paletteIndex<paletteTiles.size();++paletteIndex){const auto index=paletteTiles[paletteIndex];const int column=static_cast<int>(paletteIndex%static_cast<std::size_t>(paletteColumns)),row=static_cast<int>(paletteIndex/static_cast<std::size_t>(paletteColumns));const core::RectI cell{8+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
+        if(ui.pointerInside({left.x,paletteTop,left.width,paletteHeight})&&input.pointer.wheelDelta)tilePaletteScroll_=std::clamp(tilePaletteScroll_-(input.pointer.wheelDelta/120)*17,0,maxScroll);
+        for(std::size_t paletteIndex=0;paletteIndex<paletteTiles.size();++paletteIndex){const auto index=paletteTiles[paletteIndex];const int column=static_cast<int>(paletteIndex%static_cast<std::size_t>(paletteColumns)),row=static_cast<int>(paletteIndex/static_cast<std::size_t>(paletteColumns));const core::RectI cell{leftContent.x+column*17,paletteTop+row*17-tilePaletteScroll_,16,16};if(cell.y+16<=paletteTop||cell.y>=viewportHeight)continue;
             render::Renderer2D renderer(*framebuffer_);const core::RectI source=tileset->atlas.sourceRect(index);renderer.drawImageRegion(*tileset->image,source,cell.x,cell.y);
             if(index==selectedTile_) { outline(renderer,cell,selectedColor); }
         if(ui.pointerInside(cell)&&input.pointer.leftPressed){selectedTile_=index;tileBrush_={selectedTileset_,1,1,{selectedTileReference()}};paletteDragging_=true;paletteDragStart_=index;paletteDragCurrent_=index;document().activeTool()=EditorTool::tilePencil;}
@@ -494,14 +609,15 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
                 tileBrush_.cells.push_back({selectedTileset_, brushY * columns + brushX, tileFlipX_ ? world::TileFlags::flipX : world::TileFlags::none});
             selectedTile_ = paletteDragStart_; paletteDragging_ = false;
         }
-        if (paletteDragging_ && input.pointer.leftReleased && !ui.pointerInside({0, paletteTop, left.width, paletteHeight})) paletteDragging_ = false;
-    } else if (selectedDefinition) { ui.label("Tileset image unavailable",8,y+4); }
+        if (paletteDragging_ && input.pointer.leftReleased && !ui.pointerInside({left.x, paletteTop, left.width, paletteHeight})) paletteDragging_ = false;
+    } else if (selectedDefinition) { ui.label("Tileset image unavailable",leftContent.x,y+4); }
     }
 
     }
     render::Renderer2D renderer(*framebuffer_);drawViewport(renderer,viewportBounds_,input);drawInspector(ui,right);
     ui.labelInRect(status, status_, true);
     if(newMapDialog_)drawNewMapDialog(ui,input);
+    ui.drawTooltip();
 }
 
 void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& input,
@@ -517,14 +633,17 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         visualValidationAttempted_ = false;
         visualDiagnostics_.clear();
     }
-    if (ui.button({left.x + 8, 8, 78, 20}, "MAP")) {
+    const auto modeTabs = equalColumns({left.x + EditorLayoutMetrics::panelPadding, left.y + 8,
+                                        std::max(0, left.width - EditorLayoutMetrics::panelPadding * 2), 20}, 2);
+    if (ui.button(modeTabs[0], "MAP")) {
+        cancelActiveGesture();
         resetContentEditState();
         resetContentPreviewState();
         contentMode_ = false;
         status_ = "Map mode";
         return;
     }
-    (void)ui.button({left.x + 92, 8, 82, 20}, "CONTENT", true);
+    (void)ui.button(modeTabs[1], "CONTENT", true);
     if (ui.pointerInside({right.x, right.y + 118, right.width, right.height - 260}) &&
         input.pointer.wheelDelta != 0) {
         contentInspectorScroll_ = std::clamp(
@@ -3438,9 +3557,15 @@ void EditorApp::placeSelected(core::WorldPointI point){const auto id=document().
 
 void EditorApp::drawMapBrowser(EditorUiContext& ui, const EditorInputState& input,
                                 core::RectI panel) {
-    ui.label(localization_.text(EditorTextId::maps), panel.x + 8, 28);
-    const int listTop = 48;
-    const int listHeight = std::max(20, panel.height - 108);
+    const core::RectI content{panel.x + EditorLayoutMetrics::panelPadding,
+                              panel.y + 8,
+                              std::max(0, panel.width - EditorLayoutMetrics::panelPadding * 2),
+                              std::max(0, panel.height - 16)};
+    ui.label(localization_.text(EditorTextId::maps), content.x, content.y + 20);
+    const int listTop = content.y + 40;
+    const int buttonsY = panel.y + panel.height - 66;
+    const int entryLabelY = panel.y + panel.height - 86;
+    const int listHeight = std::max(20, entryLabelY - listTop - 4);
     if (ui.pointerInside({panel.x, listTop, panel.width, listHeight}) && input.pointer.wheelDelta)
         mapBrowserScroll_ = std::max(0, mapBrowserScroll_ - (input.pointer.wheelDelta / 120) * 20);
     const auto& maps = worldProject_.maps();
@@ -3451,24 +3576,26 @@ void EditorApp::drawMapBrowser(EditorUiContext& ui, const EditorInputState& inpu
         if (y < listTop || y + 18 > listTop + listHeight) continue;
         const auto& map = maps[index];
         const std::string label = (map.dirty() ? "* " : "") + std::string(map.data().id.value());
-        if (ui.buttonRaw({panel.x + 8, y, panel.width - 16, 18}, label,
+        if (ui.buttonRaw({content.x, y, content.width, 18}, label,
                           map.data().id == worldProject_.activeMapId())) {
             std::string error;
             if (!worldProject_.setActiveMap(map.data().id, error)) status_ = error;
             else { cancelActiveGesture(); validationCache_.invalidate(); layerNameEdit_.clear(); }
         }
     }
-    const int buttonsY = panel.height - 66;
-    if (ui.button({panel.x + 8, buttonsY, panel.width - 16, 18}, "NEW MAP")) newMapDialog_ = true;
-    if (ui.button({panel.x + 8, buttonsY + 22, panel.width - 16, 18}, "SET ENTRY")) {
+    if (ui.buttonWithIcon({content.x, buttonsY, content.width, EditorLayoutMetrics::compactButtonHeight}, EditorIcon::add,
+                          localization_.text(EditorTextId::newMapAction))) newMapDialog_ = true;
+    if (ui.buttonWithIcon({content.x, buttonsY + 22, content.width, EditorLayoutMetrics::compactButtonHeight}, EditorIcon::map,
+                          localization_.text(EditorTextId::setEntry))) {
         std::string error; if (!worldProject_.setEntryMap(worldProject_.activeMapId(), error)) status_ = error;
         else status_ = "Entry map set";
     }
-    if (ui.button({panel.x + 8, buttonsY + 44, panel.width - 16, 18}, "REMOVE MAP")) {
+    if (ui.buttonWithIcon({content.x, buttonsY + 44, content.width, EditorLayoutMetrics::compactButtonHeight}, EditorIcon::remove,
+                          localization_.text(EditorTextId::removeMap))) {
         std::string error; if (!worldProject_.removeMap(worldProject_.activeMapId(), error)) status_ = error;
         else { validationCache_.invalidate(); status_ = "Map removed"; }
     }
-    ui.labelInRect({panel.x + 8, panel.height - 86, panel.width - 16, 18},
+    ui.labelInRect({content.x, entryLabelY, content.width, 18},
                    std::string(localization_.text(EditorTextId::entryMap)) + ": " +
                    std::string(worldProject_.entryMapId().value()));
 }
@@ -3824,22 +3951,23 @@ void EditorApp::frameMap(core::RectI viewport) noexcept{const double mapWidth=st
 void EditorApp::execute(std::unique_ptr<EditorCommand> command){std::string error;if(!document().execute(std::move(command),error))status_=error;}
 void EditorApp::cancelActiveGesture() noexcept{
     drag_={};
+    layerDrag_={};
     previewPanning_=false;
     previewRectangleDragging_=false;
 }
 void EditorApp::shellCommand(EditorShellCommand command){
-    if(command==EditorShellCommand::newMap){playtest_.stop();newMapDialog_=true;}
+    if(command==EditorShellCommand::newMap){cancelActiveGesture();playtest_.stop();newMapDialog_=true;}
     else if(command==EditorShellCommand::newProject){
-        playtest_.stop(); worldProject_=WorldProjectDocument::newProject(initialDocument(content_));
+        cancelActiveGesture(); playtest_.stop(); worldProject_=WorldProjectDocument::newProject(initialDocument(content_));
         contentMode_=false; mapBrowserScroll_=0; validationCache_.invalidate(); frameMap(viewportBounds_);
         status_=std::string(localization_.text(EditorTextId::newProject));
     }
     else if(command==EditorShellCommand::undo)document().undo();
     else if(command==EditorShellCommand::redo){std::string error;if(!document().redo(error))status_=error;}
     else if(command==EditorShellCommand::toggleGrid)document().viewport().showGrid=!document().viewport().showGrid;
-    else if(command==EditorShellCommand::playtest)togglePlaytest();
-    else if(command==EditorShellCommand::mapMode){resetContentEditState();resetContentPreviewState();contentMode_=false;status_="Map mode";}
-    else if(command==EditorShellCommand::contentMode){resetContentEditState();resetContentPreviewState();contentMode_=true;status_="Content mode";}
+    else if(command==EditorShellCommand::playtest){cancelActiveGesture();togglePlaytest();}
+    else if(command==EditorShellCommand::mapMode){cancelActiveGesture();resetContentEditState();resetContentPreviewState();contentMode_=false;status_="Map mode";}
+    else if(command==EditorShellCommand::contentMode){cancelActiveGesture();resetContentEditState();resetContentPreviewState();contentMode_=true;status_="Content mode";}
     else if(command==EditorShellCommand::saveAll){std::string error;if(!saveAll(error))status_=error;}
     else if(command==EditorShellCommand::validateWorkspace){status_=validateWorkspace()?"Workspace valid":"Workspace invalid; see diagnostics";}
     else frameMap(viewportBounds_);
@@ -3849,13 +3977,13 @@ bool EditorApp::open(const std::filesystem::path& path,std::string& error){
     if (path.extension() == ".uworld") project = WorldProjectDocument::open(path, content_, error);
     else { auto loaded = EditorDocument::open(path, content_, error); if (loaded) project = WorldProjectDocument::fromStandalone(std::move(*loaded)); }
     if(!project) return false;
-    playtest_.stop(); worldProject_=std::move(*project); contentMode_=false;
+    cancelActiveGesture(); playtest_.stop(); worldProject_=std::move(*project); contentMode_=false;
     validationCache_.invalidate(); frameMap(viewportBounds_); error.clear(); return true;
 }
 bool EditorApp::importMap(const std::filesystem::path& path, std::string& error){
     if (path.extension() == ".uworld") { error = "Import Map accepts a standalone UMAP or DMAP file"; return false; }
     if (!worldProject_.importMap(path, content_, error)) return false;
-    playtest_.stop(); contentMode_ = false; validationCache_.invalidate(); frameMap(viewportBounds_);
+    cancelActiveGesture(); playtest_.stop(); contentMode_ = false; validationCache_.invalidate(); frameMap(viewportBounds_);
     error.clear(); return true;
 }
 bool EditorApp::save(std::string& error){if(contentMode_)return saveAll(error);return worldProject_.save(content_,error);}

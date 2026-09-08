@@ -17,11 +17,12 @@ enum class EditorLanguage {
 
 enum class EditorTextId {
     file, edit, view, settings, language,
-    newMap, openMap, save, saveAs, saveAll, exit, undo, redo,
+    newMap, newMapAction, openMap, save, saveAs, saveAll, exit, undo, redo,
     mapMode, contentMode, grid, frameMap, validateWorkspace,
     tiles, semantics, stamps, entities, layers, rules, encounters,
     select, pencil, erase, rectangle, fill, eyedropper, collision, region,
     properties, categories, definitions, inspector, status, add, remove,
+    dragToReorder, showLayer, hideLayer, lockLayer, unlockLayer, addLayer, removeLayer,
     moveUp, moveDown, open, create, update, clear, set, placeInMap, findInMap,
     saveChangesBeforeContinuing, contentStudio, mapMaker, builtinContent,
     contentWorkspace, workspaceInvalid, compileUnavailable, playtestUnavailable,
