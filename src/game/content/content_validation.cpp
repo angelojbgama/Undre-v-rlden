@@ -1,6 +1,7 @@
 #include "game/content/content_validation.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <limits>
 #include <string_view>
@@ -94,6 +95,44 @@ void validateAttack(const AuthoredAttack& value, ContentValidationReport& report
         error(report, ContentKind::attack, value.id, "invalid_value", "melee attack requires hitboxes", "meleeHitboxes");
     if (value.kind == gameplay::AttackKind::projectile && !value.projectileDefinitionId)
         error(report, ContentKind::attack, value.id, "invalid_value", "projectile attack requires a projectile definition", "projectileDefinitionId");
+
+    std::array<bool, 4> seenFacings{};
+    for (const auto& direction : value.shapes) {
+        const auto facingIndex = [&] {
+            switch (direction.facing) {
+            case gameplay::FacingDirection::down: return std::size_t{0};
+            case gameplay::FacingDirection::up: return std::size_t{1};
+            case gameplay::FacingDirection::left: return std::size_t{2};
+            case gameplay::FacingDirection::right: return std::size_t{3};
+            }
+            return std::size_t{0};
+        }();
+        if (seenFacings[facingIndex]) {
+            error(report, ContentKind::attack, value.id, "duplicate_attack_shape_facing",
+                  "attack shape facing is duplicated", "shapes");
+            continue;
+        }
+        seenFacings[facingIndex] = true;
+        std::unordered_set<std::uint32_t> seenFrames;
+        for (const auto& frame : direction.frames) {
+            const auto expectedCells = frame.width > 0 &&
+                frame.height <= std::numeric_limits<std::size_t>::max() / frame.width
+                ? static_cast<std::size_t>(frame.width) * frame.height : 0;
+            if (frame.width == 0 || frame.height == 0 || expectedCells == 0 ||
+                frame.cells.size() != expectedCells) {
+                error(report, ContentKind::attack, value.id, "invalid_attack_shape",
+                      "attack shape dimensions do not match its cell mask", "shapes");
+            }
+            if (frame.tick >= value.totalTicks) {
+                error(report, ContentKind::attack, value.id, "invalid_attack_shape_tick",
+                      "attack shape tick must be inside totalTicks", "shapes");
+            }
+            if (!seenFrames.emplace(frame.frameIndex).second) {
+                error(report, ContentKind::attack, value.id, "duplicate_attack_shape_frame",
+                      "attack shape frame index is duplicated for a facing", "shapes");
+            }
+        }
+    }
 }
 
 } // namespace

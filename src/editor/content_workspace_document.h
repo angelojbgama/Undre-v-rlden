@@ -333,6 +333,9 @@ public:
     [[nodiscard]] bool removePresentationEffect(const simulation::DefinitionId& id,
                                                 std::string& error);
 
+    [[nodiscard]] bool duplicateDefinition(const ContentDefinitionKey& source,
+                                           simulation::DefinitionId duplicateId,
+                                           std::string& error);
     [[nodiscard]] bool removeDefinition(const ContentDefinitionKey& key, std::string& error);
 
 private:

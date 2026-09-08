@@ -1,5 +1,7 @@
 #include "game/content/content_compiler.h"
+#include "game/gameplay/attack_shapes.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -9,7 +11,30 @@ namespace {
 
 TilesetDefinition compileTileset(const AuthoredTileset& v) { return {v.id, v.displayName, v.relativeAssetPath, v.tileSize, v.columns, v.rows}; }
 gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets}; }
-gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) { return {v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks, v.minimumRangePixels, v.maximumRangePixels, v.visualActionId, v.meleeHitboxes, v.projectileDefinitionId, v.timeline}; }
+gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) {
+    gameplay::AttackDefinition result{v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks,
+                                      v.minimumRangePixels, v.maximumRangePixels,
+                                      v.visualActionId, v.meleeHitboxes,
+                                      v.projectileDefinitionId, v.timeline, {}};
+    for (const auto& authoredDirection : v.shapes) {
+        for (const auto& frame : authoredDirection.frames) {
+            auto sample = std::find_if(result.collisionSamples.begin(),
+                                       result.collisionSamples.end(),
+                                       [&](const auto& candidate) {
+                                           return candidate.tick == frame.tick;
+                                       });
+            if (sample == result.collisionSamples.end()) {
+                result.collisionSamples.push_back({frame.tick, {}});
+                sample = std::prev(result.collisionSamples.end());
+            }
+            sample->regions[gameplay::facingIndex(authoredDirection.facing)] =
+                gameplay::compileAttackShapeMask(frame.width, frame.height, frame.cells);
+        }
+    }
+    std::sort(result.collisionSamples.begin(), result.collisionSamples.end(),
+              [](const auto& left, const auto& right) { return left.tick < right.tick; });
+    return result;
+}
 gameplay::creatures::BehaviorProfile compileBehavior(const AuthoredBehaviorProfile& v) { return {v.id, v.detectionRangePixels, v.disengageRangePixels, v.idleDurationTicks, v.wanderDurationTicks}; }
 gameplay::creatures::EnemyDefinition compileEnemy(const AuthoredEnemy& v) { return {v.id, v.visualSetId, v.behaviorProfileId, v.faction, v.maximumHealth, v.movementSpeedSubpixelsPerTick, v.collisionBody, v.hurtbox, v.attackIds, v.rewardProfileId}; }
 gameplay::ItemDefinition compileItem(const AuthoredItem& v) {

@@ -277,6 +277,20 @@ void EditorVisualPreview::prepare(const ContentWorkspaceDocument& document,
     animator_ = render::Animator{};
     flipX_ = request.facing == game::gameplay::FacingDirection::right;
 
+    // Tilesets are authored as atlas metadata rather than VisualImage
+    // definitions. Reuse the same secure image resolver for their preview;
+    // the synthetic ID is editor-only and is never written to content data.
+    if (request.key.kind == ContentDefinitionKind::tileset) {
+        if (const auto* tileset = document.tileset(request.key.id)) {
+            game::content::AuthoredVisualImage atlasImage;
+            atlasImage.id = simulation::DefinitionId{
+                std::string("__preview.tileset.") + std::string(request.key.id.value())};
+            atlasImage.root = game::presentation::VisualAssetRoot::gameAssets;
+            atlasImage.relativePath = tileset->relativeAssetPath;
+            image_ = loadImage(document, atlasImage);
+        }
+    }
+
     const auto* imageDefinition = [&]() -> const game::content::AuthoredVisualImage* {
         const game::content::AuthoredVisualImage* result = nullptr;
         switch (request.key.kind) {

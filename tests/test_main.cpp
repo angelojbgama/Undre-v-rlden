@@ -55,6 +55,10 @@
 #include "editor/editor_ui.h"
 #include "editor/editor_layout.h"
 #include "editor/editor_text_layout.h"
+#include "editor/asset_browser.h"
+#include "editor/content_collection.h"
+#include "editor/content_reference_tools.h"
+#include "editor/visual_authoring.h"
 #include "editor/world_project_document.h"
 #include "engine/data/json.h"
 #include "engine/core/utf8.h"
@@ -66,6 +70,7 @@
 #include "game/enemy_visual.h"
 #include "game/game_launch.h"
 #include "game/gameplay/attack_definitions.h"
+#include "game/gameplay/attack_shapes.h"
 #include "game/gameplay/combat_system.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
@@ -8749,6 +8754,111 @@ void testPhase18DUnifiedStudioWorkflow() {
     std::filesystem::remove_all(root, fsError);
 }
 
+void testContentStudioDeepAuthoringHelpers() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace gameplay = underworld::game::gameplay;
+    namespace core = underworld::core;
+
+    expect(!editor::clampCollectionSelection(0, std::size_t{0}) &&
+               editor::clampCollectionSelection(3, std::size_t{9}) == std::optional<std::size_t>{2} &&
+               !editor::clampCollectionSelection(3, std::nullopt),
+           "content collection selection clamps and clears empty selections");
+    expect(editor::selectionAfterErase(0, 0) == std::nullopt &&
+               editor::selectionAfterErase(2, 1) == std::optional<std::size_t>{1} &&
+               editor::selectionAfterErase(2, 4) == std::optional<std::size_t>{1},
+           "content collection removal selects a valid adjacent row");
+    expect(editor::selectionAfterMove(1, 0, 2) == 0 &&
+               editor::selectionAfterMove(1, 2, 0) == 2 &&
+               editor::selectionAfterMove(4, 1, 3) == 4,
+           "content collection move preserves the selected entry identity");
+
+    auto builtin = editor::ContentWorkspaceDocument::fromBuiltin(content::makeBuiltinAuthoredContent());
+    const auto index = builtin.index();
+    bool allCategoriesSafe = true;
+    for (const auto kind : editor::ContentWorkspaceDocument::categoryOrder()) {
+        for (const auto& key : index) {
+            if (key.kind != kind) continue;
+            allCategoriesSafe = allCategoriesSafe &&
+                !editor::contentDefinitionDisplayName(builtin, key).empty();
+            static_cast<void>(editor::contentDefinitionSummary(builtin, key));
+        }
+    }
+    expect(allCategoriesSafe && !index.empty(),
+           "content audit can enumerate every registered category without inspector assumptions");
+
+    const auto itemCandidates = editor::contentReferenceCandidates(
+        builtin, editor::ContentDefinitionKind::item, "item.");
+    expect(!itemCandidates.empty() &&
+               std::is_sorted(itemCandidates.begin(), itemCandidates.end(),
+                              [](const auto& left, const auto& right) {
+                                  if (left.displayName != right.displayName)
+                                      return left.displayName < right.displayName;
+                                  return left.key.id.value() < right.key.id.value();
+                              }),
+           "reference picker returns deterministic filtered candidates");
+
+    expect(editor::AssetBrowserCatalog::isSafeRelativePath("tiles/crate.png") &&
+               !editor::AssetBrowserCatalog::isSafeRelativePath("../crate.png") &&
+               !editor::AssetBrowserCatalog::isSafeRelativePath("C:/crate.png") &&
+               !editor::AssetBrowserCatalog::isSafeRelativePath("tiles\\..\\crate.png"),
+           "asset browser accepts relative paths and rejects absolute traversal paths");
+
+    const auto rewardKey = editor::ContentDefinitionKey{
+        editor::ContentDefinitionKind::rewardGrant,
+        underworld::simulation::DefinitionId{"reward.quest.scholar.path"}};
+    const auto rewardSummary = editor::contentDefinitionSummary(builtin, rewardKey);
+    expect(rewardSummary.find("item.life_potion x2") != std::string::npos &&
+               rewardSummary.find("item.training_armor x1") != std::string::npos,
+           "reference summaries expose individual reward items instead of only a count");
+
+    const auto transform = editor::VisualPreviewTransform{{0, 0, 128, 128}, {10, 12}, 2.0};
+    expect(editor::anchorFromPreviewPointer(transform, {16, 20}, {0, 0, 16, 16}) ==
+               core::PointI{3, 4} &&
+               editor::offsetFromPreviewDrag(transform, {10, 10}, {16, 6}, {2, 3}) ==
+               core::PointI{5, 1},
+           "visual authoring converts preview drags into logical anchor and offset values");
+    expect(editor::anchorForPreset(editor::AnchorPreset::center, {0, 0, 17, 9}) ==
+               core::PointI{8, 4} &&
+               editor::clampPreviewSource({-2, 3, 20, 20}, {16, 16}) ==
+               core::RectI{0, 0, 16, 16} &&
+               editor::snapPreviewSource({3, 5, 9, 9}, {0, 0}, {4, 4}, {32, 32}) ==
+               core::RectI{4, 4, 8, 8},
+           "visual authoring presets, clamps and grid-snaps source rectangles safely");
+
+    const std::vector<std::uint8_t> mask{1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1};
+    const auto regions = gameplay::compileAttackShapeMask(4, 3, mask, -2, 5);
+    expect(regions.size() == 2 && regions[0].offsetX == -2 && regions[0].offsetY == 5 &&
+               regions[0].width == 2 && regions[0].height == 2 &&
+               regions[1].offsetX == 1 && regions[1].offsetY == 6 &&
+               regions[1].width == 1 && regions[1].height == 2,
+           "authored attack masks compile to deterministic compact rectangles");
+
+    content::AuthoredAttack authored;
+    authored.id = {"attack.shape.roundtrip"};
+    authored.visualActionId = {"visual.attack"};
+    authored.damage = {3, 0};
+    authored.totalTicks = 8;
+    authored.maximumRangePixels = 32;
+    authored.timeline = {{1, gameplay::AttackTimelineEventKind::activateHitbox}};
+    authored.shapes.push_back({gameplay::FacingDirection::down, {{2, 3, 2, 2, {1, 0, 1, 1}}}});
+    content::AuthoredContentPack pack;
+    pack.attacks.push_back(authored);
+    const auto decoded = content::decodeAuthoredContentJson(
+        content::encodeAuthoredContentJson(pack));
+    bool shapeRoundTrip = false;
+    if (decoded.content && decoded.content->attacks.size() == 1) {
+        const auto& decodedAttack = decoded.content->attacks.front();
+        shapeRoundTrip = decodedAttack.shapes.size() == 1 &&
+            decodedAttack.shapes.front().facing == gameplay::FacingDirection::down &&
+            decodedAttack.shapes.front().frames.size() == 1 &&
+            decodedAttack.shapes.front().frames.front().frameIndex == 2 &&
+            decodedAttack.shapes.front().frames.front().cells == authored.shapes.front().frames.front().cells;
+    }
+    expect(shapeRoundTrip,
+           "authored attack shape data round-trips through the strict content codec");
+}
+
 void testEditorLocalization() {
     using namespace underworld;
     using editor::EditorLanguage;
@@ -9158,6 +9268,7 @@ int main() {
         testPhase18BVisualPreview();
         testPhase18CGameplayContentEditors();
         testPhase18DUnifiedStudioWorkflow();
+        testContentStudioDeepAuthoringHelpers();
         testEditorLocalization();
         testEditorResponsiveLayerWorkflow();
         testWorldProjectAndMultiMapPlaytest();

@@ -863,7 +863,44 @@ bool ContentWorkspaceDocument::remove##methodName(const simulation::DefinitionId
 }
 
 UNDERWORLD_CONTENT_EDITORS(Projectile, projectile, projectiles, AuthoredProjectile)
-UNDERWORLD_CONTENT_EDITORS(Attack, attack, attacks, AuthoredAttack)
+bool ContentWorkspaceDocument::addAttack(const std::filesystem::path& file,
+                                         game::content::AuthoredAttack value,
+                                         std::string& error) {
+    const auto id = value.id;
+    return addDefinition(ContentDefinitionKind::attack, file, id,
+        [value = std::move(value)](AuthoredContentPack& pack) {
+            pack.attacks.push_back(value);
+        }, error);
+}
+
+bool ContentWorkspaceDocument::updateAttack(const simulation::DefinitionId& id,
+                                            game::content::AuthoredAttack value,
+                                            std::string& error) {
+    if (value.id != id) { error = "definition IDs are stable during editing"; return false; }
+    return mutateDefinition(ContentDefinitionKind::attack, id,
+        [value = std::move(value), id](AuthoredContentPack& pack) {
+            auto* current = findId(pack.attacks, id);
+            if (!current) return false;
+            *current = value;
+            return true;
+        }, error);
+}
+
+bool ContentWorkspaceDocument::removeAttack(const simulation::DefinitionId& id,
+                                            std::string& error) {
+    // The typed mutation remains available for repair workflows that inspect
+    // diagnostics after intentionally removing a referenced definition. The
+    // Content Studio DELETE action uses removeDefinition(), which performs the
+    // safe reference check before reaching this lower-level operation.
+    return mutateDefinition(ContentDefinitionKind::attack, id,
+        [id](AuthoredContentPack& pack) {
+            const auto it = std::find_if(pack.attacks.begin(), pack.attacks.end(),
+                                         [&](const auto& value) { return value.id == id; });
+            if (it == pack.attacks.end()) return false;
+            pack.attacks.erase(it);
+            return true;
+        }, error);
+}
 UNDERWORLD_CONTENT_EDITORS(Behavior, behavior, behaviors, AuthoredBehaviorProfile)
 UNDERWORLD_CONTENT_EDITORS(Enemy, enemy, enemies, AuthoredEnemy)
 UNDERWORLD_CONTENT_EDITORS(Item, item, items, AuthoredItem)
@@ -880,7 +917,169 @@ UNDERWORLD_CONTENT_EDITORS(PresentationEffect, presentationEffect, presentationE
 
 #undef UNDERWORLD_CONTENT_EDITORS
 
+bool ContentWorkspaceDocument::duplicateDefinition(
+    const ContentDefinitionKey& source, simulation::DefinitionId duplicateId,
+    std::string& error) {
+    if (!ensureWritable(error)) return false;
+    if (duplicateId.empty()) { error = "definition ID must not be empty"; return false; }
+    if (source.id.empty()) { error = "source definition ID must not be empty"; return false; }
+    const auto* sourceLocation = sourceFor(source);
+    if (!sourceLocation) { error = "source definition is not present in this workspace"; return false; }
+    if (sourceFor({source.kind, duplicateId})) {
+        error = "definition ID already exists";
+        return false;
+    }
+
+    const auto sourcePath = sourceLocation->sourcePath;
+    return addDefinition(source.kind, sourcePath, duplicateId,
+        [&](AuthoredContentPack& pack) {
+            const auto copy = [&](auto& values) {
+                const auto* original = findId(values, source.id);
+                if (!original) return false;
+                auto duplicate = *original;
+                duplicate.id = duplicateId;
+                values.push_back(std::move(duplicate));
+                return true;
+            };
+            switch (source.kind) {
+            case ContentDefinitionKind::tileset: return copy(pack.tilesets);
+            case ContentDefinitionKind::projectile: return copy(pack.projectiles);
+            case ContentDefinitionKind::attack: return copy(pack.attacks);
+            case ContentDefinitionKind::behavior: return copy(pack.behaviors);
+            case ContentDefinitionKind::enemy: return copy(pack.enemies);
+            case ContentDefinitionKind::item: return copy(pack.items);
+            case ContentDefinitionKind::object: return copy(pack.objects);
+            case ContentDefinitionKind::pickup: return copy(pack.pickups);
+            case ContentDefinitionKind::npc: return copy(pack.npcs);
+            case ContentDefinitionKind::npcVisual: return copy(pack.npcVisuals);
+            case ContentDefinitionKind::dialogue: return copy(pack.dialogues);
+            case ContentDefinitionKind::quest: return copy(pack.quests);
+            case ContentDefinitionKind::tileSemantic: return copy(pack.tileSemantics);
+            case ContentDefinitionKind::stamp: return copy(pack.stamps);
+            case ContentDefinitionKind::playerProgression: return copy(pack.playerProgressions);
+            case ContentDefinitionKind::rewardProfile: return copy(pack.rewardProfiles);
+            case ContentDefinitionKind::rewardGrant: return copy(pack.rewardGrants);
+            case ContentDefinitionKind::shop: return copy(pack.shops);
+            case ContentDefinitionKind::presentationEffect: return copy(pack.presentationEffects);
+            case ContentDefinitionKind::visualImage: return copy(pack.visualImages);
+            case ContentDefinitionKind::staticSprite: return copy(pack.staticSprites);
+            case ContentDefinitionKind::animation: return copy(pack.animations);
+            case ContentDefinitionKind::enemyVisual: return copy(pack.enemyVisuals);
+            case ContentDefinitionKind::objectVisual: return copy(pack.objectVisuals);
+            case ContentDefinitionKind::authoringDescriptor: {
+                const auto it = std::find_if(pack.authoringDescriptors.begin(),
+                                             pack.authoringDescriptors.end(),
+                                             [&](const auto& value) {
+                                                 return value.definitionId == source.id;
+                                             });
+                if (it == pack.authoringDescriptors.end()) return false;
+                auto duplicate = *it;
+                duplicate.definitionId = duplicateId;
+                pack.authoringDescriptors.push_back(std::move(duplicate));
+                return true;
+            }
+            }
+            return false;
+        }, error);
+}
+
 bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key, std::string& error) {
+    if (!ensureWritable(error)) return false;
+    if (!sourceFor(key)) { error = "definition is not present in this workspace"; return false; }
+    const auto* pack = mergedAuthored_ ? &*mergedAuthored_ : nullptr;
+    if (!pack) { error = "content workspace has no merged authored data"; return false; }
+    const auto& id = key.id;
+    std::string referencedBy;
+    const auto refText = [](std::string_view category, const simulation::DefinitionId& definition) {
+        return std::string(category) + " " + std::string(definition.value());
+    };
+    switch (key.kind) {
+    case ContentDefinitionKind::visualImage:
+        for (const auto& value : pack->staticSprites) if (value.imageId == id) { referencedBy = refText("staticSprite", value.id); break; }
+        if (referencedBy.empty()) for (const auto& value : pack->animations) if (value.imageId == id) { referencedBy = refText("animation", value.id); break; }
+        break;
+    case ContentDefinitionKind::staticSprite:
+        for (const auto& value : pack->pickups) if (value.visualId == id) { referencedBy = refText("pickup", value.id); break; }
+        break;
+    case ContentDefinitionKind::animation: {
+        const auto matches = [&](const auto& ref) {
+            return (ref.defaultAnimation && *ref.defaultAnimation == id) ||
+                   (ref.down && *ref.down == id) ||
+                   (ref.up && *ref.up == id) ||
+                   (ref.side && *ref.side == id);
+        };
+        for (const auto& value : pack->enemyVisuals) {
+            if (matches(value.idle) ||
+                (value.move && matches(*value.move)) ||
+                (value.hurt && matches(*value.hurt)) ||
+                (value.death && matches(*value.death)) ||
+                (value.dead && matches(*value.dead)) ||
+                std::any_of(value.attacks.begin(), value.attacks.end(), [&](const auto& attack) {
+                    return matches(attack.clips);
+                })) { referencedBy = refText("enemyVisual", value.id); break; }
+        }
+        if (referencedBy.empty()) for (const auto& value : pack->objectVisuals) {
+            if (value.idleAnimationId == id ||
+                (value.openedAnimationId && *value.openedAnimationId == id) ||
+                (value.destroyingAnimationId && *value.destroyingAnimationId == id) ||
+                (value.activationInactiveAnimationId && *value.activationInactiveAnimationId == id) ||
+                (value.activationActiveAnimationId && *value.activationActiveAnimationId == id) ||
+                (value.doorLockedAnimationId && *value.doorLockedAnimationId == id) ||
+                (value.doorClosedAnimationId && *value.doorClosedAnimationId == id) ||
+                (value.doorOpenAnimationId && *value.doorOpenAnimationId == id) ||
+                (value.destroyedAnimationId && *value.destroyedAnimationId == id)) {
+                referencedBy = refText("objectVisual", value.id); break;
+            }
+        }
+        if (referencedBy.empty()) for (const auto& value : pack->npcVisuals) {
+            if (value.idle && matches(*value.idle)) { referencedBy = refText("npcVisual", value.id); break; }
+        }
+        break;
+    }
+    case ContentDefinitionKind::tileset:
+        for (const auto& value : pack->tileSemantics) if (value.tilesetId == id) { referencedBy = refText("tileSemantic", value.id); break; }
+        break;
+    case ContentDefinitionKind::projectile:
+        for (const auto& value : pack->attacks) if (value.projectileDefinitionId && *value.projectileDefinitionId == id) { referencedBy = refText("attack", value.id); break; }
+        break;
+    case ContentDefinitionKind::attack:
+        for (const auto& value : pack->enemies) if (std::find(value.attackIds.begin(), value.attackIds.end(), id) != value.attackIds.end()) { referencedBy = refText("enemy", value.id); break; }
+        break;
+    case ContentDefinitionKind::behavior:
+        for (const auto& value : pack->enemies) if (value.behaviorProfileId == id) { referencedBy = refText("enemy", value.id); break; }
+        break;
+    case ContentDefinitionKind::enemyVisual:
+        for (const auto& value : pack->enemies) if (value.visualSetId == id) { referencedBy = refText("enemy", value.id); break; }
+        break;
+    case ContentDefinitionKind::objectVisual:
+        for (const auto& value : pack->objects) if (value.visualSetId == id) { referencedBy = refText("object", value.id); break; }
+        break;
+    case ContentDefinitionKind::npcVisual:
+        for (const auto& value : pack->npcs) if (value.visualSetId == id) { referencedBy = refText("npc", value.id); break; }
+        break;
+    case ContentDefinitionKind::item:
+        for (const auto& value : pack->pickups) if (const auto* item = std::get_if<game::content::AuthoredItemPickup>(&value.payload); item && item->itemId == id) { referencedBy = refText("pickup", value.id); break; }
+        if (referencedBy.empty()) for (const auto& value : pack->rewardGrants) if (std::any_of(value.items.begin(), value.items.end(), [&](const auto& item) { return item.itemId == id; })) { referencedBy = refText("rewardGrant", value.id); break; }
+        if (referencedBy.empty()) for (const auto& value : pack->shops) if (std::any_of(value.offers.begin(), value.offers.end(), [&](const auto& offer) { return offer.itemId == id; })) { referencedBy = refText("shop", value.id); break; }
+        break;
+    case ContentDefinitionKind::pickup:
+        for (const auto& value : pack->rewardProfiles) if (std::any_of(value.loot.begin(), value.loot.end(), [&](const auto& entry) { return entry.pickupDefinitionId == id; })) { referencedBy = refText("rewardProfile", value.id); break; }
+        break;
+    case ContentDefinitionKind::rewardProfile:
+        for (const auto& value : pack->enemies) if (value.rewardProfileId && *value.rewardProfileId == id) { referencedBy = refText("enemy", value.id); break; }
+        break;
+    case ContentDefinitionKind::rewardGrant:
+        for (const auto& value : pack->quests) if (value.rewardGrantId && *value.rewardGrantId == id) { referencedBy = refText("quest", value.id); break; }
+        break;
+    case ContentDefinitionKind::dialogue:
+        for (const auto& value : pack->npcs) if (value.defaultDialogueId == id) { referencedBy = refText("npc", value.id); break; }
+        break;
+    default: break;
+    }
+    if (!referencedBy.empty()) {
+        error = "cannot delete definition: referenced by " + referencedBy;
+        return false;
+    }
     return mutateDefinition(key.kind, key.id,
         [key](AuthoredContentPack& pack) {
             auto erase = [&](auto& values) {

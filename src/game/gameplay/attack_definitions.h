@@ -70,6 +70,11 @@ struct AttackDefinition final {
     std::optional<DirectionalBoxes> meleeHitboxes{};
     std::optional<simulation::DefinitionId> projectileDefinitionId{};
     std::vector<AttackTimelineEvent> timeline{};
+    struct CollisionSample final {
+        std::uint32_t tick{};
+        std::array<std::vector<DirectionalBoxDefinition>, 4> regions{};
+    };
+    std::vector<CollisionSample> collisionSamples{};
 };
 
 // Gameplay attack timing is measured in fixed ticks, independently from any

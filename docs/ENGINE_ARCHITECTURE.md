@@ -2066,6 +2066,46 @@ solicitado) e reutiliza `MapSession`, `MapLink` e `PendingMapTransition` para ca
 o alvo. Há somente um `RuntimeWorld` ativo por vez; mapas não são simulados
 simultaneamente e o editor não mantém um sistema de transição paralelo.
 
+## Content Studio deep authoring tools
+
+O Content Studio mantém a autoria tipada no `ContentWorkspaceDocument`, mas a
+interface agora trata referências e coleções como estruturas de produção, não
+como campos isolados. Inspectors usam seleção independente para cada coleção
+aninhada; remover uma entrada remove a linha selecionada, e não implicitamente a
+última entrada. Essas regras deixam workspaces incompletos editáveis sem permitir
+acesso fora dos limites.
+
+As referências conhecidas passam por um `ContentReferencePicker`, que pesquisa o
+índice determinístico de definições (builtin e authored), mostra o resumo quando
+disponível e escreve somente o `DefinitionId` authored. `Quick Inspect` é uma
+visão somente leitura e pode abrir a definição real; uma pilha curta de
+`ContentDefinitionKey` fornece `BACK` sem perder a definição de origem. Esse
+fluxo é editor-only: não adiciona um grafo genérico nem altera o formato dos
+conteúdos.
+
+Reward grants, reward profiles, shops, progressões, ataques de inimigos,
+objetivos/tags de quests e as listas aninhadas de diálogos usam o mesmo padrão
+de coleção: linha selecionável, edição contextual, remoção segura e operações
+de ordem quando a ordem authored tem significado. O picker Quest → Reward
+Grant também pode criar uma nova definição authored e ligar o ID em uma única
+operação de workflow.
+
+O browser de assets mantém um catálogo de paths relativos sob as raízes
+permitidas e deixa a decodificação de imagens para o preview/cache existente.
+Assim, escolher uma imagem não persiste paths absolutos nem faz descoberta de
+assets a cada frame. Estado temporário de busca, seleção, quick inspect e drafts
+continua fora de Content JSON, UMAP, UWORLD e DMAP.
+
+Máscaras opcionais de ataque são dados de gameplay authored separados dos dados
+de apresentação. O compilador transforma runs determinísticos da máscara em
+regiões retangulares compactas; o runtime não compara pixels nem consulta o
+frame atual do `Animator`. Ataques antigos continuam usando
+`DirectionalBoxes`, enquanto a nova anotação é opcional.
+
+O contrato de estabilidade é deliberado: seleção de uma definição inválida ou
+de uma coleção vazia produz diagnóstico e estado editável. Validação e compile
+podem rejeitar o workspace, mas um inspector não deve encerrar o Content Studio.
+
 ## Content Studio localization and preferences
 
 The editor language is a tooling preference, not authored game content. The shell owns

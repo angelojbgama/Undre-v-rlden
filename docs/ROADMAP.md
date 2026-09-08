@@ -1547,6 +1547,11 @@ O primeiro incremento de conteúdo concreto após esse foco adiciona props ambie
 quebráveis (crate, vase, stone block variants e fire block) por definitions,
 destructible/activation capabilities e estados visuais genéricos, sem criar uma nova
 fase ou sistema específico por prop.
+
+O incremento atual aprofunda esse mesmo tooling: coleções authored têm seleção
+individual e remoção segura, referências conhecidas usam picker/quick inspect e o
+workflow Quest → Reward Grant pode criar e ligar uma recompensa. Isso é uma melhoria
+contínua do Content Studio production tooling, não uma nova fase obrigatória.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

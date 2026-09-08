@@ -92,6 +92,23 @@ constexpr std::array entries{
     Entry{EditorTextId::saveProject,"Save Project","Salvar Projeto"}, Entry{EditorTextId::saveProjectAs,"Save Project As...","Salvar Projeto Como..."},
     Entry{EditorTextId::validateProject,"Validate Project","Validar Projeto"}, Entry{EditorTextId::projectValid,"Project valid","Projeto válido"},
     Entry{EditorTextId::projectInvalid,"Project invalid","Projeto inválido"}, Entry{EditorTextId::findInProject,"FIND IN PROJECT","ENCONTRAR NO PROJETO"},
+    Entry{EditorTextId::duplicate,"DUPLICATE","DUPLICAR"}, Entry{EditorTextId::deleteDefinition,"DELETE","REMOVER"},
+    Entry{EditorTextId::chooseImage,"Choose Image...","Escolher Imagem..."}, Entry{EditorTextId::assetBrowser,"ASSET BROWSER","NAVEGADOR DE ASSETS"},
+    Entry{EditorTextId::search,"Search","Pesquisar"}, Entry{EditorTextId::selectSource,"Select Source","Selecionar Origem"},
+    Entry{EditorTextId::snapToGrid,"Snap to Grid","Ajustar à Grade"}, Entry{EditorTextId::moveAnchor,"Move Anchor","Mover Âncora"},
+    Entry{EditorTextId::moveFrame,"Move Frame","Mover Quadro"}, Entry{EditorTextId::applyAnchorToAll,"Apply Anchor To All Frames","Aplicar Âncora a Todos"},
+    Entry{EditorTextId::copyPreviousFrame,"Copy Previous Frame","Copiar Quadro Anterior"}, Entry{EditorTextId::attackMask,"Attack Mask","Máscara de Ataque"},
+    Entry{EditorTextId::clearFrame,"Clear Frame","Limpar Quadro"}, Entry{EditorTextId::playWithHitboxes,"Play With Hitboxes","Reproduzir com Áreas de Impacto"},
+    Entry{EditorTextId::invalidAsset,"Invalid Asset","Asset Inválido"}, Entry{EditorTextId::referencedBy,"Referenced By","Referenciado por"},
+    Entry{EditorTextId::cannotDelete,"Cannot Delete","Não é Possível Remover"}, Entry{EditorTextId::detectGrid,"Detect Grid From Image","Detectar Grade da Imagem"},
+    Entry{EditorTextId::chooseReference,"PICK","ESCOLHER"}, Entry{EditorTextId::details,"DETAILS","DETALHES"},
+    Entry{EditorTextId::close,"CLOSE","FECHAR"}, Entry{EditorTextId::openDefinition,"OPEN DEFINITION","ABRIR DEFINIÇÃO"},
+    Entry{EditorTextId::noResults,"No matching definitions","Nenhuma definição encontrada"},
+    Entry{EditorTextId::back,"BACK","VOLTAR"},
+    Entry{EditorTextId::createNewReward,"CREATE NEW REWARD","CRIAR NOVA RECOMPENSA"},
+    Entry{EditorTextId::changeReward,"CHANGE REWARD","ALTERAR RECOMPENSA"},
+    Entry{EditorTextId::clearReward,"CLEAR REWARD","LIMPAR RECOMPENSA"},
+    Entry{EditorTextId::alreadyAdded,"Already added","Já adicionado"},
 };
 
 const Entry* find(EditorTextId id) noexcept {
@@ -463,7 +480,16 @@ const std::vector<EditorTextId>& EditorLocalization::allTextIds() noexcept {
         EditorTextId::goToTarget, EditorTextId::openProject, EditorTextId::saveProject,
         EditorTextId::saveProjectAs, EditorTextId::validateProject,
         EditorTextId::projectValid, EditorTextId::projectInvalid,
-        EditorTextId::findInProject,
+        EditorTextId::findInProject, EditorTextId::duplicate, EditorTextId::deleteDefinition,
+        EditorTextId::chooseImage, EditorTextId::assetBrowser, EditorTextId::search,
+        EditorTextId::selectSource, EditorTextId::snapToGrid, EditorTextId::moveAnchor,
+        EditorTextId::moveFrame, EditorTextId::applyAnchorToAll, EditorTextId::copyPreviousFrame,
+        EditorTextId::attackMask, EditorTextId::clearFrame, EditorTextId::playWithHitboxes,
+        EditorTextId::invalidAsset, EditorTextId::referencedBy, EditorTextId::cannotDelete,
+        EditorTextId::detectGrid, EditorTextId::chooseReference, EditorTextId::details,
+        EditorTextId::close, EditorTextId::openDefinition, EditorTextId::noResults,
+        EditorTextId::back, EditorTextId::createNewReward, EditorTextId::changeReward,
+        EditorTextId::clearReward, EditorTextId::alreadyAdded,
     };
     return ids;
 }

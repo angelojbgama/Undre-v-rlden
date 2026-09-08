@@ -40,6 +40,11 @@ enum class EditorTextId {
     maps, newProject, importMap, removeMap, entryMap, setEntry, targetMap,
     targetSpawn, goToTarget, openProject, saveProject, saveProjectAs,
     validateProject, projectValid, projectInvalid, findInProject,
+    duplicate, deleteDefinition, chooseImage, assetBrowser, search, selectSource,
+    snapToGrid, moveAnchor, moveFrame, applyAnchorToAll, copyPreviousFrame,
+    attackMask, clearFrame, playWithHitboxes, invalidAsset, referencedBy,
+    cannotDelete, detectGrid, chooseReference, details, close, openDefinition,
+    noResults, back, createNewReward, changeReward, clearReward, alreadyAdded,
 };
 
 class EditorLocalization final {

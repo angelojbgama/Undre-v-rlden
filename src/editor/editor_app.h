@@ -5,9 +5,13 @@
 #include "editor/editor_localization.h"
 #include "editor/editor_ui.h"
 #include "editor/editor_layout.h"
+#include "editor/asset_browser.h"
+#include "editor/content_collection.h"
+#include "editor/content_reference_tools.h"
 #include "editor/content_workspace_document.h"
 #include "editor/world_project_document.h"
 #include "editor/visual_preview.h"
+#include "editor/visual_authoring.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/render/framebuffer.h"
 #include "game/game_content.h"
@@ -139,6 +143,9 @@ private:
     void resetContentPreviewState() noexcept;
     void handleContentPreview(EditorUiContext& ui, const EditorInputState& input,
                               core::RectI canvas);
+    void drawAssetPicker(EditorUiContext& ui, const EditorInputState& input);
+    void drawReferencePicker(EditorUiContext& ui, const EditorInputState& input);
+    void drawQuickInspect(EditorUiContext& ui, const EditorInputState& input);
     void drawMapBrowser(EditorUiContext& ui, const EditorInputState& input, core::RectI panel);
     void drawMapLinkInspector(EditorUiContext& ui, core::RectI panel);
     void handlePanelSplitters(const EditorInputState& input);
@@ -150,6 +157,7 @@ private:
     platform::ImageDecoder* decoder_{};
     std::filesystem::path assetRoot_;
     EditorVisualPreview visualPreview_;
+    AssetBrowserCatalog assetBrowser_;
     EditorPlaytestSession playtest_;
     mutable EditorValidationCache validationCache_;
     assets::AssetManager assets_;
@@ -179,6 +187,7 @@ private:
     bool tileFlipX_{};
     std::size_t semanticFamilyIndex_{};
     std::size_t selectedStamp_{};
+    std::size_t selectedStampCellIndex_{static_cast<std::size_t>(-1)};
     std::size_t selectedRuleIndex_{};
     std::size_t selectedEncounterIndex_{};
     std::optional<MapTileSelection> mapTileSelection_;
@@ -203,10 +212,23 @@ private:
     std::array<std::string, 160> contentEditValues_{};
     std::size_t selectedAnimationFrameIndex_{};
     std::size_t selectedAnimationMarkerIndex_{};
+    std::size_t selectedEnemyAttackIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedQuestTagIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedQuestObjectiveIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedRewardGrantItemIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedRewardProfileLootIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedShopOfferIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedProgressionThresholdIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDialogueNodeIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDialoguePageIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDialogueChoiceIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDialogueConditionIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDialogueActionIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedEnemyVisualAttackIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedDescriptorTagIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedNpcTagIndex_{static_cast<std::size_t>(-1)};
     std::size_t contentEditFrame_{static_cast<std::size_t>(-1)};
     std::size_t contentEditMarker_{static_cast<std::size_t>(-1)};
-    std::size_t contentDialogueConditionIndex_{static_cast<std::size_t>(-1)};
-    std::size_t contentDialogueActionIndex_{static_cast<std::size_t>(-1)};
     int contentFocusedField_{-1};
     bool contentStaticSourceEnabled_{};
     int contentCategoryScroll_{};
@@ -218,6 +240,17 @@ private:
     int assetDiagnosticScroll_{};
     std::string newContentDefinitionId_;
     std::string newContentDefinitionFile_;
+    enum class AssetPickerTarget { none, visualImage, tileset } assetPickerTarget_{AssetPickerTarget::none};
+    bool assetPickerOpen_{};
+    std::string assetPickerSearch_;
+    int assetPickerScroll_{};
+    bool referencePickerOpen_{};
+    ContentDefinitionKind referencePickerKind_{ContentDefinitionKind::item};
+    int referencePickerField_{-1};
+    std::string referencePickerSearch_;
+    int referencePickerScroll_{};
+    std::optional<ContentDefinitionKey> quickInspectKey_;
+    std::vector<ContentDefinitionKey> contentNavigationBack_;
     PreviewClipState previewClipState_{PreviewClipState::idle};
     simulation::DefinitionId previewActionId_{};
     PreviewClipState contentBindingState_{PreviewClipState::idle};
