@@ -1,5 +1,6 @@
 #include "game/gameplay/attack_definitions.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 

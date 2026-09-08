@@ -293,6 +293,7 @@ if errorlevel 1 goto :build_failed
 
 echo Compiling player progression...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\player_progression.obj" "src\game\gameplay\rpg\player_progression.cpp"
+if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\equipment.obj" "src\game\gameplay\rpg\equipment.cpp"
 if errorlevel 1 goto :build_failed
 
