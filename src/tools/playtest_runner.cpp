@@ -85,6 +85,20 @@ struct RunnerOptions final {
     std::uint64_t maximumTicks{1200};
 };
 
+std::optional<std::string> environmentValue(const char* name) {
+#if defined(_WIN32)
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) return std::nullopt;
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    if (const char* value = std::getenv(name)) return std::string(value);
+    return std::nullopt;
+#endif
+}
+
 std::optional<RunnerOptions> parseOptions(int argc, char** argv, std::string& error) {
     RunnerOptions options;
     for (int index = 1; index < argc; ++index) {
@@ -106,24 +120,24 @@ std::optional<RunnerOptions> parseOptions(int argc, char** argv, std::string& er
             error = "help";
             return std::nullopt;
         }
-        if (const auto valueResult = value("--scenario")) {
-            options.scenario = *valueResult;
+        if (const auto scenarioValue = value("--scenario")) {
+            options.scenario = *scenarioValue;
         } else if (argument == "--scenario" || argument.rfind("--scenario=", 0) == 0) {
             if (error.empty()) { error = "--scenario requires a value"; }
             return std::nullopt;
-        } else if (const auto valueResult = value("--asset-root")) {
-            options.assetRoot = *valueResult;
+        } else if (const auto assetRootValue = value("--asset-root")) {
+            options.assetRoot = *assetRootValue;
         } else if (argument == "--asset-root" || argument.rfind("--asset-root=", 0) == 0) {
             if (error.empty()) { error = "--asset-root requires a value"; }
             return std::nullopt;
-        } else if (const auto valueResult = value("--audit-root")) {
-            options.auditRoot = *valueResult;
+        } else if (const auto auditRootValue = value("--audit-root")) {
+            options.auditRoot = *auditRootValue;
         } else if (argument == "--audit-root" || argument.rfind("--audit-root=", 0) == 0) {
             if (error.empty()) { error = "--audit-root requires a value"; }
             return std::nullopt;
-        } else if (const auto valueResult = value("--seed")) {
+        } else if (const auto seedValue = value("--seed")) {
             try {
-                options.seed = std::stoull(*valueResult);
+                options.seed = std::stoull(*seedValue);
             } catch (const std::exception&) {
                 error = "--seed requires an unsigned integer";
                 return std::nullopt;
@@ -131,9 +145,9 @@ std::optional<RunnerOptions> parseOptions(int argc, char** argv, std::string& er
         } else if (argument == "--seed" || argument.rfind("--seed=", 0) == 0) {
             if (error.empty()) { error = "--seed requires a value"; }
             return std::nullopt;
-        } else if (const auto valueResult = value("--ticks")) {
+        } else if (const auto ticksValue = value("--ticks")) {
             try {
-                options.maximumTicks = std::stoull(*valueResult);
+                options.maximumTicks = std::stoull(*ticksValue);
             } catch (const std::exception&) {
                 error = "--ticks requires an unsigned integer";
                 return std::nullopt;
@@ -151,8 +165,8 @@ std::optional<RunnerOptions> parseOptions(int argc, char** argv, std::string& er
         return std::nullopt;
     }
     if (options.assetRoot.empty()) {
-        if (const char* environment = std::getenv("UNDERWORLD_ASSET_ROOT")) {
-            options.assetRoot = environment;
+        if (const auto environment = environmentValue("UNDERWORLD_ASSET_ROOT")) {
+            options.assetRoot = *environment;
         }
     }
     return options;
