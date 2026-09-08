@@ -86,6 +86,7 @@ struct WorldObjectVisualDefinition final {
     std::optional<simulation::DefinitionId> doorLockedAnimationId;
     std::optional<simulation::DefinitionId> doorClosedAnimationId;
     std::optional<simulation::DefinitionId> doorOpenAnimationId;
+    std::optional<simulation::DefinitionId> destroyedAnimationId;
     [[nodiscard]] bool operator==(const WorldObjectVisualDefinition&) const noexcept = default;
 };
 

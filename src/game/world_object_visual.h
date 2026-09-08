@@ -3,6 +3,7 @@
 #include "engine/render/animation.h"
 #include "engine/simulation/definition_id.h"
 #include "engine/simulation/entity_handle.h"
+#include "engine/simulation/persistent_id.h"
 #include "game/gameplay/world_objects.h"
 
 #include <memory>
@@ -21,6 +22,7 @@ struct WorldObjectVisualSet final {
     std::shared_ptr<const render::AnimationClip> doorLocked{};
     std::shared_ptr<const render::AnimationClip> doorClosed{};
     std::shared_ptr<const render::AnimationClip> doorOpen{};
+    std::shared_ptr<const render::AnimationClip> destroyed{};
 };
 
 class WorldObjectVisualCatalog final {
@@ -56,6 +58,31 @@ private:
     std::optional<bool> activation_;
     render::Animator animator_{};
     bool initialized_{};
+};
+
+// A destroyed prop no longer owns a live gameplay entity. This presentation
+// record is intentionally separate so EntityHandle generation/lifetime rules
+// remain unchanged while authored residue can still be rendered and restored.
+class WorldObjectResidueVisualInstance final {
+public:
+    WorldObjectResidueVisualInstance(simulation::PersistentInstanceId persistentId,
+                                     simulation::DefinitionId visualSetId,
+                                     core::WorldPointI position,
+                                     const WorldObjectVisualSet& set);
+    [[nodiscard]] simulation::PersistentInstanceId persistentId() const noexcept {
+        return persistentId_;
+    }
+    [[nodiscard]] const simulation::DefinitionId& visualSetId() const noexcept {
+        return set_->id;
+    }
+    [[nodiscard]] core::WorldPointI position() const noexcept { return position_; }
+    [[nodiscard]] const render::Animator& animator() const noexcept { return animator_; }
+
+private:
+    simulation::PersistentInstanceId persistentId_{};
+    core::WorldPointI position_{};
+    const WorldObjectVisualSet* set_{};
+    render::Animator animator_{};
 };
 
 } // namespace underworld::game

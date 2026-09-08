@@ -125,15 +125,16 @@ void GamePresentation::renderLayer(render::Renderer2D& renderer, const world::Ru
 void GamePresentation::renderActors(render::Renderer2D& renderer,
                                     const GamePresentationFrame& frame,
                                     core::WorldPointI cameraPosition) const {
-    enum class ActorKind { player, enemy, npc, object, pickup };
+    enum class ActorKind { player, enemy, npc, object, objectResidue, pickup };
     struct Actor { int sortY; simulation::EntityHandle handle; ActorKind kind; std::size_t index{}; };
     const auto& world = frame.world;
     const auto& enemies = world.enemies();
     const auto& npcs = world.npcs();
     const auto& objects = world.objects();
+    const auto& objectResidues = frame.objectResidueVisuals;
     const auto& pickups = world.pickups();
     std::vector<Actor> actors;
-    actors.reserve(enemies.size() + npcs.size() + objects.size() + pickups.size() + 1);
+    actors.reserve(enemies.size() + npcs.size() + objects.size() + objectResidues.size() + pickups.size() + 1);
     actors.push_back({frame.player.feetPosition().y, frame.player.entityHandle(), ActorKind::player});
     for (std::size_t i = 0; i < enemies.size(); ++i) {
         actors.push_back({enemies[i].instance.feetPosition().y, enemies[i].instance.handle(), ActorKind::enemy, i});
@@ -143,6 +144,13 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
     }
     for (std::size_t i = 0; i < objects.size(); ++i) {
         actors.push_back({objects[i].instance.position().y, objects[i].instance.handle(), ActorKind::object, i});
+    }
+    for (std::size_t i = 0; i < objectResidues.size(); ++i) {
+        // Residues have no runtime handle by design. Their persistent ID only
+        // supplies a deterministic tie-breaker for Y-sorting.
+        actors.push_back({objectResidues[i].position().y,
+                          {static_cast<std::uint32_t>(objectResidues[i].persistentId().value), 0},
+                          ActorKind::objectResidue, i});
     }
     for (std::size_t i = 0; i < pickups.size(); ++i) {
         actors.push_back({pickups[i].instance.position().y, pickups[i].instance.handle(), ActorKind::pickup, i});
@@ -173,6 +181,10 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
         } else if (actor.kind == ActorKind::object) {
             const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);
             render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
+                                 {logical.x, logical.y});
+        } else if (actor.kind == ActorKind::objectResidue) {
+            const auto logical = toLogical(objectResidues[actor.index].position(), cameraPosition);
+            render::drawAnimator(renderer, objectResidues[actor.index].animator(),
                                  {logical.x, logical.y});
         } else {
             const auto& pickup = pickups[actor.index].instance;

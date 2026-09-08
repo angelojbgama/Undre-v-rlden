@@ -85,6 +85,7 @@
 #include "game/player_visual.h"
 #include "game/runtime_visual_sync.h"
 #include "game/training_puppet.h"
+#include "game/world_object_visual.h"
 #include "game/maps/dmap.h"
 #include "game/maps/map_catalog.h"
 #include "game/maps/official_maps.h"
@@ -2621,6 +2622,213 @@ underworld::game::maps::MapData makeSyntheticMap(
     return map;
 }
 
+void testBreakableProps() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+    namespace world = underworld::world;
+
+    const auto authored = content::makeBuiltinAuthoredContent();
+    const auto findObject = [&](std::string_view id) {
+        return std::find_if(authored.objects.begin(), authored.objects.end(),
+            [&](const auto& value) { return value.id.value() == id; });
+    };
+    const auto findVisual = [&](std::string_view id) {
+        return std::find_if(authored.objectVisuals.begin(), authored.objectVisuals.end(),
+            [&](const auto& value) { return value.id.value() == id; });
+    };
+    const auto findImage = [&](std::string_view id) {
+        return std::find_if(authored.visualImages.begin(), authored.visualImages.end(),
+            [&](const auto& value) { return value.id.value() == id; });
+    };
+    const auto findAnimation = [&](std::string_view id) {
+        return std::find_if(authored.animations.begin(), authored.animations.end(),
+            [&](const auto& value) { return value.id.value() == id; });
+    };
+    const auto crate = findObject("object.crate");
+    const auto vase = findObject("object.vase");
+    const auto stone = findObject("object.stone_block");
+    const auto stoneVariant = findObject("object.stone_block_2");
+    const auto fire = findObject("object.fire_block");
+    expect(crate != authored.objects.end() && vase != authored.objects.end() &&
+               stone != authored.objects.end() && stoneVariant != authored.objects.end() &&
+               fire != authored.objects.end(),
+           "builtin authored content exposes the crate vase stone variants and fire block");
+    expect(findImage("image.object.crate") != authored.visualImages.end() &&
+               findImage("image.object.breaking_crate") != authored.visualImages.end() &&
+               findImage("image.object.vase") != authored.visualImages.end() &&
+               findImage("image.object.breaking_vase") != authored.visualImages.end() &&
+               findImage("image.object.stone_block") != authored.visualImages.end() &&
+               findImage("image.object.stone_block_2") != authored.visualImages.end() &&
+               findImage("image.object.block_destroyed") != authored.visualImages.end() &&
+               findImage("image.object.fire_block") != authored.visualImages.end() &&
+               findImage("image.object.fire_block_with_fire") != authored.visualImages.end() &&
+               findImage("image.object.fire_block_destroyed") != authored.visualImages.end(),
+           "breakable props use the real authored asset paths");
+    expect(crate != authored.objects.end() && crate->destructible &&
+               crate->destructible->destructionDurationTicks == 28 &&
+               vase != authored.objects.end() && vase->destructible &&
+               vase->destructible->destructionDurationTicks == 24 &&
+               stone != authored.objects.end() && stone->destructible &&
+               stoneVariant != authored.objects.end() && stoneVariant->destructible &&
+               fire != authored.objects.end() && fire->destructible && fire->activation &&
+               fire->activation->mode == gameplay::ObjectActivationMode::interactToggle,
+           "breakable health timing and fire activation remain authored data");
+    const auto crateVisual = findVisual("visual.object.crate");
+    const auto vaseVisual = findVisual("visual.object.vase");
+    const auto stoneVisual = findVisual("visual.object.stone_block");
+    const auto fireVisual = findVisual("visual.object.fire_block");
+    expect(crateVisual != authored.objectVisuals.end() &&
+               crateVisual->destroyingAnimationId && vaseVisual != authored.objectVisuals.end() &&
+               vaseVisual->destroyingAnimationId && stoneVisual != authored.objectVisuals.end() &&
+               stoneVisual->destroyedAnimationId && fireVisual != authored.objectVisuals.end() &&
+               fireVisual->activationInactiveAnimationId && fireVisual->activationActiveAnimationId &&
+               fireVisual->destroyedAnimationId,
+           "breakable visual profiles author destroying activation and destroyed states generically");
+    expect(findAnimation("anim.object.crate.destroying") != authored.animations.end() &&
+               findAnimation("anim.object.crate.destroying")->frames.size() == 7 &&
+               findAnimation("anim.object.vase.destroying") != authored.animations.end() &&
+               findAnimation("anim.object.vase.destroying")->frames.size() == 6 &&
+               findAnimation("anim.object.fire_block.active") != authored.animations.end() &&
+               findAnimation("anim.object.fire_block.active")->frames.size() == 4,
+           "real breakable strips use their audited frame counts rather than assumed 16px frames");
+
+    const auto json = content::encodeAuthoredContentJson(authored);
+    const auto decoded = content::decodeAuthoredContentJson(json);
+    expect(decoded.content && decoded.diagnostics.empty() &&
+               content::encodeAuthoredContentJson(*decoded.content) == json,
+           "breakable visual bindings survive canonical content JSON roundtrip");
+    if (decoded.content) {
+        const auto decodedVisual = std::find_if(decoded.content->objectVisuals.begin(),
+            decoded.content->objectVisuals.end(), [&](const auto& value) {
+                return value.id.value() == "visual.object.stone_block";
+            });
+        expect(decodedVisual != decoded.content->objectVisuals.end() &&
+                   decodedVisual->destroyedAnimationId &&
+                   decodedVisual->destroyedAnimationId->value() == "anim.object.stone_block.destroyed",
+               "destroyedAnimationId is retained as an optional authored object visual field");
+    }
+    auto invalidVisual = authored;
+    invalidVisual.objectVisuals.front().destroyedAnimationId =
+        simulation::DefinitionId{"animation.missing.destroyed"};
+    const auto invalidResult = content::compileContent(invalidVisual);
+    expect(!invalidResult && std::any_of(invalidResult.report.diagnostics.begin(),
+               invalidResult.report.diagnostics.end(), [](const auto& diagnostic) {
+                   return diagnostic.kind == content::ContentKind::objectVisual &&
+                          diagnostic.code == "unknown_reference" &&
+                          diagnostic.field == "destroyedAnimationId";
+               }),
+           "content validation rejects an unknown generic destroyed visual reference");
+
+    const auto compiled = content::compileBuiltinContentOrThrow();
+    const auto& objects = compiled.objects();
+    expect(objects.require({"object.vase"}).destructible->maximumHealth == 1 &&
+               objects.require({"object.stone_block"}).destructible->maximumHealth == 2 &&
+               objects.require({"object.stone_block_2"}).visualSetId ==
+                   simulation::DefinitionId{"visual.object.stone_block_2"},
+           "compiled vase and stone object definitions remain data-driven and distinct by visual set");
+
+    class WideSyntheticDecoder final : public underworld::platform::ImageDecoder {
+    public:
+        underworld::core::ImageData decode(const std::filesystem::path& path) override {
+            paths.push_back(path);
+            constexpr int width = 304;
+            constexpr int height = 192;
+            return {width, height, static_cast<std::size_t>(width) * 4U,
+                    std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4U,
+                                              255U)};
+        }
+        std::vector<std::filesystem::path> paths;
+    } decoder;
+    presentation::VisualContentLoader loader(decoder);
+    const auto loadedVisuals = loader.load(
+        compiled, {std::filesystem::path{"game-assets"}, std::nullopt});
+    expect(loadedVisuals && loadedVisuals.content->objects.require(
+               {"visual.object.stone_block"}).destroyed &&
+               loadedVisuals.content->objects.require(
+                   {"visual.object.fire_block"}).activationActive &&
+               loadedVisuals.content->objects.require(
+                   {"visual.object.fire_block"}).destroyed,
+           "visual loader publishes generic destroyed and fire activation clips");
+
+    simulation::EntityHandlePool handles;
+    gameplay::WorldObjectFactory factory(handles, objects, compiled.items());
+    auto vaseInstance = factory.create({"object.vase"}, {32, 32});
+    game::WorldObjectVisualSet vaseSet;
+    vaseSet.id = {"visual.object.vase"};
+    vaseSet.idle = makeTestClip("object.vase.idle", true);
+    vaseSet.destroying = makeTestClip("object.vase.destroying", false);
+    game::WorldObjectVisualInstance vaseVisualInstance(vaseInstance.handle(), vaseSet);
+    const auto attacker = handles.create();
+    gameplay::CombatSystem combat;
+    simulation::EventBuffer events;
+    const gameplay::Hitbox vaseHit{{24, 8, 16, 24}, {attacker, 1}, gameplay::Faction::player,
+                                    {1, 0}, 0, 0, true};
+    const auto vaseResolution = combat.resolve(vaseHit, vaseInstance.combatTarget(), events);
+    expect(vaseResolution.damaged && vaseResolution.defeated &&
+               vaseInstance.syncDestructionState() &&
+               vaseInstance.state() == gameplay::WorldObjectState::destroying,
+           "vase receives fatal damage through the existing CombatSystem and enters destroying");
+    vaseVisualInstance.update(vaseInstance, 0);
+    expect(vaseVisualInstance.animator().clip().id() == "object.vase.destroying",
+           "vase selects its authored breaking animation without a vase-specific system");
+    const auto vaseDuration = vaseInstance.definition().destructible->destructionDurationTicks;
+    for (std::uint32_t tick = 0; tick < vaseDuration; ++tick) vaseInstance.advanceDestructionTick();
+    expect(vaseInstance.destructionComplete() && vaseInstance.completeDestruction(handles) &&
+               vaseInstance.state() == gameplay::WorldObjectState::destroyed,
+           "vase completes its authored destruction duration and invalidates only its live handle");
+
+    auto fireInstance = factory.create({"object.fire_block"}, {64, 32});
+    game::WorldObjectVisualSet fireSet;
+    fireSet.id = {"visual.object.fire_block"};
+    fireSet.idle = makeTestClip("fire.inactive", true);
+    fireSet.activationInactive = fireSet.idle;
+    fireSet.activationActive = makeTestClip("fire.active", true);
+    fireSet.destroyed = makeTestClip("fire.destroyed", true);
+    game::WorldObjectVisualInstance fireVisualInstance(fireInstance.handle(), fireSet);
+    fireVisualInstance.update(fireInstance, 0);
+    expect(fireVisualInstance.animator().clip().id() == "fire.inactive",
+           "fire block starts with its inactive visual state");
+    expect(fireInstance.toggleActivation() && fireInstance.activationActive(),
+           "fire block uses the existing interact-toggle activation capability");
+    fireVisualInstance.update(fireInstance, 0);
+    expect(fireVisualInstance.animator().clip().id() == "fire.active",
+           "fire block activation selects the authored active animation");
+    static_cast<void>(fireInstance.combatant()->health.applyDamage(2));
+    expect(fireInstance.syncDestructionState(), "fire block enters the shared destruction lifecycle");
+    fireInstance.advanceDestructionTick();
+    expect(fireInstance.destructionComplete() && fireInstance.completeDestruction(handles),
+           "fire block completes destruction through the shared WorldObject lifecycle");
+    fireVisualInstance.update(fireInstance, 0);
+    expect(fireVisualInstance.animator().clip().id() == "fire.destroyed",
+           "destroyed visual has deterministic priority over an active fire state");
+
+    maps::RuntimeWorld residueWorld(
+        simulation::MapId{"map.test.breakables"}, world::RuntimeMap(4, 4, 16),
+        {simulation::SpawnId{"entry.start"}, {16, 16}, gameplay::FacingDirection::down});
+    game::WorldObjectVisualCatalog visualCatalog;
+    game::WorldObjectVisualSet stoneSet;
+    stoneSet.id = {"visual.object.stone_block"};
+    stoneSet.idle = makeTestClip("stone.idle", true);
+    stoneSet.destroyed = makeTestClip("stone.destroyed", true);
+    visualCatalog.add(stoneSet);
+    residueWorld.addDestroyedObjectResidue({99}, {"visual.object.stone_block"}, {32, 48});
+    game::EnemyVisualCatalog enemyVisualCatalog;
+    std::vector<game::EnemyVisualInstance> enemyVisuals;
+    std::vector<game::WorldObjectVisualInstance> objectVisuals;
+    std::vector<game::WorldObjectResidueVisualInstance> residueVisuals;
+    const auto synchronized = game::synchronizeRuntimeWorldVisuals(
+        residueWorld, enemyVisualCatalog, enemyVisuals, visualCatalog, objectVisuals,
+        residueVisuals);
+    expect(synchronized && objectVisuals.empty() && residueVisuals.size() == 1 &&
+               residueVisuals.front().persistentId() == simulation::PersistentInstanceId{99} &&
+               residueVisuals.front().animator().clip().id() == "stone.destroyed",
+           "destroyed props render through a passive residue without retaining a live EntityHandle");
+}
+
 void testPhase8PersistentMapsAndSave() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
@@ -2811,6 +3019,9 @@ void testPhase8PersistentMapsAndSave() {
     expect(save::applyWorldState(saved.world,*runtime.world,handles,items,applyError) &&
                runtime.world->objects().size()==1 && runtime.world->objects()[0].instance.state()==gameplay::WorldObjectState::opened &&
                runtime.world->objects()[0].instance.contents()->count(gameplay::lifePotionItemId())==1 &&
+               runtime.world->destroyedObjectResidues().size() == 1 &&
+               runtime.world->destroyedObjectResidues()[0].persistentId == simulation::PersistentInstanceId{3} &&
+               runtime.world->destroyedObjectResidues()[0].visualSetId == simulation::DefinitionId{"visual.object.crate"} &&
                runtime.world->pickups().size()==1 &&
                std::get<gameplay::ItemPickup>(runtime.world->pickups()[0].instance.payload()).quantity==2,
            "SessionWorldState reapplies opened chest destroyed crate collected and partial pickup deltas");
@@ -3452,7 +3663,7 @@ void testPhase9EditorFoundation() {
                content.pickup(simulation::DefinitionId{"pickup.money"}),
            "shared GameContentRegistry resolves runtime and editor definitions from one registration");
     expect(content.authoringDescriptors(game::AuthoringCategory::enemy).size() == 2 &&
-               content.authoringDescriptors(game::AuthoringCategory::object).size() == 3 &&
+               content.authoringDescriptors(game::AuthoringCategory::object).size() == 7 &&
                content.authoringDescriptors(game::AuthoringCategory::pickup).size() == 3,
            "authoring palette is derived from shared content descriptors");
 
@@ -8089,6 +8300,7 @@ void testPhase18BVisualPreview() {
     object.id = {"visual.object.preview"};
     object.idleAnimationId = {"animation.preview"};
     object.activationActiveAnimationId = {"animation.preview.action"};
+    object.destroyedAnimationId = {"animation.preview.death"};
     authored.objectVisuals.push_back(object);
     content::AuthoredNpcVisualSet npc;
     npc.id = {"visual.npc.preview"};
@@ -8188,6 +8400,10 @@ void testPhase18BVisualPreview() {
     preview.prepare(*document, request);
     expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview.action",
            "18B object visual preview resolves authored activation state");
+    request.state = editor::PreviewClipState::destroyed;
+    preview.prepare(*document, request);
+    expect(preview.hasClip() && preview.animator().clip().id() == "animation.preview.death",
+           "18B object visual preview resolves the optional destroyed state");
     request = {};
     request.key = {editor::ContentDefinitionKind::npcVisual, {"visual.npc.preview"}};
     request.facing = underworld::game::gameplay::FacingDirection::down;
@@ -8892,6 +9108,7 @@ int main() {
         testItemsInventoryAndWallet();
         testPickupsQuickSlotsAndInventoryOverlay();
         testViewModelAndWorldObjects();
+        testBreakableProps();
         testPhase8PersistentMapsAndSave();
         testPhase10NpcFoundation();
         testPhase10DialogueDataModel();

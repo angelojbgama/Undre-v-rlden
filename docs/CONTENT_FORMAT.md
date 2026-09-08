@@ -73,6 +73,11 @@ Examples:
  "playerBuyPrice":25,"playerSellPrice":10}]}
 ```
 
+Object visual definitions may optionally set `destroyedAnimationId`. This field is
+compatible with schema v5 because it is optional and omitted by older authored
+files. It binds a generic destroyed visual state and does not change runtime or
+save format versions.
+
 `ContentJsonEncoder`/`ContentJsonDecoder` are shared by the builtin-equivalence
 tests, workspace loader, Game, Map Maker and `content_check`. The builtin C++ pack
 remains the transitional default source; an explicit workspace replaces it without

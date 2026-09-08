@@ -20,6 +20,13 @@ struct RuntimeVisualSyncResult final {
     const maps::RuntimeWorld& world, const EnemyVisualCatalog& enemyCatalog,
     std::vector<EnemyVisualInstance>& enemyVisuals,
     const WorldObjectVisualCatalog& objectCatalog,
+    std::vector<WorldObjectVisualInstance>& objectVisuals,
+    std::vector<WorldObjectResidueVisualInstance>& residueVisuals);
+
+[[nodiscard]] RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
+    const maps::RuntimeWorld& world, const EnemyVisualCatalog& enemyCatalog,
+    std::vector<EnemyVisualInstance>& enemyVisuals,
+    const WorldObjectVisualCatalog& objectCatalog,
     std::vector<WorldObjectVisualInstance>& objectVisuals);
 
 [[nodiscard]] RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
@@ -27,6 +34,7 @@ struct RuntimeVisualSyncResult final {
     std::vector<EnemyVisualInstance>& enemyVisuals,
     const WorldObjectVisualCatalog& objectCatalog,
     std::vector<WorldObjectVisualInstance>& objectVisuals,
+    std::vector<WorldObjectResidueVisualInstance>& residueVisuals,
     const presentation::RuntimeNpcVisualCatalog& npcCatalog,
     std::vector<presentation::RuntimeNpcVisualInstance>& npcVisuals);
 

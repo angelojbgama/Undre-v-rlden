@@ -35,6 +35,7 @@ struct GamePresentationFrame final {
     const PlayerVisual& playerVisual;
     const std::vector<EnemyVisualInstance>& enemyVisuals;
     const std::vector<WorldObjectVisualInstance>& objectVisuals;
+    const std::vector<WorldObjectResidueVisualInstance>& objectResidueVisuals;
     const EffectSystem& effects;
     const presentation::PresentationEffectFrame& presentationEffects;
     const gameplay::ProjectileSystem& projectiles;

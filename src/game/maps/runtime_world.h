@@ -25,6 +25,11 @@ struct PersistentRuntimeInstance final {
 using PersistentEnemy = PersistentRuntimeInstance<gameplay::creatures::EnemyInstance>;
 using PersistentNpc = PersistentRuntimeInstance<gameplay::npcs::NpcInstance>;
 using PersistentObject = PersistentRuntimeInstance<gameplay::WorldObjectInstance>;
+struct DestroyedObjectResidue final {
+    simulation::PersistentInstanceId persistentId{};
+    simulation::DefinitionId visualSetId{};
+    core::WorldPointI position{};
+};
 struct PersistentPickup final {
     simulation::PersistentInstanceId persistentId{};
     bool transient{};
@@ -58,10 +63,19 @@ public:
     [[nodiscard]] std::vector<PersistentEnemy>& enemies() noexcept { return enemies_; }
     [[nodiscard]] std::vector<PersistentNpc>& npcs() noexcept { return npcs_; }
     [[nodiscard]] std::vector<PersistentObject>& objects() noexcept { return objects_; }
+    [[nodiscard]] std::vector<DestroyedObjectResidue>& destroyedObjectResidues() noexcept {
+        return destroyedObjectResidues_;
+    }
     [[nodiscard]] std::vector<PersistentPickup>& pickups() noexcept { return pickups_; }
     [[nodiscard]] const std::vector<PersistentEnemy>& enemies() const noexcept { return enemies_; }
     [[nodiscard]] const std::vector<PersistentNpc>& npcs() const noexcept { return npcs_; }
     [[nodiscard]] const std::vector<PersistentObject>& objects() const noexcept { return objects_; }
+    [[nodiscard]] const std::vector<DestroyedObjectResidue>& destroyedObjectResidues() const noexcept {
+        return destroyedObjectResidues_;
+    }
+    void addDestroyedObjectResidue(simulation::PersistentInstanceId persistentId,
+                                   simulation::DefinitionId visualSetId,
+                                   core::WorldPointI position);
     [[nodiscard]] const std::vector<PersistentPickup>& pickups() const noexcept { return pickups_; }
     [[nodiscard]] bool setDoorState(simulation::PersistentInstanceId id,
                                      gameplay::DoorState state) noexcept;
@@ -85,6 +99,7 @@ private:
     std::vector<PersistentEnemy> enemies_;
     std::vector<PersistentNpc> npcs_;
     std::vector<PersistentObject> objects_;
+    std::vector<DestroyedObjectResidue> destroyedObjectResidues_;
     std::vector<PersistentPickup> pickups_;
     std::vector<RuntimeDoor> doors_;
 };

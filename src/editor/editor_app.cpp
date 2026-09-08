@@ -60,6 +60,7 @@ enum ContentEditField : int {
     fieldObjectIdle,
     fieldObjectOpened,
     fieldObjectDestroying,
+    fieldObjectDestroyed,
     fieldObjectActivationInactive,
     fieldObjectActivationActive,
     fieldObjectDoorLocked,
@@ -1387,15 +1388,17 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                     contentEditValues_[fieldObjectIdle] = std::string(value->idleAnimationId.value());
                     contentEditValues_[fieldObjectOpened] = text(value->openedAnimationId);
                     contentEditValues_[fieldObjectDestroying] = text(value->destroyingAnimationId);
+                    contentEditValues_[fieldObjectDestroyed] = text(value->destroyedAnimationId);
                     contentEditValues_[fieldObjectActivationInactive] = text(value->activationInactiveAnimationId);
                     contentEditValues_[fieldObjectActivationActive] = text(value->activationActiveAnimationId);
                     contentEditValues_[fieldObjectDoorLocked] = text(value->doorLockedAnimationId);
                     contentEditValues_[fieldObjectDoorClosed] = text(value->doorClosedAnimationId);
                     contentEditValues_[fieldObjectDoorOpen] = text(value->doorOpenAnimationId);
                 }
-                const std::array<std::pair<const char*, int>, 8> fields{{
+                const std::array<std::pair<const char*, int>, 9> fields{{
                     {"idle", fieldObjectIdle}, {"opened", fieldObjectOpened},
-                    {"destroying", fieldObjectDestroying}, {"activation inactive", fieldObjectActivationInactive},
+                    {"destroying", fieldObjectDestroying}, {"destroyed", fieldObjectDestroyed},
+                    {"activation inactive", fieldObjectActivationInactive},
                     {"activation active", fieldObjectActivationActive}, {"door locked", fieldObjectDoorLocked},
                     {"door closed", fieldObjectDoorClosed}, {"door open", fieldObjectDoorOpen}}};
                 int fieldY = inspectorY;
@@ -1418,6 +1421,7 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
                         updated.idleAnimationId = simulation::DefinitionId{contentEditValues_[fieldObjectIdle]};
                     } else if (contentFocusedField_ == fieldObjectOpened) updated.openedAnimationId = idOrNone(fieldObjectOpened);
                     else if (contentFocusedField_ == fieldObjectDestroying) updated.destroyingAnimationId = idOrNone(fieldObjectDestroying);
+                    else if (contentFocusedField_ == fieldObjectDestroyed) updated.destroyedAnimationId = idOrNone(fieldObjectDestroyed);
                     else if (contentFocusedField_ == fieldObjectActivationInactive) updated.activationInactiveAnimationId = idOrNone(fieldObjectActivationInactive);
                     else if (contentFocusedField_ == fieldObjectActivationActive) updated.activationActiveAnimationId = idOrNone(fieldObjectActivationActive);
                     else if (contentFocusedField_ == fieldObjectDoorLocked) updated.doorLockedAnimationId = idOrNone(fieldObjectDoorLocked);
@@ -3171,11 +3175,12 @@ void EditorApp::drawContentPreview(EditorUiContext& ui, const EditorInputState& 
         stateButton(PreviewClipState::idle, "IDLE", canvas.x + 4, visual != nullptr);
         stateButton(PreviewClipState::opened, "OPENED", canvas.x + 72, visual && visual->openedAnimationId.has_value());
         stateButton(PreviewClipState::destroying, "DESTROY", canvas.x + 140, visual && visual->destroyingAnimationId.has_value());
-        stateButton(PreviewClipState::activationInactive, "ACT OFF", canvas.x + 208, visual && visual->activationInactiveAnimationId.has_value());
-        stateButton(PreviewClipState::activationActive, "ACT ON", canvas.x + 276, visual && visual->activationActiveAnimationId.has_value());
-        stateButton(PreviewClipState::doorLocked, "LOCKED", canvas.x + 344, visual && visual->doorLockedAnimationId.has_value());
-        stateButton(PreviewClipState::doorClosed, "CLOSED", canvas.x + 412, visual && visual->doorClosedAnimationId.has_value());
-        stateButton(PreviewClipState::doorOpen, "OPEN", canvas.x + 480, visual && visual->doorOpenAnimationId.has_value());
+        stateButton(PreviewClipState::destroyed, "DESTROYED", canvas.x + 208, visual && visual->destroyedAnimationId.has_value());
+        stateButton(PreviewClipState::activationInactive, "ACT OFF", canvas.x + 276, visual && visual->activationInactiveAnimationId.has_value());
+        stateButton(PreviewClipState::activationActive, "ACT ON", canvas.x + 344, visual && visual->activationActiveAnimationId.has_value());
+        stateButton(PreviewClipState::doorLocked, "LOCKED", canvas.x + 412, visual && visual->doorLockedAnimationId.has_value());
+        stateButton(PreviewClipState::doorClosed, "CLOSED", canvas.x + 480, visual && visual->doorClosedAnimationId.has_value());
+        stateButton(PreviewClipState::doorOpen, "OPEN", canvas.x + 548, visual && visual->doorOpenAnimationId.has_value());
     } else if (request.key.kind == ContentDefinitionKind::npcVisual || visualPreview_.hasClip()) {
         const char* labels[] = {"DOWN", "UP", "LEFT", "RIGHT"};
         for (int index = 0; index < 4; ++index) {

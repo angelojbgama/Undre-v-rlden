@@ -95,8 +95,9 @@ valida catálogo, IDs, ordem, limites dos contadores e coerência do status ante
 aceitar o estado. Saves DSAV 1.1 ou 1.0 sem `QSTS` continuam legíveis; um save antigo
 que contenha `QSTS` é rejeitado em vez de descartar progresso silenciosamente.
 
-Chest usa `opened` e conteúdo restante; Crate removida usa `destroyed`; pickup total
-usa `collected` e parcial usa `remainingQuantity`. Enemy death não persiste na v1.
+Chest usa `opened` e conteúdo restante; objetos destrutíveis removidos usam
+`destroyed` (incluindo crate, vase, stone blocks e fire block); pickup total usa
+`collected` e parcial usa `remainingQuantity`. Enemy death não persiste na v1.
 Chaves são únicas por tipo, IDs zero/references inexistentes e definitions/stacks
 inválidas são rejeitados.
 

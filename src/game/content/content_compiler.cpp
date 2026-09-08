@@ -47,7 +47,8 @@ presentation::EnemyVisualDefinition compileEnemyVisual(const AuthoredEnemyVisual
 presentation::WorldObjectVisualDefinition compileObjectVisual(const AuthoredWorldObjectVisual& v) {
     return {v.id, v.idleAnimationId, v.openedAnimationId, v.destroyingAnimationId,
             v.activationInactiveAnimationId, v.activationActiveAnimationId,
-            v.doorLockedAnimationId, v.doorClosedAnimationId, v.doorOpenAnimationId};
+            v.doorLockedAnimationId, v.doorClosedAnimationId, v.doorOpenAnimationId,
+            v.destroyedAnimationId};
 }
 
 gameplay::PickupPayload compilePayload(const AuthoredPickupPayload& payload) {

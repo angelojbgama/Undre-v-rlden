@@ -556,7 +556,7 @@ ou stamps semânticos suficientes para que a LLM raramente precise operar coorde
 ## 9.1 `Tileset/block.png`
 
 ```text
-semanticId         = object.block
+semanticId         = object.stone_block
 classification     = ENTITY
 visualSizePx       = 16×32
 frames             = 1
@@ -578,11 +578,11 @@ Regras:
 ## 9.2 `Tileset/block_2.png`
 
 ```text
-semanticId         = object.block.variant_02
+semanticId         = object.stone_block_2
 classification     = ENTITY visual variant
 visualSizePx       = 16×32
 logicalFootprint   = PROBABLE 1×1
-stateGroup         = family object.block
+stateGroup         = family object.stone_block
 ```
 
 Mesmas regras de `block.png`.
@@ -592,10 +592,10 @@ Não criar uma engine ou classe separada apenas porque o desenho é diferente.
 ## 9.3 `Tileset/block_destroied.png`
 
 ```text
-semanticId         = visual.object.block.destroyed
+semanticId         = visual.object.stone_block.destroyed
 classification     = VISUAL_STATE
 visualSizePx       = 16×32
-stateGroup         = object.block
+stateGroup         = object.stone_block
 ```
 
 Proibido:
@@ -606,7 +606,7 @@ Proibido:
 Correto:
 
 ```text
-entity definition = object.block
+entity definition = object.stone_block
 runtime/initial state = destroyed
 ```
 
@@ -765,7 +765,7 @@ stateGroup         = object.fire_block
 Regras:
 
 - autoria cria uma única entidade `object.fire_block`;
-- `unlit`, `lit`, `destroyed` devem ser estados/capacidades, quando implementados;
+- `unlit`, `lit`, `destroyed` são estados/capacidades authored do objeto;
 - a presença de fogo visual não autoriza inferir dano, luz, ignite ou hazard sem definição de gameplay;
 - collision deve poder variar por estado somente se o gameplay declarar isso.
 
@@ -1215,7 +1215,11 @@ Se a LLM precisa “adivinhar” a função de uma imagem para terminar o mapa, 
 The official playable map resources use only semantic references resolved through the
 Dungeon authoring registry. `Tileset/tileset.png` coverage is limited to its 72
 catalogued visible cells; transparent cells and uncatalogued PNG regions are never
-used as filler. The remaining individual assets in `Tileset/` (doors, gates, traps,
-spikes, fire blocks, destroyed/breaking variants, and similar artwork) are not
-placeable gameplay content until they have a corresponding runtime definition and
-behavior. Their presence in the asset folder alone does not grant a map mechanic.
+used as filler. The remaining individual assets in `Tileset/` (doors, gates, traps
+and spikes) are not placeable gameplay content until they have a corresponding
+runtime definition and behavior. The breakable prop family is now the explicit
+exception: crate, vase, stone block variants and fire block are authored
+`WorldObject` definitions with data-driven destructible/activation capabilities.
+Their destroyed/breaking artwork is still a visual state of that entity, never an
+independent map placement. The presence of any other asset in the folder alone does
+not grant a map mechanic.

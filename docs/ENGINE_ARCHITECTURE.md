@@ -949,6 +949,22 @@ Gold nunca é convertido em `ItemStack`.
 Enemy -> Environment e Environment -> qualquer alvo. Crate usa o mesmo CombatSystem,
 EntityDefeated e lifecycle de handles das criaturas.
 
+### Breakable environmental props
+
+Crate, vase, stone block variants and fire block are ordinary authored
+`WorldObjectDefinition` values. They reuse the existing destructible capability and
+`WorldObjectVisualDefinition`; the optional generic `destroyedAnimationId` is used
+for final stone/fire residue, while crate/vase disappear after their breaking clips.
+No prop-specific gameplay system or `DefinitionId` branch is introduced. The fire
+block's active/inactive visuals use the existing activation capability only; visual
+fire does not imply hazard damage.
+
+Completion still destroys the live `EntityHandle`, preserving generation and save
+semantics. When a visual residue is authored, `RuntimeWorld` keeps only a persistent
+ID, visual-set ID and position. Presentation renders that passive record without a
+handle, and `ObjectDelta.destroyed` reconstructs it on save/load and map return.
+This keeps runtime object lifetime, collision ownership and DSAV 1.8 unchanged.
+
 ---
 
 ## 13. Eventos, HUD, quests e observers

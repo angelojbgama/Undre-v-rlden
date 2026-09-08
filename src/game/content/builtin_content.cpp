@@ -106,6 +106,14 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     image("image.object.chest", "Tileset/chest.png");
     image("image.object.crate", "Tileset/crate.png");
     image("image.object.breaking_crate", "Tileset/breaking_crate.png");
+    image("image.object.vase", "Tileset/vase.png");
+    image("image.object.breaking_vase", "Tileset/breaking_vase.png");
+    image("image.object.stone_block", "Tileset/block.png");
+    image("image.object.stone_block_2", "Tileset/block_2.png");
+    image("image.object.block_destroyed", "Tileset/block_destroied.png");
+    image("image.object.fire_block", "Tileset/fire_block.png");
+    image("image.object.fire_block_with_fire", "Tileset/fire_block_with_fire.png");
+    image("image.object.fire_block_destroyed", "Tileset/fire_block_destroied.png");
 
     const auto addStatic = [&](const char* id, const char* imageId, core::PointI anchor) {
         pack.staticSprites.push_back({{id}, {imageId}, std::nullopt, anchor});
@@ -137,9 +145,21 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     objectAnimation("anim.object.chest.opened", "image.object.chest", 16, 32, 5, 4, {8, 31}, false);
     objectAnimation("anim.object.crate.idle", "image.object.crate", 16, 32, 1, 1, {8, 31}, true);
     objectAnimation("anim.object.crate.destroying", "image.object.breaking_crate", 32, 32, 7, 4, {16, 31}, false);
-    pack.objectVisuals.push_back({{"visual.object.chest"}, {"anim.object.chest.idle"}, {"anim.object.chest.opened"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
-    pack.objectVisuals.push_back({{"visual.object.crate"}, {"anim.object.crate.idle"}, std::nullopt, {"anim.object.crate.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
-    pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    objectAnimation("anim.object.vase.idle", "image.object.vase", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.vase.destroying", "image.object.breaking_vase", 32, 32, 6, 4, {16, 31}, false);
+    objectAnimation("anim.object.stone_block.idle", "image.object.stone_block", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.stone_block_2.idle", "image.object.stone_block_2", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.stone_block.destroyed", "image.object.block_destroyed", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.fire_block.inactive", "image.object.fire_block", 16, 32, 1, 1, {8, 31}, true);
+    objectAnimation("anim.object.fire_block.active", "image.object.fire_block_with_fire", 16, 32, 4, 4, {8, 31}, true);
+    objectAnimation("anim.object.fire_block.destroyed", "image.object.fire_block_destroyed", 16, 32, 1, 1, {8, 31}, true);
+    pack.objectVisuals.push_back({{"visual.object.chest"}, {"anim.object.chest.idle"}, {"anim.object.chest.opened"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.crate"}, {"anim.object.crate.idle"}, std::nullopt, {"anim.object.crate.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.vase"}, {"anim.object.vase.idle"}, std::nullopt, {"anim.object.vase.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.stone_block"}, {"anim.object.stone_block.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}});
+    pack.objectVisuals.push_back({{"visual.object.stone_block_2"}, {"anim.object.stone_block_2.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}});
+    pack.objectVisuals.push_back({{"visual.object.fire_block"}, {"anim.object.fire_block.inactive"}, std::nullopt, std::nullopt, {"anim.object.fire_block.inactive"}, {"anim.object.fire_block.active"}, std::nullopt, std::nullopt, std::nullopt, {"anim.object.fire_block.destroyed"}});
+    pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
 }
 
 } // namespace
@@ -167,6 +187,10 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.objects = {
         {{"object.chest"}, {"visual.object.chest"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, gameplay::ObjectContainerDefinition{5}, std::nullopt},
         {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28}},
+        {{"object.vase"}, {"visual.object.vase"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{1, {-8, -24, 16, 24}, 24}},
+        {{"object.stone_block"}, {"visual.object.stone_block"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}},
+        {{"object.stone_block_2"}, {"visual.object.stone_block_2"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}},
+        {{"object.fire_block"}, {"visual.object.fire_block"}, gameplay::ObjectInteractionDefinition{{-8, -14, 16, 14}}, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}, std::nullopt, std::nullopt, gameplay::ObjectActivationDefinition{gameplay::ObjectActivationMode::interactToggle, false, std::nullopt}},
         {{"object.bank_access"}, {"visual.object.bank_access"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, std::nullopt, std::nullopt, AuthoredObjectBankAccess{}}};
     pack.pickups = {
         {{"pickup.heart"}, {"visual.pickup.heart"}, {-5, -5, 10, 10}, AuthoredHealthPickup{2}},
@@ -231,7 +255,11 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.quests.push_back(std::move(scholarQuest));
     pack.authoringDescriptors = {
         {{"enemy.evil_soldier"}, "Evil Soldier", AuthoringCategory::enemy, {"melee", "hostile"}}, {{"enemy.skull"}, "Skull", AuthoringCategory::enemy, {"ranged", "hostile"}},
-        {{"object.chest"}, "Chest", AuthoringCategory::object, {"container", "interactable"}}, {{"object.crate"}, "Crate", AuthoringCategory::object, {"destructible"}},
+        {{"object.chest"}, "Chest", AuthoringCategory::object, {"container", "interactable"}}, {{"object.crate"}, "Crate", AuthoringCategory::object, {"destructible", "prop"}},
+        {{"object.vase"}, "Vase", AuthoringCategory::object, {"destructible", "prop"}},
+        {{"object.stone_block"}, "Stone Block", AuthoringCategory::object, {"destructible", "prop", "stone"}},
+        {{"object.stone_block_2"}, "Stone Block Variant", AuthoringCategory::object, {"destructible", "prop", "stone"}},
+        {{"object.fire_block"}, "Fire Block", AuthoringCategory::object, {"destructible", "prop", "fire"}},
         {{"pickup.heart"}, "Heart", AuthoringCategory::pickup, {"health"}}, {{"pickup.money"}, "Money", AuthoringCategory::pickup, {"currency"}}, {{"pickup.life_potion"}, "Life Potion", AuthoringCategory::pickup, {"item", "consumable"}},
         {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.merchant"}, "Merchant", AuthoringCategory::npc, {"npc", "merchant", "shop"}},
         {{"reward.enemy.evil_soldier"}, "Evil Soldier Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},

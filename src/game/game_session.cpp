@@ -409,6 +409,8 @@ void GameSession::updateObjects() {
         }
         object.advanceDestructionTick();
         if (object.destructionComplete()) {
+            mapSession_->world()->addDestroyedObjectResidue(
+                objects[index].persistentId, object.definition().visualSetId, object.position());
             static_cast<void>(object.completeDestruction(handles_));
             objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
             changed = true;

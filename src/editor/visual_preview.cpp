@@ -55,6 +55,7 @@ std::optional<simulation::DefinitionId> objectAnimation(
     case PreviewClipState::idle: return visual.idleAnimationId;
     case PreviewClipState::opened: return visual.openedAnimationId;
     case PreviewClipState::destroying: return visual.destroyingAnimationId;
+    case PreviewClipState::destroyed: return visual.destroyedAnimationId;
     case PreviewClipState::activationInactive: return visual.activationInactiveAnimationId;
     case PreviewClipState::activationActive: return visual.activationActiveAnimationId;
     case PreviewClipState::doorLocked: return visual.doorLockedAnimationId;

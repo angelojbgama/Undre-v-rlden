@@ -7,6 +7,24 @@
 
 namespace underworld::game::maps {
 
+void RuntimeWorld::addDestroyedObjectResidue(
+    simulation::PersistentInstanceId persistentId, simulation::DefinitionId visualSetId,
+    core::WorldPointI position) {
+    if (!persistentId || visualSetId.empty()) {
+        throw std::invalid_argument("destroyed object residue identity is invalid");
+    }
+    const auto found = std::find_if(destroyedObjectResidues_.begin(),
+                                    destroyedObjectResidues_.end(),
+                                    [&](const DestroyedObjectResidue& residue) {
+                                        return residue.persistentId == persistentId;
+                                    });
+    if (found != destroyedObjectResidues_.end()) {
+        *found = {persistentId, std::move(visualSetId), position};
+        return;
+    }
+    destroyedObjectResidues_.push_back({persistentId, std::move(visualSetId), position});
+}
+
 bool RuntimeWorld::setDoorState(simulation::PersistentInstanceId id,
                                 gameplay::DoorState state) noexcept {
     const auto found = std::find_if(doors_.begin(), doors_.end(),

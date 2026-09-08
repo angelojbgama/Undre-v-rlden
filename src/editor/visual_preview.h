@@ -24,6 +24,7 @@ enum class PreviewClipState {
     action,
     opened,
     destroying,
+    destroyed,
     activationInactive,
     activationActive,
     doorLocked,

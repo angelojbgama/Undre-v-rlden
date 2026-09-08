@@ -1543,6 +1543,10 @@ O playtest compila o projeto atual em memória, inicia no mapa ativo e reutiliza
 `MapSession` para atravessar links. Preferências de tooling, layout redimensionável,
 browser de mapas, navegação de usos e diagnóstico contextual são incrementos de
 produção; novas features de gameplay entram somente quando houver necessidade real.
+O primeiro incremento de conteúdo concreto após esse foco adiciona props ambientais
+quebráveis (crate, vase, stone block variants e fire block) por definitions,
+destructible/activation capabilities e estados visuais genéricos, sem criar uma nova
+fase ou sistema específico por prop.
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

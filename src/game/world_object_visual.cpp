@@ -43,6 +43,8 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
         const auto* clip = &set_->idle;
         if (state == gameplay::WorldObjectState::destroying && set_->destroying) {
             clip = &set_->destroying;
+        } else if (state == gameplay::WorldObjectState::destroyed && set_->destroyed) {
+            clip = &set_->destroyed;
         } else if (doorState) {
             if (*doorState == gameplay::DoorState::locked && set_->doorLocked) clip = &set_->doorLocked;
             else if (*doorState == gameplay::DoorState::closed && set_->doorClosed) clip = &set_->doorClosed;
@@ -60,6 +62,16 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
         activation_ = activation;
     }
     animator_.updateTicks(ticks);
+}
+
+WorldObjectResidueVisualInstance::WorldObjectResidueVisualInstance(
+    simulation::PersistentInstanceId persistentId, simulation::DefinitionId visualSetId,
+    core::WorldPointI position, const WorldObjectVisualSet& set)
+    : persistentId_(persistentId), position_(position), set_(&set) {
+    if (!persistentId_ || visualSetId != set.id || !set.destroyed) {
+        throw std::invalid_argument("destroyed object residue requires a destroyed clip");
+    }
+    animator_.play(set.destroyed);
 }
 
 } // namespace underworld::game

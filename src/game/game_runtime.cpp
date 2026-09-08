@@ -378,7 +378,8 @@ struct GameRuntime::State final {
     void rebuildWorldVisuals() {
         const auto result = synchronizeRuntimeWorldVisuals(
             activeWorld(), enemyVisualCatalog, enemyVisuals,
-            objectVisualCatalog, objectVisuals, npcCatalogVisuals, npcVisuals);
+            objectVisualCatalog, objectVisuals, objectResidueVisuals,
+            npcCatalogVisuals, npcVisuals);
         if (!result) { throw std::runtime_error(result.error); }
         if (enemyVisuals.size() != activeWorld().enemies().size() ||
             objectVisuals.size() != activeWorld().objects().size() ||
@@ -530,7 +531,8 @@ struct GameRuntime::State final {
             session.derivedPlayerStats(), session.shopOverlay(), content.shops());
         const auto presentationFrame = presentationEffects.resolveFrame();
         presentation.render(framebuffer, {
-            activeWorld(), player, *visual, enemyVisuals, objectVisuals, *effects,
+            activeWorld(), player, *visual, enemyVisuals, objectVisuals, objectResidueVisuals,
+            *effects,
             presentationFrame,
             session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, npcVisuals, enemyVisualCatalog, objectVisualCatalog,
@@ -576,6 +578,7 @@ struct GameRuntime::State final {
     std::vector<EnemyVisualInstance> enemyVisuals;
     const WorldObjectVisualCatalog& objectVisualCatalog{runtimeVisualContent.objects};
     std::vector<WorldObjectVisualInstance> objectVisuals;
+    std::vector<WorldObjectResidueVisualInstance> objectResidueVisuals;
     std::unique_ptr<gameplay::creatures::EnemyFactory> enemyFactory;
     std::unique_ptr<gameplay::WorldObjectFactory> objectFactory;
     std::unique_ptr<gameplay::npcs::NpcFactory> npcFactory;

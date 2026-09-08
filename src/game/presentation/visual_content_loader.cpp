@@ -487,6 +487,7 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
             if (entry->second.doorLockedAnimationId) set.doorLocked = runtime.animations.require(*entry->second.doorLockedAnimationId);
             if (entry->second.doorClosedAnimationId) set.doorClosed = runtime.animations.require(*entry->second.doorClosedAnimationId);
             if (entry->second.doorOpenAnimationId) set.doorOpen = runtime.animations.require(*entry->second.doorOpenAnimationId);
+            if (entry->second.destroyedAnimationId) set.destroyed = runtime.animations.require(*entry->second.destroyedAnimationId);
             runtime.objects.add(std::move(set));
         }
         for (const auto* entry : orderedEntries(registry.npcVisuals().values())) {

@@ -5,6 +5,7 @@
 #include <limits>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 
 namespace underworld::game::content {
 namespace {
@@ -217,13 +218,20 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.idleAnimationId.empty() || !contains(animations, value.idleAnimationId))
             error(report, ContentKind::objectVisual, value.id, "unknown_reference",
                   "idle animation does not exist", "idleAnimationId");
-        for (const auto* optionalId : {&value.openedAnimationId, &value.destroyingAnimationId,
-                                       &value.activationInactiveAnimationId, &value.activationActiveAnimationId,
-                                       &value.doorLockedAnimationId, &value.doorClosedAnimationId,
-                                       &value.doorOpenAnimationId}) {
+        const std::pair<const std::optional<simulation::DefinitionId>*, const char*> optionalAnimations[] = {
+            {&value.openedAnimationId, "openedAnimationId"},
+            {&value.destroyingAnimationId, "destroyingAnimationId"},
+            {&value.activationInactiveAnimationId, "activationInactiveAnimationId"},
+            {&value.activationActiveAnimationId, "activationActiveAnimationId"},
+            {&value.doorLockedAnimationId, "doorLockedAnimationId"},
+            {&value.doorClosedAnimationId, "doorClosedAnimationId"},
+            {&value.doorOpenAnimationId, "doorOpenAnimationId"},
+            {&value.destroyedAnimationId, "destroyedAnimationId"},
+        };
+        for (const auto& [optionalId, field] : optionalAnimations) {
             if (*optionalId && !contains(animations, **optionalId))
                 error(report, ContentKind::objectVisual, value.id, "unknown_reference",
-                      "object animation does not exist", "animationId");
+                      "object animation does not exist", field);
         }
     }
 
