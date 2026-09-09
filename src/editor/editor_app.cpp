@@ -362,9 +362,12 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
         return;
     } else {
     if (input.escapePressed) layerDrag_ = {};
-    ui.label(localization_.text(EditorTextId::layers), leftContent.x, leftContent.y + 42);
-    const int layerListTop = leftContent.y + 58;
-    const int layerListHeight = std::max(20, std::min(180, viewportHeight - 300));
+    // The Scenes tab occupies the third navigation row at y + 44. Keep the
+    // layer heading and list below it instead of drawing the heading over the
+    // tab label.
+    ui.label(localization_.text(EditorTextId::layers), leftContent.x, leftContent.y + 66);
+    const int layerListTop = leftContent.y + 82;
+    const int layerListHeight = std::max(20, std::min(180, viewportHeight - 324));
     const int layerContentHeight = static_cast<int>(document().data().layers.size()) *
                                    EditorLayoutMetrics::layerRowHeight;
     const core::RectI layerListBounds{left.x, layerListTop, left.width, layerListHeight};
@@ -531,7 +534,9 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
                 entityPaletteScroll_ = 0;
             }
         }
-        y += 40;
+        // Leave a small gap after the second category row so the search field,
+        // whose bounds are aligned at y - 4, cannot overlap Objects/Pickups.
+        y += 44;
         ui.label("SEARCH", leftContent.x, y);
         if (ui.textField({leftContent.x + 56, y - 4, std::max(20, leftContent.width - 56), 20},
                          entityPaletteSearch_, contentFocusedField_ == fieldEntitySearch)) {
