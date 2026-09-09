@@ -13,8 +13,9 @@ namespace underworld::game::maps {
 inline constexpr std::uint16_t dmapMajorVersion = 1;
 // Minor 1 adds NPCS; minor 2 adds authored world chunks; minor 3 adds
 // presentation environment bindings and world presentation actions; minor 4
-// adds interactive-object world-rule kinds.
-inline constexpr std::uint16_t dmapMinorVersion = 4;
+// adds interactive-object world-rule kinds; minor 5 adds object placement
+// persistence policies, map-authored scenes, and the startScene world action.
+inline constexpr std::uint16_t dmapMinorVersion = 5;
 
 struct DmapLoadResult final {
     bool success{};

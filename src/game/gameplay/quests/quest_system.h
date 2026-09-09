@@ -34,6 +34,9 @@ private:
     void consume(const simulation::ItemDelivered& event);
     void consume(const simulation::ExperienceGranted&) noexcept {}
     void consume(const simulation::PresentationEffectRequested&) noexcept {}
+    void consume(const simulation::SceneStarted&) noexcept {}
+    void consume(const simulation::SceneCompleted&) noexcept {}
+    void consume(const simulation::SceneAborted&) noexcept {}
 
     void advance(QuestObjectiveKind kind,
                  const simulation::DefinitionId& targetId,

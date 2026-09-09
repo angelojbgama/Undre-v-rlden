@@ -27,7 +27,8 @@ std::vector<const AuthoringDescriptor*> GameContentRegistry::authoringDescriptor
 maps::MapValidationCatalogs mapValidationCatalogs(
     const GameContentRegistry& content) noexcept {
     return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets(),
-            &content.npcs(), &content.rewardGrants(), &content.presentationEffects()};
+            &content.npcs(), &content.dialogues(), &content.rewardGrants(),
+            &content.presentationEffects()};
 }
 
 } // namespace underworld::game

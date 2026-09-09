@@ -14,6 +14,23 @@
 namespace underworld::game {
 namespace {
 
+const gameplay::scenes::SceneActorPresentation* sceneActorPresentation(
+    const gameplay::scenes::ScenePresentationState& state,
+    gameplay::scenes::SceneActorKind kind, simulation::PersistentInstanceId instance) {
+    const auto found = std::find_if(state.actors.begin(), state.actors.end(),
+        [&](const auto& value) { return value.kind == kind && value.instanceId == instance; });
+    return found == state.actors.end() ? nullptr : &*found;
+}
+
+const char* emoteText(gameplay::scenes::SceneEmoteKind emote) noexcept {
+    switch (emote) {
+    case gameplay::scenes::SceneEmoteKind::surprise: return "!";
+    case gameplay::scenes::SceneEmoteKind::question: return "?";
+    case gameplay::scenes::SceneEmoteKind::ellipsis: return "...";
+    }
+    return "?";
+}
+
 void outline(render::Renderer2D& renderer, world::AabbI box,
              core::WorldPointI camera, core::ColorRGBA8 color) {
     const int x = box.x - camera.x;
@@ -160,23 +177,46 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
     });
     for (const Actor& actor : actors) {
         if (actor.kind == ActorKind::player) {
+            const auto* scene = sceneActorPresentation(frame.scenePresentation,
+                gameplay::scenes::SceneActorKind::player, {});
             const auto logical = toLogical(frame.player.feetPosition(), cameraPosition);
-            render::drawAnimator(renderer, frame.playerVisual.animator(), {logical.x, logical.y},
+            render::drawAnimator(renderer, frame.playerVisual.animator(),
+                                 {logical.x, logical.y + (scene ? scene->offsetY : 0)},
                                  frame.playerVisual.flipX());
+            if (scene && scene->emote) {
+                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
+                                 logical.y - 34 + scene->offsetY);
+            }
         } else if (actor.kind == ActorKind::enemy) {
-            const auto logical = toLogical(enemies[actor.index].instance.feetPosition(), cameraPosition);
+            const auto& enemy = enemies[actor.index].instance;
+            const auto* scene = sceneActorPresentation(frame.scenePresentation,
+                gameplay::scenes::SceneActorKind::enemy, world.enemies()[actor.index].persistentId);
+            const auto logical = toLogical(enemy.feetPosition(), cameraPosition);
             render::drawAnimator(renderer, frame.enemyVisuals[actor.index].animator(),
-                                 {logical.x, logical.y}, frame.enemyVisuals[actor.index].flipX());
+                                 {logical.x, logical.y + (scene ? scene->offsetY : 0)},
+                                 frame.enemyVisuals[actor.index].flipX());
+            if (scene && scene->emote) {
+                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
+                                 logical.y - 34 + scene->offsetY);
+            }
         } else if (actor.kind == ActorKind::npc) {
             const auto& npc = npcs[actor.index].instance;
+            const auto* scene = sceneActorPresentation(frame.scenePresentation,
+                gameplay::scenes::SceneActorKind::npc, world.npcs()[actor.index].persistentId);
             const auto logical = toLogical(npc.position(), cameraPosition);
             const auto& visualSet = frame.npcVisualCatalog.require(npc.definition().visualSetId);
             if (actor.index < frame.npcVisuals.size() &&
                 frame.npcVisuals[actor.index].hasSprite()) {
                 render::drawAnimator(renderer, frame.npcVisuals[actor.index].animator(),
-                                     {logical.x, logical.y}, frame.npcVisuals[actor.index].flipX());
+                                     {logical.x, logical.y + (scene ? scene->offsetY : 0)},
+                                     frame.npcVisuals[actor.index].flipX());
             } else {
-                renderer.fillRect({logical.x - 6, logical.y - 20, 12, 20}, visualSet.markerColor);
+                renderer.fillRect({logical.x - 6, logical.y - 20 + (scene ? scene->offsetY : 0),
+                                   12, 20}, visualSet.markerColor);
+            }
+            if (scene && scene->emote) {
+                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
+                                 logical.y - 34 + scene->offsetY);
             }
         } else if (actor.kind == ActorKind::object) {
             const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);

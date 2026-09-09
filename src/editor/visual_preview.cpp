@@ -240,7 +240,8 @@ std::shared_ptr<const render::AnimationClip> EditorVisualPreview::loadAnimation(
 }
 
 void EditorVisualPreview::prepareAnimation(const ContentWorkspaceDocument& document,
-                                           const simulation::DefinitionId& id) {
+                                           const simulation::DefinitionId& id,
+                                           std::size_t selectedFrame) {
     const auto* authored = document.animation(id);
     if (!authored) {
         appendMissingAnimation(request_ ? request_->key.id : id, id);
@@ -249,7 +250,19 @@ void EditorVisualPreview::prepareAnimation(const ContentWorkspaceDocument& docum
     const auto* imageDefinition = document.visualImage(authored->imageId);
     if (imageDefinition) image_ = loadImage(document, *imageDefinition);
     clip_ = loadAnimation(document, id);
-    if (clip_) animator_.play(clip_, true);
+    if (!clip_) return;
+
+    animator_.play(clip_, true);
+    // A selected authored frame must be the frame the designer sees.  The
+    // request already carries that selection, but previously it was ignored
+    // and every inspector selection restarted playback at frame zero.
+    // Stepping uses the renderer's own clip bounds and leaves the preview
+    // paused so editing a later frame does not immediately animate away.
+    const auto frameCount = clip_->frames().size();
+    const auto targetFrame = std::min(selectedFrame, frameCount - 1U);
+    for (std::size_t frame = 0; frame < targetFrame; ++frame) {
+        animator_.stepFrame(1);
+    }
 }
 
 void EditorVisualPreview::appendMissingAnimation(const simulation::DefinitionId& owner,
@@ -315,7 +328,7 @@ void EditorVisualPreview::prepare(const ContentWorkspaceDocument& document,
     case ContentDefinitionKind::visualImage:
     case ContentDefinitionKind::staticSprite: break;
     case ContentDefinitionKind::animation:
-        prepareAnimation(document, request.key.id);
+        prepareAnimation(document, request.key.id, request.frameIndex);
         break;
     case ContentDefinitionKind::enemyVisual: {
         const auto* value = document.enemyVisual(request.key.id);
@@ -323,7 +336,7 @@ void EditorVisualPreview::prepare(const ContentWorkspaceDocument& document,
         if (binding) {
             const auto animationId = game::presentation::resolveDirectionalAnimationId(*binding,
                                                                                        request.facing);
-            if (animationId) prepareAnimation(document, *animationId);
+            if (animationId) prepareAnimation(document, *animationId, 0);
         }
         break;
     }
@@ -331,7 +344,7 @@ void EditorVisualPreview::prepare(const ContentWorkspaceDocument& document,
         const auto* value = document.objectVisual(request.key.id);
         if (value) {
             const auto animationId = objectAnimation(*value, request.state);
-            if (animationId) prepareAnimation(document, *animationId);
+            if (animationId) prepareAnimation(document, *animationId, 0);
         }
         break;
     }
@@ -340,7 +353,7 @@ void EditorVisualPreview::prepare(const ContentWorkspaceDocument& document,
         if (value && value->idle) {
             const auto animationId = game::presentation::resolveDirectionalAnimationId(*value->idle,
                                                                                        request.facing);
-            if (animationId) prepareAnimation(document, *animationId);
+            if (animationId) prepareAnimation(document, *animationId, 0);
         }
         break;
     }

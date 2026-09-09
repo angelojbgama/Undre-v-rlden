@@ -113,7 +113,8 @@ private:
         const ContentWorkspaceDocument& document,
         const simulation::DefinitionId& id);
     void prepareAnimation(const ContentWorkspaceDocument& document,
-                          const simulation::DefinitionId& id);
+                          const simulation::DefinitionId& id,
+                          std::size_t selectedFrame);
     void appendMissingAnimation(const simulation::DefinitionId& owner,
                                 const simulation::DefinitionId& animationId);
 

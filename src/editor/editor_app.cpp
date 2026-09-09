@@ -1984,7 +1984,8 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
     if (!contentWorkspace_) return;
     const bool writable = contentWorkspace_->writable();
     auto field = [&](std::string_view label, int id, int y, int width = -1) {
-        ui.label(label, panel.x + 8, y);
+        const auto localizedLabel = localization_.localize(label);
+        ui.label(localizedLabel, panel.x + 8, y);
         if (ui.textField({panel.x + 8, y + 12, width < 0 ? panel.width - 16 : width, 20},
                          contentEditValues_[id], contentFocusedField_ == id)) {
             contentFocusedField_ = id;
@@ -2015,7 +2016,8 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
     };
     auto enumButton = [&](std::string_view label, int id, int y,
                           std::span<const std::string_view> values) {
-        ui.label(label, panel.x + 8, y);
+        const auto localizedLabel = localization_.localize(label);
+        ui.label(localizedLabel, panel.x + 8, y);
         if (ui.button({panel.x + 8, y + 12, panel.width - 16, 20}, contentEditValues_[id], false)) {
             auto it = std::find(values.begin(), values.end(), contentEditValues_[id]);
             const auto next = it == values.end() ? 0 : (static_cast<std::size_t>(it - values.begin() + 1) % values.size());
@@ -3135,7 +3137,28 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
                     }
                 }
                 const bool actionKindChanged = enumButton("action kind", fieldDialogueActionKind, actionButtonsY + 24, actionKinds);
-                field("action target", fieldDialogueActionTarget, actionButtonsY + 72);
+                const auto actionTargetKind = [&]() -> std::optional<ContentDefinitionKind> {
+                    const auto kind = std::find(actionKinds.begin(), actionKinds.end(),
+                                                contentEditValues_[fieldDialogueActionKind]);
+                    if (kind == actionKinds.end()) return std::nullopt;
+                    switch (static_cast<game::gameplay::dialogue::DialogueActionKind>(
+                        kind - actionKinds.begin())) {
+                    case game::gameplay::dialogue::DialogueActionKind::startQuest:
+                        return ContentDefinitionKind::quest;
+                    case game::gameplay::dialogue::DialogueActionKind::openShop:
+                        return ContentDefinitionKind::shop;
+                    case game::gameplay::dialogue::DialogueActionKind::setFlag:
+                    case game::gameplay::dialogue::DialogueActionKind::clearFlag:
+                        return std::nullopt;
+                    }
+                    return std::nullopt;
+                }();
+                if (actionTargetKind) {
+                    reference("action target", *actionTargetKind, fieldDialogueActionTarget,
+                              actionButtonsY + 72);
+                } else {
+                    field("action target", fieldDialogueActionTarget, actionButtonsY + 72);
+                }
                 if (writable && (input.enterPressed || conditionKindChanged) && conditionIndex != noContentIndex &&
                     (contentFocusedField_ == fieldDialogueConditionKind || contentFocusedField_ == fieldDialogueFlag)) {
                     auto updated = *value; auto& selected = updated.nodes[nodeIndex].choices[choiceIndex].conditions[conditionIndex];
@@ -3422,10 +3445,22 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
                 contentEditValues_[fieldRewardGrantItem] = std::string(selected.itemId.value());
                 contentEditValues_[fieldRewardGrantQuantity] = std::to_string(selected.quantity);
             }
-            if (writable && input.enterPressed && contentFocusedField_ == fieldRewardGrantQuantity) {
-                auto updated = *value; const auto quantity = parseUnsigned(contentEditValues_[fieldRewardGrantQuantity]);
-                if (!quantity || *quantity == 0) { status_ = "Reward item quantity must be positive"; return; }
-                updated.items[itemIndex].quantity = *quantity; std::string error;
+            if (writable && input.enterPressed &&
+                (contentFocusedField_ == fieldRewardGrantItem ||
+                 contentFocusedField_ == fieldRewardGrantQuantity)) {
+                auto updated = *value;
+                const auto itemId = simulation::DefinitionId{contentEditValues_[fieldRewardGrantItem]};
+                const auto quantity = parseUnsigned(contentEditValues_[fieldRewardGrantQuantity]);
+                const bool duplicate = std::any_of(updated.items.begin(), updated.items.end(),
+                    [&](const auto& item) { return item.itemId == itemId; });
+                if (!contentWorkspace_->item(itemId) || !quantity || *quantity == 0 ||
+                    (duplicate && itemId != updated.items[itemIndex].itemId)) {
+                    status_ = "Reward item or quantity is invalid";
+                    return;
+                }
+                updated.items[itemIndex].itemId = itemId;
+                updated.items[itemIndex].quantity = *quantity;
+                std::string error;
                 if (contentWorkspace_->updateRewardGrant(key.id, updated, error)) { refresh("Reward item updated"); selectedRewardGrantItemIndex_ = itemIndex; return; }
                 status_ = error;
             }
@@ -4598,6 +4633,45 @@ void EditorApp::drawInspector(EditorUiContext& ui,core::RectI panel){int y=10;ui
             resetContentEditState(); resetContentPreviewState(); contentMode_ = true; return;
         }
         y+=24;
+        if (selection.kind == SelectionKind::object) {
+            const auto object = std::find_if(document().data().objects.begin(),
+                document().data().objects.end(), [&](const auto& value) {
+                    return value.id == selection.instanceId;
+                });
+            if (object != document().data().objects.end()) {
+                ui.label(localization_.text(EditorTextId::persistence), panel.x + 8, y);
+                y += 16;
+                const bool persistent = object->persistence ==
+                    maps::ObjectPersistencePolicy::persistent;
+                const auto policyText = persistent
+                    ? localization_.text(EditorTextId::persistent)
+                    : localization_.text(EditorTextId::resetOnMapEnter);
+                if (ui.button({panel.x + 8, y, panel.width - 16, 20},
+                              std::string("[ ") + std::string(policyText) + " v]")) {
+                    execute(std::make_unique<SetObjectPersistenceCommand>(
+                        object->id, persistent ? maps::ObjectPersistencePolicy::resetOnMapEnter
+                                               : maps::ObjectPersistencePolicy::persistent));
+                }
+                y += 24;
+                ui.labelInRect({panel.x + 8, y, panel.width - 16, 18}, localization_.text(
+                    persistent ? EditorTextId::persistentDescription
+                               : EditorTextId::resetOnMapEnterDescription));
+                y += 22;
+                if (!persistent) {
+                    const auto* objectDefinition = content_.objects().find(object->definitionId);
+                    if (objectDefinition && objectDefinition->container) {
+                        ui.labelInRect({panel.x + 8, y, panel.width - 16, 18},
+                                       localization_.text(EditorTextId::containerResetWarning));
+                        y += 20;
+                    }
+                    if (objectDefinition && objectDefinition->destructible) {
+                        ui.labelInRect({panel.x + 8, y, panel.width - 16, 18},
+                                       localization_.text(EditorTextId::destructibleResetWarning));
+                        y += 20;
+                    }
+                }
+            }
+        }
     if (selection.kind == SelectionKind::region) {
         const auto region = std::find_if(document().regions().begin(), document().regions().end(),
             [&](const auto& value) { return value.id == selection.instanceId; });

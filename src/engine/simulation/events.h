@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 #include <utility>
@@ -62,6 +63,9 @@ struct RegionExited final { MapId mapId{}; DefinitionId regionId{}; };
 struct EncounterStarted final { MapId mapId{}; DefinitionId encounterId{}; };
 struct EncounterCompleted final { MapId mapId{}; DefinitionId encounterId{}; };
 struct PresentationEffectRequested final { MapId mapId{}; DefinitionId effectId{}; };
+struct SceneStarted final { MapId mapId{}; DefinitionId sceneId{}; };
+struct SceneCompleted final { MapId mapId{}; DefinitionId sceneId{}; };
+struct SceneAborted final { MapId mapId{}; DefinitionId sceneId{}; std::string reason; };
 
 struct ObjectOpened final {
     EntityHandle player{};
@@ -95,7 +99,8 @@ using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileIm
                                      PickupCollected, NpcTalked, MapEntered, RegionEntered,
                                      RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
                                      ObjectActivationChanged,
-                                     ItemDelivered, ExperienceGranted, PresentationEffectRequested>;
+                                     ItemDelivered, ExperienceGranted, PresentationEffectRequested,
+                                     SceneStarted, SceneCompleted, SceneAborted>;
 
 class EventBuffer final {
 public:

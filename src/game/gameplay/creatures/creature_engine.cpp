@@ -198,6 +198,15 @@ void EnemyInstance::applyKnockback(int deltaX, int deltaY,
     positionY_ = subpixelCoordinate(body.y - definition_->collisionBody.offsetY);
 }
 
+void EnemyInstance::sceneRelocate(core::WorldPointI feet) noexcept {
+    positionX_ = subpixelCoordinate(feet.x);
+    positionY_ = subpixelCoordinate(feet.y);
+    state_ = BehaviorState::idle;
+    stateTimer_ = 0;
+    target_ = {};
+    activeAttack_.reset();
+}
+
 EnemyFactory::EnemyFactory(const EnemyCatalog& enemies,
                            const BehaviorCatalog& behaviors,
                            const AttackCatalog& attacks,

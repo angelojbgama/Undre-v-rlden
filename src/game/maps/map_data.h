@@ -12,6 +12,7 @@
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/gameplay/rpg/reward_grants.h"
+#include "game/gameplay/scenes/scene_definition.h"
 #include "game/tilesets.h"
 #include "game/presentation/presentation_effects.h"
 
@@ -20,9 +21,11 @@
 #include <string>
 #include <vector>
 
+namespace underworld::game::gameplay::dialogue { class DialogueCatalog; }
+
 namespace underworld::game::maps {
 
-using DoorState = gameplay::DoorState;
+enum class ObjectPersistencePolicy { persistent, resetOnMapEnter };
 
 struct MapLimits final {
     static constexpr std::uint32_t maximumDimension = 4096;
@@ -77,6 +80,7 @@ struct ObjectPlacement final {
     simulation::DefinitionId definitionId{};
     core::WorldPointI position{};
     std::vector<gameplay::ItemStack> initialContents;
+    ObjectPersistencePolicy persistence{ObjectPersistencePolicy::persistent};
 };
 
 struct PickupPlacement final {
@@ -103,42 +107,6 @@ struct MapRegionDefinition final {
     [[nodiscard]] bool operator==(const MapRegionDefinition&) const noexcept = default;
 };
 
-enum class WorldTriggerKind { mapEntered, regionEntered, regionExited, encounterStarted,
-                              encounterCompleted, objectOpened, objectActivated,
-                              objectDeactivated };
-enum class WorldConditionKind { flagSet, flagNotSet, encounterCompleted,
-                                encounterNotCompleted, doorState, objectActive,
-                                objectInactive };
-enum class WorldActionKind { setFlag, clearFlag, startEncounter, setDoorState,
-                             playPresentationEffect };
-struct WorldTrigger final {
-    WorldTriggerKind kind{WorldTriggerKind::mapEntered};
-    simulation::DefinitionId definitionTarget{};
-    simulation::PersistentInstanceId instanceTarget{};
-    [[nodiscard]] bool operator==(const WorldTrigger&) const noexcept = default;
-};
-struct WorldCondition final {
-    WorldConditionKind kind{WorldConditionKind::flagSet};
-    simulation::DefinitionId definitionTarget{};
-    simulation::PersistentInstanceId instanceTarget{};
-    DoorState doorState{DoorState::closed};
-    [[nodiscard]] bool operator==(const WorldCondition&) const noexcept = default;
-};
-struct WorldAction final {
-    WorldActionKind kind{WorldActionKind::setFlag};
-    simulation::DefinitionId definitionTarget{};
-    simulation::PersistentInstanceId instanceTarget{};
-    DoorState doorState{DoorState::closed};
-    [[nodiscard]] bool operator==(const WorldAction&) const noexcept = default;
-};
-struct WorldRuleDefinition final {
-    simulation::DefinitionId id{};
-    WorldTrigger trigger{};
-    std::vector<WorldCondition> conditions;
-    std::vector<WorldAction> actions;
-    bool once{};
-    [[nodiscard]] bool operator==(const WorldRuleDefinition&) const noexcept = default;
-};
 struct EncounterDefinition final {
     simulation::DefinitionId id{};
     std::vector<simulation::PersistentInstanceId> participants;
@@ -163,6 +131,7 @@ struct MapData final {
     std::vector<MapRegionDefinition> regions;
     std::vector<WorldRuleDefinition> worldRules;
     std::vector<EncounterDefinition> encounters;
+    std::vector<gameplay::scenes::SceneDefinition> scenes;
 };
 
 struct MapValidationCatalogs final {
@@ -171,6 +140,7 @@ struct MapValidationCatalogs final {
     const gameplay::ItemCatalog* items{};
     const TilesetCatalog* tilesets{};
     const gameplay::npcs::NpcCatalog* npcs{};
+    const gameplay::dialogue::DialogueCatalog* dialogues{};
     const gameplay::rpg::RewardGrantCatalog* rewardGrants{};
     const presentation::PresentationEffectCatalog* presentationEffects{};
 };

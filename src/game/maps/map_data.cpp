@@ -1,5 +1,7 @@
 #include "game/maps/map_data.h"
 
+#include "game/gameplay/dialogue/dialogue_model.h"
+
 #include <limits>
 #include <string>
 #include <unordered_set>
@@ -30,6 +32,11 @@ bool areaInsideMap(const MapData& data, world::AabbI area) noexcept {
 bool validDoorState(gameplay::DoorState state) noexcept {
     return state == gameplay::DoorState::locked || state == gameplay::DoorState::closed ||
            state == gameplay::DoorState::open;
+}
+
+bool validObjectPersistencePolicy(ObjectPersistencePolicy policy) noexcept {
+    return policy == ObjectPersistencePolicy::persistent ||
+           policy == ObjectPersistencePolicy::resetOnMapEnter;
 }
 
 bool equalPayload(const gameplay::PickupPayload& left,
@@ -132,7 +139,9 @@ MapValidationResult validateMapData(const MapData& data,
     }
     for (const auto& object : data.objects) {
         if (!acceptId(object.id)) { return failure("persistent instance id is zero or duplicate"); }
-        if (object.definitionId.empty()) { return failure("object placement definition is empty"); }
+        if (object.definitionId.empty() || !validObjectPersistencePolicy(object.persistence)) {
+            return failure("object placement definition or persistence policy is invalid");
+        }
         const gameplay::WorldObjectDefinition* definition = nullptr;
         if (catalogs && catalogs->objects) {
             definition = catalogs->objects->find(object.definitionId);
@@ -225,6 +234,10 @@ MapValidationResult validateMapData(const MapData& data,
     };
     const auto encounterExists = [&](const simulation::DefinitionId& id) {
         return std::any_of(data.encounters.begin(), data.encounters.end(),
+                           [&](const auto& value) { return value.id == id; });
+    };
+    const auto sceneExists = [&](const simulation::DefinitionId& id) {
+        return std::any_of(data.scenes.begin(), data.scenes.end(),
                            [&](const auto& value) { return value.id == id; });
     };
     for (std::size_t ruleIndex = 0; ruleIndex < data.worldRules.size(); ++ruleIndex) {
@@ -340,6 +353,11 @@ MapValidationResult validateMapData(const MapData& data,
                     return failure("world rule action references an unknown encounter", actionPath);
                 }
                 break;
+            case WorldActionKind::startScene:
+                if (target.empty() || action.instanceTarget || !sceneExists(target)) {
+                    return failure("world rule action references an unknown scene", actionPath);
+                }
+                break;
             case WorldActionKind::setDoorState: {
                 if (!target.empty() || !action.instanceTarget || !validDoorState(action.doorState)) {
                     return failure("door action has an invalid object instance target or state", actionPath);
@@ -398,6 +416,99 @@ MapValidationResult validateMapData(const MapData& data,
             }
         }
     }
+    std::unordered_set<std::string> sceneIds;
+    std::vector<simulation::PersistentInstanceId> npcInstances;
+    std::vector<simulation::PersistentInstanceId> enemyInstances;
+    npcInstances.reserve(data.npcs.size());
+    enemyInstances.reserve(data.enemies.size());
+    for (const auto& npc : data.npcs) npcInstances.push_back(npc.id);
+    for (const auto& enemy : data.enemies) enemyInstances.push_back(enemy.id);
+    const auto mapWidthPixels = data.width * static_cast<std::uint32_t>(data.tileSize);
+    const auto mapHeightPixels = data.height * static_cast<std::uint32_t>(data.tileSize);
+    const auto validateSceneWorldAction = [&](const WorldAction& action,
+                                              const std::string& actionPath) -> MapValidationResult {
+        const auto& target = action.definitionTarget;
+        switch (action.kind) {
+        case WorldActionKind::setFlag:
+        case WorldActionKind::clearFlag:
+            if (target.empty() || action.instanceTarget) {
+                return failure("scene world action flag target is invalid", actionPath);
+            }
+            break;
+        case WorldActionKind::startEncounter:
+            if (target.empty() || action.instanceTarget || !encounterExists(target)) {
+                return failure("scene world action references an unknown encounter", actionPath);
+            }
+            break;
+        case WorldActionKind::startScene:
+            return failure("nested scenes are not supported", actionPath);
+        case WorldActionKind::setDoorState: {
+            if (!target.empty() || !action.instanceTarget || !validDoorState(action.doorState)) {
+                return failure("scene door action has an invalid target or state", actionPath);
+            }
+            const auto object = objectById(action.instanceTarget);
+            if (object == data.objects.end()) {
+                return failure("scene door action references an unknown object instance", actionPath);
+            }
+            if (catalogs != nullptr && catalogs->objects != nullptr) {
+                const auto* definition = catalogs->objects->find(object->definitionId);
+                if (definition == nullptr || !definition->door) {
+                    return failure("scene door action target is not door-capable", actionPath);
+                }
+            }
+            break;
+        }
+        case WorldActionKind::playPresentationEffect:
+            if (target.empty() || action.instanceTarget) {
+                return failure("scene presentation action has an invalid target", actionPath);
+            }
+            if (catalogs != nullptr && catalogs->presentationEffects != nullptr) {
+                const auto* effect = catalogs->presentationEffects->find(target);
+                if (effect == nullptr ||
+                    effect->lifetime != presentation::PresentationEffectLifetime::transient) {
+                    return failure("scene presentation action references an unknown or persistent effect",
+                                   actionPath);
+                }
+            }
+            break;
+        }
+        return {true, {}, {}};
+    };
+    for (std::size_t sceneIndex = 0; sceneIndex < data.scenes.size(); ++sceneIndex) {
+        const auto& scene = data.scenes[sceneIndex];
+        const auto scenePath = "scenes[" + std::to_string(sceneIndex) + "]";
+        if (scene.id.empty() || !sceneIds.emplace(std::string(scene.id.value())).second) {
+            return failure("scene id is empty or duplicated", scenePath + ".id");
+        }
+        const auto validation = gameplay::scenes::validateScene(
+            scene, mapWidthPixels, mapHeightPixels, npcInstances, enemyInstances);
+        if (!validation) return failure(validation.error, scenePath + "." + validation.path);
+        for (std::size_t trackIndex = 0; trackIndex < scene.tracks.size(); ++trackIndex) {
+            const auto& track = scene.tracks[trackIndex];
+            for (std::size_t clipIndex = 0; clipIndex < track.clips.size(); ++clipIndex) {
+                const auto& clip = track.clips[clipIndex];
+                if (clip.kind == gameplay::scenes::SceneClipKind::dialogue &&
+                    catalogs != nullptr && catalogs->dialogues != nullptr &&
+                    catalogs->dialogues->find(clip.dialogueId) == nullptr) {
+                    return failure("scene dialogue clip references an unknown dialogue",
+                                   scenePath + ".tracks[" + std::to_string(trackIndex) +
+                                       "].clips[" + std::to_string(clipIndex) + ".dialogueId");
+                }
+                if (clip.kind == gameplay::scenes::SceneClipKind::presentationEffect &&
+                    catalogs != nullptr && catalogs->presentationEffects != nullptr &&
+                    catalogs->presentationEffects->find(clip.effectId) == nullptr) {
+                    return failure("scene presentation clip references an unknown effect",
+                                   scenePath + ".tracks[" + std::to_string(trackIndex) +
+                                       "].clips[" + std::to_string(clipIndex) + ".effectId");
+                }
+                if (clip.kind != gameplay::scenes::SceneClipKind::worldEvent) continue;
+                const auto actionPath = scenePath + ".tracks[" + std::to_string(trackIndex) +
+                    "].clips[" + std::to_string(clipIndex) + "].worldAction";
+                const auto actionValidation = validateSceneWorldAction(clip.worldAction, actionPath);
+                if (!actionValidation) return actionValidation;
+            }
+        }
+    }
     if (catalogs && catalogs->objects) {
         std::unordered_set<std::uint64_t> doorCells;
         const int tileSize = static_cast<int>(data.tileSize);
@@ -433,12 +544,13 @@ bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {
         a.layers != b.layers || a.collision != b.collision ||
         a.playerSpawns != b.playerSpawns || a.enemies != b.enemies || a.npcs != b.npcs ||
         a.regions != b.regions || a.worldRules != b.worldRules || a.encounters != b.encounters ||
+        a.scenes != b.scenes ||
         a.links != b.links ||
         a.objects.size() != b.objects.size() || a.pickups.size() != b.pickups.size()) { return false; }
     for (std::size_t i = 0; i < a.objects.size(); ++i) {
         const auto& x = a.objects[i]; const auto& y = b.objects[i];
         if (!(x.id == y.id) || !(x.definitionId == y.definitionId) || !(x.position == y.position) ||
-            x.initialContents.size() != y.initialContents.size()) { return false; }
+            x.persistence != y.persistence || x.initialContents.size() != y.initialContents.size()) { return false; }
         for (std::size_t j = 0; j < x.initialContents.size(); ++j) {
             if (!equalStack(x.initialContents[j], y.initialContents[j])) { return false; }
         }

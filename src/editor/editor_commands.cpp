@@ -466,6 +466,24 @@ bool MoveEntityCommand::set(EditorDocument& document, core::WorldPointI value) n
 bool MoveEntityCommand::apply(EditorDocument& document, std::string& error) { if(set(document,after_))return true;error="entity to move does not exist";return false; }
 void MoveEntityCommand::revert(EditorDocument& document) noexcept { static_cast<void>(set(document,before_)); }
 
+bool SetObjectPersistenceCommand::apply(EditorDocument& document, std::string& error) {
+    const auto found = findPersistent(document.commandData().objects, id_);
+    if (found == document.commandData().objects.end()) {
+        error = "object placement does not exist";
+        return false;
+    }
+    if (!previous_) previous_ = found->persistence;
+    found->persistence = persistence_;
+    error.clear();
+    return true;
+}
+
+void SetObjectPersistenceCommand::revert(EditorDocument& document) noexcept {
+    if (!previous_) return;
+    const auto found = findPersistent(document.commandData().objects, id_);
+    if (found != document.commandData().objects.end()) found->persistence = *previous_;
+}
+
 bool SetMapLinkTargetCommand::apply(EditorDocument& document, std::string& error) {
     if (targetMapId_.empty() || targetSpawnId_.empty()) {
         error = "map link target must identify a map and spawn"; return false;

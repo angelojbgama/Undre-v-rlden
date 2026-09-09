@@ -70,6 +70,22 @@ StringTable collectStrings(const MapData& data) {
         addString(table.values, encounter.id.value());
         if (encounter.rewardGrantId) addString(table.values, encounter.rewardGrantId->value());
     }
+    for (const auto& scene : data.scenes) {
+        addString(table.values, scene.id.value());
+        for (const auto& actor : scene.actors) addString(table.values, actor.slotId);
+        for (const auto& track : scene.tracks) {
+            addString(table.values, track.actorSlot);
+            for (const auto& clip : track.clips) {
+                addString(table.values, clip.actorSlot);
+                if (!clip.dialogueId.empty()) addString(table.values, clip.dialogueId.value());
+                if (!clip.effectId.empty()) addString(table.values, clip.effectId.value());
+                if (!clip.worldAction.definitionTarget.empty()) {
+                    addString(table.values, clip.worldAction.definitionTarget.value());
+                }
+            }
+        }
+        for (const auto& marker : scene.markers) addString(table.values, marker.name);
+    }
     std::sort(table.values.begin(), table.values.end());
     table.values.erase(std::unique(table.values.begin(), table.values.end()), table.values.end());
     for (std::size_t i = 0; i < table.values.size(); ++i) {
@@ -88,6 +104,18 @@ std::uint8_t facingValue(gameplay::FacingDirection facing) { return static_cast<
 bool readFacing(ByteReader& reader, gameplay::FacingDirection& facing) {
     std::uint8_t value{}; if (!reader.readU8(value) || value > 3) { return false; }
     facing = static_cast<gameplay::FacingDirection>(value); return true;
+}
+std::uint8_t persistenceValue(ObjectPersistencePolicy policy) {
+    return static_cast<std::uint8_t>(policy);
+}
+bool readPersistence(ByteReader& reader, ObjectPersistencePolicy& policy) {
+    std::uint8_t value{};
+    if (!reader.readU8(value) || value > static_cast<std::uint8_t>(
+            ObjectPersistencePolicy::resetOnMapEnter)) {
+        return false;
+    }
+    policy = static_cast<ObjectPersistencePolicy>(value);
+    return true;
 }
 void writePoint(ByteWriter& out, core::WorldPointI point) { out.writeI32(point.x); out.writeI32(point.y); }
 bool readPoint(ByteReader& in, core::WorldPointI& point) { return in.readI32(point.x) && in.readI32(point.y); }
@@ -158,7 +186,9 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
     ents.writeU32(static_cast<std::uint32_t>(data.objects.size()));
     for (const auto& object : data.objects) {
         ents.writeU64(object.id.value); ents.writeU32(strings.index(object.definitionId.value()));
-        writePoint(ents, object.position); ents.writeU32(static_cast<std::uint32_t>(object.initialContents.size()));
+        writePoint(ents, object.position);
+        ents.writeU8(persistenceValue(object.persistence));
+        ents.writeU32(static_cast<std::uint32_t>(object.initialContents.size()));
         for (const auto& stack : object.initialContents) {
             ents.writeU32(strings.index(stack.itemId.value())); ents.writeU32(stack.quantity);
         }
@@ -240,6 +270,57 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
         if (encounter.rewardGrantId) encounters.writeU32(strings.index(encounter.rewardGrantId->value()));
     }
     appendChunk(chunks, {'E','N','C','T'}, std::move(encounters));
+    ByteWriter scenes; scenes.writeU32(static_cast<std::uint32_t>(data.scenes.size()));
+    const auto writeOptionalString = [&](ByteWriter& output, std::string_view value) {
+        output.writeU8(value.empty() ? 0 : 1);
+        if (!value.empty()) output.writeU32(strings.index(value));
+    };
+    const auto writeSceneAction = [&](ByteWriter& output, const WorldAction& action) {
+        output.writeU8(static_cast<std::uint8_t>(action.kind));
+        if (action.instanceTarget) {
+            output.writeU8(2); output.writeU64(action.instanceTarget.value);
+        } else if (!action.definitionTarget.empty()) {
+            output.writeU8(1); output.writeU32(strings.index(action.definitionTarget.value()));
+        } else {
+            output.writeU8(0);
+        }
+        output.writeU8(static_cast<std::uint8_t>(action.doorState));
+    };
+    for (const auto& scene : data.scenes) {
+        scenes.writeU32(strings.index(scene.id.value()));
+        scenes.writeU32(scene.durationTicks);
+        scenes.writeU32(static_cast<std::uint32_t>(scene.actors.size()));
+        for (const auto& actor : scene.actors) {
+            scenes.writeU32(strings.index(actor.slotId));
+            scenes.writeU8(static_cast<std::uint8_t>(actor.kind));
+            scenes.writeU8(actor.instanceId ? 1 : 0);
+            if (actor.instanceId) scenes.writeU64(actor.instanceId.value);
+        }
+        scenes.writeU32(static_cast<std::uint32_t>(scene.tracks.size()));
+        for (const auto& track : scene.tracks) {
+            scenes.writeU8(static_cast<std::uint8_t>(track.kind));
+            writeOptionalString(scenes, track.actorSlot);
+            scenes.writeU32(static_cast<std::uint32_t>(track.clips.size()));
+            for (const auto& clip : track.clips) {
+                scenes.writeU8(static_cast<std::uint8_t>(clip.kind));
+                writeOptionalString(scenes, clip.actorSlot);
+                scenes.writeU32(clip.startTick); scenes.writeU32(clip.durationTicks);
+                writePoint(scenes, clip.targetPosition);
+                scenes.writeU8(static_cast<std::uint8_t>(clip.facing));
+                scenes.writeU8(static_cast<std::uint8_t>(clip.emote));
+                scenes.writeI32(clip.heightPixels);
+                writeOptionalString(scenes, clip.dialogueId.value());
+                scenes.writeU8(clip.waitForCompletion ? 1 : 0);
+                writeOptionalString(scenes, clip.effectId.value());
+                writeSceneAction(scenes, clip.worldAction);
+            }
+        }
+        scenes.writeU32(static_cast<std::uint32_t>(scene.markers.size()));
+        for (const auto& marker : scene.markers) {
+            scenes.writeU32(strings.index(marker.name)); scenes.writeU32(marker.tick);
+        }
+    }
+    appendChunk(chunks, {'S','C','N','E'}, std::move(scenes));
 
     ByteWriter result;
     for (char value : std::array<char,4>{'D','M','A','P'}) { result.writeU8(static_cast<std::uint8_t>(value)); }
@@ -269,7 +350,8 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         const std::string tag(reinterpret_cast<const char*>(tagBytes.data()), 4);
         const bool known = tag == "META" || tag == "STRS" || tag == "TREF" || tag == "LAYR" ||
                            tag == "COLL" || tag == "SPWN" || tag == "ENTS" || tag == "NPCS" ||
-                           tag == "LINK" || tag == "REGN" || tag == "WRLD" || tag == "ENCT";
+                           tag == "LINK" || tag == "REGN" || tag == "WRLD" || tag == "ENCT" ||
+                           tag == "SCNE";
         if (known && !chunks.emplace(tag, payload).second) return fail("duplicate singleton DMAP chunk");
     }
     if (minor == 0 && chunks.contains("NPCS")) {
@@ -334,9 +416,11 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             data.enemies.push_back({{id},std::move(def),point,facing});}
         if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid object count");
         data.objects.reserve(count);
-        for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def;core::WorldPointI point;std::uint32_t stackCount{};
-            if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||!readCount(in,MapLimits::maximumPlacements,stackCount))return fail("invalid object record");
-            ObjectPlacement object{{id},std::move(def),point,{}};object.initialContents.reserve(stackCount);
+        for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def;core::WorldPointI point;ObjectPersistencePolicy persistence{};std::uint32_t stackCount{};
+            if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||
+               (minor >= 5 ? !readPersistence(in,persistence) : false)||
+               !readCount(in,MapLimits::maximumPlacements,stackCount))return fail("invalid object record");
+            ObjectPlacement object{{id},std::move(def),point,{},persistence};object.initialContents.reserve(stackCount);
             for(std::uint32_t s=0;s<stackCount;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity)) return fail("invalid object contents");object.initialContents.push_back({std::move(item),quantity});}
             data.objects.push_back(std::move(object));}
         if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid pickup count");
@@ -428,7 +512,8 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             if (!readCount(in, MapLimits::maximumPlacements, actionCount)) return fail("invalid WRLD action count");
             for (std::uint32_t j = 0; j < actionCount; ++j) {
                 WorldAction action; std::uint8_t state{};
-                if (!in.readU8(kind) || kind > 4 || (kind == 4 && minor < 3) ||
+                if (!in.readU8(kind) || kind > 5 || (kind == 4 && minor < 3) ||
+                    (kind == 5 && minor < 5) ||
                     !in.readU8(instanceTarget) || instanceTarget > 2) {
                     return fail("invalid WRLD action");
                 }
@@ -459,6 +544,98 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             data.encounters.push_back(std::move(encounter));
         }
         if (in.remaining() != 0) return fail("trailing ENCT data");
+    }
+    if (const auto found = chunks.find("SCNE"); found != chunks.end()) {
+        if (minor < 5) return fail("SCNE chunk requires DMAP minor version 5");
+        ByteReader in(found->second); std::uint32_t count{};
+        if (!readCount(in, MapLimits::maximumPlacements, count)) return fail("invalid SCNE count");
+        const auto readOptionalString = [&](ByteReader& input, std::string& value) {
+            std::uint8_t present{};
+            if (!input.readU8(present) || present > 1) return false;
+            if (present == 0) { value.clear(); return true; }
+            return readIndex(input, strings, value);
+        };
+        const auto readSceneAction = [&](ByteReader& input, WorldAction& action) {
+            std::uint8_t kind{}, targetKind{}, state{}; std::uint64_t instance{};
+            if (!input.readU8(kind) || kind > 5 || !input.readU8(targetKind) || targetKind > 2) {
+                return false;
+            }
+            if (targetKind == 1 && !readId(input, strings, action.definitionTarget)) return false;
+            if (targetKind == 2 && (!input.readU64(instance) || instance == 0)) return false;
+            if (targetKind == 2) action.instanceTarget = {instance};
+            if (!input.readU8(state) || state > 2) return false;
+            action.kind = static_cast<WorldActionKind>(kind);
+            action.doorState = static_cast<DoorState>(state);
+            return true;
+        };
+        data.scenes.reserve(count);
+        for (std::uint32_t sceneIndex = 0; sceneIndex < count; ++sceneIndex) {
+            gameplay::scenes::SceneDefinition scene;
+            std::uint32_t idIndex{}, actorCount{}, trackCount{}, markerCount{};
+            if (!in.readU32(idIndex) || idIndex >= strings.size() ||
+                !in.readU32(scene.durationTicks) ||
+                !readCount(in, MapLimits::maximumPlacements, actorCount)) {
+                return fail("invalid SCNE scene");
+            }
+            scene.id = simulation::DefinitionId{strings[idIndex]};
+            scene.actors.reserve(actorCount);
+            for (std::uint32_t i = 0; i < actorCount; ++i) {
+                gameplay::scenes::SceneActorBinding actor;
+                std::uint32_t slotIndex{}; std::uint8_t kind{}, present{}; std::uint64_t instance{};
+                if (!in.readU32(slotIndex) || slotIndex >= strings.size() ||
+                    !in.readU8(kind) || kind > 2 || !in.readU8(present) || present > 1) {
+                    return fail("invalid SCNE actor");
+                }
+                actor.slotId = strings[slotIndex];
+                actor.kind = static_cast<gameplay::scenes::SceneActorKind>(kind);
+                if (present && (!in.readU64(instance) || instance == 0)) {
+                    return fail("invalid SCNE actor instance");
+                }
+                if (present) actor.instanceId = {instance};
+                scene.actors.push_back(std::move(actor));
+            }
+            if (!readCount(in, MapLimits::maximumPlacements, trackCount)) return fail("invalid SCNE tracks");
+            scene.tracks.reserve(trackCount);
+            for (std::uint32_t i = 0; i < trackCount; ++i) {
+                gameplay::scenes::SceneTrack track; std::uint8_t kind{}; std::string actorSlot;
+                std::uint32_t clipCount{};
+                if (!in.readU8(kind) || kind > 3 || !readOptionalString(in, actorSlot) ||
+                    !readCount(in, MapLimits::maximumPlacements, clipCount)) return fail("invalid SCNE track");
+                track.kind = static_cast<gameplay::scenes::SceneTrackKind>(kind);
+                track.actorSlot = std::move(actorSlot);
+                track.clips.reserve(clipCount);
+                for (std::uint32_t j = 0; j < clipCount; ++j) {
+                    gameplay::scenes::SceneClip clip;
+                    std::uint8_t clipKind{}, facing{}, emote{}, wait{}; std::string text;
+                    if (!in.readU8(clipKind) || clipKind > 6 ||
+                        !readOptionalString(in, clip.actorSlot) ||
+                        !in.readU32(clip.startTick) || !in.readU32(clip.durationTicks) ||
+                        !readPoint(in, clip.targetPosition) || !in.readU8(facing) || facing > 3 ||
+                        !in.readU8(emote) || emote > 2 || !in.readI32(clip.heightPixels) ||
+                        !readOptionalString(in, text)) return fail("invalid SCNE clip");
+                    if (!text.empty()) clip.dialogueId = simulation::DefinitionId{text};
+                    if (!in.readU8(wait) || wait > 1 || !readOptionalString(in, text)) {
+                        return fail("invalid SCNE dialogue clip");
+                    }
+                    clip.waitForCompletion = wait != 0;
+                    if (!text.empty()) clip.effectId = simulation::DefinitionId{text};
+                    if (!readSceneAction(in, clip.worldAction)) return fail("invalid SCNE world action");
+                    clip.kind = static_cast<gameplay::scenes::SceneClipKind>(clipKind);
+                    clip.facing = static_cast<gameplay::FacingDirection>(facing);
+                    clip.emote = static_cast<gameplay::scenes::SceneEmoteKind>(emote);
+                    track.clips.push_back(std::move(clip));
+                }
+                scene.tracks.push_back(std::move(track));
+            }
+            if (!readCount(in, MapLimits::maximumPlacements, markerCount)) return fail("invalid SCNE markers");
+            for (std::uint32_t i = 0; i < markerCount; ++i) {
+                gameplay::scenes::SceneMarker marker;
+                if (!readIndex(in, strings, marker.name) || !in.readU32(marker.tick)) return fail("invalid SCNE marker");
+                scene.markers.push_back(std::move(marker));
+            }
+            data.scenes.push_back(std::move(scene));
+        }
+        if (in.remaining() != 0) return fail("trailing SCNE data");
     }
     const auto validation=validateMapData(data,catalogs);if(!validation)return fail(validation.error);
     return {true,std::move(data),{}};

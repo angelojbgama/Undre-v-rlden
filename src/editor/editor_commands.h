@@ -168,6 +168,22 @@ private:
     core::WorldPointI after_{};
 };
 
+class SetObjectPersistenceCommand final : public EditorCommand {
+public:
+    SetObjectPersistenceCommand(simulation::PersistentInstanceId id,
+                                maps::ObjectPersistencePolicy persistence)
+        : id_(id), persistence_(persistence) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override {
+        return "Set Object Persistence";
+    }
+private:
+    simulation::PersistentInstanceId id_{};
+    maps::ObjectPersistencePolicy persistence_{};
+    std::optional<maps::ObjectPersistencePolicy> previous_;
+};
+
 class SetMapLinkTargetCommand final : public EditorCommand {
 public:
     SetMapLinkTargetCommand(std::string linkId, simulation::MapId targetMapId,

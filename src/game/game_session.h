@@ -24,7 +24,9 @@
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/equipment.h"
 #include "game/gameplay/shop_overlay.h"
+#include "game/gameplay/scenes/scene_controller.h"
 
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <string>
@@ -107,6 +109,16 @@ public:
         const gameplay::dialogue::DialogueFlagSet& flags,
         std::span<const gameplay::quests::QuestProgress> progress,
         std::string& error);
+    [[nodiscard]] bool sceneActive() const noexcept { return sceneController_.active(); }
+    [[nodiscard]] bool sceneWaitingForDialogue() const noexcept {
+        return sceneController_.waitingForDialogue();
+    }
+    [[nodiscard]] const gameplay::scenes::ScenePresentationState& scenePresentation() const noexcept {
+        return sceneController_.presentation();
+    }
+    [[nodiscard]] const std::string& sceneError() const noexcept {
+        return sceneController_.lastError();
+    }
 
 private:
     void startPlayerAttack();
@@ -128,8 +140,14 @@ private:
     [[nodiscard]] bool handleDialogueCommand(const simulation::PlayerCommand& command);
     void applyDialogueActions();
     void consumeQuestEvents();
+    void consumeWorldLogic();
     void resolvePendingQuestRewards();
     void resolveEncounterRewards();
+    [[nodiscard]] bool requestScene(const simulation::DefinitionId& sceneId);
+    [[nodiscard]] bool startPendingScene();
+    [[nodiscard]] bool startScene(const simulation::DefinitionId& sceneId);
+    [[nodiscard]] gameplay::WorldLogicRuntime worldLogicRuntime();
+    [[nodiscard]] gameplay::scenes::SceneRuntimeHooks sceneRuntimeHooks();
     void refreshDerivedPlayerStats();
     [[nodiscard]] gameplay::DamageSpec effectivePlayerDamage(
         const gameplay::DamageSpec& base) const noexcept;
@@ -142,6 +160,7 @@ private:
     simulation::EventBuffer events_;
     maps::RegionTracker regionTracker_;
     gameplay::WorldLogicSystem worldLogic_;
+    std::size_t worldLogicEventCursor_{};
     gameplay::EncounterSystem encounters_;
     bool mapEnteredPending_{};
     save::SessionWorldState worldState_;
@@ -170,6 +189,8 @@ private:
     gameplay::rpg::RewardResolver rewardResolver_;
     gameplay::rpg::RewardGrantService rewardGrantService_;
     gameplay::rpg::ShopTransactionService shopTransactionService_;
+    gameplay::scenes::SceneController sceneController_;
+    std::optional<simulation::DefinitionId> pendingSceneId_;
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;

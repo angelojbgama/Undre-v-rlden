@@ -4,8 +4,9 @@
 #include "game/gameplay/dialogue/dialogue_flags.h"
 #include "game/maps/map_data.h"
 
-#include <vector>
+#include <cstddef>
 #include <functional>
+#include <vector>
 
 namespace underworld::game::gameplay {
 
@@ -22,7 +23,14 @@ struct WorldLogicRuntime final {
     std::function<bool(simulation::PersistentInstanceId, maps::DoorState)> setDoorState;
     std::function<std::optional<maps::DoorState>(simulation::PersistentInstanceId)> doorState;
     std::function<std::optional<bool>(simulation::PersistentInstanceId)> objectActivation{};
+    std::function<bool(const simulation::DefinitionId&)> requestScene{};
 };
+
+[[nodiscard]] bool executeWorldAction(const maps::WorldAction& action,
+                                      const simulation::MapId& mapId,
+                                      dialogue::DialogueFlagSet& flags,
+                                      simulation::EventBuffer& events,
+                                      const WorldLogicRuntime& runtime);
 
 class WorldLogicSystem final {
 public:
@@ -32,7 +40,8 @@ public:
                  dialogue::DialogueFlagSet& flags,
                  simulation::EventBuffer& events,
                  std::vector<WorldRuleState>& persistentState,
-                 const WorldLogicRuntime& runtime = {});
+                 const WorldLogicRuntime& runtime = {},
+                 std::size_t firstEventIndex = 0);
 
 private:
     bool matches(const maps::WorldRuleDefinition& rule, const simulation::SimulationEvent& event,

@@ -24,7 +24,11 @@ struct PersistentRuntimeInstance final {
 
 using PersistentEnemy = PersistentRuntimeInstance<gameplay::creatures::EnemyInstance>;
 using PersistentNpc = PersistentRuntimeInstance<gameplay::npcs::NpcInstance>;
-using PersistentObject = PersistentRuntimeInstance<gameplay::WorldObjectInstance>;
+struct PersistentObject final {
+    simulation::PersistentInstanceId persistentId{};
+    ObjectPersistencePolicy persistence{ObjectPersistencePolicy::persistent};
+    gameplay::WorldObjectInstance instance;
+};
 struct DestroyedObjectResidue final {
     simulation::PersistentInstanceId persistentId{};
     simulation::DefinitionId visualSetId{};

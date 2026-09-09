@@ -30,6 +30,15 @@ bool hasInstance(const maps::MapData& map,simulation::PersistentInstanceId id,bo
     if(object)return std::any_of(map.objects.begin(),map.objects.end(),[&](const auto& value){return value.id==id;});
     return std::any_of(map.pickups.begin(),map.pickups.end(),[&](const auto& value){return value.id==id;});
 }
+bool resetOnMapEnter(const SaveValidationCatalogs& catalogs,
+                     const simulation::PersistentEntityKey& key) {
+    const auto* map = findMap(catalogs, key.mapId);
+    if (!map) return false;
+    const auto found = std::find_if(map->objects.begin(), map->objects.end(),
+                                    [&](const auto& value) { return value.id == key.instanceId; });
+    return found != map->objects.end() &&
+           found->persistence == maps::ObjectPersistencePolicy::resetOnMapEnter;
+}
 bool validStack(const gameplay::ItemStack& stack,const gameplay::ItemCatalog& items){
     const auto* definition=items.find(stack.itemId);return definition&&stack.quantity>0&&stack.quantity<=definition->stackLimit;
 }
@@ -202,7 +211,7 @@ SaveResult deserializeSave(std::span<const std::uint8_t> bytes,const SaveValidat
     std::unordered_map<std::string,std::span<const std::uint8_t>> chunks;while(in.remaining()){std::span<const std::uint8_t>tag,payload;std::uint64_t amount{};if(!in.readBytes(4,tag)||!in.readU64(amount)||amount>maps::MapLimits::maximumChunkBytes||amount>in.remaining()||!in.readBytes(static_cast<std::size_t>(amount),payload))return fail("truncated DSAV chunk");std::string name(reinterpret_cast<const char*>(tag.data()),4);if((name=="STRS"||name=="PLYR"||name=="DELT"||name=="FLGS"||name=="QSTS"||name=="PROG"||name=="EQIP"||name=="BANK"||name=="WRLD"||name=="ENCT")&&!chunks.emplace(name,payload).second)return fail("duplicate DSAV chunk");}for(const char* required:{"STRS","PLYR","DELT"})if(!chunks.contains(required))return fail("missing required DSAV chunk");if(minor==0&&chunks.contains("FLGS"))return fail("FLGS chunk requires DSAV minor version 1");if(minor<2&&chunks.contains("QSTS"))return fail("QSTS chunk requires DSAV minor version 2");if(minor<3&&chunks.contains("PROG"))return fail("PROG chunk requires DSAV minor version 3");if(minor>=3&&!chunks.contains("PROG"))return fail("DSAV minor version 3 requires PROG chunk");if(minor<4&&chunks.contains("EQIP"))return fail("EQIP chunk requires DSAV minor version 4");if(minor>=4&&!chunks.contains("EQIP"))return fail("DSAV minor version 4 requires EQIP chunk");if(minor<5&&chunks.contains("BANK"))return fail("BANK chunk requires DSAV minor version 5");if(minor>=5&&!chunks.contains("BANK"))return fail("DSAV minor version 5 requires BANK chunk");if(minor<7&&(chunks.contains("WRLD")||chunks.contains("ENCT")))return fail("world state chunks require DSAV minor version 7");if(minor>=7&&(!chunks.contains("WRLD")||!chunks.contains("ENCT")))return fail("DSAV minor version 7 requires world state chunks");if(chunks.contains("QSTS")&&!catalogs.quests)return fail("save validation requires quest catalog");
     std::vector<std::string> strings;{ByteReader r(chunks["STRS"]);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumStrings)return fail("invalid save string count");for(std::uint32_t i=0;i<count;++i){std::string value;if(!r.readString(value,maps::MapLimits::maximumStringBytes)||value.empty())return fail("invalid save string");strings.push_back(std::move(value));}if(r.remaining())return fail("trailing save string data");}
     SaveData data;{ByteReader r(chunks["PLYR"]);std::uint8_t facing{};std::uint32_t count{};if(!readId(r,strings,data.player.currentMapId)||!point(r,data.player.position)||!r.readU8(facing)||facing>3||!r.readI32(data.player.health)||!r.readU64(data.player.gold)||!r.readU32(count)||count!=data.player.inventory.size())return fail("invalid saved player");data.player.facing=static_cast<gameplay::FacingDirection>(facing);for(auto& slot:data.player.inventory){std::uint8_t present{};if(!r.readU8(present)||present>1)return fail("invalid inventory slot");if(present){simulation::DefinitionId id;std::uint32_t quantity{};if(!readId(r,strings,id)||!r.readU32(quantity))return fail("truncated inventory slot");slot=gameplay::ItemStack{std::move(id),quantity};}}if(!r.readU32(count)||count!=data.player.quickSlots.size())return fail("invalid quick slot count");for(auto& slot:data.player.quickSlots){std::uint8_t present{};if(!r.readU8(present)||present>1)return fail("invalid quick slot");if(present){simulation::DefinitionId id;if(!readId(r,strings,id))return fail("truncated quick slot");slot=std::move(id);}}if(r.remaining())return fail("trailing player data");}
-    {ByteReader r(chunks["DELT"]);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid object delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{};std::uint8_t opened{},destroyed{},hasDoor{},hasActivation{};std::uint32_t stacks{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(opened)||opened>1||!r.readU8(destroyed)||destroyed>1)return fail("invalid object delta");ObjectDelta delta{{std::move(map),{id}},opened!=0,destroyed!=0,{},std::nullopt,std::nullopt};if(minor>=7){if(!r.readU8(hasDoor)||hasDoor>1)return fail("invalid door delta");if(hasDoor){std::uint8_t door{};if(!r.readU8(door)||door>2)return fail("invalid door state");delta.doorState=static_cast<gameplay::DoorState>(door);}}if(minor>=8){if(!r.readU8(hasActivation)||hasActivation>1)return fail("invalid activation delta");if(hasActivation){std::uint8_t active{};if(!r.readU8(active)||active>1)return fail("invalid activation state");delta.activationState=active!=0;}}if(!r.readU32(stacks)||stacks>maps::MapLimits::maximumPlacements)return fail("invalid object delta");for(std::uint32_t s=0;s<stacks;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(r,strings,item)||!r.readU32(quantity))return fail("invalid object delta contents");delta.remainingContents.push_back({std::move(item),quantity});}data.world.objects.push_back(std::move(delta));}if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid pickup delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{},remaining{};std::uint8_t collected{},hasRemaining{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(collected)||collected>1||!r.readU8(hasRemaining)||hasRemaining>1)return fail("invalid pickup delta");std::optional<std::uint64_t> quantity;if(hasRemaining){if(!r.readU64(remaining))return fail("truncated pickup remainder");quantity=remaining;}data.world.pickups.push_back({{std::move(map),{id}},collected!=0,quantity});}if(r.remaining())return fail("trailing delta data");}
+    {ByteReader r(chunks["DELT"]);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid object delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{};std::uint8_t opened{},destroyed{},hasDoor{},hasActivation{};std::uint32_t stacks{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(opened)||opened>1||!r.readU8(destroyed)||destroyed>1)return fail("invalid object delta");ObjectDelta delta{{std::move(map),{id}},opened!=0,destroyed!=0,{},std::nullopt,std::nullopt};if(minor>=7){if(!r.readU8(hasDoor)||hasDoor>1)return fail("invalid door delta");if(hasDoor){std::uint8_t door{};if(!r.readU8(door)||door>2)return fail("invalid door state");delta.doorState=static_cast<gameplay::DoorState>(door);}}if(minor>=8){if(!r.readU8(hasActivation)||hasActivation>1)return fail("invalid activation delta");if(hasActivation){std::uint8_t active{};if(!r.readU8(active)||active>1)return fail("invalid activation state");delta.activationState=active!=0;}}if(!r.readU32(stacks)||stacks>maps::MapLimits::maximumPlacements)return fail("invalid object delta");for(std::uint32_t s=0;s<stacks;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(r,strings,item)||!r.readU32(quantity))return fail("invalid object delta contents");delta.remainingContents.push_back({std::move(item),quantity});}if(!resetOnMapEnter(catalogs,delta.key))data.world.objects.push_back(std::move(delta));}if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid pickup delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{},remaining{};std::uint8_t collected{},hasRemaining{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(collected)||collected>1||!r.readU8(hasRemaining)||hasRemaining>1)return fail("invalid pickup delta");std::optional<std::uint64_t> quantity;if(hasRemaining){if(!r.readU64(remaining))return fail("truncated pickup remainder");quantity=remaining;}data.world.pickups.push_back({{std::move(map),{id}},collected!=0,quantity});}if(r.remaining())return fail("trailing delta data");}
     if(const auto found=chunks.find("FLGS");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumStrings)return fail("invalid dialogue flag count");std::vector<simulation::DefinitionId> dialogueFlags;dialogueFlags.reserve(count);for(std::uint32_t i=0;i<count;++i){simulation::DefinitionId flag;if(!readId(r,strings,flag))return fail("invalid dialogue flag");dialogueFlags.push_back(std::move(flag));}if(r.remaining()||!data.dialogueFlags.restore(dialogueFlags))return fail("invalid dialogue flags");}
     if(const auto found=chunks.find("QSTS");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid quest state count");std::vector<gameplay::quests::QuestProgress> progress;progress.reserve(count);for(std::uint32_t i=0;i<count;++i){simulation::DefinitionId questId;if(!readId(r,strings,questId))return fail("invalid quest state ID");std::uint8_t status{},claimed{};std::uint32_t objectiveCount{};if(!r.readU8(status)||status<static_cast<std::uint8_t>(gameplay::quests::QuestStatus::active)||status>static_cast<std::uint8_t>(gameplay::quests::QuestStatus::completed))return fail("invalid quest status");if(minor>=6&&(!r.readU8(claimed)||claimed>1))return fail("invalid quest reward claim");if(!r.readU32(objectiveCount)||objectiveCount>maps::MapLimits::maximumPlacements)return fail("invalid quest objective count");gameplay::quests::QuestProgress value{std::move(questId),static_cast<gameplay::quests::QuestStatus>(status),{},minor<6 ? status==static_cast<std::uint8_t>(gameplay::quests::QuestStatus::completed) : claimed!=0};value.objectives.reserve(objectiveCount);for(std::uint32_t objectiveIndex=0;objectiveIndex<objectiveCount;++objectiveIndex){simulation::DefinitionId objectiveId;std::uint32_t currentCount{};if(!readId(r,strings,objectiveId)||!r.readU32(currentCount))return fail("invalid quest objective progress");value.objectives.push_back({std::move(objectiveId),currentCount});}progress.push_back(std::move(value));}if(r.remaining()||!data.quests.restore(progress,*catalogs.quests))return fail("invalid quest state");}
     if(const auto found=chunks.find("PROG");found!=chunks.end()){ByteReader r(found->second);if(!readId(r,strings,data.progression.definitionId)||!r.readU64(data.progression.totalExperience)||r.remaining())return fail("invalid progression data");}else{data.progression={gameplay::rpg::defaultPlayerProgressionId(),0};}
@@ -219,14 +228,87 @@ bool writeSaveAtomic(const std::filesystem::path& path,const SaveData& data,std:
     }catch(const std::exception& ex){error=ex.what();return false;}}
 SaveResult readSave(const std::filesystem::path& path,const SaveValidationCatalogs& catalogs){std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)return fail("could not open save");const auto end=file.tellg();if(end<0||static_cast<std::uint64_t>(end)>maps::MapLimits::maximumFileBytes)return fail("invalid save size");std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));file.seekg(0);file.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));if(!file&&!bytes.empty())return fail("could not read save");return deserializeSave(bytes,catalogs);}
 
-bool applyWorldState(const SessionWorldState& state,maps::RuntimeWorld& world,simulation::EntityHandlePool& handles,const gameplay::ItemCatalog& items,std::string& error){
-    auto& objects=world.objects();for(auto it=objects.begin();it!=objects.end();){const auto* delta=state.findObject({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->destroyed){world.addDestroyedObjectResidue(it->persistentId,it->instance.definition().visualSetId,it->instance.position());static_cast<void>(handles.destroy(it->instance.handle()));it=objects.erase(it);continue;}if(delta->doorState)static_cast<void>(world.setDoorState(it->persistentId,*delta->doorState));if(delta->activationState)static_cast<void>(world.setObjectActivation(it->persistentId,*delta->activationState));if(delta->opened)static_cast<void>(it->instance.open());if(auto* contents=it->instance.contents()){for(std::size_t index=0;index<contents->capacity();++index){if(const auto slot=contents->slot(index))static_cast<void>(contents->remove(slot->itemId,slot->quantity));}for(const auto& stack:delta->remainingContents){const auto added=contents->add(stack.itemId,stack.quantity);if(added.remainder){error="saved object contents do not fit";return false;}}}++it;}
-    auto& pickups=world.pickups();for(auto it=pickups.begin();it!=pickups.end();){if(it->transient){++it;continue;}const auto* delta=state.findPickup({world.id(),it->persistentId});if(!delta){++it;continue;}if(delta->collected){static_cast<void>(handles.destroy(it->instance.handle()));it=pickups.erase(it);continue;}if(delta->remainingQuantity){if(auto* currency=std::get_if<gameplay::CurrencyPickup>(&it->instance.payload()))currency->amount=*delta->remainingQuantity;else if(auto* item=std::get_if<gameplay::ItemPickup>(&it->instance.payload())){if(*delta->remainingQuantity>std::numeric_limits<std::uint32_t>::max()){error="saved item pickup remainder overflows";return false;}item->quantity=static_cast<std::uint32_t>(*delta->remainingQuantity);}else{error="health pickup cannot have partial remainder";return false;}}++it;}static_cast<void>(items);return true;
+bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
+                     simulation::EntityHandlePool& handles,
+                     const gameplay::ItemCatalog& items, std::string& error) {
+    auto& objects = world.objects();
+    for (auto it = objects.begin(); it != objects.end();) {
+        if (it->persistence == maps::ObjectPersistencePolicy::resetOnMapEnter) {
+            ++it;
+            continue;
+        }
+        const auto* delta = state.findObject({world.id(), it->persistentId});
+        if (!delta) { ++it; continue; }
+        if (delta->destroyed) {
+            world.addDestroyedObjectResidue(it->persistentId,
+                                            it->instance.definition().visualSetId,
+                                            it->instance.position());
+            static_cast<void>(handles.destroy(it->instance.handle()));
+            it = objects.erase(it);
+            continue;
+        }
+        if (delta->doorState) {
+            static_cast<void>(world.setDoorState(it->persistentId, *delta->doorState));
+        }
+        if (delta->activationState && it->instance.definition().activation &&
+            it->instance.definition().activation->mode ==
+                gameplay::ObjectActivationMode::interactToggle) {
+            static_cast<void>(world.setObjectActivation(it->persistentId, *delta->activationState));
+        }
+        if (delta->opened) { static_cast<void>(it->instance.open()); }
+        if (auto* contents = it->instance.contents()) {
+            for (std::size_t index = 0; index < contents->capacity(); ++index) {
+                if (const auto slot = contents->slot(index)) {
+                    static_cast<void>(contents->remove(slot->itemId, slot->quantity));
+                }
+            }
+            for (const auto& stack : delta->remainingContents) {
+                const auto added = contents->add(stack.itemId, stack.quantity);
+                if (added.remainder) {
+                    error = "saved object contents do not fit";
+                    return false;
+                }
+            }
+        }
+        ++it;
+    }
+    auto& pickups = world.pickups();
+    for (auto it = pickups.begin(); it != pickups.end();) {
+        if (it->transient) { ++it; continue; }
+        const auto* delta = state.findPickup({world.id(), it->persistentId});
+        if (!delta) { ++it; continue; }
+        if (delta->collected) {
+            static_cast<void>(handles.destroy(it->instance.handle()));
+            it = pickups.erase(it);
+            continue;
+        }
+        if (delta->remainingQuantity) {
+            if (auto* currency = std::get_if<gameplay::CurrencyPickup>(&it->instance.payload())) {
+                currency->amount = *delta->remainingQuantity;
+            } else if (auto* item = std::get_if<gameplay::ItemPickup>(&it->instance.payload())) {
+                if (*delta->remainingQuantity > std::numeric_limits<std::uint32_t>::max()) {
+                    error = "saved item pickup remainder overflows";
+                    return false;
+                }
+                item->quantity = static_cast<std::uint32_t>(*delta->remainingQuantity);
+            } else {
+                error = "health pickup cannot have partial remainder";
+                return false;
+            }
+        }
+        ++it;
+    }
+    static_cast<void>(items);
+    return true;
 }
 
 void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& world,
                        SessionWorldState& state) {
     for (const auto& placement : original.objects) {
+        if (placement.persistence == maps::ObjectPersistencePolicy::resetOnMapEnter) {
+            state.eraseObject({original.id, placement.id});
+            continue;
+        }
         const auto runtime = std::find_if(
             world.objects().begin(), world.objects().end(), [&](const auto& candidate) {
                 return candidate.persistentId == placement.id;

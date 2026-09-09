@@ -118,6 +118,10 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         }
     }
     const save::SaveData previous = captureSaveData();
+    if (sceneController_.active()) {
+        sceneController_.abort(events_, "scene aborted by save restore");
+        clearCombatTransients();
+    }
     if (!restoreMap(data.player.currentMapId, data.world, error)) { return false; }
     // MapSession applies the object/pickup deltas while rebuilding the runtime
     // world; the session-owned rule and encounter state must be replaced as one
@@ -157,6 +161,143 @@ void GameSession::closeDialogue() noexcept {
     if (dialogue_) { dialogue_->close(); }
 }
 
+gameplay::WorldLogicRuntime GameSession::worldLogicRuntime() {
+    return {
+        [&](const simulation::DefinitionId& id) {
+            return encounters_.state(worldState_.encounters, mapSession_->world()->id(), id) ==
+                   gameplay::EncounterState::completed;
+        },
+        [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
+            return encounters_.start(mapSession_->data()->encounters, mapSession_->world()->id(), id,
+                                     worldState_.encounters, generated);
+        },
+        [&](simulation::PersistentInstanceId id, maps::DoorState state) {
+            return mapSession_->world()->setDoorState(id, state);
+        },
+        [&](simulation::PersistentInstanceId id) {
+            return mapSession_->world()->doorState(id);
+        },
+        [&](simulation::PersistentInstanceId id) {
+            return mapSession_->world()->objectActivation(id);
+        },
+        [&](const simulation::DefinitionId& id) { return requestScene(id); }};
+}
+
+gameplay::scenes::SceneRuntimeHooks GameSession::sceneRuntimeHooks() {
+    using gameplay::scenes::SceneActorKind;
+    using gameplay::scenes::SceneActorSnapshot;
+    return {
+        [&](const gameplay::scenes::SceneActorBinding& binding)
+            -> std::optional<SceneActorSnapshot> {
+            if (!mapSession_ || !mapSession_->world()) return std::nullopt;
+            if (binding.kind == SceneActorKind::player) {
+                return SceneActorSnapshot{player_.feetPosition(), player_.facing()};
+            }
+            if (binding.kind == SceneActorKind::npc) {
+                const auto found = std::find_if(mapSession_->world()->npcs().begin(),
+                    mapSession_->world()->npcs().end(), [&](const auto& value) {
+                        return value.persistentId == binding.instanceId;
+                    });
+                if (found == mapSession_->world()->npcs().end()) return std::nullopt;
+                return SceneActorSnapshot{found->instance.position(), found->instance.facing()};
+            }
+            const auto found = std::find_if(mapSession_->world()->enemies().begin(),
+                mapSession_->world()->enemies().end(), [&](const auto& value) {
+                    return value.persistentId == binding.instanceId;
+                });
+            if (found == mapSession_->world()->enemies().end()) return std::nullopt;
+            return SceneActorSnapshot{found->instance.feetPosition(), found->instance.facing()};
+        },
+        [&](const gameplay::scenes::SceneActorBinding& binding, core::WorldPointI position) {
+            if (!mapSession_ || !mapSession_->world()) return false;
+            if (binding.kind == SceneActorKind::player) { player_.relocate(position, player_.facing()); return true; }
+            if (binding.kind == SceneActorKind::npc) {
+                const auto found = std::find_if(mapSession_->world()->npcs().begin(),
+                    mapSession_->world()->npcs().end(), [&](const auto& value) {
+                        return value.persistentId == binding.instanceId;
+                    });
+                if (found == mapSession_->world()->npcs().end()) return false;
+                found->instance.sceneRelocate(position); return true;
+            }
+            const auto found = std::find_if(mapSession_->world()->enemies().begin(),
+                mapSession_->world()->enemies().end(), [&](const auto& value) {
+                    return value.persistentId == binding.instanceId;
+                });
+            if (found == mapSession_->world()->enemies().end()) return false;
+            found->instance.sceneRelocate(position); return true;
+        },
+        [&](const gameplay::scenes::SceneActorBinding& binding,
+            gameplay::FacingDirection facing) {
+            if (!mapSession_ || !mapSession_->world()) return false;
+            if (binding.kind == SceneActorKind::player) { player_.relocate(player_.feetPosition(), facing); return true; }
+            if (binding.kind == SceneActorKind::npc) {
+                const auto found = std::find_if(mapSession_->world()->npcs().begin(),
+                    mapSession_->world()->npcs().end(), [&](const auto& value) {
+                        return value.persistentId == binding.instanceId;
+                    });
+                if (found == mapSession_->world()->npcs().end()) return false;
+                found->instance.sceneSetFacing(facing); return true;
+            }
+            const auto found = std::find_if(mapSession_->world()->enemies().begin(),
+                mapSession_->world()->enemies().end(), [&](const auto& value) {
+                    return value.persistentId == binding.instanceId;
+                });
+            if (found == mapSession_->world()->enemies().end()) return false;
+            found->instance.sceneSetFacing(facing); return true;
+        },
+        [&](const simulation::DefinitionId& id, std::string& error) {
+            return dialogue_ && !dialogue_->isOpen() && dialogue_->begin(id, error);
+        },
+        [&]() { return dialogue_ && dialogue_->isOpen(); },
+        [&]() { closeDialogue(); },
+        [&](const simulation::DefinitionId& id, simulation::EventBuffer& events) {
+            if (mapSession_) events.emit(simulation::PresentationEffectRequested{
+                mapSession_->world()->id(), id});
+        },
+        [&](const maps::WorldAction& action, simulation::EventBuffer& events) {
+            if (!mapSession_ || !mapSession_->world()) return false;
+            return gameplay::executeWorldAction(action, mapSession_->world()->id(), dialogueFlags_,
+                                                events, worldLogicRuntime());
+        }};
+}
+
+bool GameSession::startScene(const simulation::DefinitionId& sceneId) {
+    if (!mapSession_ || !mapSession_->data() || sceneController_.active()) return false;
+    const auto found = std::find_if(mapSession_->data()->scenes.begin(),
+        mapSession_->data()->scenes.end(), [&](const auto& scene) { return scene.id == sceneId; });
+    if (found == mapSession_->data()->scenes.end()) return false;
+    std::string error;
+    const bool started = sceneController_.start(mapSession_->world()->id(), *found,
+                                                sceneRuntimeHooks(), events_, error);
+    if (started) {
+        clearCombatTransients();
+        inventoryOverlay_.close();
+        bankOverlay_.close();
+        shopOverlay_.close();
+    }
+    return started;
+}
+
+bool GameSession::requestScene(const simulation::DefinitionId& sceneId) {
+    if (!mapSession_ || !mapSession_->data() || sceneController_.active() ||
+        pendingSceneId_ || sceneId.empty()) {
+        return false;
+    }
+    const auto found = std::find_if(mapSession_->data()->scenes.begin(),
+        mapSession_->data()->scenes.end(),
+        [&](const auto& scene) { return scene.id == sceneId; });
+    if (found == mapSession_->data()->scenes.end()) return false;
+    pendingSceneId_ = sceneId;
+    return true;
+}
+
+bool GameSession::startPendingScene() {
+    if (!pendingSceneId_) return false;
+    const auto sceneId = *pendingSceneId_;
+    pendingSceneId_.reset();
+    return startScene(sceneId);
+}
+
 bool GameSession::restoreNarrativeState(
     const gameplay::dialogue::DialogueFlagSet& flags,
     std::span<const gameplay::quests::QuestProgress> progress,
@@ -188,6 +329,14 @@ void GameSession::clearCombatTransients() noexcept {
     activeSword_.enabled = false;
     playerAttack_.reset();
     player_.finishAttack();
+    if (mapSession_ && mapSession_->world()) {
+        for (auto& persistent : mapSession_->world()->enemies()) {
+            if (persistent.instance.activeAttack()) {
+                combat_.finishAttack(persistent.instance.activeAttack()->key);
+                persistent.instance.activeAttack().reset();
+            }
+        }
+    }
 }
 
 void GameSession::startPlayerAttack() {
@@ -509,9 +658,16 @@ void GameSession::interactWithWorld() {
 
 bool GameSession::handleDialogueCommand(const simulation::PlayerCommand& command) {
     if (!dialogue_ || !dialogue_->isOpen()) { return false; }
+    const bool sceneOwnsDialogue = sceneController_.active();
     static_cast<void>(dialogue_->handleCommand(command));
     applyDialogueActions();
-    return true;
+    if (sceneController_.active() && !dialogue_->isOpen()) {
+        sceneController_.notifyDialogueCompleted();
+    }
+    // A scene dialogue only blocks the timeline when its clip explicitly asks
+    // to wait. Non-blocking dialogue still consumes the input command, but the
+    // scene must be allowed to advance on this same fixed tick.
+    return !sceneOwnsDialogue || sceneController_.waitingForDialogue();
 }
 
 void GameSession::applyDialogueActions() {
@@ -534,6 +690,14 @@ void GameSession::applyDialogueActions() {
 
 void GameSession::consumeQuestEvents() {
     if (questSystem_) { questSystem_->consume(events_); }
+}
+
+void GameSession::consumeWorldLogic() {
+    if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
+    static_cast<void>(worldLogic_.consume(
+        mapSession_->data()->worldRules, mapSession_->world()->id(), dialogueFlags_, events_,
+        worldState_.worldRules, worldLogicRuntime(), worldLogicEventCursor_));
+    worldLogicEventCursor_ = events_.size();
 }
 
 void GameSession::resolvePendingQuestRewards() {
@@ -601,6 +765,7 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
                                                          worldState_);
     const auto activated = candidate->activate(mapId, spawnId);
     if (!activated.changed) { error = activated.error; return false; }
+    pendingSceneId_.reset();
     player_.relocate(activated.spawn.position, activated.spawn.facing);
     mapSession_ = std::move(candidate);
     mapEnteredPending_ = true;
@@ -609,6 +774,7 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
 
 void GameSession::tick(const simulation::PlayerCommand& command) {
     events_.clear();
+    worldLogicEventCursor_ = 0;
     if (mapEnteredPending_ && mapSession_ && mapSession_->world()) {
         events_.emit(simulation::MapEntered{mapSession_->world()->id()});
         mapEnteredPending_ = false;
@@ -617,6 +783,13 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (!mapSession_ || !mapSession_->world() || !mapSession_->data()) { return; }
     if (handleDialogueCommand(command)) {
         consumeQuestEvents(); resolvePendingQuestRewards();
+        return;
+    }
+    if (sceneController_.active()) {
+        sceneController_.advance(events_);
+        consumeWorldLogic();
+        consumeQuestEvents();
+        resolvePendingQuestRewards();
         return;
     }
     if (shopOverlay_.open()) {
@@ -687,32 +860,21 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     }
     encounters_.evaluate(mapSession_->data()->encounters, mapSession_->world()->id(),
                          aliveParticipants, worldState_.encounters, events_);
-    const gameplay::WorldLogicRuntime runtime{
-        [&](const simulation::DefinitionId& id) {
-            return encounters_.state(worldState_.encounters, mapSession_->world()->id(), id) ==
-                   gameplay::EncounterState::completed;
-        },
-        [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
-            return encounters_.start(mapSession_->data()->encounters, mapSession_->world()->id(), id,
-                                     worldState_.encounters, generated);
-        },
-        [&](simulation::PersistentInstanceId id, maps::DoorState state) {
-            return mapSession_->world()->setDoorState(id, state);
-        },
-        [&](simulation::PersistentInstanceId id) {
-            return mapSession_->world()->doorState(id);
-        },
-        [&](simulation::PersistentInstanceId id) {
-            return mapSession_->world()->objectActivation(id);
-        }};
-    worldLogic_.consume(mapSession_->data()->worldRules, mapSession_->world()->id(),
-                        dialogueFlags_, events_, worldState_.worldRules, runtime);
+    consumeWorldLogic();
+    static_cast<void>(startPendingScene());
+    consumeWorldLogic();
     resolveEncounterRewards();
+    if (sceneController_.active()) {
+        consumeQuestEvents();
+        resolvePendingQuestRewards();
+        return;
+    }
     mapSession_->beginTick();
     static_cast<void>(mapSession_->requestTransition(player_.collisionBody()));
     if (mapSession_->pending()) {
         const auto transition = mapSession_->commitPending();
         if (transition.changed) {
+            if (sceneController_.active()) sceneController_.abort(events_, "scene aborted by map transition");
             clearCombatTransients();
             closeDialogue();
             player_.relocate(transition.spawn.position, transition.spawn.facing);
@@ -730,29 +892,15 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             }
             encounters_.evaluate(mapSession_->data()->encounters, mapSession_->world()->id(),
                                  newMapAlive, worldState_.encounters, events_);
-            const gameplay::WorldLogicRuntime newMapRuntime{
-                [&](const simulation::DefinitionId& id) {
-                    return encounters_.state(worldState_.encounters, mapSession_->world()->id(), id) ==
-                           gameplay::EncounterState::completed;
-                },
-                [&](const simulation::DefinitionId& id, simulation::EventBuffer& generated) {
-                    return encounters_.start(mapSession_->data()->encounters,
-                                             mapSession_->world()->id(), id,
-                                             worldState_.encounters, generated);
-                },
-                [&](simulation::PersistentInstanceId id, maps::DoorState state) {
-                    return mapSession_->world()->setDoorState(id, state);
-                },
-                [&](simulation::PersistentInstanceId id) {
-                    return mapSession_->world()->doorState(id);
-                },
-                [&](simulation::PersistentInstanceId id) {
-                    return mapSession_->world()->objectActivation(id);
-                }};
-            static_cast<void>(worldLogic_.consume(mapSession_->data()->worldRules,
-                                                   mapSession_->world()->id(), dialogueFlags_,
-                                                   events_, worldState_.worldRules, newMapRuntime));
+            consumeWorldLogic();
+            static_cast<void>(startPendingScene());
+            consumeWorldLogic();
             resolveEncounterRewards();
+            if (sceneController_.active()) {
+                consumeQuestEvents();
+                resolvePendingQuestRewards();
+                return;
+            }
             mapEnteredPending_ = false;
         }
     }
@@ -832,6 +980,7 @@ bool GameSession::restoreMap(const simulation::MapId& mapId,
     if (!mapSession_) { error = "GameSession has no map session"; return false; }
     const auto restored = mapSession_->restore(mapId, state);
     if (!restored.changed) { error = restored.error; return false; }
+    pendingSceneId_.reset();
     clearCombatTransients();
     closeDialogue();
     player_.relocate(restored.spawn.position, restored.spawn.facing);

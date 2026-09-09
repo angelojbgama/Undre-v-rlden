@@ -606,6 +606,68 @@ bool EditorDocument::clearEncounterRewardGrant(const simulation::DefinitionId& e
     return setEncounterRewardGrant(encounterId, std::nullopt, error);
 }
 
+bool EditorDocument::addScene(game::gameplay::scenes::SceneDefinition scene,
+                              std::string& error) {
+    error.clear();
+    if (scene.id.empty()) { error = "scene id cannot be empty"; return false; }
+    if (std::any_of(authoredSource_.scenes.begin(), authoredSource_.scenes.end(),
+                    [&](const auto& value) { return value.id == scene.id; })) {
+        error = "scene id already exists";
+        return false;
+    }
+    authoredSource_.scenes.push_back(std::move(scene));
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::removeScene(const simulation::DefinitionId& sceneId,
+                                 std::string& error) {
+    error.clear();
+    const auto found = std::find_if(authoredSource_.scenes.begin(), authoredSource_.scenes.end(),
+                                    [&](const auto& value) { return value.id == sceneId; });
+    if (found == authoredSource_.scenes.end()) { error = "scene does not exist"; return false; }
+    // Keep WorldLogic references honest.  A scene can only be deleted after
+    // its map-local startScene actions have been removed or retargeted.
+    const auto referenced = std::any_of(authoredSource_.worldRules.begin(),
+        authoredSource_.worldRules.end(), [&](const auto& rule) {
+            return std::any_of(rule.actions.begin(), rule.actions.end(), [&](const auto& action) {
+                return action.kind == maps::WorldActionKind::startScene &&
+                       action.definitionTarget == sceneId;
+            });
+        });
+    if (referenced) { error = "scene is referenced by a world rule"; return false; }
+    authoredSource_.scenes.erase(found);
+    commitAuthoredMutation();
+    return true;
+}
+
+bool EditorDocument::updateScene(const simulation::DefinitionId& sceneId,
+                                 game::gameplay::scenes::SceneDefinition scene,
+                                 std::string& error) {
+    error.clear();
+    if (scene.id.empty()) { error = "scene id cannot be empty"; return false; }
+    if (scene.id != sceneId && std::any_of(authoredSource_.scenes.begin(),
+                                           authoredSource_.scenes.end(),
+                                           [&](const auto& value) { return value.id == scene.id; })) {
+        error = "scene id already exists";
+        return false;
+    }
+    const auto found = std::find_if(authoredSource_.scenes.begin(), authoredSource_.scenes.end(),
+                                    [&](const auto& value) { return value.id == sceneId; });
+    if (found == authoredSource_.scenes.end()) { error = "scene does not exist"; return false; }
+    if (scene.id != sceneId) {
+        for (auto& rule : authoredSource_.worldRules) {
+            for (auto& action : rule.actions) {
+                if (action.kind == maps::WorldActionKind::startScene &&
+                    action.definitionTarget == sceneId) action.definitionTarget = scene.id;
+            }
+        }
+    }
+    *found = std::move(scene);
+    commitAuthoredMutation();
+    return true;
+}
+
 ValidationReport EditorDocument::validate(const game::GameContentRegistry& content) const {
     ValidationReport report;
     const auto catalogs = game::mapValidationCatalogs(content);

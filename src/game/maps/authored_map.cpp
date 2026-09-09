@@ -4,6 +4,7 @@
 
 #include <charconv>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <system_error>
@@ -124,6 +125,27 @@ bool readString(const JsonValue& value, Reader& reader, std::string_view path,
     }
     output = *text;
     return true;
+}
+
+std::string_view persistenceName(ObjectPersistencePolicy policy) noexcept {
+    return policy == ObjectPersistencePolicy::resetOnMapEnter
+        ? "resetOnMapEnter" : "persistent";
+}
+
+bool readPersistence(const JsonValue& value, Reader& reader, std::string_view path,
+                     ObjectPersistencePolicy& output) {
+    std::string text;
+    if (!readString(value, reader, path, text)) return false;
+    if (text == "persistent") {
+        output = ObjectPersistencePolicy::persistent;
+        return true;
+    }
+    if (text == "resetOnMapEnter") {
+        output = ObjectPersistencePolicy::resetOnMapEnter;
+        return true;
+    }
+    reader.error(value, std::string(path), "unknown_enum", "unknown object persistence policy");
+    return false;
 }
 
 bool readBool(const JsonValue& value, Reader& reader, std::string_view path, bool& output) {
@@ -383,6 +405,7 @@ const char* actionName(WorldActionKind value) {
     case WorldActionKind::setFlag: return "setFlag";
     case WorldActionKind::clearFlag: return "clearFlag";
     case WorldActionKind::startEncounter: return "startEncounter";
+    case WorldActionKind::startScene: return "startScene";
     case WorldActionKind::setDoorState: return "setDoorState";
     case WorldActionKind::playPresentationEffect: return "playPresentationEffect";
     }
@@ -522,6 +545,7 @@ bool decodeAction(const JsonValue& value, Reader& reader, std::string_view path,
     if (good && text == "setFlag") output.kind = WorldActionKind::setFlag;
     else if (good && text == "clearFlag") output.kind = WorldActionKind::clearFlag;
     else if (good && text == "startEncounter") output.kind = WorldActionKind::startEncounter;
+    else if (good && text == "startScene") output.kind = WorldActionKind::startScene;
     else if (good && text == "setDoorState") output.kind = WorldActionKind::setDoorState;
     else if (good && text == "playPresentationEffect") output.kind = WorldActionKind::playPresentationEffect;
     else if (good) {
@@ -707,6 +731,7 @@ JsonValue encodeObject(const ObjectPlacement& value) {
     put(objectValue, "id", persistentValue(value.id));
     put(objectValue, "definitionId", idValue(value.definitionId.value()));
     put(objectValue, "position", pointValue(value.position));
+    put(objectValue, "persistence", stringValue(std::string(persistenceName(value.persistence))));
     JsonArray contents;
     for (const auto& stack : value.initialContents) contents.push_back(encodeStack(stack));
     put(objectValue, "initialContents", arrayValue(std::move(contents)));
@@ -717,7 +742,8 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
                   ObjectPlacement& output) {
     const auto* objectValue = object(value, reader, path);
     if (objectValue == nullptr) return false;
-    allowed(*objectValue, reader, path, {"id", "definitionId", "position", "initialContents"});
+    allowed(*objectValue, reader, path,
+            {"id", "definitionId", "position", "persistence", "initialContents"});
     const auto* id = required(*objectValue, value, reader, path, "id");
     const auto* definition = required(*objectValue, value, reader, path, "definitionId");
     const auto* position = required(*objectValue, value, reader, path, "position");
@@ -729,6 +755,10 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
     good = position != nullptr && readPoint(*position, reader,
                                             std::string(path) + ".position",
                                             output.position) && good;
+    if (const auto* persistence = field(*objectValue, "persistence")) {
+        good = readPersistence(*persistence, reader, std::string(path) + ".persistence",
+                               output.persistence) && good;
+    }
     const auto* values = contents == nullptr ? nullptr :
         array(*contents, reader, std::string(path) + ".initialContents");
     if (values == nullptr) good = false;
@@ -958,6 +988,265 @@ bool decodeEncounter(const JsonValue& value, Reader& reader, std::string_view pa
     return good;
 }
 
+const char* sceneActorKindName(gameplay::scenes::SceneActorKind value) {
+    switch (value) {
+    case gameplay::scenes::SceneActorKind::player: return "player";
+    case gameplay::scenes::SceneActorKind::npc: return "npc";
+    case gameplay::scenes::SceneActorKind::enemy: return "enemy";
+    }
+    return "player";
+}
+
+const char* sceneTrackKindName(gameplay::scenes::SceneTrackKind value) {
+    switch (value) {
+    case gameplay::scenes::SceneTrackKind::actor: return "actor";
+    case gameplay::scenes::SceneTrackKind::dialogue: return "dialogue";
+    case gameplay::scenes::SceneTrackKind::world: return "world";
+    case gameplay::scenes::SceneTrackKind::presentation: return "presentation";
+    }
+    return "actor";
+}
+
+const char* sceneClipKindName(gameplay::scenes::SceneClipKind value) {
+    switch (value) {
+    case gameplay::scenes::SceneClipKind::move: return "move";
+    case gameplay::scenes::SceneClipKind::face: return "face";
+    case gameplay::scenes::SceneClipKind::emote: return "emote";
+    case gameplay::scenes::SceneClipKind::hop: return "hop";
+    case gameplay::scenes::SceneClipKind::dialogue: return "dialogue";
+    case gameplay::scenes::SceneClipKind::presentationEffect: return "presentationEffect";
+    case gameplay::scenes::SceneClipKind::worldEvent: return "worldEvent";
+    }
+    return "face";
+}
+
+const char* sceneEmoteName(gameplay::scenes::SceneEmoteKind value) {
+    switch (value) {
+    case gameplay::scenes::SceneEmoteKind::surprise: return "surprise";
+    case gameplay::scenes::SceneEmoteKind::question: return "question";
+    case gameplay::scenes::SceneEmoteKind::ellipsis: return "ellipsis";
+    }
+    return "surprise";
+}
+
+template<class Enum>
+bool readSceneEnum(const JsonValue& value, Reader& reader, std::string_view path,
+                   std::string_view player, std::string_view npc, std::string_view enemy,
+                   Enum& output, Enum playerValue, Enum npcValue, Enum enemyValue) {
+    std::string text;
+    if (!readString(value, reader, path, text)) return false;
+    if (text == player) output = playerValue;
+    else if (text == npc) output = npcValue;
+    else if (text == enemy) output = enemyValue;
+    else {
+        reader.error(value, std::string(path), "unknown_enum", "unknown scene enum");
+        return false;
+    }
+    return true;
+}
+
+JsonValue encodeSceneAction(const gameplay::scenes::SceneClip& clip) {
+    JsonObject action;
+    put(action, "kind", stringValue(actionName(clip.worldAction.kind)));
+    if (clip.worldAction.instanceTarget) {
+        put(action, "instanceTarget", unsignedValue(clip.worldAction.instanceTarget.value));
+    } else {
+        put(action, "target", idValue(clip.worldAction.definitionTarget.value()));
+    }
+    if (clip.worldAction.kind == WorldActionKind::setDoorState) {
+        put(action, "doorState", stringValue(doorName(clip.worldAction.doorState)));
+    }
+    return objectValue(std::move(action));
+}
+
+JsonValue encodeScene(const gameplay::scenes::SceneDefinition& value) {
+    JsonObject scene;
+    put(scene, "id", idValue(value.id.value()));
+    put(scene, "durationTicks", unsignedValue(value.durationTicks));
+    JsonArray actors;
+    for (const auto& actor : value.actors) {
+        JsonObject item;
+        put(item, "slotId", stringValue(actor.slotId));
+        put(item, "kind", stringValue(sceneActorKindName(actor.kind)));
+        if (actor.instanceId) put(item, "instanceId", unsignedValue(actor.instanceId.value));
+        actors.push_back(objectValue(std::move(item)));
+    }
+    put(scene, "actors", arrayValue(std::move(actors)));
+    JsonArray tracks;
+    for (const auto& track : value.tracks) {
+        JsonObject item;
+        put(item, "kind", stringValue(sceneTrackKindName(track.kind)));
+        if (!track.actorSlot.empty()) put(item, "actorSlot", stringValue(track.actorSlot));
+        JsonArray clips;
+        for (const auto& clip : track.clips) {
+            JsonObject encoded;
+            put(encoded, "kind", stringValue(sceneClipKindName(clip.kind)));
+            if (!clip.actorSlot.empty()) put(encoded, "actorSlot", stringValue(clip.actorSlot));
+            put(encoded, "startTick", unsignedValue(clip.startTick));
+            put(encoded, "durationTicks", unsignedValue(clip.durationTicks));
+            put(encoded, "targetPosition", pointValue(clip.targetPosition));
+            put(encoded, "facing", stringValue(facingName(clip.facing)));
+            put(encoded, "emote", stringValue(sceneEmoteName(clip.emote)));
+            put(encoded, "heightPixels", signedValue(clip.heightPixels));
+            if (!clip.dialogueId.empty()) put(encoded, "dialogueId", idValue(clip.dialogueId.value()));
+            put(encoded, "waitForCompletion", boolValue(clip.waitForCompletion));
+            if (!clip.effectId.empty()) put(encoded, "effectId", idValue(clip.effectId.value()));
+            if (clip.kind == gameplay::scenes::SceneClipKind::worldEvent) {
+                put(encoded, "worldAction", encodeSceneAction(clip));
+            }
+            clips.push_back(objectValue(std::move(encoded)));
+        }
+        put(item, "clips", arrayValue(std::move(clips)));
+        tracks.push_back(objectValue(std::move(item)));
+    }
+    put(scene, "tracks", arrayValue(std::move(tracks)));
+    JsonArray markers;
+    for (const auto& marker : value.markers) {
+        JsonObject item;
+        put(item, "name", stringValue(marker.name));
+        put(item, "tick", unsignedValue(marker.tick));
+        markers.push_back(objectValue(std::move(item)));
+    }
+    put(scene, "markers", arrayValue(std::move(markers)));
+    return objectValue(std::move(scene));
+}
+
+bool decodeScene(const JsonValue& value, Reader& reader, std::string_view path,
+                 gameplay::scenes::SceneDefinition& output) {
+    using namespace gameplay::scenes;
+    const auto* objectValue = object(value, reader, path);
+    if (objectValue == nullptr) return false;
+    allowed(*objectValue, reader, path, {"id", "durationTicks", "actors", "tracks", "markers"});
+    const auto* id = required(*objectValue, value, reader, path, "id");
+    const auto* duration = required(*objectValue, value, reader, path, "durationTicks");
+    const auto* actors = required(*objectValue, value, reader, path, "actors");
+    const auto* tracks = required(*objectValue, value, reader, path, "tracks");
+    bool good = id != nullptr && readId(*id, reader, std::string(path) + ".id", output.id);
+    good = duration != nullptr && readU32(*duration, reader, std::string(path) + ".durationTicks",
+                                          output.durationTicks) && good;
+    if (actors == nullptr) good = false;
+    else if (const auto* values = array(*actors, reader, std::string(path) + ".actors")) {
+        for (std::size_t index = 0; index < values->size(); ++index) {
+            const auto itemPath = std::string(path) + ".actors[" + std::to_string(index) + "]";
+            const auto* item = object((*values)[index], reader, itemPath);
+            if (item == nullptr) { good = false; continue; }
+            allowed(*item, reader, itemPath, {"slotId", "kind", "instanceId"});
+            SceneActorBinding actor;
+            const auto* slot = required(*item, (*values)[index], reader, itemPath, "slotId");
+            const auto* kind = required(*item, (*values)[index], reader, itemPath, "kind");
+            bool itemGood = slot != nullptr && readString(*slot, reader, itemPath + ".slotId", actor.slotId);
+            if (kind != nullptr) {
+                itemGood = readSceneEnum(*kind, reader, itemPath + ".kind", "player", "npc", "enemy",
+                                         actor.kind, SceneActorKind::player, SceneActorKind::npc,
+                                         SceneActorKind::enemy) && itemGood;
+            } else itemGood = false;
+            if (const auto* instance = field(*item, "instanceId")) {
+                itemGood = readPersistentId(*instance, reader, itemPath + ".instanceId",
+                                            actor.instanceId) && itemGood;
+            }
+            if (itemGood) output.actors.push_back(std::move(actor));
+            good = itemGood && good;
+        }
+    } else good = false;
+    if (tracks == nullptr) good = false;
+    else if (const auto* values = array(*tracks, reader, std::string(path) + ".tracks")) {
+        for (std::size_t index = 0; index < values->size(); ++index) {
+            const auto itemPath = std::string(path) + ".tracks[" + std::to_string(index) + "]";
+            const auto* item = object((*values)[index], reader, itemPath);
+            if (item == nullptr) { good = false; continue; }
+            allowed(*item, reader, itemPath, {"kind", "actorSlot", "clips"});
+            SceneTrack track;
+            const auto* kind = required(*item, (*values)[index], reader, itemPath, "kind");
+            const auto* clips = required(*item, (*values)[index], reader, itemPath, "clips");
+            bool itemGood = kind != nullptr;
+            if (kind != nullptr) {
+                std::string text;
+                itemGood = readString(*kind, reader, itemPath + ".kind", text);
+                if (itemGood && text == "actor") track.kind = SceneTrackKind::actor;
+                else if (itemGood && text == "dialogue") track.kind = SceneTrackKind::dialogue;
+                else if (itemGood && text == "world") track.kind = SceneTrackKind::world;
+                else if (itemGood && text == "presentation") track.kind = SceneTrackKind::presentation;
+                else if (itemGood) { reader.error(*kind, itemPath + ".kind", "unknown_enum", "unknown scene track"); itemGood = false; }
+            }
+            if (const auto* actorSlot = field(*item, "actorSlot")) {
+                itemGood = readString(*actorSlot, reader, itemPath + ".actorSlot", track.actorSlot) && itemGood;
+            }
+            if (clips == nullptr) itemGood = false;
+            else if (const auto* clipValues = array(*clips, reader, itemPath + ".clips")) {
+                for (std::size_t clipIndex = 0; clipIndex < clipValues->size(); ++clipIndex) {
+                    const auto clipPath = itemPath + ".clips[" + std::to_string(clipIndex) + "]";
+                    const auto* clipObject = object((*clipValues)[clipIndex], reader, clipPath);
+                    if (clipObject == nullptr) { itemGood = false; continue; }
+                    allowed(*clipObject, reader, clipPath,
+                            {"kind", "actorSlot", "startTick", "durationTicks", "targetPosition",
+                             "facing", "emote", "heightPixels", "dialogueId", "waitForCompletion",
+                             "effectId", "worldAction"});
+                    SceneClip clip;
+                    const auto* clipKind = required(*clipObject, (*clipValues)[clipIndex], reader,
+                                                    clipPath, "kind");
+                    bool clipGood = clipKind != nullptr;
+                    if (clipKind != nullptr) {
+                        std::string text;
+                        clipGood = readString(*clipKind, reader, clipPath + ".kind", text);
+                        const std::pair<std::string_view, SceneClipKind> kinds[] = {
+                            {"move", SceneClipKind::move}, {"face", SceneClipKind::face},
+                            {"emote", SceneClipKind::emote}, {"hop", SceneClipKind::hop},
+                            {"dialogue", SceneClipKind::dialogue},
+                            {"presentationEffect", SceneClipKind::presentationEffect},
+                            {"worldEvent", SceneClipKind::worldEvent}};
+                        const auto found = std::find_if(std::begin(kinds), std::end(kinds),
+                            [&](const auto& pair) { return pair.first == text; });
+                        if (clipGood && found != std::end(kinds)) clip.kind = found->second;
+                        else if (clipGood) { reader.error(*clipKind, clipPath + ".kind", "unknown_enum", "unknown scene clip"); clipGood = false; }
+                    }
+                    if (const auto* actorSlot = field(*clipObject, "actorSlot")) {
+                        clipGood = readString(*actorSlot, reader, clipPath + ".actorSlot", clip.actorSlot) && clipGood;
+                    }
+                    if (const auto* start = field(*clipObject, "startTick")) clipGood = readU32(*start, reader, clipPath + ".startTick", clip.startTick) && clipGood;
+                    if (const auto* durationValue = field(*clipObject, "durationTicks")) clipGood = readU32(*durationValue, reader, clipPath + ".durationTicks", clip.durationTicks) && clipGood;
+                    if (const auto* targetPosition = field(*clipObject, "targetPosition")) clipGood = readPoint(*targetPosition, reader, clipPath + ".targetPosition", clip.targetPosition) && clipGood;
+                    if (const auto* facing = field(*clipObject, "facing")) clipGood = readFacing(*facing, reader, clipPath + ".facing", clip.facing) && clipGood;
+                    if (const auto* emote = field(*clipObject, "emote")) {
+                        std::string text;
+                        clipGood = readString(*emote, reader, clipPath + ".emote", text) && clipGood;
+                        if (text == "surprise") clip.emote = SceneEmoteKind::surprise;
+                        else if (text == "question") clip.emote = SceneEmoteKind::question;
+                        else if (text == "ellipsis") clip.emote = SceneEmoteKind::ellipsis;
+                        else if (!text.empty()) { reader.error(*emote, clipPath + ".emote", "unknown_enum", "unknown scene emote"); clipGood = false; }
+                    }
+                    if (const auto* height = field(*clipObject, "heightPixels")) clipGood = readI32(*height, reader, clipPath + ".heightPixels", clip.heightPixels) && clipGood;
+                    if (const auto* dialogue = field(*clipObject, "dialogueId")) clipGood = readId(*dialogue, reader, clipPath + ".dialogueId", clip.dialogueId) && clipGood;
+                    if (const auto* wait = field(*clipObject, "waitForCompletion")) clipGood = readBool(*wait, reader, clipPath + ".waitForCompletion", clip.waitForCompletion) && clipGood;
+                    if (const auto* effect = field(*clipObject, "effectId")) clipGood = readId(*effect, reader, clipPath + ".effectId", clip.effectId) && clipGood;
+                    if (const auto* action = field(*clipObject, "worldAction")) clipGood = decodeAction(*action, reader, clipPath + ".worldAction", clip.worldAction) && clipGood;
+                    if (clipGood) track.clips.push_back(std::move(clip));
+                    itemGood = clipGood && itemGood;
+                }
+            } else itemGood = false;
+            if (itemGood) output.tracks.push_back(std::move(track));
+            good = itemGood && good;
+        }
+    } else good = false;
+    if (const auto* markers = field(*objectValue, "markers")) {
+        if (const auto* values = array(*markers, reader, std::string(path) + ".markers")) {
+            for (std::size_t index = 0; index < values->size(); ++index) {
+                const auto itemPath = std::string(path) + ".markers[" + std::to_string(index) + "]";
+                const auto* item = object((*values)[index], reader, itemPath);
+                if (item == nullptr) { good = false; continue; }
+                allowed(*item, reader, itemPath, {"name", "tick"});
+                SceneMarker marker;
+                const auto* name = required(*item, (*values)[index], reader, itemPath, "name");
+                const auto* tick = required(*item, (*values)[index], reader, itemPath, "tick");
+                bool markerGood = name != nullptr && readString(*name, reader, itemPath + ".name", marker.name);
+                markerGood = tick != nullptr && readU32(*tick, reader, itemPath + ".tick", marker.tick) && markerGood;
+                if (markerGood) output.markers.push_back(std::move(marker));
+                good = markerGood && good;
+            }
+        } else good = false;
+    }
+    return good;
+}
+
 template<class Encoder, class Vector>
 JsonValue encodeArray(const Vector& values, Encoder encoder) {
     JsonArray result;
@@ -985,6 +1274,7 @@ MapData mapDataFromAuthored(const AuthoredMapSource& source) {
     result.regions = source.regions;
     result.worldRules = source.worldRules;
     result.encounters = source.encounters;
+    result.scenes = source.scenes;
     return result;
 }
 
@@ -1006,6 +1296,7 @@ AuthoredMapSource authoredMapFromMapData(const MapData& data) {
     result.regions = data.regions;
     result.worldRules = data.worldRules;
     result.encounters = data.encounters;
+    result.scenes = data.scenes;
     return result;
 }
 
@@ -1013,7 +1304,7 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
     const auto& geometry = source.geometry;
     JsonObject root;
     put(root, "format", stringValue("dungeon-underworld-map-source"));
-    put(root, "version", unsignedValue(3));
+    put(root, "version", unsignedValue(4));
     put(root, "id", idValue(geometry.id.value()));
     put(root, "width", unsignedValue(geometry.width));
     put(root, "height", unsignedValue(geometry.height));
@@ -1077,6 +1368,8 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
         [](const auto& value) { return encodeRule(value); }));
     put(root, "encounters", encodeArray(source.encounters,
         [](const auto& value) { return encodeEncounter(value); }));
+    put(root, "scenes", encodeArray(source.scenes,
+        [](const auto& value) { return encodeScene(value); }));
     put(root, "placementOverrides", encodeArray(source.placementOverrides,
         [](const auto& value) { return encodeOverride(value); }));
     return engine::data::writeJson(objectValue(std::move(root)));
@@ -1096,7 +1389,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     allowed(*root, reader, "", {"format", "version", "id", "width", "height", "tileSize",
                                 "tileReferences", "layers", "collision", "playerSpawns",
                                 "enemies", "npcs", "objects", "pickups", "links", "regions",
-                                "worldRules", "encounters", "placementOverrides"});
+                                "worldRules", "encounters", "scenes", "placementOverrides"});
     const auto* format = required(*root, *parsed.value, reader, "", "format");
     const auto* version = required(*root, *parsed.value, reader, "", "version");
     const auto* id = required(*root, *parsed.value, reader, "", "id");
@@ -1118,7 +1411,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     }
     std::uint64_t schemaVersion{};
     if (version == nullptr || !parseUnsigned(*version, schemaVersion) ||
-        (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3)) {
+        (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != 4)) {
         if (version != nullptr) reader.error(*version, "version", "unsupported_version",
                                               "unsupported map schema version");
         good = false;
@@ -1205,6 +1498,53 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
                     }
                     rejectArrayKind("conditions", "objectActive", "worldRules[" + std::to_string(ruleIndex) + "].conditions");
                     rejectArrayKind("conditions", "objectInactive", "worldRules[" + std::to_string(ruleIndex) + "].conditions");
+                }
+            }
+        }
+    }
+    if (schemaVersion >= 1 && schemaVersion < 4) {
+        if (const auto* scenes = field(*root, "scenes")) {
+            reader.error(*scenes, "scenes", "unsupported_version",
+                         "scenes require map schema version 4");
+            good = false;
+        }
+        if (const auto* objectsValue = field(*root, "objects")) {
+            if (const auto* objects = std::get_if<JsonArray>(&objectsValue->value)) {
+                for (std::size_t index = 0; index < objects->size(); ++index) {
+                    const auto* objectValue = std::get_if<JsonObject>(&(*objects)[index].value);
+                    if (objectValue == nullptr) continue;
+                    if (const auto* persistence = field(*objectValue, "persistence")) {
+                        reader.error(*persistence, "objects[" + std::to_string(index) +
+                                         "].persistence", "unsupported_version",
+                                     "object persistence requires map schema version 4");
+                        good = false;
+                    }
+                }
+            }
+        }
+        if (const auto* rulesValue = field(*root, "worldRules")) {
+            if (const auto* rules = std::get_if<JsonArray>(&rulesValue->value)) {
+                for (std::size_t ruleIndex = 0; ruleIndex < rules->size(); ++ruleIndex) {
+                    const auto* rule = std::get_if<JsonObject>(&(*rules)[ruleIndex].value);
+                    if (rule == nullptr) continue;
+                    const auto* actionsValue = field(*rule, "actions");
+                    const auto* actions = actionsValue == nullptr ? nullptr :
+                        std::get_if<JsonArray>(&actionsValue->value);
+                    if (actions == nullptr) continue;
+                    for (std::size_t actionIndex = 0; actionIndex < actions->size(); ++actionIndex) {
+                        const auto* action = std::get_if<JsonObject>(&(*actions)[actionIndex].value);
+                        if (action == nullptr) continue;
+                        const auto* kind = field(*action, "kind");
+                        const auto* text = kind == nullptr ? nullptr :
+                            std::get_if<std::string>(&kind->value);
+                        if (text != nullptr && *text == "startScene") {
+                            reader.error(*kind, "worldRules[" + std::to_string(ruleIndex) +
+                                             "].actions[" + std::to_string(actionIndex) + "].kind",
+                                         "unsupported_version",
+                                         "scene actions require map schema version 4");
+                            good = false;
+                        }
+                    }
                 }
             }
         }
@@ -1392,6 +1732,11 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
         [](const JsonValue& v, Reader& r, std::string_view p, EncounterDefinition& o) {
             return decodeEncounter(v, r, p, o);
         }, source.encounters);
+    decodeOptionalArray("scenes",
+        [](const JsonValue& v, Reader& r, std::string_view p,
+           gameplay::scenes::SceneDefinition& o) {
+            return decodeScene(v, r, p, o);
+        }, source.scenes);
     decodeOptionalArray("placementOverrides",
         [](const JsonValue& v, Reader& r, std::string_view p, AuthoredPlacementOverride& o) {
             return decodeOverride(v, r, p, o);

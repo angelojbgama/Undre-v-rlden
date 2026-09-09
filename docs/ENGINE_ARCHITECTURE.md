@@ -1740,6 +1740,47 @@ the restored Player position. Existing `EffectSystem` and the Phase 15
 components. No PuzzleEngine, expression language, push-block system or visual
 authoring boundary is introduced here.
 
+## World Object Persistence
+
+World-object persistence is authored per map placement, not per
+`WorldObjectDefinition`. The same definition can therefore be persistent in one
+room and resettable in another. The effective runtime state is modeled as:
+
+```text
+Authored state
+      +
+Persistence policy
+      +
+Runtime delta
+      =
+Effective runtime state
+```
+
+`ObjectPersistencePolicy::persistent` keeps the existing behavior: runtime changes
+survive map unload/reload and are represented by the existing `ObjectDelta` values
+in `SessionWorldState`, including save/load. `resetOnMapEnter` keeps changes only in
+the currently loaded `RuntimeWorld`; when that world is rebuilt, the authored
+placement and initial contents are used again. Missing policy fields in legacy map
+sources and DMAPs default to `persistent`.
+
+This policy is currently limited to `WorldObject` placements. Derived capability
+state is a separate concept and is not governed by this policy: for example,
+`ObjectActivationMode::playerPressure` is recalculated from the current Player
+position and is never persisted as an object delta.
+
+## Map-authored scene serialization
+
+Scenes are authored in `AuthoredMapSource::scenes`, carried unchanged into `MapData`,
+and emitted in DMAP 1.5's optional `SCNE` chunk. A scene ID is local to its map;
+`WorldRule` activates it through `WorldActionKind::startScene`, rather than duplicating
+trigger/condition data in the scene. The map validator owns cross-reference checks:
+NPC/enemy bindings resolve concrete placement `PersistentInstanceId`s, clip targets
+stay within map bounds, and scene world actions use the same target/capability rules
+as ordinary `WorldRule` actions. `SCNE` cannot start another scene.
+
+Legacy UMAP/DMAP files contain no scene state and decode as `scenes = []`; DSAV does
+not serialize an in-flight timeline.
+
 ## Equipment and derived player stats
 
 Equipment is Player-owned gameplay state. Equipment items remain normal

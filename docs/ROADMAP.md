@@ -1612,3 +1612,20 @@ gate. The next development focus is External Authored Content Format:
 content files -> loader -> AuthoredContentPack -> validator -> compiler -> registry,
 followed later by Content Studio foundation and document editors. Phase 12E2 and
 12E3 are DONE; networking remains out of scope.
+
+### World Object Persistence — production tooling increment
+
+WorldObject placements now author an `ObjectPersistencePolicy` in the MAP workflow.
+The default is `persistent`, preserving existing maps and save behavior; an explicit
+`resetOnMapEnter` placement is rebuilt from its authored state after the corresponding
+`RuntimeWorld` is unloaded. This is intentionally scoped to WorldObject instances,
+keeps `playerPressure` derived, and does not start Phase 19 or generalize persistence
+to enemies, NPCs, or entities.
+
+### Map-authored scenes — production tooling increment
+
+Map-local scenes are serialized through `AuthoredMapSource`/`MapData` and DMAP 1.5's
+optional `SCNE` chunk. `WorldLogic` starts them only through the existing
+`WorldActionKind::startScene` action. Legacy UMAP v1–v3 and DMAP v1.0–1.4 remain
+readable with no scenes and persistent object placements by default; DSAV 1.8 does
+not persist an active scene timeline.

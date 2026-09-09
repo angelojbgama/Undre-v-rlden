@@ -51,6 +51,7 @@ struct AuthoredMapSource final {
     std::vector<MapRegionDefinition> regions;
     std::vector<WorldRuleDefinition> worldRules;
     std::vector<EncounterDefinition> encounters;
+    std::vector<gameplay::scenes::SceneDefinition> scenes;
     std::vector<AuthoredPlacementOverride> placementOverrides;
     [[nodiscard]] bool operator==(const AuthoredMapSource&) const noexcept = default;
 };

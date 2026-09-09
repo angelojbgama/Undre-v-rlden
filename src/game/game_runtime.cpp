@@ -492,7 +492,7 @@ struct GameRuntime::State final {
         // player's invulnerability timer advances even while those overlays
         // consume a command tick.
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
-        if (!session.dialogue().isOpen()) {
+        if (!session.dialogue().isOpen() && !session.sceneActive()) {
             if (command.actions.saveGamePressed) { saveGame(); }
             if (command.actions.loadGamePressed) { loadGame(); }
         }
@@ -537,7 +537,8 @@ struct GameRuntime::State final {
             session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, npcVisuals, enemyVisualCatalog, objectVisualCatalog,
             runtimeVisualContent.staticSprites, font, hudHeartImage, hudMoneyImage,
-            session.dialogue(), view, combatDebug, session.activeSword(), lastEvent, collisionOverlay});
+            session.dialogue(), view, combatDebug, session.activeSword(),
+            session.scenePresentation(), lastEvent, collisionOverlay});
     }
 
 

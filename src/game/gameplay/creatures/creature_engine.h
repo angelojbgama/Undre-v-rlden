@@ -121,6 +121,8 @@ public:
     void move(int intentX, int intentY, const world::CollisionGrid& collision, int tileSize);
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
                         int tileSize);
+    void sceneRelocate(core::WorldPointI feet) noexcept;
+    void sceneSetFacing(FacingDirection facing) noexcept { facing_ = facing; }
 
 private:
     friend class EnemyFactory;

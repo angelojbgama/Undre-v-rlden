@@ -19,6 +19,7 @@
 #include "game/maps/runtime_world.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content_loader.h"
+#include "game/gameplay/scenes/scene_controller.h"
 
 #include <memory>
 #include <string_view>
@@ -52,6 +53,7 @@ struct GamePresentationFrame final {
     const GameViewModel& view;
     const CombatDebugVisibility& combatDebug;
     const gameplay::Hitbox& activeSword;
+    const gameplay::scenes::ScenePresentationState& scenePresentation;
     std::string_view lastEvent;
     bool collisionOverlay{};
 };

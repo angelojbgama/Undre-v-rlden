@@ -43,6 +43,7 @@
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/bank_overlay.h"
 #include "game/gameplay/shop_overlay.h"
+#include "game/gameplay/scenes/scene_controller.h"
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/content/content_validation.h"
@@ -59,6 +60,7 @@
 #include "editor/content_collection.h"
 #include "editor/content_reference_tools.h"
 #include "editor/visual_authoring.h"
+#include "editor/scene_timeline.h"
 #include "editor/world_project_document.h"
 #include "engine/data/json.h"
 #include "engine/core/utf8.h"
@@ -2627,6 +2629,114 @@ underworld::game::maps::MapData makeSyntheticMap(
     return map;
 }
 
+std::optional<std::vector<std::uint8_t>> makeDmapV12WithoutObjectPersistence(
+    std::vector<std::uint8_t> bytes) {
+    constexpr std::size_t dmapHeaderSize = 20;
+    constexpr std::size_t chunkHeaderSize = 12;
+    constexpr std::size_t objectPrefixSize = 20; // id, definition, position
+
+    const auto readU32 = [](const std::vector<std::uint8_t>& source, std::size_t offset,
+                            std::uint32_t& value) {
+        if (offset + 4 > source.size()) return false;
+        value = static_cast<std::uint32_t>(source[offset]) |
+                (static_cast<std::uint32_t>(source[offset + 1]) << 8U) |
+                (static_cast<std::uint32_t>(source[offset + 2]) << 16U) |
+                (static_cast<std::uint32_t>(source[offset + 3]) << 24U);
+        return true;
+    };
+    const auto readU64 = [](const std::vector<std::uint8_t>& source, std::size_t offset,
+                            std::uint64_t& value) {
+        if (offset + 8 > source.size()) return false;
+        value = 0;
+        for (std::size_t index = 0; index < 8; ++index) {
+            value |= static_cast<std::uint64_t>(source[offset + index]) << (index * 8U);
+        }
+        return true;
+    };
+    const auto writeU64 = [](std::vector<std::uint8_t>& target, std::size_t offset,
+                             std::uint64_t value) {
+        for (std::size_t index = 0; index < 8; ++index) {
+            target[offset + index] = static_cast<std::uint8_t>(value >> (index * 8U));
+        }
+    };
+
+    if (bytes.size() < dmapHeaderSize || bytes[0] != 'D' || bytes[1] != 'M' ||
+        bytes[2] != 'A' || bytes[3] != 'P') {
+        return std::nullopt;
+    }
+    std::uint16_t headerSize = static_cast<std::uint16_t>(bytes[10]) |
+                               (static_cast<std::uint16_t>(bytes[11]) << 8U);
+    if (headerSize < dmapHeaderSize || headerSize > bytes.size()) return std::nullopt;
+
+    for (std::size_t chunk = headerSize; chunk + chunkHeaderSize <= bytes.size();) {
+        std::uint64_t payloadSize{};
+        if (!readU64(bytes, chunk + 4, payloadSize) ||
+            payloadSize > bytes.size() - chunk - chunkHeaderSize) return std::nullopt;
+        const auto payload = chunk + chunkHeaderSize;
+        if (bytes[chunk] != 'E' || bytes[chunk + 1] != 'N' || bytes[chunk + 2] != 'T' ||
+            bytes[chunk + 3] != 'S') {
+            chunk = payload + static_cast<std::size_t>(payloadSize);
+            continue;
+        }
+
+        const std::size_t payloadEnd = payload + static_cast<std::size_t>(payloadSize);
+        std::size_t cursor = payload;
+        std::uint32_t enemyCount{};
+        if (!readU32(bytes, cursor, enemyCount)) return std::nullopt;
+        cursor += 4;
+        constexpr std::size_t enemyRecordSize = 21;
+        if (enemyCount > (payloadEnd - cursor) / enemyRecordSize) return std::nullopt;
+        cursor += static_cast<std::size_t>(enemyCount) * enemyRecordSize;
+
+        std::uint32_t objectCount{};
+        if (!readU32(bytes, cursor, objectCount)) return std::nullopt;
+        cursor += 4;
+        std::vector<std::uint8_t> legacy;
+        legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(payload),
+                      bytes.begin() + static_cast<std::ptrdiff_t>(cursor));
+        for (std::uint32_t index = 0; index < objectCount; ++index) {
+            if (cursor + objectPrefixSize + 1 + 4 > payloadEnd) return std::nullopt;
+            legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                          bytes.begin() + static_cast<std::ptrdiff_t>(cursor + objectPrefixSize));
+            cursor += objectPrefixSize + 1; // Drop the v1.5 persistence-policy byte.
+            std::uint32_t stackCount{};
+            if (!readU32(bytes, cursor, stackCount) ||
+                stackCount > (payloadEnd - cursor - 4) / 8) return std::nullopt;
+            const auto recordEnd = cursor + 4 + static_cast<std::size_t>(stackCount) * 8;
+            legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                          bytes.begin() + static_cast<std::ptrdiff_t>(recordEnd));
+            cursor = recordEnd;
+        }
+        legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                      bytes.begin() + static_cast<std::ptrdiff_t>(payloadEnd));
+        bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(payload),
+                    bytes.begin() + static_cast<std::ptrdiff_t>(payloadEnd));
+        bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(payload), legacy.begin(), legacy.end());
+        writeU64(bytes, chunk + 4, legacy.size());
+        bytes[6] = 2;
+        bytes[7] = 0;
+        for (std::size_t legacyChunk = headerSize;
+             legacyChunk + chunkHeaderSize <= bytes.size();) {
+            std::uint64_t legacyPayloadSize{};
+            if (!readU64(bytes, legacyChunk + 4, legacyPayloadSize) ||
+                legacyPayloadSize > bytes.size() - legacyChunk - chunkHeaderSize) {
+                return std::nullopt;
+            }
+            if (bytes[legacyChunk] == 'S' && bytes[legacyChunk + 1] == 'C' &&
+                bytes[legacyChunk + 2] == 'N' && bytes[legacyChunk + 3] == 'E') {
+                bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(legacyChunk),
+                            bytes.begin() + static_cast<std::ptrdiff_t>(
+                                legacyChunk + chunkHeaderSize + legacyPayloadSize));
+                break;
+            }
+            legacyChunk += chunkHeaderSize + static_cast<std::size_t>(legacyPayloadSize);
+        }
+        writeU64(bytes, 12, bytes.size());
+        return bytes;
+    }
+    return std::nullopt;
+}
+
 void testBreakableProps() {
     namespace content = underworld::game::content;
     namespace game = underworld::game;
@@ -3092,6 +3202,472 @@ void testPhase8PersistentMapsAndSave() {
     expect(!persistenceInput.saveGamePressed && !persistenceInput.loadGamePressed,
            "focus-loss clearing removes pending save and load actions");
     std::filesystem::remove(dmapA, ec); std::filesystem::remove(dmapB, ec);
+}
+
+void testSceneRuntimeController() {
+    namespace gameplay = underworld::game::gameplay;
+    namespace scenes = underworld::game::gameplay::scenes;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+
+    scenes::SceneDefinition scene;
+    scene.id = simulation::DefinitionId{"scene.runtime.controller"};
+    scene.durationTicks = 5;
+    scene.actors.push_back({"hero", scenes::SceneActorKind::player, {}});
+    scenes::SceneTrack actorTrack;
+    actorTrack.kind = scenes::SceneTrackKind::actor;
+    actorTrack.actorSlot = "hero";
+    // Deliberately reverse the authored collection order. Runtime evaluation
+    // remains chronological, derived only from tick values.
+    actorTrack.clips = {
+        {scenes::SceneClipKind::move, "hero", 3, 2, {20, 0}},
+        {scenes::SceneClipKind::move, "hero", 0, 3, {10, 0}},
+        {scenes::SceneClipKind::face, "hero", 5, 0, {}, gameplay::FacingDirection::up},
+        {scenes::SceneClipKind::emote, "hero", 3, 2, {}, gameplay::FacingDirection::down,
+         scenes::SceneEmoteKind::surprise},
+        {scenes::SceneClipKind::hop, "hero", 3, 2, {}, gameplay::FacingDirection::down,
+         scenes::SceneEmoteKind::surprise, 5},
+    };
+    scene.tracks.push_back(actorTrack);
+    scenes::SceneTrack effects;
+    effects.kind = scenes::SceneTrackKind::presentation;
+    effects.clips.push_back({scenes::SceneClipKind::presentationEffect, {}, 0, 0, {},
+                             gameplay::FacingDirection::down, scenes::SceneEmoteKind::surprise,
+                             0, {}, false, simulation::DefinitionId{"effect.scene.test"}});
+    scene.tracks.push_back(std::move(effects));
+    scenes::SceneTrack world;
+    world.kind = scenes::SceneTrackKind::world;
+    scenes::SceneClip worldEvent;
+    worldEvent.kind = scenes::SceneClipKind::worldEvent;
+    worldEvent.startTick = 4;
+    worldEvent.worldAction.kind = maps::WorldActionKind::setFlag;
+    worldEvent.worldAction.definitionTarget = simulation::DefinitionId{"flag.scene.test"};
+    world.clips.push_back(std::move(worldEvent));
+    scene.tracks.push_back(std::move(world));
+
+    expect(scenes::validateScene(scene, 64, 64, {}, {}).valid,
+           "scene validation accepts one deterministic actor track with typed global tracks");
+    auto duplicateTrackScene = scene;
+    duplicateTrackScene.tracks.push_back(actorTrack);
+    expect(!scenes::validateScene(duplicateTrackScene, 64, 64, {}, {}).valid,
+           "scene validation rejects ambiguous duplicate actor tracks");
+
+    simulation::EventBuffer events;
+    scenes::SceneController controller;
+    gameplay::FacingDirection facing = gameplay::FacingDirection::down;
+    underworld::core::WorldPointI position{};
+    int effectRequests = 0;
+    int worldActions = 0;
+    scenes::SceneRuntimeHooks hooks{
+        [&](const scenes::SceneActorBinding&) -> std::optional<scenes::SceneActorSnapshot> {
+            return scenes::SceneActorSnapshot{{0, 0}, gameplay::FacingDirection::down};
+        },
+        [&](const scenes::SceneActorBinding&, underworld::core::WorldPointI value) {
+            position = value;
+            return true;
+        },
+        [&](const scenes::SceneActorBinding&, gameplay::FacingDirection value) {
+            facing = value;
+            return true;
+        },
+        {}, {}, {},
+        [&](const simulation::DefinitionId&, simulation::EventBuffer&) { ++effectRequests; },
+        [&](const maps::WorldAction&, simulation::EventBuffer&) { ++worldActions; return true; },
+    };
+    std::string error;
+    expect(controller.start(simulation::MapId{"map.scene.test"}, scene, hooks, events, error) &&
+               controller.active() && controller.tick() == 0 && effectRequests == 1 &&
+               std::holds_alternative<simulation::SceneStarted>(events.eventAt(0)),
+           "scene starts at tick zero before firing its tick-zero presentation events");
+    controller.advance(events);
+    controller.advance(events);
+    controller.advance(events);
+    expect(controller.tick() == 3 && position == underworld::core::WorldPointI{10, 0},
+           "scene move reaches the first target independent of clip storage order");
+    controller.advance(events);
+    expect(controller.tick() == 4 && position == underworld::core::WorldPointI{15, 0} &&
+               worldActions == 1 && !controller.presentation().empty() &&
+               controller.presentation().actors.front().offsetY < 0 &&
+               controller.presentation().actors.front().emote == scenes::SceneEmoteKind::surprise,
+           "scene applies deterministic movement, world events, hop and emote presentation together");
+    controller.advance(events);
+    expect(!controller.active() && controller.finished() && position == underworld::core::WorldPointI{20, 0} &&
+               facing == gameplay::FacingDirection::up && controller.presentation().empty(),
+           "scene completion preserves final actor state and clears transient presentation state");
+
+    scenes::SceneDefinition dialogueScene;
+    dialogueScene.id = simulation::DefinitionId{"scene.runtime.dialogue"};
+    dialogueScene.durationTicks = 3;
+    scenes::SceneTrack dialogueTrack;
+    dialogueTrack.kind = scenes::SceneTrackKind::dialogue;
+    dialogueTrack.clips.push_back({scenes::SceneClipKind::dialogue, {}, 1, 0, {},
+                                   gameplay::FacingDirection::down, scenes::SceneEmoteKind::surprise,
+                                   0, simulation::DefinitionId{"dialogue.scene.test"}, true});
+    dialogueScene.tracks.push_back(std::move(dialogueTrack));
+    bool dialogueOpen = false;
+    scenes::SceneRuntimeHooks dialogueHooks{
+        [](const scenes::SceneActorBinding&) -> std::optional<scenes::SceneActorSnapshot> {
+            return std::nullopt;
+        }, {}, {},
+        [&](const simulation::DefinitionId&, std::string&) { dialogueOpen = true; return true; },
+        [&]() { return dialogueOpen; },
+        [&]() { dialogueOpen = false; },
+        {}, {},
+    };
+    simulation::EventBuffer dialogueEvents;
+    scenes::SceneController dialogueController;
+    expect(dialogueController.start(simulation::MapId{"map.scene.test"}, dialogueScene,
+                                    dialogueHooks, dialogueEvents, error),
+           "scene with a dialogue clip starts without actor bindings");
+    dialogueController.advance(dialogueEvents);
+    dialogueController.advance(dialogueEvents);
+    expect(dialogueController.tick() == 1 && dialogueController.waitingForDialogue() && dialogueOpen,
+           "blocking dialogue freezes the scene clock until the dialogue closes");
+    dialogueOpen = false;
+    dialogueController.advance(dialogueEvents);
+    expect(dialogueController.tick() == 2 && !dialogueController.waitingForDialogue(),
+           "scene resumes on the next fixed tick after its blocking dialogue closes");
+
+    scenes::SceneDefinition missingActorScene;
+    missingActorScene.id = simulation::DefinitionId{"scene.runtime.missing"};
+    missingActorScene.durationTicks = 1;
+    missingActorScene.actors.push_back({"missing", scenes::SceneActorKind::npc, {99}});
+    simulation::EventBuffer abortEvents;
+    scenes::SceneController missingActorController;
+    expect(!missingActorController.start(simulation::MapId{"map.scene.test"}, missingActorScene,
+                                         dialogueHooks, abortEvents, error) &&
+               !missingActorController.active() && abortEvents.size() == 1 &&
+               std::holds_alternative<simulation::SceneAborted>(abortEvents.eventAt(0)),
+           "missing scene actors abort safely without leaving an active scene");
+}
+
+void testSceneTimelineAuthoring() {
+    namespace editor = underworld::editor;
+    namespace gameplay = underworld::game::gameplay;
+    namespace scenes = underworld::game::gameplay::scenes;
+    namespace simulation = underworld::simulation;
+
+    scenes::SceneDefinition scene;
+    scene.id = simulation::DefinitionId{"scene.editor.timeline"};
+    scene.durationTicks = 120;
+    scene.actors.push_back({"hero", scenes::SceneActorKind::player, {}});
+    scene.tracks.push_back({scenes::SceneTrackKind::actor, "hero", {}});
+    auto& actorTrack = scene.tracks.front();
+    actorTrack.clips.push_back({scenes::SceneClipKind::move, "hero", 0, 60, {60, 0}});
+    actorTrack.clips.push_back({scenes::SceneClipKind::face, "hero", 60, 0, {},
+                                gameplay::FacingDirection::up});
+    actorTrack.clips.push_back({scenes::SceneClipKind::emote, "hero", 70, 20, {},
+                                gameplay::FacingDirection::down, scenes::SceneEmoteKind::surprise});
+    actorTrack.clips.push_back({scenes::SceneClipKind::hop, "hero", 70, 20, {},
+                                gameplay::FacingDirection::down, scenes::SceneEmoteKind::surprise, 8});
+
+    std::string error;
+    expect(editor::snapSceneTick(13, {true, 5}) == 15 &&
+               editor::addSceneClip(scene, 0,
+                   {scenes::SceneClipKind::face, "hero", 13, 99, {}, gameplay::FacingDirection::left},
+                   {true, 5}, error) && actorTrack.clips.back().startTick == 15 &&
+               actorTrack.clips.back().durationTicks == 0,
+           "scene timeline snaps event clips and keeps instant events durationless");
+    const auto copiedIndex = actorTrack.clips.size();
+    expect(editor::duplicateSceneClip(scene, {0, 0}, 0, 65, {true, 5}, error) &&
+               editor::resizeSceneClip(scene, {0, copiedIndex}, 25, {true, 5}, error) &&
+               editor::setSceneMoveTarget(scene, {0, copiedIndex}, {100, 0}, error) &&
+               editor::removeSceneClip(scene, {0, copiedIndex}, error),
+           "scene timeline supports duplicate, resize, map-target edit and delete without runtime state");
+    expect(editor::addSceneMarker(scene, {"reaction", 72}, {true, 5}, error) &&
+               editor::renameSceneMarker(scene, 0, "reaction.start", error) &&
+               editor::jumpToSceneMarker(scene, "reaction.start") == 70 &&
+               editor::fitSceneDurationToContent(scene) == 90,
+           "scene markers support snap, rename, jump and fit-duration navigation");
+
+    const auto preview = editor::evaluateScenePreview(scene,
+        {{"hero", {0, 0}, gameplay::FacingDirection::down}}, 80);
+    expect(preview.tick == 80 && preview.actors.size() == 1 &&
+               preview.actors.front().position == underworld::core::WorldPointI{60, 0} &&
+               preview.actors.front().facing == gameplay::FacingDirection::up &&
+               preview.actors.front().emote == scenes::SceneEmoteKind::surprise &&
+               preview.actors.front().visualOffsetY == -8,
+           "scene scrub preview deterministically rebuilds movement, facing and presentation from snapshots");
+    expect(scene.tracks.front().clips.front().targetPosition == underworld::core::WorldPointI{60, 0},
+           "scene preview leaves authored clips unchanged");
+
+    const editor::SceneValidationContext context{128, 128, {}, {}};
+    expect(editor::validateSceneTimeline(scene, context).valid,
+           "scene editor validation bridge delegates map-aware authored diagnostics");
+    const editor::SceneTimelineGeometry geometry{10, 200, 60, 2.0F};
+    const auto ruler = editor::sceneTimelineRulerMarks(geometry, 5, 60);
+    expect(editor::sceneTimelineXForTick(geometry, 70) == 30 &&
+               editor::sceneTimelineTickForX(geometry, 31, {true, 5}) == 70 &&
+               !ruler.empty() && ruler.front().tick >= 60 &&
+               editor::sceneTimelineClipBounds(geometry, scene.tracks.front().clips.front()).width > 1,
+           "scene timeline geometry exposes deterministic ruler, tick and clip layout helpers");
+}
+
+void testWorldObjectPersistencePolicies() {
+    namespace content = underworld::game::content;
+    namespace creatures = underworld::game::gameplay::creatures;
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
+    namespace simulation = underworld::simulation;
+    namespace world = underworld::world;
+
+    gameplay::ItemCatalog items;
+    items.add(gameplay::makeLifePotionDefinition());
+    gameplay::WorldObjectCatalog objects;
+    objects.add({{"object.chest"}, {"visual.object.chest"},
+                 gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}},
+                 gameplay::ObjectContainerDefinition{4}, std::nullopt});
+    objects.add({{"object.crate"}, {"visual.object.crate"}, std::nullopt,
+                 std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -8, 16, 16}, 1}});
+    objects.add({{"object.door"}, {"visual.object.door"},
+                 gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}}, std::nullopt,
+                 std::nullopt, std::nullopt,
+                 gameplay::ObjectDoorDefinition{gameplay::DoorState::closed, {-8, -8, 16, 16}},
+                 std::nullopt});
+    objects.add({{"object.pressure"}, {"visual.object.pressure"},
+                 gameplay::ObjectInteractionDefinition{{-8, -8, 16, 16}}, std::nullopt,
+                 std::nullopt, std::nullopt, std::nullopt,
+                 gameplay::ObjectActivationDefinition{
+                     gameplay::ObjectActivationMode::playerPressure, false,
+                     world::AabbI{0, 0, 16, 16}}});
+
+    game::TilesetCatalog tilesets;
+    tilesets.add({{"tileset.test"}, "Test", "test.png", 16, 1, 1});
+    creatures::EnemyCatalog enemies;
+    creatures::BehaviorCatalog behaviors;
+    gameplay::AttackCatalog attacks;
+    gameplay::ProjectileCatalog projectiles;
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    simulation::EntityHandlePool handles;
+    creatures::EnemyFactory enemyFactory(handles, enemies, behaviors, attacks, projectiles, visuals);
+    gameplay::WorldObjectFactory objectFactory(handles, objects, items);
+    const game::RuntimeTilesetCatalog runtimeTilesets(tilesets);
+    const maps::MapValidationCatalogs validation{&enemies, &objects, &items, &tilesets};
+    maps::RuntimeWorldBuilder builder(validation, enemyFactory, objectFactory, handles,
+                                      runtimeTilesets);
+
+    const auto makeMap = [&](simulation::MapId id, simulation::SpawnId spawn) {
+        maps::MapData map;
+        map.id = std::move(id); map.width = 12; map.height = 4; map.tileSize = 16;
+        map.tileReferences.push_back({{"tileset.test"}, 0, world::TileFlags::none});
+        map.layers.push_back({"ground", true, std::vector<std::optional<std::uint32_t>>(48)});
+        map.collision.assign(48, 0);
+        map.playerSpawns.push_back({std::move(spawn), {16, 16}, gameplay::FacingDirection::down});
+        return map;
+    };
+    auto mapA = makeMap(simulation::MapId{"map.persistence.a"},
+                        simulation::SpawnId{"entry.start"});
+    auto mapB = makeMap(simulation::MapId{"map.persistence.b"},
+                        simulation::SpawnId{"entry.return"});
+    mapA.objects.push_back({{1}, {"object.chest"}, {16, 16},
+                             {{gameplay::lifePotionItemId(), 2}},
+                             maps::ObjectPersistencePolicy::persistent});
+    mapA.objects.push_back({{2}, {"object.chest"}, {32, 16},
+                             {{gameplay::lifePotionItemId(), 2}},
+                             maps::ObjectPersistencePolicy::resetOnMapEnter});
+    mapA.objects.push_back({{3}, {"object.crate"}, {48, 16}, {},
+                             maps::ObjectPersistencePolicy::persistent});
+    mapA.objects.push_back({{4}, {"object.crate"}, {64, 16}, {},
+                             maps::ObjectPersistencePolicy::resetOnMapEnter});
+    mapA.objects.push_back({{5}, {"object.door"}, {80, 16}, {},
+                             maps::ObjectPersistencePolicy::persistent});
+    mapA.objects.push_back({{6}, {"object.door"}, {112, 16}, {},
+                             maps::ObjectPersistencePolicy::resetOnMapEnter});
+    mapA.objects.push_back({{7}, {"object.pressure"}, {144, 16}, {},
+                             maps::ObjectPersistencePolicy::persistent});
+    mapA.links.push_back({"to-b", {0, 0, 1, 1}, mapB.id,
+                         simulation::SpawnId{"entry.return"}});
+    mapB.links.push_back({"to-a", {0, 0, 1, 1}, mapA.id,
+                         simulation::SpawnId{"entry.start"}});
+    expect(maps::validateMapData(mapA, &validation).valid &&
+               maps::validateMapData(mapB, &validation).valid,
+           "object persistence policies validate as placement data without changing definitions");
+
+    const auto initialSource = maps::authoredMapFromMapData(mapA);
+    const auto authoredJson = maps::encodeAuthoredMapJson(initialSource);
+    const auto authoredDecoded = maps::decodeAuthoredMapJson(authoredJson);
+    expect(authoredDecoded.source && authoredDecoded.diagnostics.empty() &&
+               authoredJson.find("\"version\": 4") != std::string::npos &&
+               maps::semanticallyEqual(maps::mapDataFromAuthored(*authoredDecoded.source), mapA) &&
+               authoredDecoded.source->geometry.objects[1].persistence ==
+                   maps::ObjectPersistencePolicy::resetOnMapEnter,
+           "UMAP v4 roundtrips persistent and reset-on-map-enter placement policies");
+    auto legacyJson = authoredJson;
+    const auto persistenceField = legacyJson.find("\"persistence\"");
+    if (persistenceField != std::string::npos) {
+        const auto comma = legacyJson.find(',', persistenceField);
+        legacyJson.erase(persistenceField,
+                         comma == std::string::npos ? std::string::npos : comma - persistenceField + 1);
+    }
+    const auto legacyDecoded = maps::decodeAuthoredMapJson(legacyJson);
+    expect(legacyDecoded.source && legacyDecoded.source->geometry.objects.front().persistence ==
+               maps::ObjectPersistencePolicy::persistent,
+           "older UMAP object placements without a persistence field default to persistent");
+
+    const auto dmapDecoded = maps::deserializeDmap(maps::serializeDmap(mapA));
+    expect(dmapDecoded && dmapDecoded.data.objects[1].persistence ==
+               maps::ObjectPersistencePolicy::resetOnMapEnter &&
+               dmapDecoded.data.objects[0].persistence == maps::ObjectPersistencePolicy::persistent,
+           "DMAP 1.5 roundtrips both object persistence policies");
+    const auto legacyDmap = makeDmapV12WithoutObjectPersistence(maps::serializeDmap(mapA));
+    const auto legacyDmapDecoded = legacyDmap ? maps::deserializeDmap(*legacyDmap)
+                                              : maps::DmapLoadResult{};
+    expect(legacyDmapDecoded &&
+               std::all_of(legacyDmapDecoded.data.objects.begin(),
+                           legacyDmapDecoded.data.objects.end(), [](const auto& object) {
+                   return object.persistence == maps::ObjectPersistencePolicy::persistent;
+               }),
+           "DMAP 1.2 object records without persistence default to persistent");
+
+    maps::MapCatalog catalog;
+    catalog.addData(mapA); catalog.addData(mapB);
+    save::SessionWorldState sessionState;
+    maps::MapSession session(catalog, validation, builder, handles, sessionState);
+    const auto activated = session.activate(mapA.id, simulation::SpawnId{"entry.start"});
+    expect(activated.changed, "persistence test activates the authored source map");
+    if (!activated.changed) { return; }
+    const auto findObject = [&](simulation::PersistentInstanceId id) {
+        return std::find_if(session.world()->objects().begin(), session.world()->objects().end(),
+            [&](const auto& value) { return value.persistentId == id; });
+    };
+    auto persistentChest = findObject({1});
+    auto resetChest = findObject({2});
+    expect(persistentChest != session.world()->objects().end() &&
+               resetChest != session.world()->objects().end(),
+           "runtime creates both persistent and resettable container instances");
+    if (persistentChest != session.world()->objects().end() &&
+        resetChest != session.world()->objects().end()) {
+        static_cast<void>(persistentChest->instance.open());
+        static_cast<void>(persistentChest->instance.contents()->remove(
+            gameplay::lifePotionItemId(), 2));
+        static_cast<void>(resetChest->instance.open());
+        static_cast<void>(resetChest->instance.contents()->remove(
+            gameplay::lifePotionItemId(), 2));
+    }
+    const auto destroyObject = [&](simulation::PersistentInstanceId id) {
+        auto& values = session.world()->objects();
+        const auto found = std::find_if(values.begin(), values.end(),
+            [&](const auto& value) { return value.persistentId == id; });
+        if (found == values.end()) return;
+        session.world()->addDestroyedObjectResidue(found->persistentId,
+            found->instance.definition().visualSetId, found->instance.position());
+        static_cast<void>(handles.destroy(found->instance.handle()));
+        values.erase(found);
+    };
+    destroyObject({3}); destroyObject({4});
+    expect(session.world()->setDoorState({5}, gameplay::DoorState::open) &&
+               session.world()->setDoorState({6}, gameplay::DoorState::open),
+           "persistent and resettable doors accept the same runtime state change");
+    simulation::EventBuffer pressureEvents;
+    session.world()->updatePressureActivations({148, 20}, pressureEvents);
+    expect(session.world()->objectActivation({7}) == std::optional<bool>{true} &&
+               pressureEvents.size() == 1,
+           "playerPressure remains a derived runtime state and emits its transition event");
+
+    expect(session.activate(mapB.id, simulation::SpawnId{"entry.return"}).changed &&
+               session.activate(mapA.id, simulation::SpawnId{"entry.start"}).changed,
+           "map unload and rebuild completes through the existing MapSession pipeline");
+    const auto returnedObject = [&](simulation::PersistentInstanceId id) {
+        return std::find_if(session.world()->objects().begin(), session.world()->objects().end(),
+            [&](const auto& value) { return value.persistentId == id; });
+    };
+    const auto returnedPersistentChest = returnedObject({1});
+    const auto returnedResetChest = returnedObject({2});
+    const auto returnedPersistentCrate = returnedObject({3});
+    const auto returnedResetCrate = returnedObject({4});
+    expect(returnedPersistentChest != session.world()->objects().end() &&
+               returnedPersistentChest->instance.state() == gameplay::WorldObjectState::opened &&
+               returnedPersistentChest->instance.contents()->count(gameplay::lifePotionItemId()) == 0,
+           "persistent chest remains opened and empty after A-to-B-to-A");
+    expect(returnedResetChest != session.world()->objects().end() &&
+               returnedResetChest->instance.state() == gameplay::WorldObjectState::idle &&
+               returnedResetChest->instance.contents()->count(gameplay::lifePotionItemId()) == 2,
+           "reset-on-map-enter container restores its authored initial contents");
+    expect(returnedPersistentCrate == session.world()->objects().end() &&
+               returnedResetCrate != session.world()->objects().end(),
+           "persistent destructible stays absent while resettable destructible reappears");
+    const auto returnedPersistentDoor = returnedObject({5});
+    const auto returnedResetDoor = returnedObject({6});
+    expect(returnedPersistentDoor != session.world()->objects().end() &&
+               returnedPersistentDoor->instance.doorState() == gameplay::DoorState::open &&
+               returnedResetDoor != session.world()->objects().end() &&
+               returnedResetDoor->instance.doorState() == gameplay::DoorState::closed,
+           "persistent and resettable doors restore their distinct authored policies");
+    expect(session.world()->objectActivation({7}) == std::optional<bool>{false} &&
+               sessionState.findObject({mapA.id, {7}}) == nullptr &&
+               sessionState.findObject({mapA.id, {2}}) == nullptr,
+           "playerPressure and resettable object state never become persistent deltas");
+    expect(sessionState.findObject({mapA.id, {1}}) != nullptr &&
+               sessionState.findObject({mapA.id, {3}}) != nullptr &&
+               sessionState.findObject({mapA.id, {5}}) != nullptr,
+           "persistent object changes are captured in the existing SessionWorldState");
+
+    gameplay::rpg::PlayerProgressionCatalog progressions;
+    progressions.add(testProgression());
+    save::SaveData saveData;
+    saveData.player.currentMapId = mapA.id; saveData.player.health = 1;
+    saveData.progression = {testProgression().id, 0}; saveData.world = sessionState;
+    const save::SaveValidationCatalogs saveCatalogs{
+        &items, {&mapA, &mapB}, nullptr, &progressions, &objects};
+    const auto saveBytes = save::serializeSave(saveData);
+    const auto loadedSave = save::deserializeSave(saveBytes, saveCatalogs);
+    expect(loadedSave && loadedSave.data.world.findObject({mapA.id, {2}}) == nullptr &&
+               loadedSave.data.world.findObject({mapA.id, {1}}) != nullptr,
+           "DSAV 1.8 stores persistent object deltas without resettable object state");
+    if (loadedSave) {
+        auto legacyState = loadedSave.data.world;
+        legacyState.set(save::ObjectDelta{{mapA.id, {2}}, true, false, {}, std::nullopt});
+        expect(session.restore(mapA.id, legacyState).changed,
+               "save restore accepts a legacy resettable delta without applying it");
+        const auto restoredResetChest = std::find_if(session.world()->objects().begin(),
+            session.world()->objects().end(), [&](const auto& value) {
+                return value.persistentId == simulation::PersistentInstanceId{2};
+            });
+        expect(restoredResetChest != session.world()->objects().end() &&
+                   restoredResetChest->instance.state() == gameplay::WorldObjectState::idle &&
+                   restoredResetChest->instance.contents()->count(gameplay::lifePotionItemId()) == 2,
+               "legacy resettable deltas cannot override the new authored policy on load");
+    }
+
+    auto compiledContent = content::compileBuiltinContentOrThrow();
+    editor::EditorDocument editorDocument(makeSyntheticMap("map.persistence.editor",
+                                                            "map.persistence.editor"));
+    editorDocument.markSaved();
+    std::string editorError;
+    expect(editorDocument.execute(std::make_unique<editor::SetObjectPersistenceCommand>(
+                   simulation::PersistentInstanceId{3},
+                   maps::ObjectPersistencePolicy::resetOnMapEnter), editorError) &&
+               editorDocument.dirty() &&
+               editorDocument.data().objects[0].persistence == maps::ObjectPersistencePolicy::persistent,
+           "Content Studio changes object persistence through an undoable command and dirties UMAP");
+    expect(editorDocument.undo() && editorDocument.data().objects[0].persistence ==
+               maps::ObjectPersistencePolicy::persistent &&
+               editorDocument.redo(editorError) &&
+               editorDocument.data().objects[1].persistence ==
+                   maps::ObjectPersistencePolicy::resetOnMapEnter,
+           "object persistence command supports undo and redo without changing another placement");
+    const auto editorPath = std::filesystem::temp_directory_path() /
+                            "underworld_object_persistence_editor.umap";
+    std::error_code removeError; std::filesystem::remove(editorPath, removeError);
+    expect(editorDocument.saveAs(editorPath, compiledContent, editorError) &&
+               !editorDocument.dirty(),
+           "Content Studio saves the authored persistence policy and clears dirty state");
+    const auto reopened = editor::EditorDocument::open(editorPath, compiledContent, editorError);
+    expect(reopened && reopened->data().objects[1].persistence ==
+               maps::ObjectPersistencePolicy::resetOnMapEnter,
+           "reopened UMAP preserves the command-edited placement policy");
+    std::filesystem::remove(editorPath, removeError);
+    editor::EditorLocalization localization;
+    expect(localization.text(editor::EditorTextId::persistent) == "Persistente" &&
+               localization.text(editor::EditorTextId::resetOnMapEnter) ==
+                   "Reiniciar ao entrar no mapa", "Content Studio localizes persistence in pt-BR");
+    localization.setLanguage(editor::EditorLanguage::englishUnitedStates);
+    expect(localization.text(editor::EditorTextId::persistent) == "Persistent" &&
+               localization.text(editor::EditorTextId::resetOnMapEnter) == "Reset On Map Enter",
+           "Content Studio localizes persistence in en-US");
 }
 
 void testPhase10NpcFoundation() {
@@ -7262,15 +7838,31 @@ void testPhase15PresentationFeedback() {
            "UMAP v2 preserves region environment bindings and presentation actions through MapCompiler");
     std::string legacyUmap = maps::encodeAuthoredMapJson(
         maps::authoredMapFromMapData(makeSyntheticMap("map.presentation.legacy", "map.presentation.legacy")));
+    // A genuine v1 source predates both map-authored scenes and placement
+    // persistence.  The current encoder always emits the optional fields, so
+    // remove them from this fixture before exercising the legacy reader.
+    const auto legacyScenes = legacyUmap.find("\"scenes\":[]");
+    if (legacyScenes != std::string::npos) {
+        const auto comma = legacyUmap.find(',', legacyScenes);
+        legacyUmap.erase(legacyScenes,
+                         comma == std::string::npos ? std::string::npos : comma - legacyScenes + 1);
+    }
+    for (std::size_t legacyPersistence = legacyUmap.find("\"persistence\"");
+         legacyPersistence != std::string::npos;
+         legacyPersistence = legacyUmap.find("\"persistence\"")) {
+        const auto comma = legacyUmap.find(',', legacyPersistence);
+        legacyUmap.erase(legacyPersistence,
+                         comma == std::string::npos ? std::string::npos : comma - legacyPersistence + 1);
+    }
     const auto legacyVersion = legacyUmap.find("\"version\"");
     const auto legacyValue = legacyVersion == std::string::npos
-        ? std::string::npos : legacyUmap.find('3', legacyVersion);
+        ? std::string::npos : legacyUmap.find('4', legacyVersion);
     if (legacyValue != std::string::npos) legacyUmap.replace(legacyValue, 1, "1");
     const auto legacyDecoded = maps::decodeAuthoredMapJson(legacyUmap);
     auto incompatibleUmap = authoredJson;
     const auto incompatibleVersion = incompatibleUmap.find("\"version\"");
     const auto incompatibleValue = incompatibleVersion == std::string::npos
-        ? std::string::npos : incompatibleUmap.find('3', incompatibleVersion);
+        ? std::string::npos : incompatibleUmap.find('4', incompatibleVersion);
     if (incompatibleValue != std::string::npos) incompatibleUmap.replace(incompatibleValue, 1, "1");
     const auto incompatibleDecoded = maps::decodeAuthoredMapJson(incompatibleUmap);
     expect(legacyDecoded.source.has_value(), "UMAP v1 remains readable");
@@ -7298,14 +7890,11 @@ void testPhase15PresentationFeedback() {
                "DMAP 1.2 rejects presentation-only world-rule actions");
         std::filesystem::remove(dmapPath, fsError);
     }
-    auto legacyDmap = maps::serializeDmap(
+    const auto legacyDmap = makeDmapV12WithoutObjectPersistence(maps::serializeDmap(
         maps::mapDataFromAuthored(maps::authoredMapFromMapData(
-            makeSyntheticMap("map.presentation.dmap12", "map.presentation.dmap12"))));
-    if (legacyDmap.size() >= 8) {
-        legacyDmap[6] = 2;
-        legacyDmap[7] = 0;
-    }
-    const auto legacyDmapLoaded = maps::deserializeDmap(legacyDmap);
+            makeSyntheticMap("map.presentation.dmap12", "map.presentation.dmap12")))));
+    const auto legacyDmapLoaded = legacyDmap ? maps::deserializeDmap(*legacyDmap)
+                                              : maps::DmapLoadResult{};
     expect(legacyDmapLoaded && legacyDmapLoaded.data.regions.empty(),
            "DMAP 1.2 remains readable without presentation environment bindings");
 
@@ -8364,6 +8953,11 @@ void testPhase18BVisualPreview() {
     expect(preview.animator().frameIndex() == 1 && !preview.playing(),
            "18B paused preview supports deterministic frame stepping");
 
+    request.frameIndex = 1;
+    preview.prepare(*document, request);
+    expect(preview.animator().frameIndex() == 1 && !preview.playing(),
+           "18B preview honors the independently selected authored animation frame");
+
     request = {};
     request.key = {editor::ContentDefinitionKind::staticSprite, {"sprite.preview"}};
     preview.prepare(*document, request);
@@ -8812,6 +9406,21 @@ void testContentStudioDeepAuthoringHelpers() {
                rewardSummary.find("item.training_armor x1") != std::string::npos,
            "reference summaries expose individual reward items instead of only a count");
 
+    const auto imageSummary = editor::contentDefinitionSummary(
+        builtin, {editor::ContentDefinitionKind::visualImage,
+                  underworld::simulation::DefinitionId{"image.enemy.soldier.idle"}});
+    const auto animationSummary = editor::contentDefinitionSummary(
+        builtin, {editor::ContentDefinitionKind::animation,
+                  underworld::simulation::DefinitionId{"anim.enemy.soldier.idle.down"}});
+    const auto projectileSummary = editor::contentDefinitionSummary(
+        builtin, {editor::ContentDefinitionKind::projectile,
+                  underworld::simulation::DefinitionId{"projectile.player.arrow"}});
+    expect(imageSummary.find("evil_soldier_idle.png") != std::string::npos &&
+               animationSummary.find("2 frames") != std::string::npos &&
+               animationSummary.find("60 ticks") != std::string::npos &&
+               projectileSummary.find("4 px/tick") != std::string::npos,
+           "reference picker and Quick Inspect summarize visual and gameplay dependencies");
+
     const auto transform = editor::VisualPreviewTransform{{0, 0, 128, 128}, {10, 12}, 2.0};
     expect(editor::anchorFromPreviewPointer(transform, {16, 20}, {0, 0, 16, 16}) ==
                core::PointI{3, 4} &&
@@ -9220,6 +9829,9 @@ int main() {
         testViewModelAndWorldObjects();
         testBreakableProps();
         testPhase8PersistentMapsAndSave();
+        testSceneRuntimeController();
+        testSceneTimelineAuthoring();
+        testWorldObjectPersistencePolicies();
         testPhase10NpcFoundation();
         testPhase10DialogueDataModel();
         testPhase10DialogueSession();

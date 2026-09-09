@@ -35,6 +35,8 @@ enum class EditorTextId {
     pickups, npcVisuals, npcs, dialogues, quests, playerProgressions,
     rewardProfiles, rewardGrants, shops, authoringDescriptors, tileSemantics,
     visualImages, staticSprites, animations, enemyVisuals, objectVisuals,
+    persistence, persistent, resetOnMapEnter, persistentDescription,
+    resetOnMapEnterDescription, containerResetWarning, destructibleResetWarning,
     missingDefinition, readOnlyCategory, fontUnavailable, initializationError,
     languagePortugueseBrazil, languageEnglish, unknown,
     maps, newProject, importMap, removeMap, entryMap, setEntry, targetMap,

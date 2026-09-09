@@ -219,6 +219,16 @@ public:
     [[nodiscard]] const std::vector<maps::EncounterDefinition>& encounters() const noexcept {
         return authoredSource_.encounters;
     }
+    [[nodiscard]] const std::vector<game::gameplay::scenes::SceneDefinition>& scenes() const noexcept {
+        return authoredSource_.scenes;
+    }
+
+    // Map-authored scene editing stays on the same document/source pipeline as
+    // rules and encounters.  The editor never creates a second scene catalog.
+    bool addScene(game::gameplay::scenes::SceneDefinition scene, std::string& error);
+    bool removeScene(const simulation::DefinitionId& sceneId, std::string& error);
+    bool updateScene(const simulation::DefinitionId& sceneId,
+                     game::gameplay::scenes::SceneDefinition scene, std::string& error);
 
     // These small document operations are the Map Maker's structured authoring
     // surface for world logic.  They intentionally edit the authored source and

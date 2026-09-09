@@ -77,6 +77,8 @@ public:
     [[nodiscard]] core::WorldPointI position() const noexcept { return position_; }
     [[nodiscard]] FacingDirection facing() const noexcept { return facing_; }
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
+    void sceneRelocate(core::WorldPointI position) noexcept { position_ = position; }
+    void sceneSetFacing(FacingDirection facing) noexcept { facing_ = facing; }
 
 private:
     friend class NpcFactory;

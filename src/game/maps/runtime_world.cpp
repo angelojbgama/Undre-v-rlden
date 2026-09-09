@@ -147,8 +147,9 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         }
         result->objects_.reserve(data.objects.size());
         for (const auto& placement : data.objects) {
-            result->objects_.push_back({placement.id, objectFactory_.create(handles,
-                placement.definitionId, placement.position, placement.initialContents)});
+            result->objects_.push_back({placement.id, placement.persistence,
+                objectFactory_.create(handles, placement.definitionId, placement.position,
+                                       placement.initialContents)});
         }
         for (const auto& placement : data.objects) {
             const auto* definition = catalogs_.objects ? catalogs_.objects->find(placement.definitionId) : nullptr;

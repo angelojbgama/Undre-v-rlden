@@ -6,6 +6,35 @@
 
 namespace underworld::game::gameplay {
 
+bool executeWorldAction(const maps::WorldAction& action,
+                        const simulation::MapId& mapId,
+                        dialogue::DialogueFlagSet& flags,
+                        simulation::EventBuffer& events,
+                        const WorldLogicRuntime& runtime) {
+    const auto& target = action.definitionTarget;
+    if (action.kind == maps::WorldActionKind::setFlag) {
+        return flags.set(target);
+    }
+    if (action.kind == maps::WorldActionKind::clearFlag) {
+        return flags.clear(target);
+    }
+    if (action.kind == maps::WorldActionKind::startEncounter) {
+        return runtime.startEncounter && runtime.startEncounter(target, events);
+    }
+    if (action.kind == maps::WorldActionKind::startScene) {
+        return runtime.requestScene && runtime.requestScene(target);
+    }
+    if (action.kind == maps::WorldActionKind::setDoorState) {
+        return runtime.setDoorState && action.instanceTarget &&
+               runtime.setDoorState(action.instanceTarget, action.doorState);
+    }
+    if (action.kind == maps::WorldActionKind::playPresentationEffect) {
+        events.emit(simulation::PresentationEffectRequested{mapId, target});
+        return true;
+    }
+    return false;
+}
+
 void WorldLogicSystem::reset() noexcept {}
 
 bool WorldLogicSystem::matches(const maps::WorldRuleDefinition& rule,
@@ -78,11 +107,12 @@ bool WorldLogicSystem::consume(const std::vector<maps::WorldRuleDefinition>& rul
                                dialogue::DialogueFlagSet& flags,
                                simulation::EventBuffer& events,
                                std::vector<WorldRuleState>& persistentState,
-                               const WorldLogicRuntime& runtime) {
+                               const WorldLogicRuntime& runtime,
+                               std::size_t firstEventIndex) {
     constexpr std::size_t maximumGeneratedEvents = 4096;
     const std::size_t initialEventCount = events.size();
     bool success = true;
-    std::size_t eventIndex = 0;
+    std::size_t eventIndex = std::min(firstEventIndex, events.size());
     while (eventIndex < events.size()) {
         if (events.size() - initialEventCount > maximumGeneratedEvents) {
             return false;
@@ -102,25 +132,7 @@ bool WorldLogicSystem::consume(const std::vector<maps::WorldRuleDefinition>& rul
                 else fired->fired = true;
             }
             for (const auto& action : rule.actions) {
-                const auto& target = action.definitionTarget;
-                if (action.kind == maps::WorldActionKind::setFlag) static_cast<void>(flags.set(target));
-                else if (action.kind == maps::WorldActionKind::clearFlag) static_cast<void>(flags.clear(target));
-                else if (action.kind == maps::WorldActionKind::startEncounter) {
-                    const auto& encounterId = action.definitionTarget;
-                    if (runtime.startEncounter) {
-                        success = runtime.startEncounter(encounterId, events) && success;
-                    } else {
-                        success = false;
-                    }
-                } else if (action.kind == maps::WorldActionKind::setDoorState) {
-                    if (runtime.setDoorState && action.instanceTarget) {
-                        success = runtime.setDoorState(action.instanceTarget, action.doorState) && success;
-                    } else {
-                        success = false;
-                    }
-                } else if (action.kind == maps::WorldActionKind::playPresentationEffect) {
-                    events.emit(simulation::PresentationEffectRequested{mapId, target});
-                }
+                success = executeWorldAction(action, mapId, flags, events, runtime) && success;
             }
         }
         ++eventIndex;

@@ -1,4 +1,4 @@
-# UMAP v3 / DMAP 1.4 — formatos de mapa implementados
+# UMAP v4 / DMAP 1.5 — formatos de mapa implementados
 
 `UMAP` is the strict UTF-8 JSON authored source. `DMAP` is the bounded compiled
 runtime format; it is not the editor document and it is not a savegame. The authored
@@ -13,7 +13,7 @@ The UMAP root is:
 ```json
 {
   "format": "dungeon-underworld-map-source",
-  "version": 3
+  "version": 4
 }
 ```
 
@@ -27,11 +27,14 @@ previous authored document. Legacy `.dmap` files remain importable by the Map Ma
 the resulting document is saved as `.umap`, while DMAP output is an explicit compile/
 export operation.
 
-`UMAP v1` e `UMAP v2` continuam legíveis; o writer atual emite UMAP v3. UMAP v2
+`UMAP v1`, `UMAP v2` e `UMAP v3` continuam legíveis; o writer atual emite UMAP v4. UMAP v2
 adiciona o binding opcional `regions[].environmentEffectId` e a action
 `playPresentationEffect`; UMAP v3 adiciona os triggers/conditions de activation de
-objects. UMAP v1 não pode conter campos de environment/presentation e UMAP v1/v2 não
-podem conter activation rules. `DMAP` é a serialização compilada/runtime de um mapa,
+objects; UMAP v4 adiciona a política de persistência authored por colocação de
+WorldObject, cenas map-local (`scenes[]`) e a action `startScene`. A ausência do campo
+`persistence` em um objeto legado significa `persistent`. UMAP v1 não pode conter campos
+de environment/presentation, UMAP v1/v2 não podem conter activation rules, e UMAP v1/v2/v3
+não podem conter `scenes`, `persistence` ou `startScene`. `DMAP` é a serialização compilada/runtime de um mapa,
 não o documento authored e não é savegame. O reader produz `MapData`, valida o documento inteiro e somente então
 `RuntimeWorldBuilder` cria handles e estado runtime.
 
@@ -45,20 +48,21 @@ NUL. Nenhuma estrutura C++, ponteiro, `EntityHandle`, animator ou estado transit
 |---:|---|---|
 | 0 | `char[4]` | magic `DMAP` |
 | 4 | `u16` | major = 1 |
-| 6 | `u16` | minor = 4 |
+| 6 | `u16` | minor = 5 |
 | 8 | `u16` | flags = 0 |
 | 10 | `u16` | header size = 20 |
 | 12 | `u64` | tamanho total declarado |
 
-Major diferente de 1 e minor maior que 4 são rejeitados. DMAP 1.0 continua legível;
+Major diferente de 1 e minor maior que 5 são rejeitados. DMAP 1.0 continua legível;
 DMAP 1.1 adiciona o chunk opcional `NPCS` para placements authored de NPC. DMAP 1.2
 adiciona os chunks opcionais `REGN`, `WRLD` e `ENCT` para regiões, ordered world
 rules and encounter definitions. Para DMAP 1.0/1.1 esses dados são vazios. A extensão
 é necessária porque NPC não pode ser representado corretamente como objeto nem ficar
 apenas em memória. Extensões de header podem ser puladas por `header size`; flags
 desconhecidas são rejeitadas. Cada chunk usa `tag:char[4] + payloadSize:u64 + payload`.
-Os oito chunks v1 originais são obrigatórios e singleton; `NPCS`, `REGN`, `WRLD` e
-`ENCT` são singleton opcionais.
+Os oito chunks v1 originais são obrigatórios e singleton; `NPCS`, `REGN`, `WRLD`,
+`ENCT` e `SCNE` são singleton opcionais. `SCNE` requer DMAP 1.5; sua ausência em
+qualquer versão legada representa uma lista vazia de cenas.
 Singleton conhecido duplicado é erro. Chunk desconhecido é ignorado se seu tamanho for
 válido e estiver contido no arquivo.
 
@@ -148,6 +152,7 @@ repeat objectCount:
     persistentInstanceId u64
     objectDefinitionId stringIndex
     x i32, y i32
+    persistence u8                 # 0 = persistent, 1 = resetOnMapEnter
     initialStackCount u32
     repeat initialStackCount: itemDefinitionId stringIndex, quantity u32
 
@@ -222,9 +227,37 @@ target tag u8: 0 = none, 1 = DefinitionId/stringIndex, 2 = PersistentInstanceId/
 DMAP 1.3 adiciona a action `playPresentationEffect`, cujo target é um
 `PresentationEffectDefinition` transient. Kinds e estados são enums bounded e são
 rejeitados quando saem do vocabulário atual. DMAP 1.4 mantém esses chunks e adiciona
-somente o vocabulário de activation; o layout de campos dos chunks permanece
-versionado e bounded.
+somente o vocabulário de activation; DMAP 1.5 adiciona a política de persistência
+em cada placement de objeto, a action `startScene` e o chunk `SCNE`. O layout de
+campos dos chunks permanece versionado e bounded.
 `doorState` usa `locked`, `closed` e `open`.
+
+### `SCNE` (DMAP 1.5)
+
+`SCNE` contém a timeline map-local. Cada cena tem um `DefinitionId` único dentro do
+mapa, duração em ticks, actor bindings por alias, tracks tipadas e markers. Bindings
+de NPC/enemy usam `PersistentInstanceId` da placement concreta; player não possui
+instance ID authored. Clips de mundo usam o mesmo `WorldAction` serializado por
+`WRLD`, mas `startScene` é rejeitado em `SCNE` para evitar cenas aninhadas.
+
+```text
+sceneCount u32
+repeat sceneCount:
+    sceneId stringIndex
+    durationTicks u32
+    actorCount u32
+    actors: slotId stringIndex, kind u8, hasInstance u8, [instanceId u64]
+    trackCount u32
+    tracks: kind u8, optional actorSlot, clipCount u32, clips[]
+    markerCount u32
+    markers: name stringIndex, tick u32
+```
+
+The binary clip layout stores all fields needed by the fixed tick evaluator
+(kind, actor slot, timing, position/facing/emote/hop data, optional dialogue/effect
+IDs, and `WorldAction`). Reader-side bounds checks and `validateMapData` enforce
+track/clip compatibility, actor identities, map bounds, world-action targets and
+non-overlapping moves before a `RuntimeWorld` is constructed.
 
 `ENCT` contém encounters e o reward opcional:
 
@@ -253,7 +286,10 @@ estado derivado. O save novo persiste apenas estado
 mutável: `mapId + ruleId` para regras `once`, `mapId + encounterId` para state/reward
 claim, deltas de portas e activation toggles por `mapId + PersistentInstanceId`.
 Pressure activation nunca é persistida. O mapa compilado continua
-sendo carregado do DMAP, nunca copiado para o save.
+sendo carregado do DMAP, nunca copiado para o save. Deltas de WorldObject com
+`resetOnMapEnter` não entram no `SessionWorldState`; portanto não são restaurados
+por transições nem por save/load. O mapa authored continua sendo a autoridade para
+recriar seu estado inicial.
 
 O estado de encounter `active` é monitorado sobre placements authored já existentes;
 esta fundação não adiciona waves, spawn tables, snapshots de HP ou fases de boss.
@@ -274,7 +310,7 @@ inválidos, dimensões incompatíveis, payloads inválidos e references sem defi
 ## Cadeia runtime
 
 ```text
-MapData -> DMAP 1.4 -> MapCatalog -> deserialize/validate
+MapData -> DMAP 1.5 -> MapCatalog -> deserialize/validate
          -> RuntimeWorldBuilder -> RuntimeMap + factories + WorldPickup/NPC
 ```
 
@@ -306,7 +342,8 @@ encontrar usages são ações de tooling. Tilesets, semantic tiles e stamps pode
 selecionados de volta na paleta. O painel MAP também expõe a edição estruturada de
 regiões/efeitos, world rules e encounters usando os pickers do mapa e do Content
 Workspace. Definitions sem `AuthoringDescriptor` continuam aparecendo pelo
-`DefinitionId`. UMAP v3 e DMAP 1.4 permanecem inalterados.
+`DefinitionId`. UMAP v4 e DMAP 1.5 carregam a política de persistência das colocações
+de WorldObject e cenas map-local; Content JSON v5 e DSAV 1.8 permanecem inalterados.
 Compile/export/playtest usam o registry atual do workspace quando ele é válido; um
 workspace inválido torna a dependência de conteúdo indisponível em vez de usar builtin
 ou cache stale silenciosamente. Conteúdo builtin válido é read-only para edição de
@@ -331,7 +368,7 @@ estrito e canônico com a raiz:
 Cada item de `maps` é semanticamente um `AuthoredMapSource` completo. O codec de
 mapa existente é reutilizado para codificar/decodificar esses objetos, portanto
 `UWORLD` não cria uma segunda representação da geometria, das layers, placements,
-regions, world rules, encounters ou overrides authored. A ordem do array é estável e
+regions, world rules, encounters, scenes ou overrides authored. A ordem do array é estável e
 é a ordem usada pelo Content Studio, pela validação e pela busca de usos. `entryMapId`
 deve referenciar exatamente um dos mapas e os `MapId` devem ser únicos e não vazios.
 
@@ -344,8 +381,8 @@ Os formatos têm responsabilidades distintas:
 
 ```text
 UWORLD v1  authored project containing multiple AuthoredMapSource values
-UMAP v3    standalone authored map source
-DMAP 1.4   compiled runtime artifact for exactly one map
+UMAP v4    standalone authored map source
+DMAP 1.5   compiled runtime artifact for exactly one map
 DSAV 1.8   mutable session/save state and world deltas
 ```
 
