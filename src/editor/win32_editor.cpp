@@ -275,6 +275,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         } else {
             underworld::game::content::ContentSourceSelection selection; const auto source = underworld::game::content::loadContentSource(selection);
             if (!source) { std::string message; for (const auto& diagnostic : source.diagnostics) message += underworld::game::content::formatContentWorkspaceDiagnostic(diagnostic) + "\n"; throw std::runtime_error(message); }
+            // Builtin content is an explicit engine source in the editor. Keep
+            // it distinguishable from a user workspace instead of having
+            // EditorApp silently synthesize a project document.
+            document = underworld::editor::ContentWorkspaceDocument::fromBuiltin(
+                source.content->authored);
             registry = std::move(source.content->registry);
         }
         return underworld::editor::EditorWindow(instance, show, assetRoot, std::move(registry), std::move(document)).run();

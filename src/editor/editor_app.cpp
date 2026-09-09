@@ -6,7 +6,6 @@
 #include "engine/render/image.h"
 #include "engine/render/renderer_2d.h"
 #include "engine/render/sprite.h"
-#include "game/content/builtin_content.h"
 #include "game/content/content_source.h"
 
 #include <algorithm>
@@ -18,6 +17,7 @@
 #include <iterator>
 #include <limits>
 #include <sstream>
+#include <type_traits>
 #include <utility>
 
 namespace underworld::editor {
@@ -124,6 +124,7 @@ enum ContentEditField : int {
     fieldSemanticEdges, fieldStampDisplay, fieldStampSize, fieldStampAnchor,
     fieldStampCell, fieldStampConfidence,
     fieldAssetSearch,
+    fieldEntitySearch,
     contentEditFieldCount
 };
 
@@ -188,12 +189,12 @@ EditorDocument initialDocument(const game::GameContentRegistry& content) {
     if (content.authoringSemantics().findTile(
             simulation::DefinitionId{"tile.dungeon.masonry.39"}) != nullptr) {
         return EditorDocument::newAuthoredMap(
-            simulation::MapId{"map.untitled"}, 32, 24, 16, content, true);
+            simulation::MapId{"map.untitled"}, 32, 24, 16, content, false);
     }
     // A semantically invalid external workspace still needs an editable shell so
     // its diagnostics can be repaired. This is an empty document, not builtin
-    // content fallback; map authoring remains unavailable until the workspace is valid.
-    return EditorDocument::newMap(simulation::MapId{"map.untitled"}, 32, 24, 16, true);
+    // content fallback; compile/playtest remain unavailable until it is valid.
+    return EditorDocument::newMap(simulation::MapId{"map.untitled"}, 32, 24, 16, false);
 }
 }
 
@@ -208,9 +209,8 @@ EditorApp::EditorApp(platform::ImageDecoder& decoder, const std::filesystem::pat
       visualPreview_(decoder, assetRoot),
       framebuffer_(std::make_unique<render::Framebuffer>(1000,700)) {
     panelWidths_ = clampPanelWidths(framebuffer_->width(), panelWidths_);
-    if (!contentWorkspace_) contentWorkspace_ = ContentWorkspaceDocument::fromBuiltin(
-        game::content::makeBuiltinAuthoredContent());
-    if (!contentWorkspace_->valid()) status_ = "Content workspace invalid; map compile/playtest unavailable";
+    if (contentWorkspace_ && !contentWorkspace_->valid())
+        status_ = "Content workspace invalid; map compile/playtest unavailable";
     refreshContentRegistry();
     for (const auto& definition : content_.tilesets().definitions()) {
         std::string error;
@@ -264,6 +264,11 @@ core::PointI EditorApp::worldToScreen(core::WorldPointI world,core::RectI viewpo
 
 void EditorApp::updateAndRender(const EditorInputState& input){
     if(input.focusLost)cancelActiveGesture();
+    if (input.escapePressed && !contentMode_ &&
+        document().activeTool() == EditorTool::entityPlace) {
+        cancelActiveGesture();
+        status_ = "Entity placement cancelled";
+    }
     if (playtest_.active()) {
         simulation::PlayerCommand command;
         command.tick = ++playtestTick_;
@@ -317,7 +322,11 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     for (std::size_t index = 0; index < primaryTabs.size(); ++index) {
         if (ui.button(primaryTabBounds[index], localization_.text(primaryTabs[index].second),
                       mapPaletteTab_ == primaryTabs[index].first)) {
-            cancelActiveGesture();
+            const bool preserveEntityPlacement =
+                primaryTabs[index].first == MapPaletteTab::entities &&
+                document().activeTool() == EditorTool::entityPlace &&
+                !selectedDefinition_.empty();
+            if (!preserveEntityPlacement) cancelActiveGesture();
             mapPaletteTab_ = primaryTabs[index].first;
         }
     }
@@ -491,7 +500,10 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     if(ui.button(buttons[1],"COLL F-",document().activeTool()==EditorTool::collisionFillErase)) { document().activeTool()=EditorTool::collisionFillErase; }
     y+=24;
     buttons = toolRow(y);
-    if(ui.button(buttons[0],"ENTITY",document().activeTool()==EditorTool::entityPlace))document().activeTool()=EditorTool::entityPlace;
+    if(ui.button(buttons[0],"ENTITY",document().activeTool()==EditorTool::entityPlace)){
+        if (selectedDefinition_.empty()) status_ = "Select an entity definition first";
+        else document().activeTool() = EditorTool::entityPlace;
+    }
     if(ui.button(buttons[1],"REGION",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
     y+=20;
     buttons = toolRow(y);
@@ -501,59 +513,109 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
     y+=24;
 
     if (mapPaletteTab_ == MapPaletteTab::entities) {
-        ui.label("CONTENT",leftContent.x,y);y+=14;
-        struct PaletteEntry final { simulation::DefinitionId id; std::string label; game::AuthoringCategory category; };
-        std::vector<PaletteEntry> entries;
-        const auto addEntry = [&](simulation::DefinitionId id, game::AuthoringCategory category,
-                                  std::string fallback) {
-            const auto duplicate = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
-                return entry.id == id && entry.category == category;
-            });
-            if (duplicate != entries.end()) return;
-            auto label = std::move(fallback);
-            for (const auto& descriptor : content_.authoringDescriptors()) {
-                if (descriptor.definitionId == id && descriptor.category == category) {
-                    label = descriptor.displayName + " (" + std::string(id.value()) + ")";
-                    break;
+        ui.label("ENTITY BROWSER", leftContent.x, y);
+        y += 16;
+        const std::array<std::pair<ContentDefinitionKind, std::string_view>, 4> categories{{
+            {ContentDefinitionKind::enemy, "ENEMIES"},
+            {ContentDefinitionKind::npc, "NPCS"},
+            {ContentDefinitionKind::object, "OBJECTS"},
+            {ContentDefinitionKind::pickup, "PICKUPS"}}};
+        const auto categoryColumns = equalColumns({leftContent.x, y, leftContent.width, 18}, 2);
+        for (std::size_t index = 0; index < categories.size(); ++index) {
+            const auto column = index % 2;
+            auto bounds = categoryColumns[column];
+            bounds.y += static_cast<int>(index / 2) * 20;
+            if (ui.button(bounds, categories[index].second,
+                          entityPaletteKind_ == categories[index].first)) {
+                entityPaletteKind_ = categories[index].first;
+                entityPaletteScroll_ = 0;
+            }
+        }
+        y += 40;
+        ui.label("SEARCH", leftContent.x, y);
+        if (ui.textField({leftContent.x + 56, y - 4, std::max(20, leftContent.width - 56), 20},
+                         entityPaletteSearch_, contentFocusedField_ == fieldEntitySearch)) {
+            contentFocusedField_ = fieldEntitySearch;
+        }
+        y += 22;
+
+        std::vector<AuthoredEntityCandidate> candidates;
+        if (contentWorkspace_) {
+            const AuthoredEntityIndex index(*contentWorkspace_);
+            candidates = index.candidates(entityPaletteKind_, entityPaletteSearch_);
+        }
+        constexpr int rowHeight = 30;
+        const int entityControlTop = leftContent.y + leftContent.height - 78;
+        const int listTop = y;
+        const int listHeight = std::max(rowHeight, entityControlTop - listTop - 4);
+        const int contentHeight = static_cast<int>(candidates.size()) * rowHeight;
+        const int maxScroll = std::max(0, contentHeight - listHeight);
+        if (ui.pointerInside({leftContent.x, listTop, leftContent.width, listHeight}) &&
+            input.pointer.wheelDelta != 0) {
+            entityPaletteScroll_ = std::clamp(
+                entityPaletteScroll_ - (input.pointer.wheelDelta / 120) * rowHeight,
+                0, maxScroll);
+        }
+        entityPaletteScroll_ = std::clamp(entityPaletteScroll_, 0, maxScroll);
+        for (std::size_t index = 0; index < candidates.size(); ++index) {
+            const auto& candidate = candidates[index];
+            const int rowY = listTop + static_cast<int>(index) * rowHeight - entityPaletteScroll_;
+            if (rowY + rowHeight <= listTop || rowY >= listTop + listHeight) continue;
+            const std::string source = candidate.source == AuthoredEntitySource::builtin
+                ? "ENGINE" : "PROJECT";
+            const std::string label = source + "  " + candidate.displayName +
+                " (" + std::string(candidate.key.id.value()) + ")";
+            if (ui.buttonRaw({leftContent.x, rowY, leftContent.width, 18}, label,
+                              selectedDefinition_ == candidate.key.id &&
+                              document().activeTool() == EditorTool::entityPlace)) {
+                if (!candidate.runtimeValid) {
+                    status_ = "Cannot place " + std::string(candidate.key.id.value()) +
+                              ": " + candidate.diagnostic;
+                } else {
+                    selectedDefinition_ = candidate.key.id;
+                    selectedCategory_ = candidate.key.kind == ContentDefinitionKind::enemy
+                        ? game::AuthoringCategory::enemy
+                        : candidate.key.kind == ContentDefinitionKind::npc
+                            ? game::AuthoringCategory::npc
+                            : candidate.key.kind == ContentDefinitionKind::object
+                                ? game::AuthoringCategory::object
+                                : game::AuthoringCategory::pickup;
+                    document().activeTool() = EditorTool::entityPlace;
+                    status_ = "Placement active: click the map; Escape cancels";
                 }
             }
-            entries.push_back({std::move(id), std::move(label), category});
-        };
-        for (const auto& descriptor:content_.authoringDescriptors()) {
-            if (descriptor.category == game::AuthoringCategory::enemy ||
-                descriptor.category == game::AuthoringCategory::object ||
-                descriptor.category == game::AuthoringCategory::pickup ||
-                descriptor.category == game::AuthoringCategory::npc) {
-                addEntry(descriptor.definitionId, descriptor.category,
-                         std::string(descriptor.definitionId.value()));
+            if (!candidate.runtimeValid) {
+                ui.labelInRect({leftContent.x + 4, rowY + 18, leftContent.width - 8, 11},
+                               "INVALID: " + candidate.diagnostic, true);
             }
         }
-        for (const auto& entry : content_.enemies().values())
-            addEntry(entry.first, game::AuthoringCategory::enemy, std::string(entry.first.value()));
-        for (const auto& entry : content_.objects().values())
-            addEntry(entry.first, game::AuthoringCategory::object, std::string(entry.first.value()));
-        for (const auto& definition : content_.pickups())
-            addEntry(definition.id, game::AuthoringCategory::pickup, std::string(definition.id.value()));
-        for (const auto& entry : content_.npcs().values())
-            addEntry(entry.first, game::AuthoringCategory::npc, std::string(entry.first.value()));
-        std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
-            if (left.category != right.category) return left.category < right.category;
-            return left.id.value() < right.id.value();
-        });
-        for(const auto& descriptor:entries){
-            if(y+18>viewportHeight-210)break;
-            if(ui.buttonRaw({leftContent.x,y,leftContent.width,18},descriptor.label,selectedDefinition_==descriptor.id&&document().activeTool()==EditorTool::entityPlace)){
-                selectedDefinition_=descriptor.id;selectedCategory_=descriptor.category;document().activeTool()=EditorTool::entityPlace;
-            }y+=20;
+        if (candidates.empty()) ui.label("No authored definitions", leftContent.x, listTop);
+
+        y = entityControlTop;
+        if (ui.button({leftContent.x, y, leftContent.width, 18}, "Player Spawn",
+                       document().activeTool() == EditorTool::entityPlace &&
+                       selectedDefinition_.value() == "world.player_spawn")) {
+            selectedDefinition_ = simulation::DefinitionId{"world.player_spawn"};
+            document().activeTool() = EditorTool::entityPlace;
         }
-        if(ui.button({leftContent.x,y,leftContent.width,18},"Player Spawn",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.player_spawn")){
-            selectedDefinition_=simulation::DefinitionId{"world.player_spawn"};document().activeTool()=EditorTool::entityPlace;
-        }y+=20;
-        if(ui.button({leftContent.x,y,leftContent.width,18},"Map Link",document().activeTool()==EditorTool::entityPlace&&selectedDefinition_.value()=="world.map_link")){
-            selectedDefinition_=simulation::DefinitionId{"world.map_link"};document().activeTool()=EditorTool::entityPlace;
-        }y+=20;
-        if(ui.button({leftContent.x,y,leftContent.width,18},"Region",document().activeTool()==EditorTool::regionCreate))document().activeTool()=EditorTool::regionCreate;
         y += 20;
+        if (ui.button({leftContent.x, y, leftContent.width, 18}, "Map Link",
+                       document().activeTool() == EditorTool::entityPlace &&
+                       selectedDefinition_.value() == "world.map_link")) {
+            selectedDefinition_ = simulation::DefinitionId{"world.map_link"};
+            document().activeTool() = EditorTool::entityPlace;
+        }
+        y += 20;
+        if (ui.button({leftContent.x, y, leftContent.width, 18}, "Region",
+                       document().activeTool() == EditorTool::regionCreate)) {
+            selectedDefinition_ = {};
+            document().activeTool() = EditorTool::regionCreate;
+        }
+        y += 20;
+    }
+    if (document().activeTool() != EditorTool::entityPlace) {
+        selectedDefinition_ = {};
+        placementPreviewPoint_.reset();
     }
     if (ui.button({leftContent.x, y, leftContent.width, 18}, playtest_.active() ? "STOP PLAYTEST" : "PLAYTEST",
                   playtest_.active())) {
@@ -664,6 +726,12 @@ void EditorApp::drawContentShell(EditorUiContext& ui, const EditorInputState& in
         return;
     }
     (void)ui.button(modeTabs[1], "CONTENT", true);
+    if (!contentWorkspace_) {
+        ui.label("No Content Workspace", center.x + 8, 54);
+        ui.label("Open a project workspace or explicit engine content", center.x + 8, 72);
+        ui.label("No authored definitions available", left.x + 8, 54);
+        return;
+    }
     if (ui.pointerInside({right.x, right.y + 118, right.width, right.height - 260}) &&
         input.pointer.wheelDelta != 0) {
         contentInspectorScroll_ = std::clamp(
@@ -2117,11 +2185,16 @@ void EditorApp::drawGameplayContentInspector(EditorUiContext& ui, const EditorIn
             key.kind == ContentDefinitionKind::npc ? game::AuthoringCategory::npc :
             key.kind == ContentDefinitionKind::object ? game::AuthoringCategory::object : game::AuthoringCategory::pickup;
         if (ui.button({panel.x + 8, inspectorY, 108, 20}, "PLACE IN MAP")) {
-            if (!contentWorkspace_->valid()) {
-                status_ = "Content workspace invalid; placement unavailable";
+            const AuthoredEntityIndex entityIndex(*contentWorkspace_);
+            const auto* candidate = entityIndex.find(key);
+            if (!candidate) {
+                status_ = "Cannot place: authored definition was not found";
+            } else if (!candidate->runtimeValid) {
+                status_ = "Cannot place " + std::string(key.id.value()) + ": " + candidate->diagnostic;
             } else {
                 selectedDefinition_ = key.id; selectedCategory_ = category; contentMode_ = false;
-                document().activeTool() = EditorTool::entityPlace; status_ = "Select a map position to place this definition"; return;
+                document().activeTool() = EditorTool::entityPlace;
+                status_ = "Select a map position to place this definition"; return;
             }
         }
         if (ui.button({panel.x + 120, inspectorY, 108, 20}, "FIND IN MAP")) {
@@ -4162,8 +4235,11 @@ void EditorApp::handleContentPreview(EditorUiContext& ui, const EditorInputState
 }
 
 void EditorApp::drawViewport(render::Renderer2D& renderer,core::RectI viewport,const EditorInputState& input){
-    renderer.fillRect(viewport,viewportBackground);drawMap(renderer,viewport);drawEntities(renderer,viewport);
-    if (!playtest_.active()) { handleViewport(viewport,input); }
+    renderer.fillRect(viewport,viewportBackground);
+    drawMap(renderer,viewport);
+    if (!playtest_.active()) handleViewport(viewport,input);
+    drawEntities(renderer,viewport);
+    if (!playtest_.active()) drawPlacementPreview(renderer, viewport);
 }
 
 void EditorApp::drawMap(render::Renderer2D& renderer,core::RectI viewport) const{
@@ -4205,10 +4281,105 @@ void EditorApp::drawEntities(render::Renderer2D& renderer,core::RectI viewport) 
     if(drag_.kind==DragState::Kind::regionCreate){world::AabbI b{std::min(drag_.worldStart.x,drag_.worldCurrent.x),std::min(drag_.worldStart.y,drag_.worldCurrent.y),std::abs(drag_.worldCurrent.x-drag_.worldStart.x),std::abs(drag_.worldCurrent.y-drag_.worldStart.y)};const auto p=worldToScreen({b.x,b.y},viewport);outline(renderer,{p.x,p.y,std::max(1,static_cast<int>(b.width*zoom())),std::max(1,static_cast<int>(b.height*zoom()))},selectedColor);}
 }
 
+void EditorApp::drawPlacementPreview(render::Renderer2D& renderer, core::RectI viewport) {
+    if (!placementPreviewPoint_ || document().activeTool() != EditorTool::entityPlace ||
+        selectedDefinition_.empty()) return;
+
+    const auto placeholderKind = [&]() {
+        if (selectedDefinition_.value() == "world.player_spawn") return SelectionKind::playerSpawn;
+        if (selectedDefinition_.value() == "world.map_link") return SelectionKind::mapLink;
+        return selectedCategory_ == game::AuthoringCategory::enemy ? SelectionKind::enemy :
+            selectedCategory_ == game::AuthoringCategory::npc ? SelectionKind::npc :
+            selectedCategory_ == game::AuthoringCategory::object ? SelectionKind::object :
+            SelectionKind::pickup;
+    }();
+    const auto point = worldToScreen(*placementPreviewPoint_, viewport);
+    const auto fallback = [&]() {
+        const int size = std::max(8, static_cast<int>(document().data().tileSize * zoom()));
+        const core::RectI bounds{point.x - size / 2, point.y - size + 2, size, size};
+        renderer.fillRect(bounds, categoryColor(placeholderKind));
+        outline(renderer, bounds, selectedColor);
+        renderer.fillRect({point.x - 1, bounds.y, 3, bounds.height}, selectedColor);
+        renderer.fillRect({bounds.x, point.y - 1, bounds.width, 3}, selectedColor);
+    };
+    if (!contentWorkspace_ || placeholderKind == SelectionKind::playerSpawn ||
+        placeholderKind == SelectionKind::mapLink) {
+        fallback();
+        return;
+    }
+
+    const ContentDefinitionKind kind = placeholderKind == SelectionKind::enemy
+        ? ContentDefinitionKind::enemy
+        : placeholderKind == SelectionKind::npc ? ContentDefinitionKind::npc
+        : placeholderKind == SelectionKind::object ? ContentDefinitionKind::object
+        : ContentDefinitionKind::pickup;
+    const AuthoredEntityIndex index(*contentWorkspace_);
+    const auto* candidate = index.find({kind, selectedDefinition_});
+    if (!candidate || !candidate->runtimeValid) {
+        fallback();
+        return;
+    }
+
+    VisualPreviewRequest request;
+    request.facing = game::gameplay::FacingDirection::down;
+    if (kind == ContentDefinitionKind::enemy) {
+        const auto* value = contentWorkspace_->enemy(selectedDefinition_);
+        if (!value) { fallback(); return; }
+        request.key = {ContentDefinitionKind::enemyVisual, value->visualSetId};
+    } else if (kind == ContentDefinitionKind::npc) {
+        const auto* value = contentWorkspace_->npc(selectedDefinition_);
+        if (!value) { fallback(); return; }
+        request.key = {ContentDefinitionKind::npcVisual, value->visualSetId};
+    } else if (kind == ContentDefinitionKind::object) {
+        const auto* value = contentWorkspace_->object(selectedDefinition_);
+        if (!value) { fallback(); return; }
+        request.key = {ContentDefinitionKind::objectVisual, value->visualSetId};
+    } else {
+        const auto* value = contentWorkspace_->pickup(selectedDefinition_);
+        if (!value) { fallback(); return; }
+        request.key = {ContentDefinitionKind::staticSprite, value->visualId};
+    }
+    visualPreview_.prepare(*contentWorkspace_, request);
+
+    const render::Image* image = visualPreview_.image();
+    core::RectI source{};
+    core::PointI anchor{};
+    core::PointI drawOffset{};
+    if (visualPreview_.hasClip()) {
+        const auto& frame = visualPreview_.animator().currentFrame().sprite;
+        source = frame.source;
+        anchor = frame.anchor;
+        drawOffset = frame.drawOffset;
+        image = &visualPreview_.animator().clip().sheet().image();
+    } else if (kind == ContentDefinitionKind::pickup) {
+        const auto* value = contentWorkspace_->staticSprite(request.key.id);
+        if (value && image) {
+            source = value->source.value_or(core::RectI{0, 0, image->width(), image->height()});
+            anchor = value->anchor;
+        }
+    }
+    if (!image || source.empty() || source.x < 0 || source.y < 0 ||
+        source.x + source.width > image->width() || source.y + source.height > image->height()) {
+        fallback();
+        return;
+    }
+
+    const int scale = std::max(1, static_cast<int>(std::lround(zoom())));
+    const int anchorX = visualPreview_.flipX() ? source.width - anchor.x : anchor.x;
+    const core::RectI destination{
+        point.x - anchorX * scale + drawOffset.x * scale,
+        point.y - anchor.y * scale + drawOffset.y * scale,
+        source.width * scale, source.height * scale};
+    renderer.drawImageRegionNearest(*image, source, destination, visualPreview_.flipX());
+    outline(renderer, destination, core::ColorRGBA8{selectedColor.r, selectedColor.g,
+                                                     selectedColor.b, 180});
+}
+
 void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& input){
     const bool inside=input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height;
     const core::PointI pointer{input.pointer.x,input.pointer.y};const auto worldPoint=screenToWorld(pointer,viewport);const int tileSize=document().data().tileSize;
     auto snapped=worldPoint;if(!input.alt){snapped.x=(snapped.x/tileSize)*tileSize;snapped.y=(snapped.y/tileSize)*tileSize;}
+    placementPreviewPoint_.reset();
     if(input.homePressed)frameMap(viewport);
     if(inside&&input.pointer.wheelDelta!=0){const auto anchor=worldPoint;auto& step=document().viewport().zoomStep;if(input.pointer.wheelDelta>0&&step+1<zoomSteps.size())++step;else if(input.pointer.wheelDelta<0&&step>0)--step;document().viewport().worldX=anchor.x-(pointer.x-viewport.x)/zoom();document().viewport().worldY=anchor.y-(pointer.y-viewport.y)/zoom();}
     if(inside&&(input.pointer.middlePressed||(input.space&&input.pointer.leftPressed))){drag_.kind=DragState::Kind::pan;drag_.pointerStart=pointer;drag_.worldStart={static_cast<int>(document().viewport().worldX),static_cast<int>(document().viewport().worldY)};}
@@ -4217,6 +4388,9 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     const auto tile=worldPointToTile(document().data(),worldPoint);
     if (!tile && drag_.kind==DragState::Kind::none) return;
     const auto tool=document().activeTool();
+    if (inside && tool == EditorTool::entityPlace && !selectedDefinition_.empty()) {
+        placementPreviewPoint_ = snapped;
+    }
     if(input.pointer.leftPressed&&inside){
         if(tool==EditorTool::tileSelection && tile){drag_.kind=DragState::Kind::tileSelection;drag_.worldStart={static_cast<int>(tile->x),static_cast<int>(tile->y)};drag_.worldCurrent=drag_.worldStart;}
         else if((tool==EditorTool::tilePencil||tool==EditorTool::tileErase||tool==EditorTool::collisionPaint||tool==EditorTool::collisionErase) && tile){drag_.kind=DragState::Kind::brush;drag_.stroke={*tile};}
@@ -4304,13 +4478,52 @@ void EditorApp::selectTileset(int direction) {
     if (!selectedTilesetVisual()) { status_ = definitions[index].displayName + " image is unavailable"; }
 }
 
-void EditorApp::placeSelected(core::WorldPointI point){const auto id=document().allocatePersistentId();
+void EditorApp::placeSelected(core::WorldPointI point){
     if(selectedDefinition_.value()=="world.player_spawn"){const std::string name="spawn."+std::to_string(document().data().playerSpawns.size()+1);execute(std::make_unique<PlaceEntityCommand>(maps::PlayerSpawn{simulation::SpawnId{name},point,game::gameplay::FacingDirection::down}));return;}
     if(selectedDefinition_.value()=="world.map_link"){const std::string targetSpawn=document().data().playerSpawns.empty()?"missing":std::string(document().data().playerSpawns.front().id.value());execute(std::make_unique<PlaceEntityCommand>(maps::MapLink{"link."+std::to_string(document().data().links.size()+1),{point.x,point.y,document().data().tileSize,document().data().tileSize},document().data().id,simulation::SpawnId{targetSpawn}}));return;}
-    if(selectedCategory_==game::AuthoringCategory::enemy)execute(std::make_unique<PlaceEntityCommand>(maps::EnemyPlacement{id,selectedDefinition_,point,game::gameplay::FacingDirection::down}));
-    else if(selectedCategory_==game::AuthoringCategory::npc)execute(std::make_unique<PlaceEntityCommand>(maps::NpcPlacement{id,selectedDefinition_,point,game::gameplay::FacingDirection::down}));
-    else if(selectedCategory_==game::AuthoringCategory::object)execute(std::make_unique<PlaceEntityCommand>(maps::ObjectPlacement{id,selectedDefinition_,point,{}}));
-    else if(const auto* pickup=content_.pickup(selectedDefinition_))execute(std::make_unique<PlaceEntityCommand>(maps::PickupPlacement{id,pickup->id,pickup->visualId,point,pickup->collectionBounds,pickup->payload}));
+    if (!contentWorkspace_) {
+        status_ = "No authored content workspace is available for entity placement";
+        return;
+    }
+    const auto kind = selectedCategory_ == game::AuthoringCategory::enemy
+        ? ContentDefinitionKind::enemy
+        : selectedCategory_ == game::AuthoringCategory::npc ? ContentDefinitionKind::npc
+        : selectedCategory_ == game::AuthoringCategory::object ? ContentDefinitionKind::object
+        : ContentDefinitionKind::pickup;
+    const AuthoredEntityIndex index(*contentWorkspace_);
+    const auto* candidate = index.find({kind, selectedDefinition_});
+    if (!candidate) {
+        status_ = "Cannot place " + std::string(selectedDefinition_.value()) +
+                  ": authored definition was not found";
+        return;
+    }
+    if (!candidate->runtimeValid) {
+        status_ = "Cannot place " + std::string(selectedDefinition_.value()) +
+                  ": " + candidate->diagnostic;
+        return;
+    }
+    const auto id = document().allocatePersistentId();
+    if (kind == ContentDefinitionKind::enemy) {
+        execute(std::make_unique<PlaceEntityCommand>(maps::EnemyPlacement{
+            id, selectedDefinition_, point, game::gameplay::FacingDirection::down}));
+    } else if (kind == ContentDefinitionKind::npc) {
+        execute(std::make_unique<PlaceEntityCommand>(maps::NpcPlacement{
+            id, selectedDefinition_, point, game::gameplay::FacingDirection::down}));
+    } else if (kind == ContentDefinitionKind::object) {
+        execute(std::make_unique<PlaceEntityCommand>(maps::ObjectPlacement{
+            id, selectedDefinition_, point, {}}));
+    } else if (const auto* pickup = contentWorkspace_->pickup(selectedDefinition_)) {
+        const auto payload = std::visit([](const auto& value) -> game::gameplay::PickupPayload {
+            using Value = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<Value, game::content::AuthoredHealthPickup>)
+                return game::gameplay::HealthPickup{value.amount};
+            else if constexpr (std::is_same_v<Value, game::content::AuthoredCurrencyPickup>)
+                return game::gameplay::CurrencyPickup{value.amount};
+            else return game::gameplay::ItemPickup{value.itemId, value.quantity};
+        }, pickup->payload);
+        execute(std::make_unique<PlaceEntityCommand>(maps::PickupPlacement{
+            id, pickup->id, pickup->visualId, point, pickup->collectionBounds, payload}));
+    }
 }
 
 void EditorApp::drawMapBrowser(EditorUiContext& ui, const EditorInputState& input,
@@ -4930,6 +5143,11 @@ void EditorApp::execute(std::unique_ptr<EditorCommand> command){std::string erro
 void EditorApp::cancelActiveGesture() noexcept{
     drag_={};
     layerDrag_={};
+    placementPreviewPoint_.reset();
+    if (document().activeTool() == EditorTool::entityPlace) {
+        document().activeTool() = EditorTool::select;
+        selectedDefinition_ = {};
+    }
     previewPanning_=false;
     previewRectangleDragging_=false;
 }
@@ -4937,6 +5155,7 @@ void EditorApp::shellCommand(EditorShellCommand command){
     if(command==EditorShellCommand::newMap){cancelActiveGesture();playtest_.stop();newMapDialog_=true;}
     else if(command==EditorShellCommand::newProject){
         cancelActiveGesture(); playtest_.stop(); worldProject_=WorldProjectDocument::newProject(initialDocument(content_));
+        selectedDefinition_ = {};
         contentMode_=false; mapBrowserScroll_=0; validationCache_.invalidate(); frameMap(viewportBounds_);
         status_=std::string(localization_.text(EditorTextId::newProject));
     }
@@ -5066,7 +5285,7 @@ bool EditorApp::runVisualValidation(){
     return static_cast<bool>(loaded);
 }
 void EditorApp::togglePlaytest(){if(playtest_.active()){playtest_.stop();status_="Playtest stopped; editor document unchanged";return;}if(contentWorkspace_&&!contentWorkspace_->compiledRegistry()){status_="Playtest unavailable: Content Workspace is invalid";return;}std::string error;if(!playtest_.start(worldProject_.authoredSource(),content_,document().data().id,error)){status_=error;return;}status_="Playtest active: runtime world built from current project";}
-std::string EditorApp::windowTitle() const{std::string title="Dungeon Underworld - ";title += contentMode_ ? std::string(localization_.text(EditorTextId::contentStudio)) : std::string(localization_.text(EditorTextId::mapMaker));title += " - ";if(contentMode_)title.append(contentWorkspace_->builtinReadOnly()?std::string(localization_.text(EditorTextId::builtinContent)):std::string(localization_.text(EditorTextId::contentWorkspace)));else title.append(document().data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
+std::string EditorApp::windowTitle() const{std::string title="Dungeon Underworld - ";title += contentMode_ ? std::string(localization_.text(EditorTextId::contentStudio)) : std::string(localization_.text(EditorTextId::mapMaker));title += " - ";if(contentMode_)title.append(!contentWorkspace_ ? "No Content Workspace" : contentWorkspace_->builtinReadOnly()?std::string(localization_.text(EditorTextId::builtinContent)):std::string(localization_.text(EditorTextId::contentWorkspace)));else title.append(document().data().id.value());if(hasUnsavedChanges())title+=" *";return title;}
 void EditorApp::updateStatus(core::RectI viewport,const EditorInputState& input){if(contentMode_)return;if(input.pointer.x>=viewport.x&&input.pointer.y>=viewport.y&&input.pointer.x<viewport.x+viewport.width&&input.pointer.y<viewport.y+viewport.height){const auto world=screenToWorld({input.pointer.x,input.pointer.y},viewport);std::ostringstream out;out<<"World "<<world.x<<','<<world.y<<"  Tile "<<world.x/document().data().tileSize<<','<<world.y/document().data().tileSize<<"  Zoom "<<static_cast<int>(zoom()*100)<<'%';status_=out.str();}}
 
 } // namespace underworld::editor

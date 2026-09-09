@@ -1932,6 +1932,15 @@ workspace root. The same document and compiler APIs are suitable for future huma
 LLM authored DTOs; no reflection, generic editor framework or raw JSON editor is
 introduced.
 
+Placeable entity discovery follows the same authored boundary but is intentionally
+separate from runtime compilation. `AuthoredEntityIndex` derives Enemy, NPC, Object
+and Pickup candidates from the current `ContentWorkspaceDocument`, records whether
+the candidate's local dependency closure is valid, and records whether its source is
+project content or explicit builtin content. The MAP entity browser can therefore
+continue authoring while unrelated workspace diagnostics are repaired. Invalid
+candidates remain visible with a placement diagnostic; they are never silently
+compiled or passed to runtime.
+
 Explicit workspace validation has two layers. Content diagnostics come from the
 shared workspace validator/compiler. When that derived registry is valid, the Studio
 invokes `VisualContentLoader` with the editor's game-asset root and (for external
@@ -2051,9 +2060,11 @@ editable map. Definitions without authoring descriptors use their IDs as palette
 fallback labels. Tilesets, semantic tiles and stamps use the same navigation in the
 opposite direction. Regions expose presentation-effect binding, while world rules
 and encounters remain structured list editors with compatible placement pickers.
-Current external workspace content replaces builtin content; an invalid
-workspace invalidates content-dependent map validation, compile/export and playtest
-instead of silently using a stale registry.
+The editor launcher chooses builtin content explicitly when no `--content` root was
+requested. A real external workspace replaces that source for runtime-derived
+content, while its authored index remains available even when compilation fails.
+An invalid workspace still invalidates content-dependent map validation,
+compile/export and playtest instead of silently using builtin or a stale registry.
 
 Map validation is cached against both the map document revision and the current
 content-derived registry. Save All writes only dirty Content JSON files and the dirty

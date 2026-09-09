@@ -54,6 +54,37 @@ read-only. O editor pode mostrar um workspace semanticamente inválido para que 
 autor o corrija; validação/compile continuam sendo os pontos que bloqueiam conteúdo
 inválido.
 
+## Fronteira de autoria de entidades
+
+O browser de entidades usa `AuthoredEntityIndex`, derivado diretamente do índice
+authored atual de `ContentWorkspaceDocument`, para `enemy`, `npc`, `object` e
+`pickup`. Ele não lê `GameContentRegistry` para descobrir a palette. Cada entrada
+carrega a origem (`PROJECT` ou `ENGINE`/builtin) e o resultado da validação local da
+definição mais sua cadeia mínima de dependências. Assim, um diagnóstico em uma quest
+ou outra definição não relacionada não remove inimigos editáveis da palette; uma
+dependência quebrada mantém a entrada visível, mas bloqueia `PLACE IN MAP` com o
+diagnóstico correspondente.
+
+MAP → Entities agora organiza as quatro categorias, oferece busca por display name e
+`DefinitionId`, scroll real e placement repetido. `PLACE IN MAP` ativa a ferramenta
+de entidade e mantém a definição até Escape, troca de ferramenta ou nova seleção. O
+ghost usa `EditorVisualPreview` quando o visual é resolvível e um marker editor-only
+quando não é; nenhum ghost altera o documento antes do clique. `PlaceEntityCommand`
+continua sendo a única fronteira de mutação, portanto seleção, mover, remover,
+undo/redo e IDs persistentes permanecem compartilhados.
+
+Essa separação não relaxa runtime: compilação do workspace, validação de mapa,
+export DMAP e playtest continuam exigindo o registry compilado válido. O caminho
+builtin do editor é explícito no launcher, enquanto `EditorApp` não sintetiza builtin
+silenciosamente quando recebe uma workspace ausente. Mapas novos começam sem spawn e
+sem placements de gameplay; o diálogo de novo mapa mantém o spawn como opção explícita
+para um template de trabalho.
+
+O fluxo ainda é tooling incremental: a validação local cobre diagnósticos authored e
+dependências de definição, enquanto disponibilidade física de assets continua sendo
+diagnosticada pelo `VisualContentLoader`/preview. A matriz de categorias acima não é
+promovida a `OK` apenas por causa do browser de placement.
+
 ## Correções desta passagem
 
 ### Crítico

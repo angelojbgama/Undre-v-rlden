@@ -9604,6 +9604,115 @@ void testContentStudioDeepAuthoringHelpers() {
            "authored attack shape data round-trips through the strict content codec");
 }
 
+void testContentStudioAuthoredEntityPlacementWorkflow() {
+    namespace content = underworld::game::content;
+    namespace editor = underworld::editor;
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace gameplay = underworld::game::gameplay;
+
+    const auto root = std::filesystem::temp_directory_path() /
+        "underworld_authored_entity_index_workflow";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root, fsError);
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    const auto enemy = std::find_if(authored.enemies.begin(), authored.enemies.end(),
+        [](const auto& value) { return value.id == gameplay::creatures::soldierEnemyId(); });
+    expect(enemy != authored.enemies.end(),
+           "entity authoring fixture contains the configured builtin enemy");
+    if (enemy == authored.enemies.end()) {
+        std::filesystem::remove_all(root, fsError);
+        return;
+    }
+    auto brokenEnemy = *enemy;
+    brokenEnemy.id = {"enemy.authoring.broken"};
+    brokenEnemy.visualSetId = {"visual.enemy.missing"};
+    authored.enemies.push_back(brokenEnemy);
+    authored.quests.push_back({{"quest.authoring.unrelated.broken"}, {}, {}, {}, std::nullopt});
+
+    std::string error;
+    expect(content::writeAuthoredContentJsonFile(root / "content.json", authored, error),
+           "entity authoring fixture writes authored content with unrelated invalid data");
+    auto document = editor::ContentWorkspaceDocument::open(root, error);
+    expect(document && !document->valid() && !document->compiledRegistry(),
+           "entity authoring workspace retains authored data without a compiled registry");
+    if (!document) {
+        std::filesystem::remove_all(root, fsError);
+        return;
+    }
+
+    const editor::AuthoredEntityIndex index(*document);
+    const editor::ContentDefinitionKey enemyKey{
+        editor::ContentDefinitionKind::enemy, gameplay::creatures::soldierEnemyId()};
+    const editor::ContentDefinitionKey brokenKey{
+        editor::ContentDefinitionKind::enemy, {"enemy.authoring.broken"}};
+    const auto* validCandidate = index.find(enemyKey);
+    const auto* invalidCandidate = index.find(brokenKey);
+    expect(validCandidate && validCandidate->runtimeValid &&
+               validCandidate->source == editor::AuthoredEntitySource::project,
+           "authored enemy remains placeable when an unrelated definition invalidates the workspace");
+    expect(invalidCandidate && !invalidCandidate->runtimeValid &&
+               invalidCandidate->diagnostic.find("visual") != std::string::npos,
+           "broken authored enemy remains visible with a local dependency diagnostic");
+    expect(validCandidate && !index.candidates(editor::ContentDefinitionKind::enemy,
+                                               validCandidate->displayName).empty() &&
+               !index.candidates(editor::ContentDefinitionKind::enemy,
+                                  enemyKey.id.value()).empty(),
+           "entity browser search matches both display name and definition ID");
+    for (const auto kind : {editor::ContentDefinitionKind::enemy,
+                            editor::ContentDefinitionKind::npc,
+                            editor::ContentDefinitionKind::object,
+                            editor::ContentDefinitionKind::pickup}) {
+        const auto candidates = index.candidates(kind);
+        expect(!candidates.empty() && std::all_of(candidates.begin(), candidates.end(),
+                   [&](const auto& candidate) { return candidate.key.kind == kind; }),
+               "entity browser category returns only its own authored definitions");
+    }
+
+    editor::EditorDocument map = editor::EditorDocument::newMap(
+        underworld::simulation::MapId{"map.authored.entity"}, 8, 8, 16, false);
+    const auto firstId = map.allocatePersistentId();
+    const auto firstPlacement = maps::EnemyPlacement{
+        firstId, enemyKey.id, {32, 48}, gameplay::FacingDirection::right};
+    expect(map.execute(std::make_unique<editor::PlaceEntityCommand>(firstPlacement), error) &&
+               map.data().enemies.size() == 1 && map.data().enemies.front().definitionId == enemyKey.id &&
+               map.data().enemies.front().id == firstId &&
+               map.data().enemies.front().position == underworld::core::WorldPointI{32, 48} &&
+               map.data().enemies.front().facing == gameplay::FacingDirection::right,
+           "placing an authored enemy creates the expected placement, ID, position and facing");
+    expect(map.undo() && map.data().enemies.empty() && map.redo(error) &&
+               map.data().enemies.size() == 1 && map.data().enemies.front().id == firstId,
+           "authored enemy placement roundtrips through undo and redo");
+    const auto secondId = map.allocatePersistentId();
+    expect(map.execute(std::make_unique<editor::PlaceEntityCommand>(maps::EnemyPlacement{
+                   secondId, enemyKey.id, {64, 48}, gameplay::FacingDirection::down}), error) &&
+               secondId != firstId && map.data().enemies.size() == 2,
+           "repeated authored placement creates distinct persistent IDs");
+
+    SyntheticVisualDecoder decoder;
+    editor::EditorApp invalidApp(decoder, root / "game-assets", game::GameContentRegistry{},
+                                 std::move(document));
+    invalidApp.shellCommand(editor::EditorShellCommand::playtest);
+    expect(invalidApp.status().find("Content Workspace is invalid") != std::string::npos,
+           "invalid authored workspace still blocks playtest despite an available entity index");
+    editor::EditorApp blankApp(decoder, root / "game-assets", game::GameContentRegistry{});
+    expect(blankApp.selectedDefinition().empty() &&
+               blankApp.document().activeTool() == editor::EditorTool::select &&
+               blankApp.document().data().playerSpawns.empty() &&
+               blankApp.contentWorkspace() == nullptr,
+           "blank editor startup has no implicit enemy, builtin workspace or player spawn");
+    const auto builtinDocument = editor::ContentWorkspaceDocument::fromBuiltin(
+        content::makeBuiltinAuthoredContent());
+    const editor::AuthoredEntityIndex builtinIndex(builtinDocument);
+    expect(builtinIndex.find(enemyKey) &&
+               builtinIndex.find(enemyKey)->source == editor::AuthoredEntitySource::builtin,
+           "builtin entity source is explicit and distinguishable from project content");
+
+    std::filesystem::remove_all(root, fsError);
+}
+
 void testEditorLocalization() {
     using namespace underworld;
     using editor::EditorLanguage;
@@ -10020,6 +10129,7 @@ int main() {
         testPhase18CGameplayContentEditors();
         testPhase18DUnifiedStudioWorkflow();
         testContentStudioDeepAuthoringHelpers();
+        testContentStudioAuthoredEntityPlacementWorkflow();
         testEditorLocalization();
         testEditorResponsiveLayerWorkflow();
         testWorldProjectAndMultiMapPlaytest();

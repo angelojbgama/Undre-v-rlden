@@ -1553,6 +1553,17 @@ O incremento atual aprofunda esse mesmo tooling: coleções authored têm seleç
 individual e remoção segura, referências conhecidas usam picker/quick inspect e o
 workflow Quest → Reward Grant pode criar e ligar uma recompensa. Isso é uma melhoria
 contínua do Content Studio production tooling, não uma nova fase obrigatória.
+
+O workflow de entidades recebeu a mesma separação de autoria: `AuthoredEntityIndex`
+descobre Enemy/NPC/Object/Pickup diretamente do workspace, inclusive quando outra
+definição contém erro sem relação. A palette MAP → Entities agora tem categorias,
+scroll, busca por nome/ID, origem Project/Engine, validação local, placement repetido
+e ghost/placeholder; `PlaceEntityCommand` continua cuidando da mutação e do
+undo/redo. `GameContentRegistry` permanece reservado para compile/export/playtest e
+runtime, que continuam recusando conteúdo inválido. O editor também não escolhe mais
+um inimigo builtin implicitamente: mapas novos são blank por padrão e Player Spawn é
+uma opção explícita do diálogo, não um conteúdo de gameplay oculto.
+
 ### 12C1 — Equipment domain + derived stats — DONE
 
 Armor and accessory equipment, typed modifiers, derived health/attack stats and

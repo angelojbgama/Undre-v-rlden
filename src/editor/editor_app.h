@@ -59,6 +59,9 @@ public:
     }
     [[nodiscard]] bool playtestActive() const noexcept { return playtest_.active(); }
     [[nodiscard]] bool contentMode() const noexcept { return contentMode_; }
+    [[nodiscard]] const simulation::DefinitionId& selectedDefinition() const noexcept {
+        return selectedDefinition_;
+    }
     [[nodiscard]] ContentWorkspaceDocument* contentWorkspace() noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
     [[nodiscard]] const ContentWorkspaceDocument* contentWorkspace() const noexcept { return contentWorkspace_ ? &*contentWorkspace_ : nullptr; }
     [[nodiscard]] const std::vector<game::presentation::VisualContentDiagnostic>&
@@ -117,6 +120,7 @@ private:
     void handleViewport(core::RectI viewport, const EditorInputState& input);
     void drawMap(render::Renderer2D& renderer, core::RectI viewport) const;
     void drawEntities(render::Renderer2D& renderer, core::RectI viewport) const;
+    void drawPlacementPreview(render::Renderer2D& renderer, core::RectI viewport);
     void drawInspector(EditorUiContext& ui, core::RectI panel);
     void drawNewMapDialog(EditorUiContext& ui, const EditorInputState& input);
     void frameMap(core::RectI viewport) noexcept;
@@ -183,12 +187,16 @@ private:
     enum class Splitter { none, left, right } activeSplitter_{Splitter::none};
     DragState drag_;
     LayerDragState layerDrag_;
-    simulation::DefinitionId selectedDefinition_{game::gameplay::creatures::soldierEnemyId()};
+    simulation::DefinitionId selectedDefinition_{};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
     simulation::DefinitionId selectedTileset_{"tileset.dungeon"};
     std::uint32_t selectedTile_{};
     TileBrushSelection tileBrush_{};
     MapPaletteTab mapPaletteTab_{MapPaletteTab::tiles};
+    ContentDefinitionKind entityPaletteKind_{ContentDefinitionKind::enemy};
+    std::string entityPaletteSearch_;
+    int entityPaletteScroll_{};
+    std::optional<core::WorldPointI> placementPreviewPoint_;
     bool paletteDragging_{};
     std::uint32_t paletteDragStart_{};
     std::uint32_t paletteDragCurrent_{};
@@ -229,7 +237,7 @@ private:
     bool rawPalette_{};
     bool showCollision_{true};
     bool newMapDialog_{};
-    bool newMapIncludePlayerSpawn_{true};
+    bool newMapIncludePlayerSpawn_{};
     int newMapField_{};
     std::string newMapId_{"map.untitled"};
     std::string newMapWidth_{"32"};
