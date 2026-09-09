@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Mapping
 
+from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import ENTITY_CATEGORIES, MapDocument
 from .drag_payload import StudioDragPayload
 from .selection_controller import Selection
@@ -10,12 +12,17 @@ from .selection_controller import Selection
 class MapEditingService:
     """Command-oriented facade over the existing MapDocument authored model."""
 
-    def __init__(self, document: MapDocument | None = None, layer_index: int = 0) -> None:
+    def __init__(self, document: MapDocument | None = None, layer_index: int = 0,
+                 workspace: ContentWorkspace | None = None) -> None:
         self.document = document
         self.layer_index = layer_index
+        self.workspace = workspace
 
     def set_document(self, document: MapDocument | None) -> None:
         self.document = document
+
+    def set_workspace(self, workspace: ContentWorkspace | None) -> None:
+        self.workspace = workspace
 
     def set_layer(self, layer_index: int) -> None:
         self.layer_index = layer_index
@@ -23,6 +30,7 @@ class MapEditingService:
     def paint_tiles(self, cells: Iterable[tuple[int, int]], tileset_id: str, source_index: int,
                     flags: int = 0, brush: Iterable[tuple[int, int, str, int, int]] | None = None) -> None:
         document = self._require_document()
+        self._validate_tileset(tileset_id)
         coordinates = list(cells)
         if brush is not None:
             first = coordinates[0] if coordinates else (0, 0)
@@ -33,6 +41,34 @@ class MapEditingService:
     def erase_tiles(self, cells: Iterable[tuple[int, int]]) -> None:
         document = self._require_document()
         document.set_tiles(self.layer_index, cells, None)
+
+    def apply_tile_assignments(self, assignments: Mapping[tuple[int, int], tuple[str, int, int] | None],
+                               label: str = "Paint Tiles") -> bool:
+        """Apply many concrete references as one authored command.
+
+        Terrain painting uses this entry point so neighbor updates are a single
+        undoable gesture.  It intentionally writes only the existing UMAP
+        ``tileReferences`` and layer cell arrays.
+        """
+        document = self._require_document()
+        values = {(int(x), int(y)): value for (x, y), value in assignments.items()
+                  if 0 <= int(x) < document.width and 0 <= int(y) < document.height}
+        if not values:
+            return False
+        for value in values.values():
+            if value is not None:
+                self._validate_tileset(str(value[0]))
+        before = document.snapshot()
+
+        def operation() -> None:
+            target = document.layers[self.layer_index].setdefault("cells", [])
+            assert isinstance(target, list)
+            for (x, y), value in values.items():
+                target[y * document.width + x] = None if value is None else document.tile_reference(
+                    str(value[0]), int(value[1]), int(value[2]))
+
+        document.mutate(label, operation)
+        return before != document.data
 
     def paint_rectangle(self, start: tuple[int, int], end: tuple[int, int], tileset_id: str,
                         source_index: int, flags: int = 0,
@@ -171,6 +207,24 @@ class MapEditingService:
         if self.layer_index < 0 or self.layer_index >= len(self.document.layers):
             raise IndexError("layer index out of range")
         return self.document
+
+    def can_use_tileset(self, tileset_id: str) -> tuple[bool, str]:
+        if self.workspace is None or self.document is None:
+            return True, ""
+        definition = self.workspace.find("tilesets", tileset_id)
+        if definition is None:
+            return False, f"tileset is not defined: {tileset_id}"
+        size = definition.data.get("tileSize")
+        if not isinstance(size, int) or isinstance(size, bool):
+            return False, f"tileset has invalid tileSize: {tileset_id}"
+        if size != self.document.tile_size:
+            return False, f"tileset {tileset_id} uses {size}px tiles; map requires {self.document.tile_size}px"
+        return True, ""
+
+    def _validate_tileset(self, tileset_id: str) -> None:
+        valid, message = self.can_use_tileset(tileset_id)
+        if not valid:
+            raise ValueError(message)
 
     def _in_bounds(self, x: int, y: int) -> bool:
         document = self._require_document()

@@ -125,7 +125,9 @@ class CanvasRenderer:
         relative = tileset.data.get("relativeAssetPath")
         if not isinstance(relative, str):
             return None
-        root = self.asset_root if tileset.data.get("root", "gameAssets") == "gameAssets" else self.workspace.root
+        # Authored tilesets intentionally have no per-definition asset root;
+        # the C++ contract resolves every relativeAssetPath below assetRoot.
+        root = self.asset_root
         if root is None:
             return None
         image = QImage(str(root / relative))

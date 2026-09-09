@@ -12,9 +12,11 @@ from ..interaction.map_editing_service import MapEditingService
 from ..interaction.selection_controller import Selection, SelectionController
 from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import ENTITY_CATEGORIES, MapDocument
+from ..model.tile_semantics import TerrainProfile, TerrainSelection
 from .canvas_camera import CanvasCamera
 from .canvas_renderer import CanvasRenderer
 from .preview import load_definition_image
+from ..services.terrain_painting_service import TerrainPaintingService
 
 
 class MapCanvas(QWidget):
@@ -42,6 +44,8 @@ class MapCanvas(QWidget):
         self.selection_controller = SelectionController(self._selection_changed)
         self.editing = MapEditingService()
         self.interaction = InteractionController(self.editing, self.selection_controller, status=self._set_status)
+        self.terrain_painter = TerrainPaintingService(editing=self.editing)
+        self.interaction.set_terrain_painter(self.terrain_painter)
         self.renderer = CanvasRenderer(self.camera, self.selection_controller)
         # Kept as a compatibility alias for integrations that used the old
         # widget-owned image cache.  Rendering ownership now lives in
@@ -85,7 +89,9 @@ class MapCanvas(QWidget):
         self.workspace = workspace
         self.asset_root = asset_root
         self.editing.set_document(document)
+        self.editing.set_workspace(workspace)
         self.interaction.set_workspace(workspace)
+        self.terrain_painter.set_context(document, workspace)
         self.renderer.set_context(document, workspace, asset_root)
         if changed:
             self.layer_index = 0
@@ -101,6 +107,9 @@ class MapCanvas(QWidget):
         collision_tools = {"collision", "collision_erase", "collision_rectangle", "collision_rectangle_erase", "collision_fill", "collision_fill_erase"}
         self.interaction.set_collision_overlay(tool in collision_tools)
         self.interaction.set_collision_fill_solid(tool != "collision_fill_erase")
+        if tool not in {"terrain", "room"}:
+            self.interaction.set_terrain_selection(None)
+            self.interaction.set_room_profile(None)
         if tool == "spawn":
             self.interaction.set_active_payload(StudioDragPayload.map_element_payload("player_spawn"))
         elif tool == "region":
@@ -146,6 +155,8 @@ class MapCanvas(QWidget):
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
         self.interaction.set_active_payload(payload)
+        self.interaction.set_terrain_selection(None)
+        self.interaction.set_room_profile(None)
         if payload and payload.content_reference:
             self.selected_entity_category = payload.category
             self.selected_definition_id = payload.definition_id
@@ -179,6 +190,28 @@ class MapCanvas(QWidget):
         self.tool = "paint"
         self.interaction.set_active_payload(StudioDragPayload.tile_brush(tileset_id, source_indices, flags))
         self.update()
+
+    def set_terrain_selection(self, selection: TerrainSelection | None) -> None:
+        if selection is None:
+            self.interaction.set_terrain_selection(None)
+            return
+        self.tool = "terrain"
+        self.selected_entity_category = ""
+        self.selected_definition_id = ""
+        self.interaction.set_terrain_selection(selection)
+        self.renderer.preview_world = None
+        self.setFocus(); self.update()
+
+    def set_room_profile(self, profile: TerrainProfile | None) -> None:
+        if profile is None:
+            self.interaction.set_room_profile(None)
+            return
+        self.tool = "room"
+        self.selected_entity_category = ""
+        self.selected_definition_id = ""
+        self.interaction.set_room_profile(profile)
+        self.renderer.preview_world = None
+        self.setFocus(); self.update()
 
     def set_stamp_selection(self, stamp_id: str) -> None:
         self.selected_stamp_id = stamp_id
@@ -258,6 +291,8 @@ class MapCanvas(QWidget):
             modifiers = frozenset((*modifiers, "ctrl"))
         if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"} and button == "left":
             modifiers = frozenset((*modifiers, "shift"))
+        if self.tool == "room" and button == "left":
+            modifiers = frozenset((*modifiers, "shift"))
         result = self.interaction.press(button, tile, world, modifiers)
         self._apply_result(result)
         if "shift" in modifiers:
@@ -287,6 +322,8 @@ class MapCanvas(QWidget):
         if self.tool in {"erase", "collision_erase"} and "left" in buttons:
             buttons = frozenset({"right", *[value for value in buttons if value != "left"]})
         if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"}:
+            modifiers = frozenset((*modifiers, "shift"))
+        if self.tool == "room":
             modifiers = frozenset((*modifiers, "shift"))
         result = self.interaction.move(buttons, tile, modifiers)
         self._apply_result(result)

@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from typing import Callable
 
 from ..model.content_workspace import ContentWorkspace
+from ..model.tile_semantics import TerrainProfile, TerrainSelection
 from ..model.map_document import ENTITY_CATEGORIES
 from .drag_payload import StudioDragPayload
 from .map_editing_service import MapEditingService
 from .selection_controller import Selection, SelectionController
+from ..services.terrain_painting_service import TerrainPaintingService
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,12 +35,29 @@ class InteractionController:
         self.snap_enabled = True
         self._drag_origin: tuple[int, int] | None = None
         self._last_cell: tuple[int, int] | None = None
+        self.terrain_painter: TerrainPaintingService | None = None
+        self.active_terrain: TerrainSelection | None = None
+        self.active_room: TerrainProfile | None = None
+        self._terrain_cells: set[tuple[int, int]] = set()
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
         self.active_payload = payload
+
+    def set_terrain_painter(self, painter: TerrainPaintingService | None) -> None:
+        self.terrain_painter = painter
+
+    def set_terrain_selection(self, selection: TerrainSelection | None) -> None:
+        self.active_terrain = selection
+        self.active_room = None
+        self.active_payload = None
+
+    def set_room_profile(self, profile: TerrainProfile | None) -> None:
+        self.active_room = profile
+        self.active_terrain = None
+        self.active_payload = None
 
     def set_collision_overlay(self, enabled: bool) -> None:
         self.collision_overlay = enabled
@@ -50,6 +69,18 @@ class InteractionController:
               modifiers: frozenset[str] = frozenset()) -> InteractionResult:
         self._drag_origin = tile
         self._last_cell = tile
+        if self.active_room and self.terrain_painter and button == "left":
+            return InteractionResult(status="Room rectangle preview")
+        if self.active_terrain and self.terrain_painter and button in {"left", "right"}:
+            if "ctrl" in modifiers and button == "left":
+                result = self.terrain_painter.fill_terrain(tile, self.active_terrain)
+                self._drag_origin = None
+                self._last_cell = None
+                return self._terrain_result(result)
+            self._terrain_cells = {tile}
+            if "shift" in modifiers:
+                return InteractionResult(status="Terrain rectangle preview")
+            return InteractionResult()
         payload = self.active_payload
         if self.collision_overlay:
             if button == "left" and "ctrl" in modifiers:
@@ -85,6 +116,12 @@ class InteractionController:
             return InteractionResult()
         previous = self._last_cell
         self._last_cell = tile
+        if self.active_room and self.terrain_painter and "left" in buttons:
+            return InteractionResult(status="Room rectangle preview")
+        if self.active_terrain and self.terrain_painter and ("left" in buttons or "right" in buttons):
+            if "shift" not in modifiers:
+                self._terrain_cells.add(tile)
+            return InteractionResult()
         if self.collision_overlay and ("left" in buttons or "right" in buttons):
             if "shift" not in modifiers:
                 self.editing.set_collision([tile], "left" in buttons)
@@ -107,6 +144,16 @@ class InteractionController:
         self._last_cell = None
         if origin is None:
             return InteractionResult()
+        if self.active_room and self.terrain_painter and button == "left":
+            result = self.terrain_painter.paint_room(origin, tile, self.active_room)
+            return self._terrain_result(result)
+        if self.active_terrain and self.terrain_painter and button in {"left", "right"}:
+            cells = set(self._terrain_cells)
+            if "shift" in modifiers:
+                cells = set(self.editing.rectangle_cells(origin, tile))
+            self._terrain_cells.clear()
+            result = self.terrain_painter.paint_terrain(cells, self.active_terrain, erase=button == "right")
+            return self._terrain_result(result)
         if self.collision_overlay and button in {"left", "right"} and "shift" in modifiers:
             self.editing.set_collision(self.editing.rectangle_cells(origin, tile), button == "left")
             return InteractionResult(True)
@@ -149,6 +196,12 @@ class InteractionController:
             return InteractionResult(status="Select a tile or content definition first")
         self.editing.fill_tiles(tile, payload.tileset_id, payload.source_indices[0], payload.flags)
         return InteractionResult(True)
+
+    @staticmethod
+    def _terrain_result(result: object) -> InteractionResult:
+        changed = bool(getattr(result, "changed", False))
+        warnings = tuple(getattr(result, "warnings", ()))
+        return InteractionResult(changed, status="; ".join(warnings))
 
     def _brush(self, payload: StudioDragPayload) -> list[tuple[int, int, str, int, int]]:
         # TileBrush carries source indices rather than duplicating tileset
