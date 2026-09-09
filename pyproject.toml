@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dungeon-underworld-content-studio"
+version = "1.0.0"
+description = "Cross-platform Python/PySide6 authoring tools for Dungeon Underworld"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.7,<7",
+]
+
+[project.scripts]
+du-content-studio = "tools.content_studio.app:main"
+
+[tool.setuptools.packages.find]
+include = ["tools*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tools/content_studio/tests"]
+

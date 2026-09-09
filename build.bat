@@ -231,10 +231,6 @@ if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_launch.obj" "src\editor\editor_launch.cpp"
 if errorlevel 1 goto :build_failed
 
-echo Compiling map editor Win32 shell...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_editor.obj" "src\editor\win32_editor.cpp"
-if errorlevel 1 goto :build_failed
-
 echo Compiling editor playtest...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_playtest.obj" "src\editor\editor_playtest.cpp"
 if errorlevel 1 goto :build_failed
@@ -422,24 +418,6 @@ echo [36/40] Compiling Win32 platform...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_platform.obj" "src\engine\platform\win32\win32_platform.cpp"
 if errorlevel 1 goto :build_failed
 
-echo Linking map_editor.exe...
-link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\map_editor.exe" ^
-    "build\obj\framebuffer.obj" "build\obj\image.obj" "build\obj\renderer_2d.obj" "build\obj\sprite.obj" "build\obj\animation.obj" ^
-    "build\obj\bitmap_font.obj" "build\obj\utf8.obj" "build\obj\asset_manager.obj" ^
-    "build\obj\tile.obj" "build\obj\tile_layer.obj" "build\obj\collision_grid.obj" "build\obj\runtime_map.obj" ^
-    "build\obj\collision.obj" "build\obj\entity_handle.obj" "build\obj\byte_io.obj" "build\obj\json.obj" ^
-    "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" "build\obj\runtime_world.obj" "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\presentation_effects.obj" "build\obj\visual_content_loader.obj" "build\obj\world_object_visual.obj" "build\obj\enemy_visual.obj" "build\obj\game_launch.obj" "build\obj\official_maps.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" ^
-    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
-    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
-    "build\obj\items.obj" "build\obj\world_pickups.obj" ^
-    "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\creature_engine.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
-    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" "build\obj\game_session.obj" "build\obj\player.obj" "build\obj\player_items.obj" "build\obj\region_tracker.obj" ^
-    "build\obj\win32_image_decoder.obj" "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\asset_browser.obj" "build\obj\content_collection.obj" "build\obj\content_reference_tools.obj" ^
-    "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_icons.obj" ^
-    "build\obj\editor_app.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\visual_authoring.obj" "build\obj\scene_timeline.obj" "build\obj\world_project_document.obj" "build\obj\visual_preview.obj" "build\obj\editor_launch.obj" "build\obj\editor_playtest.obj" "build\obj\win32_editor.obj" ^
-    user32.lib gdi32.lib ole32.lib windowscodecs.lib comdlg32.lib shell32.lib
-if errorlevel 1 goto :build_failed
-
 echo [37/40] Linking game.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" ^
@@ -556,13 +534,29 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\map_compile.exe" ^
     "build\obj\encounter_system.obj" "build\obj\world_logic.obj" "build\obj\presentation_effects.obj" "build\obj\map_compile.obj"
 if errorlevel 1 goto :build_failed
 
+echo Compiling world compiler...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\world_compile.obj" "src\tools\world_compile.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Linking world_compile.exe...
+link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\world_compile.exe" ^
+    "build\obj\image.obj" "build\obj\asset_manager.obj" "build\obj\tile.obj" "build\obj\collision_grid.obj" "build\obj\collision.obj" "build\obj\entity_handle.obj" ^
+    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\authored_world.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\combat_types.obj" "build\obj\combat_system.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\creature_engine.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\shops.obj" ^
+    "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" ^
+    "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\world_objects.obj" "build\obj\items.obj" "build\obj\world_pickups.obj" "build\obj\scene_definition.obj" ^
+    "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\quest_model.obj" ^
+    "build\obj\encounter_system.obj" "build\obj\world_logic.obj" "build\obj\presentation_effects.obj" "build\obj\world_compile.obj"
+if errorlevel 1 goto :build_failed
+
 echo.
 echo Build succeeded:
 echo   build\bin\game.exe
-echo   build\bin\map_editor.exe
 echo   build\bin\tests.exe
 echo   build\bin\playtest_runner.exe
 echo   build\bin\map_compile.exe
+echo   build\bin\world_compile.exe
 
 popd
 exit /b 0

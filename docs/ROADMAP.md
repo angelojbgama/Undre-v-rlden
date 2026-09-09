@@ -830,13 +830,13 @@ de boundary comprovada e não inventa atlas/floor data.
 
 Não iniciar antes de runtime map + `.dmap` + transições estarem utilizáveis.
 
-## Executável
+## Execução
 
 ```text
-map_editor.exe
+python -m tools.content_studio
 ```
 
-separado de `game.exe`.
+separado de `game.exe`; validação e compilação continuam nos tools C++.
 
 ## Compartilhar
 

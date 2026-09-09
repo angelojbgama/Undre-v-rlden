@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+
+TRANSLATIONS = {
+    "pt-BR": {
+        "app": "Dungeon Underworld — Content Studio",
+        "map": "Mapa", "content": "Conteúdo", "maps": "Mapas", "layers": "Camadas",
+        "entities": "Entidades", "inspector": "Inspetor", "diagnostics": "Diagnósticos",
+        "new_project": "Novo Projeto", "open": "Abrir", "save": "Salvar", "save_as": "Salvar Como",
+        "save_all": "Salvar Tudo", "validate": "Validar Workspace", "export": "Exportar DMAP",
+        "playtest": "Playtest", "undo": "Desfazer", "redo": "Refazer", "grid": "Grade",
+        "select": "Selecionar", "pencil": "Lápis", "erase": "Apagar", "rectangle": "Retângulo",
+        "fill": "Preencher", "collision": "Colisão", "entity": "Entidade", "region": "Região",
+        "search": "Procurar", "project": "Projeto", "builtin": "Engine / Builtin",
+        "create": "Criar", "delete": "Excluir", "duplicate": "Duplicar", "add": "Adicionar",
+        "remove": "Remover", "rename": "Renomear", "entry_map": "Mapa de Entrada",
+        "untitled": "Sem título", "no_selection": "Nenhuma seleção", "invalid": "Inválido",
+    },
+    "en-US": {
+        "app": "Dungeon Underworld — Content Studio", "map": "Map", "content": "Content",
+        "maps": "Maps", "layers": "Layers", "entities": "Entities", "inspector": "Inspector",
+        "diagnostics": "Diagnostics", "new_project": "New Project", "open": "Open", "save": "Save",
+        "save_as": "Save As", "save_all": "Save All", "validate": "Validate Workspace",
+        "export": "Export DMAP", "playtest": "Playtest", "undo": "Undo", "redo": "Redo", "grid": "Grid",
+        "select": "Select", "pencil": "Pencil", "erase": "Erase", "rectangle": "Rectangle",
+        "fill": "Fill", "collision": "Collision", "entity": "Entity", "region": "Region",
+        "search": "Search", "project": "Project", "builtin": "Engine / Builtin", "create": "Create",
+        "delete": "Delete", "duplicate": "Duplicate", "add": "Add", "remove": "Remove",
+        "rename": "Rename", "entry_map": "Entry Map", "untitled": "Untitled", "no_selection": "No selection",
+        "invalid": "Invalid",
+    },
+}
+
+
+class Translator:
+    def __init__(self, language: str = "pt-BR") -> None:
+        self.language = language if language in TRANSLATIONS else "pt-BR"
+
+    def set_language(self, language: str) -> None:
+        if language not in TRANSLATIONS:
+            raise ValueError(language)
+        self.language = language
+
+    def __call__(self, key: str) -> str:
+        return TRANSLATIONS[self.language].get(key, key)
+

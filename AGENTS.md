@@ -1271,7 +1271,7 @@ um projeto de mundo `.uworld` que mantém vários mapas authored em memória.
 Executável recomendado:
 
 ```text
-map_editor.exe
+python -m tools.content_studio
 ```
 
 separado de:
@@ -1698,7 +1698,6 @@ Comando de referência:
 ```bash
 portable_sources=$(find src -name '*.cpp' \
   ! -path '*/win32/*' \
-  ! -name 'win32_editor.cpp' \
   ! -path 'src/tools/*')
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc \
   tests/test_main.cpp $portable_sources -o /tmp/underworld_tests
@@ -1707,7 +1706,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Isrc \
 
 O resultado Linux/WSL pode ser usado para validar regras portáteis e regressões
 semânticas. Ele não substitui a validação específica de Windows para `build.bat`,
-MSVC, `game.exe`, `map_editor.exe`, apresentação Win32, WIC, GDI, foco da janela,
+MSVC, `game.exe`, apresentação Win32, WIC, GDI, foco da janela,
 resize e smoke visual/interativo.
 
 Quando o ambiente Windows não estiver disponível, não declarar aceitação de uma

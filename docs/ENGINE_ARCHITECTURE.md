@@ -1074,10 +1074,12 @@ Recomendação:
 
 ```text
 game.exe
-map_editor.exe
+python -m tools.content_studio
 ```
 
-Executáveis separados compartilhando engine/map/serialization.
+O jogo é compilado como executável C++ e o Content Studio é iniciado como
+aplicação Python/PySide6. Eles compartilham contratos de mapa/conteúdo por
+arquivos authored, sem que Python seja carregado pelo runtime.
 
 O editor possui modelo próprio:
 
