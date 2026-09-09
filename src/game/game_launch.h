@@ -1,10 +1,12 @@
 #pragma once
 
 #include "engine/simulation/persistent_id.h"
+#include "game/maps/gameplay_map_discovery.h"
 
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace underworld::game {
 
@@ -34,6 +36,11 @@ struct StartupMapSelection final {
 [[nodiscard]] StartupMapSelection selectStartupMap(
     const GameLaunchOptions& options, const std::filesystem::path& executableDirectory,
     const std::filesystem::path& currentDirectory);
+
+[[nodiscard]] std::optional<StartupMapSelection> selectDiscoveredStartupMap(
+    const GameLaunchOptions& options,
+    const std::vector<maps::GameplayMapRecord>& discoveredMaps,
+    std::string& error);
 
 [[nodiscard]] std::optional<simulation::SpawnId> selectStartupSpawn(
     const maps::MapData& map, const std::optional<simulation::SpawnId>& requested,

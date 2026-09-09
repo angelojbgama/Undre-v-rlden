@@ -1226,12 +1226,13 @@ Se uma abstração ainda não possui consumidores reais, preservar apenas a fron
 
 # Current authored content and tooling checkpoint
 
-Phase 9 Block 1 now uses three small authored gameplay maps (`map.dungeon.01` through
-`map.dungeon.03`) instead of generated demo rooms or the editor playground. The maps
-are linked in both directions and exercise the current enemy, object, pickup, spawn,
-collision, semantic-tile, and stamp authoring contracts. UMAP v3 remains the standalone
-authored format, while UWORLD v1 embeds ordered AuthoredMapSource values for the
-multi-map Content Studio workflow; DMAP 1.4 remains one runtime file per map.
+Phase 9 Block 1 uses authored gameplay maps discovered recursively from
+`maps/gameplay/`, rather than a runtime manifest or generated demo rooms. The DMAP
+internal ID is authoritative; discovery is deterministic, rejects duplicate IDs,
+loads the complete `MapCatalog`, and validates cross-map links before startup. UMAP v3
+remains the standalone authored format, while UWORLD v1 embeds ordered
+AuthoredMapSource values for the multi-map Content Studio workflow; DMAP 1.4 remains
+one runtime file per map.
 
 `MapComposer` remains a small composition foundation for deterministic room geometry.
 Procedural generation and LLM blueprint production are outside the current product

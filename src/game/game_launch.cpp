@@ -1,8 +1,6 @@
 #include "game/game_launch.h"
 
 #include "game/maps/map_data.h"
-#include "game/maps/official_maps.h"
-
 #include <algorithm>
 #include <vector>
 
@@ -17,18 +15,6 @@ std::string narrowId(const wchar_t* value) {
         result.push_back(codePoint <= 0x7FU ? static_cast<char>(codePoint) : '?');
     }
     return result;
-}
-
-void addCandidate(std::vector<std::filesystem::path>& candidates,
-                  const std::filesystem::path& start,
-                  const std::filesystem::path& relativePath) {
-    std::filesystem::path current = start;
-    for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
-        candidates.push_back(current / relativePath);
-        const auto parent = current.parent_path();
-        if (parent == current) { break; }
-        current = parent;
-    }
 }
 
 } // namespace
@@ -182,17 +168,53 @@ StartupMapSelection selectStartupMap(const GameLaunchOptions& options,
     if (options.mapPath) {
         return {StartupMapSource::explicitPath, *options.mapPath};
     }
-    std::vector<std::filesystem::path> candidates;
-    const auto relativePath = maps::officialGameplayMaps().front().relativePath;
-    addCandidate(candidates, currentDirectory, relativePath);
-    addCandidate(candidates, executableDirectory, relativePath);
-    for (const auto& candidate : candidates) {
-        std::error_code error;
-        if (std::filesystem::is_regular_file(candidate, error)) {
-            return {StartupMapSource::officialGameplay, candidate};
+    std::string error;
+    const auto discovered = maps::discoverGameplayMaps(executableDirectory, currentDirectory);
+    if (discovered) {
+        if (const auto selected = selectDiscoveredStartupMap(
+                options, discovered.maps, error)) {
+            return *selected;
         }
     }
-    return {StartupMapSource::officialGameplay, candidates.front()};
+    return {StartupMapSource::officialGameplay, discovered.root / "startup.dmap"};
+}
+
+std::optional<StartupMapSelection> selectDiscoveredStartupMap(
+    const GameLaunchOptions& options,
+    const std::vector<maps::GameplayMapRecord>& discoveredMaps,
+    std::string& error) {
+    error.clear();
+    if (options.mapPath) {
+        return StartupMapSelection{StartupMapSource::explicitPath, *options.mapPath};
+    }
+    if (discoveredMaps.empty()) {
+        error = "no gameplay maps found";
+        return std::nullopt;
+    }
+    if (discoveredMaps.size() == 1) {
+        return StartupMapSelection{StartupMapSource::officialGameplay,
+                                    discoveredMaps.front().path};
+    }
+    std::vector<const maps::GameplayMapRecord*> entryMaps;
+    for (const auto& map : discoveredMaps) {
+        const auto found = std::find_if(map.data.playerSpawns.begin(),
+                                        map.data.playerSpawns.end(), [](const auto& spawn) {
+                                            return spawn.id == simulation::SpawnId{"entry.start"};
+                                        });
+        if (found != map.data.playerSpawns.end()) { entryMaps.push_back(&map); }
+    }
+    if (entryMaps.size() == 1) {
+        return StartupMapSelection{StartupMapSource::officialGameplay,
+                                    entryMaps.front()->path};
+    }
+    if (entryMaps.empty()) {
+        error = "multiple gameplay maps found but none has player spawn 'entry.start'; "
+                "select one explicitly with --map";
+    } else {
+        error = "startup map selection is ambiguous: multiple gameplay maps have player spawn 'entry.start'; "
+                "select one explicitly with --map";
+    }
+    return std::nullopt;
 }
 
 std::optional<simulation::SpawnId> selectStartupSpawn(

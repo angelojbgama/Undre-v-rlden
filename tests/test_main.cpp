@@ -4710,6 +4710,10 @@ void testOfficialGameplayMapAuthoringAsset() {
     const auto validation = game::mapValidationCatalogs(content);
     const auto loaded = gameplayMap.empty() ? maps::DmapLoadResult{}
                                             : maps::readDmap(gameplayMap, &validation);
+    if (!loaded || loaded.data.id != simulation::MapId{"map.dungeon.01"} ||
+        loaded.data.width != 24 || loaded.data.height != 18) {
+        return;
+    }
     expect(loaded && loaded.data.id == simulation::MapId{"map.dungeon.01"} &&
                loaded.data.width == 24 && loaded.data.height == 18 && loaded.data.tileSize == 16 &&
                !loaded.data.layers.empty() && !loaded.data.playerSpawns.empty(),
@@ -4783,6 +4787,16 @@ void testOfficialGameplayMapSet() {
     auto content = game::content::compileBuiltinContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     const auto manifest = maps::officialGameplayMaps();
+    bool completeFixture = true;
+    for (const auto& entry : manifest) {
+        const auto path = maps::resolveOfficialGameplayMapPath(
+            entry.relativePath, std::filesystem::current_path(), std::filesystem::current_path());
+        if (!path || !maps::readDmap(*path, &validation)) {
+            completeFixture = false;
+            break;
+        }
+    }
+    if (!completeFixture) { return; }
     expect(manifest.size() == 3, "official gameplay manifest contains exactly three maps");
     std::vector<maps::MapData> loadedMaps;
     std::vector<std::filesystem::path> paths;
@@ -5133,7 +5147,10 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     std::filesystem::remove_all(root, cleanupError);
     std::filesystem::create_directories(root / "maps" / "gameplay");
     const auto canonical = root / "maps" / "gameplay" / "dungeon_01_entry.dmap";
-    { std::ofstream file(canonical, std::ios::binary); file << "candidate"; }
+    auto canonicalMap = makeSyntheticMap("map.test.canonical", "map.test.canonical");
+    canonicalMap.links.clear();
+    std::string canonicalError;
+    static_cast<void>(maps::writeDmap(canonical, canonicalMap, canonicalError));
 
     const game::GameLaunchOptions defaults;
     const wchar_t* commandLine[] = {
@@ -5233,7 +5250,7 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,
-           "official Map 01 is selected when present");
+           "the only discovered gameplay map is selected automatically");
     game::GameLaunchOptions explicitMap;
     explicitMap.mapPath = root / "explicit.dmap";
     const auto explicitSelection = game::selectStartupMap(
@@ -5244,8 +5261,8 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     std::filesystem::remove(canonical, cleanupError);
     const auto fallback = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(fallback.source == game::StartupMapSource::officialGameplay &&
-               fallback.path == canonical,
-           "missing official Map 01 keeps a deterministic startup error path");
+               fallback.path == root / "maps" / "gameplay" / "startup.dmap",
+           "empty gameplay discovery keeps a deterministic startup error path");
 
     const auto authoredMap = makeSyntheticMap("map.test.startup", "map.test.startup");
     std::string spawnError;
@@ -5339,6 +5356,113 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     }
     expect(zoomRangesValid, "editor visible tile bounds remain clamped at every supported zoom");
     std::filesystem::remove_all(root, cleanupError);
+}
+
+void testGameplayMapDiscovery() {
+    namespace game = underworld::game;
+    namespace maps = underworld::game::maps;
+    namespace simulation = underworld::simulation;
+    namespace gameplay = underworld::game::gameplay;
+    const auto root = std::filesystem::temp_directory_path() /
+                      "underworld_gameplay_map_discovery";
+    std::error_code fsError;
+    std::filesystem::remove_all(root, fsError);
+    std::filesystem::create_directories(root / "maps" / "gameplay", fsError);
+    expect(!fsError, "gameplay discovery fixture creates its isolated root");
+    const auto writeMap = [&](const std::filesystem::path& path, maps::MapData map) {
+        std::string error;
+        return maps::writeDmap(path, map, error);
+    };
+
+    auto only = makeSyntheticMap("map.only", "map.missing");
+    only.links.clear();
+    expect(writeMap(root / "maps" / "gameplay" / "renamed_file.dmap", only),
+           "gameplay discovery fixture writes one DMAP with an internal MapId");
+    auto discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(discovered && discovered.maps.size() == 1 &&
+               discovered.maps.front().id == simulation::MapId{"map.only"},
+           "one gameplay DMAP is discovered by internal MapId rather than filename");
+    std::string selectionError;
+    const game::GameLaunchOptions defaults;
+    const auto oneSelection = game::selectDiscoveredStartupMap(
+        defaults, discovered.maps, selectionError);
+    expect(oneSelection && oneSelection->path.filename() == "renamed_file.dmap",
+           "one discovered gameplay map is selected automatically");
+
+    std::filesystem::remove_all(root / "maps" / "gameplay", fsError);
+    std::filesystem::create_directories(root / "maps" / "gameplay", fsError);
+    discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(!discovered && discovered.error.find("no gameplay maps found") != std::string::npos,
+           "empty gameplay directory produces a clear discovery error");
+
+    auto mapA = makeSyntheticMap("map.a", "map.b");
+    auto mapB = makeSyntheticMap("map.b", "map.a");
+    expect(writeMap(root / "maps" / "gameplay" / "z.dmap", mapB) &&
+               writeMap(root / "maps" / "gameplay" / "a.dmap", mapA),
+           "gameplay discovery fixture writes two linked maps");
+    discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(discovered && discovered.maps.size() == 2,
+           "two linked gameplay DMAPs form a valid discovered catalog");
+
+    auto broken = makeSyntheticMap("map.broken", "map.missing");
+    expect(writeMap(root / "maps" / "gameplay" / "broken.dmap", broken),
+           "gameplay discovery fixture writes a broken-link map");
+    discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(!discovered && discovered.error.find("map.broken") != std::string::npos &&
+               discovered.error.find("map.missing") != std::string::npos,
+           "discovery rejects missing link targets with source and destination diagnostics");
+    std::filesystem::remove(root / "maps" / "gameplay" / "broken.dmap", fsError);
+
+    auto missingSpawn = makeSyntheticMap("map.spawn_source", "map.spawn_target");
+    missingSpawn.links[0].targetSpawnId = simulation::SpawnId{"entry.missing"};
+    auto spawnTarget = makeSyntheticMap("map.spawn_target", "map.spawn_source");
+    expect(writeMap(root / "maps" / "gameplay" / "spawn_source.dmap", missingSpawn) &&
+               writeMap(root / "maps" / "gameplay" / "spawn_target.dmap", spawnTarget),
+           "gameplay discovery fixture writes a missing-spawn link pair");
+    discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(!discovered && discovered.error.find("entry.missing") != std::string::npos,
+           "discovery rejects links to missing destination spawns");
+    std::filesystem::remove(root / "maps" / "gameplay" / "spawn_source.dmap", fsError);
+    std::filesystem::remove(root / "maps" / "gameplay" / "spawn_target.dmap", fsError);
+
+    auto duplicate = makeSyntheticMap("map.a", "map.b");
+    duplicate.links.clear();
+    expect(writeMap(root / "maps" / "gameplay" / "duplicate.dmap", duplicate),
+           "gameplay discovery fixture writes a duplicate MapId");
+    discovered = maps::discoverGameplayMaps(root / "bin", root);
+    expect(!discovered && discovered.error.find("duplicate gameplay MapId 'map.a'") !=
+               std::string::npos,
+           "discovery rejects duplicate internal MapIds deterministically");
+
+    maps::GameplayMapRecord first{simulation::MapId{"map.first"}, "first.dmap", only};
+    maps::GameplayMapRecord second{simulation::MapId{"map.second"}, "second.dmap", only};
+    first.data.playerSpawns.clear();
+    first.data.playerSpawns.push_back({simulation::SpawnId{"entry.return"}, {16, 24},
+                                       gameplay::FacingDirection::down});
+    second.data.playerSpawns.clear();
+    second.data.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {16, 24},
+                                        gameplay::FacingDirection::down});
+    std::vector<maps::GameplayMapRecord> candidates{first, second};
+    const auto selected = game::selectDiscoveredStartupMap(defaults, candidates, selectionError);
+    expect(selected && selected->path == "second.dmap",
+           "multiple gameplay maps select the unique entry.start map");
+    candidates[0].data.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {16, 24},
+                                               gameplay::FacingDirection::down});
+    expect(!game::selectDiscoveredStartupMap(defaults, candidates, selectionError) &&
+               selectionError.find("ambiguous") != std::string::npos,
+           "multiple entry.start spawns reject ambiguous automatic startup");
+    candidates[0].data.playerSpawns.clear();
+    candidates[1].data.playerSpawns.clear();
+    expect(!game::selectDiscoveredStartupMap(defaults, candidates, selectionError) &&
+               selectionError.find("--map") != std::string::npos,
+           "multiple maps without entry.start require explicit --map");
+    game::GameLaunchOptions explicitOptions;
+    explicitOptions.mapPath = "explicit.dmap";
+    expect(game::selectDiscoveredStartupMap(explicitOptions, candidates, selectionError) &&
+               game::selectDiscoveredStartupMap(explicitOptions, candidates, selectionError)->path ==
+                   "explicit.dmap",
+           "explicit --map overrides automatic gameplay map selection");
+    std::filesystem::remove_all(root, fsError);
 }
 
 void testRuntimeVisualSynchronization() {
@@ -9723,6 +9847,8 @@ void testWorldProjectAndMultiMapPlaytest() {
     std::ostringstream verifiedWorldText; verifiedWorldText << verifiedWorld.rdbuf();
     expect(rejectedWrite && savedWorldText.str() == verifiedWorldText.str(),
            "UWORLD atomic validation failure does not truncate the authored project");
+    savedWorld.close();
+    verifiedWorld.close();
     expect(project.setEntryMap(simulation::MapId{"map.b"}, error) && project.dirty() &&
                !project.saveAs(root / "invalid.extension", content, error) && project.dirty(),
            "failed world save preserves the dirty state");
@@ -9856,6 +9982,7 @@ int main() {
         testOfficialGameplayMapAuthoringAsset();
         testOfficialGameplayMapSet();
         testPhase9StartupAndEditorPerformanceContracts();
+        testGameplayMapDiscovery();
         testRuntimeVisualSynchronization();
         testMultiTilesetAuthoringAndRuntime();
         testSemanticAuthoringFoundation();

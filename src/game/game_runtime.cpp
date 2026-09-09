@@ -42,7 +42,7 @@
 #include "game/world_object_visual.h"
 #include "game/maps/dmap.h"
 #include "game/maps/map_catalog.h"
-#include "game/maps/official_maps.h"
+#include "game/maps/gameplay_map_discovery.h"
 #include "game/maps/runtime_world.h"
 #include "game/save/save_data.h"
 
@@ -50,6 +50,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -188,39 +189,47 @@ struct GameRuntime::State final {
         session.configureRewards(content.rewardProfiles(), content.pickups());
         session.configureRewardGrants(content.rewardGrants());
         session.configureShops(content.shops());
-        auto startup = selectStartupMap(launchOptions, this->executableDirectory,
-                                        std::filesystem::current_path());
-        const auto startupLoaded = maps::readDmap(startup.path, &validationCatalogs);
+        auto discovered = maps::discoverGameplayMaps(
+            this->executableDirectory, std::filesystem::current_path(), &validationCatalogs,
+            launchOptions.mapPath.has_value());
+        if (!discovered) {
+            throw std::runtime_error(discovered.error);
+        }
+        std::cerr << "[info] gameplay map discovery root=" << discovered.root.string() << '\n'
+                  << "[info] discovered gameplay maps=" << discovered.maps.size() << '\n';
+        for (const auto& map : discovered.maps) {
+            std::cerr << "[info] gameplay map: " << map.id.value() << " -> "
+                      << map.path.filename().string() << '\n';
+        }
+        std::string startupError;
+        const auto startup = selectDiscoveredStartupMap(launchOptions, discovered.maps,
+                                                        startupError);
+        if (!startup) { throw std::runtime_error(startupError); }
+        auto startupLoaded = maps::readDmap(startup->path, &validationCatalogs);
         if (!startupLoaded) {
             throw std::runtime_error("could not load startup map '" +
-                startup.path.string() + "': " + startupLoaded.error);
+                startup->path.string() + "': " + startupLoaded.error);
         }
 
-        maps::MapCatalog startupCatalog;
-        if (startup.source == StartupMapSource::explicitPath) {
-            startupCatalog.add(startupLoaded.data.id, startup.path);
-        }
-        for (const auto& entry : maps::officialGameplayMaps()) {
-            if (startupCatalog.find(entry.id)) { continue; }
-            const auto path = maps::resolveOfficialGameplayMapPath(
-                entry.relativePath, this->executableDirectory,
-                std::filesystem::current_path());
-            if (!path) {
-                throw std::runtime_error("official gameplay map is missing: " +
-                                         entry.relativePath.string());
+        maps::MapCatalog startupCatalog = std::move(discovered.catalog);
+        const auto discoveredPath = startupCatalog.find(startupLoaded.data.id);
+        if (discoveredPath == nullptr) {
+            startupCatalog.add(startupLoaded.data.id, startup->path);
+        } else {
+            std::error_code pathError;
+            const auto discoveredCanonical = std::filesystem::weakly_canonical(
+                *discoveredPath, pathError);
+            const auto startupCanonical = std::filesystem::weakly_canonical(
+                startup->path, pathError);
+            if (!pathError && discoveredCanonical != startupCanonical) {
+                throw std::runtime_error("duplicate gameplay MapId '" +
+                    std::string(startupLoaded.data.id.value()) + "' between '" +
+                    discoveredPath->string() + "' and '" + startup->path.string() + "'");
             }
-            startupCatalog.add(entry.id, *path);
-        }
-        if (const auto linkError = startupCatalog.validateLinks(&validationCatalogs);
-            !linkError.empty()) {
-            throw std::runtime_error("invalid startup map links: " + linkError);
         }
         knownMapData.clear();
-        for (const auto& entry : maps::officialGameplayMaps()) {
-            const auto loaded = startupCatalog.load(entry.id, &validationCatalogs);
-            if (!loaded) { throw std::runtime_error("could not load official map: " + loaded.error); }
-            knownMapData.push_back(loaded.data);
-        }
+        knownMapData.reserve(discovered.maps.size() + 1);
+        for (const auto& map : discovered.maps) { knownMapData.push_back(map.data); }
         if (std::none_of(knownMapData.begin(), knownMapData.end(),
                          [&](const auto& map) { return map.id == startupLoaded.data.id; })) {
             knownMapData.push_back(startupLoaded.data);
@@ -238,6 +247,8 @@ struct GameRuntime::State final {
                                     startMap, *selectedSpawn, sessionError)) {
             throw std::runtime_error("could not activate startup DMAP: " + sessionError);
         }
+        std::cerr << "[info] startup map=" << startMap.value()
+                  << " spawn=" << selectedSpawn->value() << '\n';
         rebuildWorldVisuals();
         visual->update(player.motionState(), player.facing(), player.actionState(), 0);
         followPlayer();

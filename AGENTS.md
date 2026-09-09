@@ -1296,11 +1296,13 @@ Capacidades implementadas no Block 1 incluem authoring por múltiplos tilesets: 
 imagens carregadas. Um mapa pode misturar packs na mesma layer. Ausência de imagem de
 pack opcional não troca o ID persistido nem impede mapas que não o usam.
 
-O conjunto jogável atual usa três DMAP 1.4 authored em `maps/gameplay/`: `map.dungeon.01`,
-`map.dungeon.02` e `map.dungeon.03`. Eles são registrados simultaneamente pelo manifesto
-oficial e formam o grafo bidirecional 01 <-> 02 <-> 03. O startup normal usa
-`map.dungeon.01` com `entry.start`; `--map` e `--spawn` continuam disponíveis. Mapas de
-demo e o antigo playground não fazem mais parte da execução de produção.
+O runtime de produção descobre recursivamente os DMAPs authored em `maps/gameplay/`.
+O `MapId` interno do DMAP é a identidade autoritativa; nomes de arquivo não são usados
+para registrar mapas. A descoberta ordena candidatos deterministicamente, rejeita IDs
+duplicados, valida links e monta o `MapCatalog` completo. Sem `--map`, um único mapa é
+selecionado automaticamente; com vários mapas, somente o mapa que contém `entry.start`
+é escolhido. Em caso de nenhum ou vários `entry.start`, o startup pede `--map`; `--spawn`
+continua disponível. Mapas de demo e o antigo playground não fazem parte da produção.
 
 Capacidades do workflow atual e em evolução:
 

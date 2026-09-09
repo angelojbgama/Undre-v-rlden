@@ -1352,17 +1352,19 @@ sejam principalmente operações de conteúdo e configuração, sem reescrever s
 
 # Current authored map set
 
-The current playable content is the three-map DMAP 1.1-capable set in `maps/gameplay/`:
-`map.dungeon.01`, `map.dungeon.02`, and `map.dungeon.03`. They are registered together
-through the small official map manifest so `MapCatalog::validateLinks()` resolves the
-bidirectional 01 <-> 02 <-> 03 graph before a session starts. Startup selects Map 01
-and `entry.start`; `--map` and `--spawn` remain explicit overrides.
+Production gameplay maps are discovered recursively from `maps/gameplay/`. The DMAP
+metadata, not the filename, owns each `MapId`. Discovery sorts paths deterministically,
+rejects duplicate IDs, loads every map into the `MapCatalog`, and validates all links
+before a session starts. With no explicit `--map`, one map starts automatically; with
+multiple maps, the unique map containing `entry.start` is selected. Ambiguous or
+missing entry spawns require `--map`, while `--spawn` remains an explicit spawn
+override.
 
 The runtime path is:
 
 ```text
 GameLaunchOptions
-    -> official startup map selection
+    -> gameplay map discovery and startup selection
     -> MapCatalog
     -> MapSession
     -> RuntimeWorldBuilder
