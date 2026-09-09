@@ -90,6 +90,33 @@ class QtSmokeTests(unittest.TestCase):
             self.assertTrue(dialog.windowTitle())
             self.assertTrue(dialog.source.isEnabled())
 
+    def test_tileset_library_smart_terrain_and_semantic_editor_open_offscreen(self) -> None:
+        from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
+        from tools.content_studio.ui.terrain.smart_terrain_palette import SmartTerrainPalette
+        from tools.content_studio.ui.terrain.tile_semantic_editor import TileSemanticEditor
+        from tools.content_studio.ui.tilesets.batch_tileset_import_dialog import BatchTilesetImportDialog
+        from tools.content_studio.ui.tilesets.tileset_library_widget import TilesetLibraryWidget
+        from tools.content_studio.services.tileset_library import TilesetLibrary
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = {"format": "dungeon-underworld-content", "version": 5}
+            content.update({category: [] for category in CONTENT_CATEGORIES})
+            content["tilesets"] = [{"id": "tileset.test", "displayName": "Test", "relativeAssetPath": "test.png", "tileSize": 16, "columns": 2, "rows": 2}]
+            (root / "content.json").write_text(encode_json(content), encoding="utf-8")
+            workspace = ContentWorkspace.open(root)
+            library = TilesetLibrary(workspace)
+            widget = TilesetLibraryWidget(workspace, WorldProject.new(), None)
+            palette = SmartTerrainPalette(TileSemanticCatalog(workspace))
+            editor = TileSemanticEditor(workspace, TileSemanticCatalog(workspace))
+            dialog = BatchTilesetImportDialog(library, None)
+            for value in (widget, palette, editor, dialog):
+                self.addCleanup(value.deleteLater)
+            self.assertTrue(widget.acceptDrops())
+            self.assertTrue(palette.room.isEnabled())
+            self.assertTrue(editor.save_button.isEnabled())
+            self.assertTrue(dialog.windowTitle())
+
 
 if __name__ == "__main__":
     unittest.main()

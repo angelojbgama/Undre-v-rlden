@@ -57,6 +57,52 @@ regions, links, rules, encounters e scenes escrevem apenas JSON authored.
 cria cópias temporárias do estado atual, compila com C++ e inicia o runtime;
 conteúdo inválido ou mapa sem Player Spawn é recusado antes de iniciar.
 
+## Tilesets, semantics e Smart Terrain
+
+Um `Tileset` é somente a fonte visual/atlas. `Terrain` é a intenção de autoria:
+uma família como `dungeon.stone` pode reunir floor, paredes e detalhes de vários
+tilesets. O mapa não possui um tileset único: cada entrada de `tileReferences`
+continua carregando seu próprio `tilesetId`, `sourceIndex` e `flags`, inclusive
+quando uma mesma layer mistura packs.
+
+A aba Tiles usa a Tileset Library. Ela lista, pesquisa e mostra o atlas
+visualmente; `Add Files`, `Add Folder` e drop de múltiplos arquivos passam pelo
+mesmo batch importer. Cada candidato recebe um ID editável, por exemplo
+`dungeon_floor.png` → `tileset.dungeon.floor`, e conflitos exigem Skip,
+Reimport ou Change ID. Reimport preserva o ID e é bloqueado quando o novo atlas
+invalidaria índices usados. Excluir um tileset também consulta usos em mapas,
+semantics e stamps.
+
+Imagens de tileset devem permanecer sob o `--asset-root` configurado. Tilesets
+não suportam `root` por definição e o Studio não copia assets externos para o
+workspace; isso preserva a política de assets licenciados e o contrato C++.
+Tilesets cujo `tileSize` não coincide com o `tileSize` do mapa ficam
+incompatíveis para pintura.
+
+O Semantic Editor classifica a célula visual selecionada com a estrutura
+authored `tileSemantics`: `family`, `role`, `topology`, edges e `preferredLayer`.
+O catálogo deriva famílias e indexa por família/papel/topologia e por
+tileset/sourceIndex, produzindo diagnósticos para referências inválidas,
+índices fora do atlas e duplicidades.
+
+O modo Raw Tiles continua pintando exatamente o tile escolhido. O modo Smart
+Terrain seleciona uma família e um papel:
+
+* Smart Floor escolhe deterministicamente entre os candidates `floor`;
+* Smart Wall usa a vizinhança ortogonal N/E/S/W para escolher
+  `straightHorizontal`, `straightVertical`, `outerCorner`, `cap`, `junction`
+  ou fallbacks `interior`/`unknown`;
+* Room / Area Brush pinta o perímetro como Wall e o interior como Floor usando
+  os mesmos serviços de floor/wall.
+
+O `AutoTileResolver` não conhece Qt. `TerrainPaintingService` calcula somente
+as células tocadas e os vizinhos necessários, e cada gesto (incluindo updates
+de vizinhos) é uma única operação de undo no `MapDocument`. A escolha de
+variantes usa `mapId`, coordenadas, família, papel e seed estáveis; reabrir o
+mesmo mapa não troca tiles aleatoriamente. A engine não assume que uma família
+pertence a um único tileset, o que permite floor em A, parede em B e corner em
+C sem alterar UMAP.
+
 ## Build/testes
 
 ```bash

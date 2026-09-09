@@ -27,8 +27,11 @@ from ..services.toolchain import CppToolchain, PlaytestService
 from .map_canvas import MapCanvas
 from .preview import PreviewWidget
 from .scene_editor import SceneEditorWidget
-from .tileset_import_dialog import TilesetImportDialog
-from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, TilePalette, set_path
+from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, set_path
+from .tilesets.tileset_library_widget import TilesetLibraryWidget
+from .terrain.smart_terrain_palette import SmartTerrainPalette
+from .terrain.tile_semantic_editor import TileSemanticEditor
+from ..services.tile_semantic_catalog import TileSemanticCatalog
 
 
 class MainWindow(QMainWindow):
@@ -43,6 +46,7 @@ class MainWindow(QMainWindow):
         self.toolchain = toolchain or CppToolchain(asset_root=self.asset_root)
         self.playtest = PlaytestService(self.toolchain)
         self.import_service = ImportService()
+        self.semantic_catalog = TileSemanticCatalog(self.workspace)
         self.command_coordinator = CommandCoordinator()
         self.selected_definition: ContentDefinition | None = None
         self._definition_history: list[tuple[str, str]] = []
@@ -111,12 +115,21 @@ class MainWindow(QMainWindow):
         self.layers = LayersPanel()
         self.layers.changed.connect(self._map_changed)
         self.layers.selected.connect(self._layer_selected)
-        self.tile_palette = TilePalette()
-        self.tile_palette.selected.connect(self._tile_selected)
-        self.tile_palette.brush_selected.connect(self._brush_selected)
+        self.tileset_library = TilesetLibraryWidget(self.workspace, self.project, self.asset_root, self.translator)
+        self.tileset_library.selected.connect(self._tile_selected)
+        self.tileset_library.brush_selected.connect(self._brush_selected)
+        self.tileset_library.selected.connect(self._atlas_tile_selected)
+        self.tileset_library.changed.connect(self._content_changed)
+        # Compatibility alias for integrations that used the old palette name.
+        self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette()
         self.semantic_palette.tile_selected.connect(self._tile_selected)
         self.semantic_palette.stamp_selected.connect(self.map_canvas.set_stamp_selection)
+        self.semantic_editor = TileSemanticEditor(self.workspace, self.semantic_catalog, self.translator)
+        self.semantic_editor.saved.connect(self._semantic_saved)
+        self.smart_terrain = SmartTerrainPalette(self.semantic_catalog, self.translator)
+        self.smart_terrain.terrain_selected.connect(self.map_canvas.set_terrain_selection)
+        self.smart_terrain.room_requested.connect(self.map_canvas.set_room_profile)
         self.map_elements = MapElementsPalette({
             "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
             "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
@@ -138,6 +151,8 @@ class MainWindow(QMainWindow):
         map_left_tabs.addTab(self.map_browser, "Maps")
         map_left_tabs.addTab(self.layers, "Layers")
         map_left_tabs.addTab(self.tile_palette, "Tiles")
+        map_left_tabs.addTab(self.smart_terrain, self.translator("smart_terrain"))
+        map_left_tabs.addTab(self.semantic_editor, self.translator("semantic_editor"))
         map_left_tabs.addTab(self.semantic_palette, "Semantics / Stamps")
         map_left_tabs.addTab(self.map_elements, self.translator("map_elements"))
         map_left_tabs.addTab(self.entity_browser, "Entities")
@@ -211,7 +226,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setWindowTitle(self.translator("tools"))
         self.mode_tabs.setTabText(0, self.translator("map"))
         self.mode_tabs.setTabText(1, self.translator("content"))
-        for index, key in enumerate(("maps", "layers", "tiles", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):
+        for index, key in enumerate(("maps", "layers", "tiles", "smart_terrain", "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):
             if index < self._map_left_tabs.count():
                 self._map_left_tabs.setTabText(index, self.translator(key))
         self._content_browsers.setTabText(0, self.translator("definitions"))
@@ -228,9 +243,12 @@ class MainWindow(QMainWindow):
         self._refresh_map()
         self.content_browser.set_workspace(self.workspace)
         self.entity_browser.set_workspace(self.workspace)
-        self.tile_palette.set_workspace(self.workspace)
-        self.tile_palette.set_asset_root(self.asset_root)
+        self.tileset_library.set_workspace(self.workspace, self.project)
+        self.tileset_library.set_asset_root(self.asset_root)
+        self.tileset_library.set_map_tile_size(self.project.active_map.tile_size)
         self.semantic_palette.set_workspace(self.workspace)
+        self.semantic_editor.set_workspace(self.workspace)
+        self.smart_terrain.set_workspace(self.workspace)
         self.content_inspector.set_workspace(self.workspace)
         self.scene_editor.inspector.set_workspace(self.workspace)
         self.map_inspector.set_workspace(self.workspace)
@@ -245,6 +263,7 @@ class MainWindow(QMainWindow):
     def _refresh_map(self) -> None:
         document = self.project.active_map
         self.map_canvas.set_context(document, self.workspace, self.asset_root)
+        self.tileset_library.set_map_tile_size(document.tile_size)
         self.layers.set_document(document)
         self.scene_editor.set_document(document)
         for panel in self.map_collections.values():
@@ -317,6 +336,9 @@ class MainWindow(QMainWindow):
                 self.workspace.update(definition, "root", "gameAssets" if entry.root == "gameAssets" else "contentWorkspace")  # type: ignore[attr-defined]
                 self.workspace.update(definition, "relativePath", entry.relative_path.as_posix())  # type: ignore[attr-defined]
             elif definition.category == "tilesets":
+                if entry.root != "gameAssets":  # type: ignore[attr-defined]
+                    self.set_status(self.translator("tileset_asset_root_required"))
+                    return
                 self.workspace.update(definition, "relativeAssetPath", entry.relative_path.as_posix())  # type: ignore[attr-defined]
             else:
                 self.set_status("Select a Visual Image or Tileset definition to assign an asset")
@@ -389,6 +411,7 @@ class MainWindow(QMainWindow):
 
     def _content_changed(self) -> None:
         self.command_coordinator.mark("content")
+        self.semantic_catalog.invalidate()
         self._refresh_all()
 
     def set_tool(self, tool: str) -> None:
@@ -408,16 +431,25 @@ class MainWindow(QMainWindow):
         if self.workspace is None:
             self.show_error("Open a content workspace before importing a tileset")
             return
-        dialog = TilesetImportDialog(self.workspace, self.asset_root, self.import_service, self.translator, self)
-        if dialog.exec():
-            self.command_coordinator.mark("content")
-            self._refresh_all()
-            self.set_status("Tileset imported")
+        self.tileset_library.add_files()
 
     def _tile_selected(self, tileset_id: str, source_index: int, flags: int) -> None:
+        valid, message = self.map_canvas.editing.can_use_tileset(tileset_id)
+        if not valid:
+            self.set_status(message)
+            return
         self.map_canvas.selected_tile = (tileset_id, source_index, flags)
         self.map_canvas.set_brush(tileset_id, [source_index], flags)
         self.set_status(f"Tile selected: {tileset_id} [{source_index}]")
+
+    def _atlas_tile_selected(self, tileset_id: str, source_index: int, flags: int) -> None:
+        self.semantic_editor.set_selection(tileset_id, source_index)
+
+    def _semantic_saved(self) -> None:
+        self.command_coordinator.mark("content")
+        self.semantic_catalog.invalidate()
+        self._refresh_all()
+        self.set_status("Semantic tile saved")
 
     def _brush_selected(self, tileset_id: str, source_indices: object, flags: int) -> None:
         if isinstance(source_indices, list) and all(isinstance(value, int) for value in source_indices):
