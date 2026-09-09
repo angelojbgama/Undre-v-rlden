@@ -609,7 +609,9 @@ class TilePalette(QWidget):
         if not self.workspace or not hasattr(definition, "data"):
             return None
         data = definition.data  # type: ignore[attr-defined]
-        return self.asset_root if data.get("root", "gameAssets") == "gameAssets" else self.workspace.root
+        # Tilesets use the strict authored contract: relativeAssetPath is always
+        # resolved under the configured game asset root.
+        return self.asset_root
 
     def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
         if not items or self.tilesets.currentIndex() < 0:

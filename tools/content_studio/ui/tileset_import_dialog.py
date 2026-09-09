@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
+    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
 )
 
@@ -39,7 +39,6 @@ class TilesetImportDialog(QDialog):
         self.margin = self._spin(0)
         for control in (self.tile_width, self.tile_height, self.spacing, self.margin):
             control.valueChanged.connect(self._refresh_preview)
-        self.copy_to_workspace = QCheckBox(self.translate("copy_to_workspace"))
         self.preview = QLabel(self.translate("no_image"))
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumSize(260, 180)
@@ -56,7 +55,7 @@ class TilesetImportDialog(QDialog):
         form.addRow(self.translate("margin"), self.margin)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
-        layout.addWidget(self.copy_to_workspace)
+        layout.addWidget(QLabel(self.translate("tileset_asset_root_note")))
         layout.addWidget(self.preview, 1)
         layout.addWidget(self.details)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
@@ -79,8 +78,8 @@ class TilesetImportDialog(QDialog):
     def _request(self) -> TilesetImportRequest:
         return TilesetImportRequest(
             Path(self.source.text()), self.tileset_id.text(), self.tile_width.value(), self.tile_height.value(),
-            self.spacing.value(), self.margin.value(), self.asset_root, self.workspace.root,
-            self.copy_to_workspace.isChecked(), self.display_name.text(),
+            self.spacing.value(), self.margin.value(), asset_root=self.asset_root,
+            display_name=self.display_name.text(),
         )
 
     def _refresh_preview(self) -> None:

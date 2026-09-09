@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,9 +28,13 @@ class TilesetImportRequest:
     spacing: int = 0
     margin: int = 0
     asset_root: Path | None = None
+    # Kept as a compatibility-only field for callers from the previous dialog.
+    # Tilesets have no authored ``root`` field, so this option is deliberately
+    # rejected instead of copying an external/licensed asset implicitly.
     workspace_root: Path | None = None
     copy_to_workspace: bool = False
     display_name: str = ""
+    allow_replace: bool = False
 
 
 @dataclass(slots=True)
@@ -86,6 +89,8 @@ class TilesetImporter:
             root_name, relative_path = self._resolve_asset(request)
             repository = DefinitionRepository(workspace)
             existing = workspace.find("tilesets", request.tileset_id)
+            if existing is not None and not request.allow_replace:
+                raise ValueError(f"tileset ID already exists: {request.tileset_id}; choose reimport or change ID")
             if existing is None:
                 definition = repository.create("tilesets", request.tileset_id)
             else:
@@ -117,29 +122,22 @@ class TilesetImporter:
             raise ValueError("spacing and margin cannot be negative")
         if request.spacing or request.margin:
             raise ValueError("spacing and margin are not representable by the current authored tileset contract")
+        if request.copy_to_workspace:
+            raise ValueError("tileset images must remain inside the configured asset root")
 
     def _resolve_asset(self, request: TilesetImportRequest) -> tuple[str, str]:
         source = request.source_image.expanduser().resolve()
-        candidates = (("gameAssets", request.asset_root), ("contentWorkspace", request.workspace_root))
-        for root_name, root in candidates:
-            if root is None:
-                continue
-            root = root.expanduser().resolve()
-            try:
-                relative = source.relative_to(root)
-            except ValueError:
-                continue
-            relative_text = relative.as_posix()
-            if not is_safe_relative_path(relative_text):
-                raise ValueError("asset path is not safe")
-            return root_name, relative_text
-        if request.copy_to_workspace and request.workspace_root is not None:
-            root = request.workspace_root.expanduser().resolve()
-            destination = root / "assets" / source.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            return "contentWorkspace", destination.relative_to(root).as_posix()
-        raise ValueError("source image must be under the licensed asset root or content workspace")
+        root = request.asset_root.expanduser().resolve() if request.asset_root else None
+        if root is None:
+            raise ValueError("tileset images must be inside the configured asset root")
+        try:
+            relative = source.relative_to(root)
+        except ValueError as error:
+            raise ValueError("tileset images must be inside the configured asset root") from error
+        relative_text = relative.as_posix()
+        if not is_safe_relative_path(relative_text):
+            raise ValueError("asset path is not safe")
+        return "gameAssets", relative_text
 
 
 class ImportService:
