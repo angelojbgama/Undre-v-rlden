@@ -9,6 +9,22 @@ JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 
 @dataclass(frozen=True, slots=True)
+class ContentReference:
+    """Typed reference used by authoring UI and drag/drop workflows.
+
+    The authored formats still store IDs as strings.  Keeping category and ID
+    together at the tooling boundary prevents a widget from accidentally
+    passing an Enemy ID to a field that expects a Dialogue or a map element.
+    """
+
+    category: str
+    definition_id: str
+
+    def is_valid(self) -> bool:
+        return bool(self.category.strip() and self.definition_id.strip())
+
+
+@dataclass(frozen=True, slots=True)
 class Diagnostic:
     severity: str
     message: str

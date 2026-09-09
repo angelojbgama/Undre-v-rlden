@@ -200,6 +200,50 @@ class ContentWorkspace:
         self.mutate("Delete Definition", operation)
         self._rebuild_index()
 
+    def rename_definition(self, definition: ContentDefinition, new_definition_id: str) -> ContentDefinition:
+        """Rename a project definition and update exact authored references.
+
+        This is deliberately implemented on the existing workspace rather than
+        in a second content database.  Exact string replacement preserves the
+        current v5 authored contract while the typed ``ReferenceIndex`` can
+        later narrow the fields it visits.
+        """
+        self._require_project_definition(definition)
+        new_definition_id = new_definition_id.strip()
+        if not new_definition_id:
+            raise ValueError("definition ID cannot be empty")
+        if self.find(definition.category, new_definition_id):
+            raise ValueError(f"definition already exists: {new_definition_id}")
+        old_definition_id = definition.definition_id
+
+        def replace(value: JsonValue) -> JsonValue:
+            if isinstance(value, str):
+                return new_definition_id if value == old_definition_id else value
+            if isinstance(value, list):
+                for index, child in enumerate(value):
+                    value[index] = replace(child)
+                return value
+            if isinstance(value, dict):
+                for key, child in list(value.items()):
+                    value[key] = replace(child)
+                return value
+            return value
+
+        def operation() -> None:
+            for content_file in self.files:
+                if content_file.origin != "project":
+                    continue
+                before = copy.deepcopy(content_file.data)
+                replace(content_file.data)
+                if content_file.data != before:
+                    content_file.dirty = True
+
+        self.mutate("Rename Definition", operation)
+        result = self.find(definition.category, new_definition_id)
+        if result is None:
+            raise RuntimeError("renamed definition could not be indexed")
+        return result
+
     def find_usages(self, definition_id: str) -> list[ContentDefinition]:
         result: list[ContentDefinition] = []
         for definition in self._definitions:

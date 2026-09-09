@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -16,12 +17,20 @@ from tools.content_studio.model.content_workspace import ContentWorkspace
 from tools.content_studio.model.authored_entity_index import AuthoredEntityIndex
 from tools.content_studio.model.map_document import MapDocument
 from tools.content_studio.model.world_project import WorldProject
+from tools.content_studio.model.content_authoring import DefinitionRepository, ReferenceIndex
+from tools.content_studio.interaction.command_coordinator import CommandCoordinator
+from tools.content_studio.interaction.drag_payload import StudioDragPayload
+from tools.content_studio.interaction.interaction_controller import InteractionController
+from tools.content_studio.interaction.map_editing_service import MapEditingService
+from tools.content_studio.interaction.selection_controller import SelectionController
 from tools.content_studio.model.scene_timeline import (
     add_clip, add_marker, add_track, evaluate_preview, fit_duration, move_clip,
     new_scene, validate_scene,
 )
 from tools.content_studio.services.toolchain import CppToolchain, PlaytestService
 from tools.content_studio.services.autosave import autosave
+from tools.content_studio.services.import_service import ImageDimensions, ImportService, TilesetImporter, TilesetImportRequest, calculate_grid
+from tools.content_studio.model.types import ContentReference, ToolResult
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -171,6 +180,27 @@ class ContentAuthoringTests(unittest.TestCase):
         workspace.save_all()
         self.assertEqual("visual.enemy.slime", json.loads((Path(temporary.name) / "content.json").read_text(encoding="utf-8"))["enemies"][0]["visualSetId"])
 
+    def test_generic_repository_duplicate_and_rename_updates_references(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = content_root(
+                ("enemies", {"id": "enemy.slime", "visualSetId": "", "behaviorProfileId": "", "attackIds": [], "rewardProfileId": None}),
+                ("authoringDescriptors", {"definitionId": "enemy.slime", "displayName": "Slime", "category": "enemy", "tags": []}),
+            )
+            (root / "content.json").write_text(encode_json(content), encoding="utf-8")
+            workspace = ContentWorkspace.open(root)
+            repository = DefinitionRepository(workspace)
+            enemy = repository.find(ContentReference("enemies", "enemy.slime"))
+            self.assertIsNotNone(enemy)
+            copy_definition = repository.duplicate(enemy, "enemy.slime.copy")  # type: ignore[arg-type]
+            self.assertEqual("enemy.slime.copy", copy_definition.definition_id)
+            renamed = repository.rename(copy_definition, "enemy.slime.renamed")
+            self.assertEqual("enemy.slime.renamed", renamed.definition_id)
+            self.assertTrue(workspace.dirty)
+            workspace.save_all()
+            saved = json.loads((root / "content.json").read_text(encoding="utf-8"))
+            self.assertIn("enemy.slime.renamed", [value["id"] for value in saved["enemies"]])
+
 
 class MapAuthoringTests(unittest.TestCase):
     def test_blank_map_has_no_implicit_enemy_or_player_spawn(self) -> None:
@@ -260,6 +290,139 @@ class MapAuthoringTests(unittest.TestCase):
         self.assertEqual(1, len(workspace.find("dialogues", "dialogue.test").data["nodes"]))  # type: ignore[union-attr]
         self.assertTrue(workspace.undo())
         self.assertEqual([], workspace.find("dialogues", "dialogue.test").data["nodes"])  # type: ignore[union-attr]
+
+
+class InteractionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.document = MapDocument.new("map.interaction", 5, 4)
+        self.editing = MapEditingService(self.document)
+        self.selection = SelectionController()
+        self.controller = InteractionController(self.editing, self.selection)
+
+    def test_contextual_tile_paint_erase_rectangle_and_fill(self) -> None:
+        self.controller.set_active_payload(StudioDragPayload.tile("tileset.test", 1))
+        self.controller.press("left", (0, 0), (0, 0))
+        self.controller.move(frozenset({"left"}), (1, 0))
+        self.controller.release("left", (1, 0))
+        self.assertEqual([0, 0], self.document.layers[0]["cells"][:2])
+        self.controller.press("right", (1, 0), (16, 0))
+        self.assertIsNone(self.document.layers[0]["cells"][1])
+        self.controller.press("left", (2, 1), (32, 16), frozenset({"shift"}))
+        self.controller.release("left", (3, 2), frozenset({"shift"}))
+        self.assertEqual(5, sum(value is not None for value in self.document.layers[0]["cells"]))
+        self.controller.press("left", (4, 3), (64, 48), frozenset({"ctrl"}))
+        self.assertEqual(self.document.width * self.document.height, sum(value is not None for value in self.document.layers[0]["cells"]))
+
+    def test_contextual_collision_left_right_rectangle_and_fill(self) -> None:
+        self.controller.set_collision_overlay(True)
+        self.controller.press("left", (0, 0), (0, 0))
+        self.assertEqual(1, self.document.data["collision"][0])
+        self.controller.press("right", (0, 0), (0, 0))
+        self.assertEqual(0, self.document.data["collision"][0])
+        self.controller.press("left", (1, 1), (16, 16), frozenset({"shift"}))
+        self.controller.release("left", (2, 2), frozenset({"shift"}))
+        self.assertEqual(4, sum(self.document.data["collision"]))
+        self.controller.press("left", (0, 0), (0, 0), frozenset({"ctrl"}))
+        self.assertEqual(self.document.width * self.document.height, sum(self.document.data["collision"]))
+
+    def test_content_drop_supports_enemy_npc_object_and_pickup(self) -> None:
+        for index, category in enumerate(("enemies", "npcs", "objects", "pickups")):
+            result = self.controller.drop(StudioDragPayload.content(category, f"{category}.test"), (index * 16, 0))
+            self.assertTrue(result.changed)
+            self.assertEqual(category, self.selection.current.category)  # type: ignore[union-attr]
+        for category in ("enemies", "npcs", "objects", "pickups"):
+            self.assertEqual(1, len(self.document.data[category]))
+
+    def test_map_element_drop_selects_spawn_region_and_transition(self) -> None:
+        for element, category in (("player_spawn", "playerSpawns"), ("region", "regions"), ("map_transition", "links")):
+            result = self.controller.drop(StudioDragPayload.map_element_payload(element), (16, 16))
+            self.assertTrue(result.changed)
+            self.assertEqual(category, self.selection.current.category)  # type: ignore[union-attr]
+        link = self.document.data["links"][0]
+        self.assertEqual("", link["targetMapId"])  # type: ignore[index]
+        self.assertEqual("", link["targetSpawnId"])  # type: ignore[index]
+
+
+class AuthoringInfrastructureTests(unittest.TestCase):
+    def test_command_coordinator_uses_last_editing_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = ContentWorkspace.new(root / "content")
+            definition = workspace.create_definition("enemies", "enemy.test")
+            document = MapDocument.new("map.test", 2, 2)
+            coordinator = CommandCoordinator()
+            document.add_entity("enemies", "enemy.test", 0, 0)
+            coordinator.mark("map")
+            self.assertTrue(coordinator.undo(document, workspace))
+            self.assertEqual([], document.data["enemies"])
+            workspace.update(definition, "faction", "neutral")
+            coordinator.mark("content")
+            self.assertTrue(coordinator.undo(document, workspace))
+            self.assertEqual("enemy", workspace.find("enemies", "enemy.test").data["faction"])  # type: ignore[union-attr]
+            self.assertEqual([], ReferenceIndex(workspace).usages(ContentReference("enemies", "enemy.test")))
+
+    def test_tileset_import_detects_grid_and_authors_metadata_without_copying(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "licensed"
+            assets.mkdir()
+            source = assets / "dungeon.png"
+            header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 32, 48)
+            source.write_bytes(header)
+            workspace = ContentWorkspace.new(root / "content")
+            result = ImportService().import_tileset(workspace, TilesetImportRequest(source, "tileset.dungeon", 16, 16, asset_root=assets))
+            self.assertTrue(result.ok)
+            self.assertEqual((2, 3), (result.columns, result.rows))
+            self.assertEqual("gameAssets", result.asset_root)
+            self.assertEqual("dungeon.png", result.definition.data["relativeAssetPath"])  # type: ignore[union-attr]
+            self.assertNotIn("root", result.definition.data)  # type: ignore[union-attr]
+            self.assertNotIn("spacing", result.definition.data)  # type: ignore[union-attr]
+            self.assertTrue(source.is_file())
+
+    def test_tileset_import_rejects_invalid_grid(self) -> None:
+        self.assertEqual((2, 3), calculate_grid(ImageDimensions(32, 48), 16, 16))
+        with self.assertRaises(ValueError):
+            calculate_grid(ImageDimensions(8, 8), 16, 16)
+        with self.assertRaises(ValueError):
+            TilesetImporter()._validate_request(TilesetImportRequest(Path("tileset.png"), "tileset.rect", 16, 8))
+        with self.assertRaises(ValueError):
+            TilesetImporter()._validate_request(TilesetImportRequest(Path("tileset.png"), "tileset.spaced", spacing=1))
+
+    def test_playtest_compiles_world_but_launches_active_map(self) -> None:
+        class FakeToolchain:
+            def __init__(self) -> None:
+                self.launched: Path | None = None
+
+            def compile_world(self, source: Path, output: Path, content_root: Path) -> tuple[ToolResult, list[object]]:
+                del source, content_root
+                output.mkdir(parents=True, exist_ok=True)
+                (output / "map.active.dmap").write_bytes(b"dmap")
+                return ToolResult(0, "PASS", ""), []
+
+            def launch_playtest(self, map_path: Path, content_root: Path, asset_root: Path | None, map_root: Path):
+                del content_root, asset_root, map_root
+                self.launched = map_path
+                return _FinishedProcess()
+
+        class _FinishedProcess:
+            def poll(self) -> int:
+                return 0
+
+            def terminate(self) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = ContentWorkspace.new(Path(directory) / "content")
+            project = WorldProject.new("map.entry", 2, 2)
+            project.active_map.add_player_spawn("spawn.active", 8, 8)
+            project.add_map(MapDocument.new("map.active", 2, 2, include_player_spawn=True))
+            project.select_map("map.active")
+            service = PlaytestService(FakeToolchain())  # type: ignore[arg-type]
+            success, diagnostics = service.start(project, workspace)
+            self.assertTrue(success, diagnostics)
+            self.assertIsNotNone(service.toolchain.launched)  # type: ignore[attr-defined]
+            self.assertIn("map.active", service.toolchain.launched.name)  # type: ignore[union-attr, attr-defined]
+            service.stop()
 
 
 class CppCompatibilityTests(unittest.TestCase):
