@@ -31,3 +31,4 @@ __pycache__/
 Thumbs.db
 .codex_build.bat
 .codex_tests.bat
+.venv/

@@ -1,0 +1,2 @@
+# Dependencies for the Python/PySide6 Content Studio only.
+PySide6>=6.7,<7
