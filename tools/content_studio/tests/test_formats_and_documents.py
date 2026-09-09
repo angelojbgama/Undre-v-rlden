@@ -13,9 +13,14 @@ from tools.content_studio.formats.json_io import encode_json
 from tools.content_studio.formats.umap import decode_map, load_map, new_map, write_map
 from tools.content_studio.formats.uworld import decode_world, write_world
 from tools.content_studio.model.content_workspace import ContentWorkspace
+from tools.content_studio.model.authored_entity_index import AuthoredEntityIndex
 from tools.content_studio.model.map_document import MapDocument
 from tools.content_studio.model.world_project import WorldProject
-from tools.content_studio.services.toolchain import CppToolchain
+from tools.content_studio.model.scene_timeline import (
+    add_clip, add_marker, add_track, evaluate_preview, fit_duration, move_clip,
+    new_scene, validate_scene,
+)
+from tools.content_studio.services.toolchain import CppToolchain, PlaytestService
 from tools.content_studio.services.autosave import autosave
 
 
@@ -37,6 +42,7 @@ class FormatTests(unittest.TestCase):
         original = json.loads(source.read_text(encoding="utf-8"))
         decoded = decode_content(source)
         self.assertIsNotNone(decoded.data)
+        self.assertFalse([issue for issue in decoded.diagnostics if issue.is_error])
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "content.json"
             write_content(target, decoded.data or {})
@@ -63,6 +69,22 @@ class FormatTests(unittest.TestCase):
             write_world(target, world)
             self.assertEqual(world, json.loads(target.read_text(encoding="utf-8")))
 
+    def test_umap_scene_round_trip_preserves_timeline_fields(self) -> None:
+        data = new_map("map.scene", 4, 4)
+        data["scenes"] = [new_scene("scene.intro", 90)]
+        data["scenes"][0]["tracks"][0]["clips"].append({  # type: ignore[index]
+            "kind": "move", "actorSlot": "player", "startTick": 10,
+            "durationTicks": 20, "targetPosition": {"x": 16, "y": 16},
+            "facing": "down", "emote": "surprise", "heightPixels": 0,
+            "waitForCompletion": False,
+        })  # type: ignore[index]
+        decoded = decode_map(data)
+        self.assertFalse([issue for issue in decoded.diagnostics if issue.is_error])
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "scene.umap"
+            write_map(target, data)
+            self.assertEqual(data, json.loads(target.read_text(encoding="utf-8")))
+
     def test_invalid_json_is_reported_without_partial_model(self) -> None:
         decoded = decode_map({"format": "wrong"})
         self.assertIsNotNone(decoded.data)
@@ -83,6 +105,27 @@ class ContentAuthoringTests(unittest.TestCase):
         ))
         self.addCleanup(temporary.cleanup)
         self.assertEqual(["enemy.slime"], [item.definition_id for item in workspace.definitions("enemies")])
+
+    def test_valid_enemy_candidate_is_placeable_with_unrelated_workspace_error(self) -> None:
+        data = content_root(
+            ("enemyVisuals", {"id": "visual.slime", "idle": {}}),
+            ("behaviors", {"id": "behavior.slime"}),
+            ("attacks", {"id": "attack.slime"}),
+            ("rewardProfiles", {"id": "reward.slime"}),
+            ("enemies", {"id": "enemy.slime", "visualSetId": "visual.slime", "behaviorProfileId": "behavior.slime",
+                         "faction": "enemy", "maximumHealth": 3, "movementSpeedSubpixelsPerTick": 1,
+                         "collisionBody": {"offsetX": -4, "offsetY": -4, "width": 8, "height": 8},
+                         "hurtbox": {"offsetX": -6, "offsetY": -12, "width": 12, "height": 12},
+                         "attackIds": ["attack.slime"], "rewardProfileId": "reward.slime"}),
+            ("quests", {"id": "quest.broken", "rewardGrantId": "missing.reward"}),
+        )
+        data["unrelatedGlobalError"] = True
+        temporary, workspace = self.make_workspace(data)
+        self.addCleanup(temporary.cleanup)
+        candidate = AuthoredEntityIndex(workspace).find("enemies", "enemy.slime")
+        self.assertIsNotNone(candidate)
+        self.assertTrue(candidate.placeable)  # type: ignore[union-attr]
+        self.assertTrue(workspace.diagnostics)
 
     def test_invalid_enemy_remains_visible_but_is_not_locally_placeable(self) -> None:
         temporary, workspace = self.make_workspace(content_root(
@@ -111,7 +154,8 @@ class ContentAuthoringTests(unittest.TestCase):
             workspace = ContentWorkspace.from_builtin_json(source)
             definition = workspace.find("enemies", "enemy.training")
             self.assertEqual("builtin", definition.origin)  # type: ignore[union-attr]
-            workspace.update(definition, "visualSetId", "")  # type: ignore[arg-type]
+            with self.assertRaises(ValueError):
+                workspace.update(definition, "visualSetId", "")  # type: ignore[arg-type]
             self.assertEqual("builtin", workspace.find("enemies", "enemy.training").origin)  # type: ignore[union-attr]
 
     def test_definition_edit_undo_redo_and_save(self) -> None:
@@ -151,6 +195,12 @@ class MapAuthoringTests(unittest.TestCase):
         document.delete_entity("enemies", first)
         self.assertIsNone(document.entity("enemies", first))
 
+    def test_all_authored_entity_categories_share_typed_placement(self) -> None:
+        document = MapDocument.new("map.categories", 8, 8)
+        for index, category in enumerate(("enemies", "npcs", "objects", "pickups"), start=1):
+            identifier = document.add_entity(category, f"{category}.{index}", index * 8, index * 8)
+            self.assertEqual(f"{category}.{index}", document.entity(category, identifier)["definitionId"])  # type: ignore[index]
+
     def test_project_preserves_map_order_and_active_map(self) -> None:
         project = WorldProject.new("map.a", 2, 2)
         project.add_map(MapDocument.new("map.b", 3, 3))
@@ -174,6 +224,42 @@ class MapAuthoringTests(unittest.TestCase):
             self.assertEqual(1, len(written))
             self.assertTrue(project.has_unsaved_changes())
             self.assertTrue(written[0].is_file())
+
+    def test_playtest_rejects_map_without_player_spawn(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = ContentWorkspace.new(Path(directory) / "content")
+            project = WorldProject.new("map.no_spawn", 2, 2)
+            success, diagnostics = PlaytestService(CppToolchain(Path(directory))).start(project, workspace)
+            self.assertFalse(success)
+            self.assertTrue(any(issue.code == "missing_player_spawn" for issue in diagnostics))
+
+    def test_scene_timeline_editing_and_preview_preserve_authored_contract(self) -> None:
+        scene = new_scene("scene.test", 120)
+        track = 0
+        add_clip(scene, track, {"kind": "move", "actorSlot": "player", "startTick": 7,
+                                "durationTicks": 23, "targetPosition": {"x": 32, "y": 16}})
+        add_clip(scene, track, {"kind": "face", "actorSlot": "player", "startTick": 65,
+                                "durationTicks": 99, "facing": "left"})
+        add_marker(scene, "arrival", 73)
+        self.assertEqual(5, scene["tracks"][track]["clips"][0]["startTick"])  # type: ignore[index]
+        self.assertEqual(0, scene["tracks"][track]["clips"][1]["durationTicks"])  # type: ignore[index]
+        move_clip(scene, track, 0, 35)
+        self.assertEqual({"x": 32, "y": 16}, evaluate_preview(scene, 40)["actors"][0]["position"])  # type: ignore[index]
+        self.assertEqual(75, fit_duration(scene))
+        self.assertFalse([issue for issue in validate_scene(scene) if issue.is_error])
+
+    def test_content_collection_entries_are_structured_and_undoable(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        root = Path(temporary.name)
+        (root / "content.json").write_text(encode_json(content_root(("dialogues", {"id": "dialogue.test", "entryNodeId": "node.1", "nodes": []}))), encoding="utf-8")
+        workspace = ContentWorkspace.open(root)
+        self.addCleanup(temporary.cleanup)
+        definition = workspace.find("dialogues", "dialogue.test")
+        self.assertIsNotNone(definition)
+        workspace.mutate_collection(definition, "nodes", "add")  # type: ignore[arg-type]
+        self.assertEqual(1, len(workspace.find("dialogues", "dialogue.test").data["nodes"]))  # type: ignore[union-attr]
+        self.assertTrue(workspace.undo())
+        self.assertEqual([], workspace.find("dialogues", "dialogue.test").data["nodes"])  # type: ignore[union-attr]
 
 
 class CppCompatibilityTests(unittest.TestCase):
@@ -204,6 +290,23 @@ class CppCompatibilityTests(unittest.TestCase):
             compiled = subprocess.run([str(self.map_compile), "--content", str(copied_content), str(copied_map), str(root / "map.dmap")], capture_output=True, text=True, check=False)
             self.assertEqual(0, compiled.returncode, compiled.stderr)
 
+    def test_python_scene_map_round_trip_is_accepted_by_cpp_map_compiler(self) -> None:
+        source = json.loads((FIXTURES / "phase16-map-v3.umap").read_text(encoding="utf-8"))
+        source["version"] = 4
+        source["scenes"] = [new_scene("scene.python.compat", 60)]
+        source["placementOverrides"] = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content_root_path = root / "content"
+            shutil.copytree(FIXTURES / "phase16-content-v4", content_root_path)
+            authored_map = root / "scene.umap"
+            write_map(authored_map, source)
+            compiled = subprocess.run(
+                [str(self.map_compile), "--content", str(content_root_path), str(authored_map), str(root / "scene.dmap")],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(0, compiled.returncode, compiled.stderr)
+            self.assertTrue((root / "scene.dmap").is_file())
+
     def test_multi_map_world_is_compiled_by_cpp_world_tool(self) -> None:
         document, diagnostics = MapDocument.open(FIXTURES / "phase16-map-v3.umap")
         self.assertIsNotNone(document)
@@ -217,6 +320,13 @@ class CppCompatibilityTests(unittest.TestCase):
             result = subprocess.run([str(self.world_compile), "--content", str(FIXTURES / "phase16-content-v4"), str(world), str(output)], capture_output=True, text=True, check=False)
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertTrue(any(output.glob("*.dmap")))
+
+    def test_invalid_authored_content_is_rejected_by_cpp_validator(self) -> None:
+        result = subprocess.run(
+            [str(self.content_check), str(FIXTURES / "phase16-content-invalid-activation")],
+            capture_output=True, text=True, check=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("missing required field", result.stderr)
 
 
 if __name__ == "__main__":

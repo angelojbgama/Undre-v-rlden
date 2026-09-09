@@ -6,13 +6,15 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QTabWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
+from ..model.authored_entity_index import AuthoredEntityIndex
 from ..model.types import ContentDefinition, JsonValue
 from ..services.assets import AssetCatalog
 
@@ -77,12 +79,14 @@ def pretty_path(path: str) -> str:
 
 class StructuredInspector(QWidget):
     changed = Signal(str, object)
+    collection_changed = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._root: JsonValue | None = None
         self._prefix = ""
         self._workspace: ContentWorkspace | None = None
+        self._map_ids: list[str] = []
         self._form = QFormLayout()
         self._form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._title = QLabel()
@@ -112,6 +116,9 @@ class StructuredInspector(QWidget):
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self._workspace = workspace
 
+    def set_map_ids(self, map_ids: list[str]) -> None:
+        self._map_ids = list(map_ids)
+
     def _clear_form(self) -> None:
         while self._form.rowCount():
             self._form.removeRow(0)
@@ -122,8 +129,15 @@ class StructuredInspector(QWidget):
                 child_path = f"{path}.{key}" if path else key
                 if isinstance(child, (dict, list)):
                     group = QGroupBox(key)
-                    group_form = QFormLayout(group)
-                    self._populate_into(group_form, child, child_path)
+                    if isinstance(child, list):
+                        group_layout = QVBoxLayout(group)
+                        group_form = QFormLayout()
+                        self._populate_into(group_form, child, child_path)
+                        group_layout.addLayout(group_form)
+                        self._collection_buttons(group_layout, child_path)
+                    else:
+                        group_form = QFormLayout(group)
+                        self._populate_into(group_form, child, child_path)
                     self._form.addRow(group)
                 else:
                     self._add_editor(self._form, key, child_path, child)
@@ -138,8 +152,15 @@ class StructuredInspector(QWidget):
                 child_path = f"{path}.{key}" if path else key
                 if isinstance(child, (dict, list)):
                     group = QGroupBox(key)
-                    nested = QFormLayout(group)
-                    self._populate_into(nested, child, child_path)
+                    if isinstance(child, list):
+                        group_layout = QVBoxLayout(group)
+                        nested = QFormLayout()
+                        self._populate_into(nested, child, child_path)
+                        group_layout.addLayout(nested)
+                        self._collection_buttons(group_layout, child_path)
+                    else:
+                        nested = QFormLayout(group)
+                        self._populate_into(nested, child, child_path)
                     form.addRow(group)
                 else:
                     self._add_editor(form, key, child_path, child)
@@ -148,8 +169,15 @@ class StructuredInspector(QWidget):
                 child_path = f"{path}[{index}]"
                 if isinstance(child, (dict, list)):
                     group = QGroupBox(f"{path}[{index}]")
-                    nested = QFormLayout(group)
-                    self._populate_into(nested, child, child_path)
+                    if isinstance(child, list):
+                        group_layout = QVBoxLayout(group)
+                        nested = QFormLayout()
+                        self._populate_into(nested, child, child_path)
+                        group_layout.addLayout(nested)
+                        self._collection_buttons(group_layout, child_path)
+                    else:
+                        nested = QFormLayout(group)
+                        self._populate_into(nested, child, child_path)
                     form.addRow(group)
                 else:
                     self._add_editor(form, f"[{index}]", child_path, child)
@@ -164,7 +192,16 @@ class StructuredInspector(QWidget):
             return
         field_name = path.rsplit(".", 1)[-1].split("[")[0]
         editor: QWidget
-        if isinstance(value, bool):
+        if value is None and self._reference_category(field_name):
+            editor = self._reference_editor(field_name, None, path)
+        elif value is None:
+            optional = QComboBox()
+            optional.addItem("(none)", None)
+            optional.addItem("Edit object", {})
+            optional.currentIndexChanged.connect(
+                lambda unused, p=path, control=optional: self._commit(p, control.currentData()))
+            editor = optional
+        elif isinstance(value, bool):
             editor = QCheckBox()
             editor.setChecked(value)
             editor.toggled.connect(lambda checked, p=path: self._commit(p, checked))
@@ -181,12 +218,22 @@ class StructuredInspector(QWidget):
             combo.setCurrentText(value)
             combo.currentTextChanged.connect(lambda text, p=path: self._commit(p, text))
             editor = combo
+        elif isinstance(value, str) and field_name == "targetMapId" and self._map_ids:
+            editor = self._map_reference_editor(value, path)
         elif isinstance(value, str) and self._reference_category(field_name):
             editor = self._reference_editor(field_name, value, path)
         else:
             editor = QLineEdit(str(value))
             editor.editingFinished.connect(lambda p=path, control=editor: self._commit(p, control.text()))  # type: ignore[attr-defined]
         form.addRow(QLabel(pretty_path(label)), editor)
+
+    def _collection_buttons(self, layout: QVBoxLayout, path: str) -> None:
+        buttons = QHBoxLayout()
+        add = QPushButton("Add")
+        remove = QPushButton("Remove Last")
+        add.clicked.connect(lambda unused=False, value=path: self.collection_changed.emit(value, "add"))
+        remove.clicked.connect(lambda unused=False, value=path: self.collection_changed.emit(value, "remove"))
+        buttons.addWidget(add); buttons.addWidget(remove); layout.addLayout(buttons)
 
     @staticmethod
     def _reference_category(field_name: str) -> tuple[str, ...] | None:
@@ -216,7 +263,7 @@ class StructuredInspector(QWidget):
             return tuple(CONTENT_CATEGORY for CONTENT_CATEGORY in ("enemies", "npcs", "objects", "pickups", "items"))
         return None
 
-    def _reference_editor(self, field_name: str, value: str, path: str) -> QWidget:
+    def _reference_editor(self, field_name: str, value: object, path: str) -> QWidget:
         combo = QComboBox()
         combo.addItem("(none)", "")
         categories = self._reference_category(field_name) or ()
@@ -224,6 +271,22 @@ class StructuredInspector(QWidget):
             for category in categories:
                 for definition in self._workspace.definitions(category):
                     combo.addItem(f"{definition.display_name} [{definition.definition_id}]", definition.definition_id)
+        if isinstance(value, str) and value and combo.findData(value) < 0:
+            combo.insertItem(1, f"Missing [{value}]", value)
+        if isinstance(value, str):
+            combo.setCurrentIndex(max(0, combo.findData(value)))
+        else:
+            combo.setCurrentIndex(0)
+        optional = value is None
+        combo.currentIndexChanged.connect(
+            lambda unused, p=path, control=combo, nullable=optional: self._commit(
+                p, None if nullable and not control.currentData() else str(control.currentData() or "")))
+        return combo
+
+    def _map_reference_editor(self, value: str, path: str) -> QWidget:
+        combo = QComboBox(); combo.addItem("(none)", "")
+        for map_id in self._map_ids:
+            combo.addItem(map_id, map_id)
         if value and combo.findData(value) < 0:
             combo.insertItem(1, f"Missing [{value}]", value)
         combo.setCurrentIndex(max(0, combo.findData(value)))
@@ -233,7 +296,10 @@ class StructuredInspector(QWidget):
     def _commit(self, path: str, value: JsonValue) -> None:
         if self._root is None:
             return
-        old = get_path(self._root, path)
+        try:
+            old = get_path(self._root, path)
+        except (KeyError, IndexError, TypeError):
+            return
         if isinstance(old, int) and not isinstance(old, bool) and isinstance(value, str):
             try:
                 value = int(value)
@@ -248,11 +314,14 @@ class ContentBrowser(QWidget):
     selected = Signal(object)
     place_requested = Signal(str, str)
     definition_changed = Signal()
+    find_usages_requested = Signal(object)
+    back_requested = Signal()
 
     def __init__(self, workspace: ContentWorkspace | None = None, allowed: tuple[str, ...] | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.allowed = allowed
+        self.index = AuthoredEntityIndex(workspace)
         self._selected: ContentDefinition | None = None
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search display name / definitionId")
@@ -265,10 +334,14 @@ class ContentBrowser(QWidget):
         self.delete_button = QPushButton("Delete")
         self.duplicate_button = QPushButton("Duplicate")
         self.place_button = QPushButton("Place in Map")
+        self.usages_button = QPushButton("Find Usages")
+        self.back_button = QPushButton("Back")
         self.create_button.clicked.connect(self._create)
         self.delete_button.clicked.connect(self._delete)
         self.duplicate_button.clicked.connect(self._duplicate)
         self.place_button.clicked.connect(self._place)
+        self.usages_button.clicked.connect(lambda: self.find_usages_requested.emit(self._selected) if self._selected else None)
+        self.back_button.clicked.connect(self.back_requested.emit)
         # Two rows keep the search/category controls and actions inside a narrow
         # dock.  A single horizontal row used by the old Win32 editor could
         # paint over the Object/Pickup tabs when the dock was resized.
@@ -277,6 +350,8 @@ class ContentBrowser(QWidget):
         buttons.addWidget(self.delete_button, 0, 1)
         buttons.addWidget(self.duplicate_button, 1, 0)
         buttons.addWidget(self.place_button, 1, 1)
+        buttons.addWidget(self.usages_button, 2, 0)
+        buttons.addWidget(self.back_button, 2, 1)
         buttons.setColumnStretch(0, 1)
         buttons.setColumnStretch(1, 1)
         layout = QVBoxLayout(self)
@@ -288,7 +363,21 @@ class ContentBrowser(QWidget):
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
+        self.index.set_workspace(workspace)
         self.refresh()
+
+    def select_definition(self, category: str, definition_id: str) -> None:
+        if self.allowed and category not in self.allowed:
+            return
+        index = self.category.findData(category)
+        if index >= 0:
+            self.category.setCurrentIndex(index)
+        self.refresh()
+        for row in range(self.list.count()):
+            item = self.list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == (self.workspace.find(category, definition_id).key() if self.workspace and self.workspace.find(category, definition_id) else None):
+                self.list.setCurrentRow(row)
+                return
 
     def refresh(self) -> None:
         current = self._selected.key() if self._selected else None
@@ -306,8 +395,13 @@ class ContentBrowser(QWidget):
         if not self.workspace:
             return
         selected_category = self.category.currentData()
-        for definition in self.workspace.definitions(selected_category or None, self.search.text()):
-            invalid = self.workspace.validate_local(definition)
+        if self.allowed:
+            candidates = [(candidate.definition, list(candidate.diagnostics))
+                          for candidate in self.index.candidates(selected_category or None, self.search.text())]
+        else:
+            candidates = [(definition, self.workspace.validate_local(definition))
+                          for definition in self.workspace.definitions(selected_category or None, self.search.text())]
+        for definition, invalid in candidates:
             marker = "  [INVALID]" if any(issue.is_error for issue in invalid) else ""
             item = QListWidgetItem(f"{definition.display_name}  [{definition.definition_id}] ({definition.origin}){marker}")
             item.setData(Qt.ItemDataRole.UserRole, definition.key())
@@ -368,21 +462,32 @@ class TilePalette(QWidget):
     """Small authored tileset selector shared by the map canvas and browser."""
 
     selected = Signal(str, int, int)
+    brush_selected = Signal(str, object, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace: ContentWorkspace | None = None
+        self.asset_root: Path | None = None
         self.tilesets = QComboBox()
         self.source_index = QSpinBox()
         self.source_index.setRange(0, 65535)
         self.source_index.valueChanged.connect(self._emit_selection)
         self.tilesets.currentIndexChanged.connect(self._tileset_changed)
+        self.tiles = QListWidget()
+        self.tiles.setViewMode(QListWidget.ViewMode.IconMode)
+        self.tiles.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.tiles.setMovement(QListWidget.Movement.Static)
+        self.tiles.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.tiles.setIconSize(QPixmap(32, 32).size())
+        self.tiles.setGridSize(QPixmap(40, 40).size())
+        self.tiles.itemSelectionChanged.connect(self._palette_selection_changed)
         self.preview = QLabel("No tileset selected")
         self.preview.setWordWrap(True)
         self.preview.setMinimumHeight(44)
         layout = QFormLayout(self)
         layout.addRow("Tileset", self.tilesets)
         layout.addRow("Source tile", self.source_index)
+        layout.addRow(self.tiles)
         layout.addRow(self.preview)
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
@@ -395,9 +500,14 @@ class TilePalette(QWidget):
         self.tilesets.blockSignals(False)
         self._tileset_changed(self.tilesets.currentIndex())
 
+    def set_asset_root(self, asset_root: Path | None) -> None:
+        self.asset_root = asset_root
+        self._tileset_changed(self.tilesets.currentIndex())
+
     def _tileset_changed(self, index: int) -> None:
         if index < 0 or not self.workspace:
             self.preview.setText("No tileset selected")
+            self.tiles.clear()
             return
         definition = self.workspace.find("tilesets", str(self.tilesets.itemData(index)))
         if not definition:
@@ -406,11 +516,93 @@ class TilePalette(QWidget):
         rows = max(1, int(definition.data.get("rows", 1)))
         self.source_index.setRange(0, columns * rows - 1)
         self.preview.setText(f"{definition.display_name}\n{columns} × {rows} tiles")
+        self.tiles.blockSignals(True)
+        self.tiles.clear()
+        relative = definition.data.get("relativeAssetPath")
+        root = self._asset_root_for(definition)
+        source_image = QImage(str(root / relative)) if isinstance(relative, str) and root else QImage()
+        tile_size = max(1, int(definition.data.get("tileSize", 16)))
+        for source_index in range(columns * rows):
+            item = QListWidgetItem(str(source_index))
+            item.setData(Qt.ItemDataRole.UserRole, source_index)
+            if not source_image.isNull():
+                x = source_index % columns * tile_size
+                y = source_index // columns * tile_size
+                tile = source_image.copy(x, y, tile_size, tile_size)
+                item.setIcon(QIcon(QPixmap.fromImage(tile).scaled(32, 32, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation)))
+            self.tiles.addItem(item)
+        self.tiles.blockSignals(False)
+        if self.tiles.count():
+            self.tiles.setCurrentRow(0)
         self._emit_selection()
 
     def _emit_selection(self) -> None:
         if self.tilesets.currentIndex() >= 0:
-            self.selected.emit(str(self.tilesets.currentData()), self.source_index.value(), 0)
+            tileset_id = str(self.tilesets.currentData())
+            self.selected.emit(tileset_id, self.source_index.value(), 0)
+            self._palette_selection_changed()
+
+    def _palette_selection_changed(self) -> None:
+        if self.tilesets.currentIndex() < 0:
+            return
+        selected = [int(item.data(Qt.ItemDataRole.UserRole)) for item in self.tiles.selectedItems()]
+        if not selected:
+            selected = [self.source_index.value()]
+        self.source_index.blockSignals(True)
+        self.source_index.setValue(selected[0])
+        self.source_index.blockSignals(False)
+        self.brush_selected.emit(str(self.tilesets.currentData()), selected, 0)
+
+    def _asset_root_for(self, definition: object) -> Path | None:
+        if not self.workspace or not hasattr(definition, "data"):
+            return None
+        data = definition.data  # type: ignore[attr-defined]
+        return self.asset_root if data.get("root", "gameAssets") == "gameAssets" else self.workspace.root
+
+
+class SemanticPalette(QWidget):
+    """Authored semantic tiles and stamps, kept separate from raw atlas cells."""
+
+    tile_selected = Signal(str, int, int)
+    stamp_selected = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.workspace: ContentWorkspace | None = None
+        self.family = QComboBox(); self.family.currentTextChanged.connect(self.refresh)
+        self.tiles = QListWidget(); self.tiles.currentItemChanged.connect(self._tile_selected)
+        self.stamps = QListWidget(); self.stamps.currentItemChanged.connect(self._stamp_selected)
+        tile_box = QVBoxLayout(); tile_box.addWidget(QLabel("Semantic Tiles")); tile_box.addWidget(self.family); tile_box.addWidget(self.tiles, 1)
+        stamp_box = QVBoxLayout(); stamp_box.addWidget(QLabel("Stamps")); stamp_box.addWidget(self.stamps, 1)
+        tabs = QTabWidget(); tile_widget = QWidget(); tile_widget.setLayout(tile_box); stamp_widget = QWidget(); stamp_widget.setLayout(stamp_box); tabs.addTab(tile_widget, "Semantics"); tabs.addTab(stamp_widget, "Stamps")
+        layout = QVBoxLayout(self); layout.addWidget(tabs)
+
+    def set_workspace(self, workspace: ContentWorkspace | None) -> None:
+        self.workspace = workspace; self.family.blockSignals(True); self.family.clear(); self.family.addItem("All")
+        families: set[str] = set()
+        if workspace:
+            families = {str(value.data.get("family", "")) for value in workspace.definitions("tileSemantics") if value.data.get("family")}
+        self.family.addItems(sorted(families)); self.family.blockSignals(False); self.refresh()
+
+    def refresh(self) -> None:
+        self.tiles.clear(); self.stamps.clear()
+        if not self.workspace: return
+        selected_family = self.family.currentText()
+        for definition in self.workspace.definitions("tileSemantics"):
+            if selected_family != "All" and str(definition.data.get("family", "")) != selected_family: continue
+            item = QListWidgetItem(f"{definition.display_name} [{definition.definition_id}]"); item.setData(Qt.ItemDataRole.UserRole, definition.definition_id); self.tiles.addItem(item)
+        for definition in self.workspace.definitions("stamps"):
+            item = QListWidgetItem(f"{definition.display_name} [{definition.definition_id}]"); item.setData(Qt.ItemDataRole.UserRole, definition.definition_id); self.stamps.addItem(item)
+
+    def _tile_selected(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
+        del unused
+        if not item or not self.workspace: return
+        definition = self.workspace.find("tileSemantics", str(item.data(Qt.ItemDataRole.UserRole)))
+        if definition and isinstance(definition.data.get("tilesetId"), str): self.tile_selected.emit(str(definition.data["tilesetId"]), int(definition.data.get("sourceIndex", 0)), 0)
+
+    def _stamp_selected(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
+        del unused
+        if item: self.stamp_selected.emit(str(item.data(Qt.ItemDataRole.UserRole)))
 
 
 class MapBrowser(QWidget):
@@ -463,14 +655,16 @@ class LayersPanel(QWidget):
         self.rename_button = QPushButton("Rename")
         self.up_button = QPushButton("Move Up")
         self.down_button = QPushButton("Move Down")
+        self.visibility_button = QPushButton("Hide/Show")
         self.remove_button = QPushButton("Remove")
         self.add_button.clicked.connect(self._add)
         self.rename_button.clicked.connect(self._rename)
         self.up_button.clicked.connect(lambda: self._move(-1))
         self.down_button.clicked.connect(lambda: self._move(1))
+        self.visibility_button.clicked.connect(self._toggle_visibility)
         self.remove_button.clicked.connect(self._remove)
         buttons = QHBoxLayout()
-        for button in (self.add_button, self.rename_button, self.up_button, self.down_button, self.remove_button):
+        for button in (self.add_button, self.rename_button, self.up_button, self.down_button, self.visibility_button, self.remove_button):
             buttons.addWidget(button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.list)
@@ -484,7 +678,9 @@ class LayersPanel(QWidget):
     def refresh(self) -> None:
         self.list.clear()
         if self.document:
-            self.list.addItems([str(layer.get("name", "Layer")) for layer in self.document.layers])  # type: ignore[attr-defined]
+            for layer in self.document.layers:  # type: ignore[attr-defined]
+                visible = bool(layer.get("visible", True))
+                self.list.addItem(("● " if visible else "○ ") + str(layer.get("name", "Layer")))
 
     def _add(self) -> None:
         if not self.document:
@@ -500,10 +696,18 @@ class LayersPanel(QWidget):
             return
         from PySide6.QtWidgets import QInputDialog
         index = self.list.currentRow()
-        name, accepted = QInputDialog.getText(self, "Rename Layer", "Layer name:", text=self.list.currentItem().text())
+        name, accepted = QInputDialog.getText(self, "Rename Layer", "Layer name:", text=str(self.document.layers[index].get("name", "Layer")))  # type: ignore[attr-defined]
         if accepted and name.strip():
             self.document.rename_layer(index, name.strip())  # type: ignore[attr-defined]
             self.refresh(); self.changed.emit()
+
+    def _toggle_visibility(self) -> None:
+        if not self.document or self.list.currentRow() < 0:
+            return
+        index = self.list.currentRow()
+        layer = self.document.layers[index]  # type: ignore[attr-defined]
+        self.document.set_layer_visibility(index, not bool(layer.get("visible", True)))  # type: ignore[attr-defined]
+        self.refresh(); self.list.setCurrentRow(index); self.changed.emit()
 
     def _move(self, delta: int) -> None:
         if not self.document or self.list.currentRow() < 0:
@@ -549,11 +753,15 @@ class CollectionPanel(QWidget):
         left = QVBoxLayout(); left.addWidget(QLabel(label)); left.addWidget(self.entries, 1); left.addLayout(buttons)
         left_widget = QWidget(); left_widget.setLayout(left); left_widget.setMinimumWidth(180)
         self.inspector.changed.connect(self._edit)
+        self.inspector.collection_changed.connect(self._edit_collection)
         layout = QHBoxLayout(self); layout.addWidget(left_widget); layout.addWidget(self.inspector, 1)
 
     def set_document(self, document: object | None) -> None:
         self.document = document
         self.refresh()
+
+    def set_map_ids(self, map_ids: list[str]) -> None:
+        self.inspector.set_map_ids(map_ids)
 
     def refresh(self) -> None:
         self.entries.clear()
@@ -593,11 +801,13 @@ class CollectionPanel(QWidget):
             return
         value: dict[str, JsonValue] = {"id": identifier.strip()}
         if self.collection == "links":
-            value.update({"targetMapId": "", "targetSpawnId": ""})
+            value.update({"trigger": {"x": 0, "y": 0, "width": 16, "height": 16}, "targetMapId": "", "targetSpawnId": ""})
+        elif self.collection == "regions":
+            value.update({"bounds": {"x": 0, "y": 0, "width": 16, "height": 16}, "environmentEffectId": None})
         elif self.collection == "encounters":
-            value.update({"enemyDefinitionId": "", "count": 1, "regionId": ""})
+            value.update({"participants": [], "rewardGrantId": None})
         elif self.collection == "worldRules":
-            value.update({"once": False, "trigger": {}, "conditions": [], "actions": []})
+            value.update({"once": False, "trigger": {"kind": "mapEntered"}, "conditions": [], "actions": []})
         self.document.mutate(f"Add {self.collection}", lambda: self.document.data.setdefault(self.collection, []).append(value))  # type: ignore[attr-defined]
         self.refresh(); self.changed.emit()
 
@@ -615,9 +825,19 @@ class CollectionPanel(QWidget):
         self.document.mutate(f"Edit {self.collection}", lambda: set_path(current, path, value))  # type: ignore[attr-defined]
         self.refresh(); self.changed.emit()
 
+    def _edit_collection(self, path: str, action: str) -> None:
+        if not self.document or self.entries.currentRow() < 0:
+            return
+        try:
+            self.document.mutate_collection_entry(self.collection, self.entries.currentRow(), path, action)  # type: ignore[attr-defined]
+            self.refresh(); self.changed.emit()
+        except (IndexError, TypeError, ValueError):
+            return
+
 
 class AssetBrowser(QWidget):
     selected = Signal(object)
+    assign_requested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -625,7 +845,9 @@ class AssetBrowser(QWidget):
         self.search = QLineEdit(); self.search.setPlaceholderText("Search assets")
         self.search.textChanged.connect(self.refresh)
         self.list = QListWidget(); self.list.currentItemChanged.connect(self._selected)
-        layout = QVBoxLayout(self); layout.addWidget(self.search); layout.addWidget(self.list)
+        self.assign_button = QPushButton("Assign to selected definition")
+        self.assign_button.clicked.connect(self._assign)
+        layout = QVBoxLayout(self); layout.addWidget(self.search); layout.addWidget(self.list); layout.addWidget(self.assign_button)
 
     def set_roots(self, game_root: Path | None, content_root: Path | None) -> None:
         self.catalog.refresh(game_root, content_root); self.refresh()
@@ -640,3 +862,8 @@ class AssetBrowser(QWidget):
     def _selected(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
         del unused
         self.selected.emit(item.data(Qt.ItemDataRole.UserRole) if item else None)
+
+    def _assign(self) -> None:
+        item = self.list.currentItem()
+        if item:
+            self.assign_requested.emit(item.data(Qt.ItemDataRole.UserRole))

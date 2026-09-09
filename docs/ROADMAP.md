@@ -736,7 +736,7 @@ registro do escopo original.
 
 ## Status
 
-**Concluída.** DMAP 1.4 alimenta o `game.exe`; duas salas são resolvidas por
+**Concluída.** DMAP 1.5 alimenta o `game.exe`; duas salas são resolvidas por
 `MapId`, construídas por `RuntimeWorldBuilder` e trocadas por `MapSession` em boundary
 de tick. `SessionWorldState` registra deltas de Chest, Crate e Pickup para A→B→A e é
 a mesma estrutura serializada por DSAV 1.8. F5/F9 são edges lógicos; save usa
@@ -805,7 +805,7 @@ validação de host separada e não altera o formato authored/runtime.
 O fechamento 9F adiciona uma sessão mínima de playtest em memória: ela copia o `MapData`,
 resolve o spawn pela política oficial e passa o snapshot pelo `RuntimeWorldBuilder` e
 pelas factories de conteúdo; parar o playtest libera os handles temporários e deixa o
-`EditorDocument` intacto. Após o documento ter um caminho authored, o shell Win32 agenda
+documento authored intacto. Após o documento ter um caminho authored, o Python Content Studio agenda
 um backup periódico em `<arquivo>.autosave.dmap`; esse sidecar é validado e nunca altera
 o caminho, a revisão ou o estado dirty do documento. A validação continua orientada por
 mutação/revisão, e o desenho de tiles continua limitado à faixa visível.
@@ -1203,7 +1203,7 @@ porque talvez sejam úteis no futuro.
 ```text
 preservar UMAP standalone
         ↓
-WorldProjectDocument + UWORLD v1 multimapa
+Python WorldProject + UWORLD v1 multimapa
         ↓
 validação cross-map + compile em memória
         ↓
@@ -1229,9 +1229,9 @@ Se uma abstração ainda não possui consumidores reais, preservar apenas a fron
 Phase 9 Block 1 uses authored gameplay maps discovered recursively from
 `maps/gameplay/`, rather than a runtime manifest or generated demo rooms. The DMAP
 internal ID is authoritative; discovery is deterministic, rejects duplicate IDs,
-loads the complete `MapCatalog`, and validates cross-map links before startup. UMAP v3
+loads the complete `MapCatalog`, and validates cross-map links before startup. UMAP v4
 remains the standalone authored format, while UWORLD v1 embeds ordered
-AuthoredMapSource values for the multi-map Content Studio workflow; DMAP 1.4 remains
+AuthoredMapSource values for the multi-map Content Studio workflow; DMAP 1.5 remains
 one runtime file per map.
 
 `MapComposer` remains a small composition foundation for deterministic room geometry.
@@ -1331,8 +1331,8 @@ manifest is required at this stage.
 
 ### Authored world source boundary
 
-`UMAP v3` is the authored map source. It is decoded strictly into an
-`AuthoredMapSource`, compiled into a fresh `MapData`, and serialized as `DMAP 1.4`.
+`UMAP v4` is the authored map source. It is decoded strictly into an
+`AuthoredMapSource`, compiled into a fresh `MapData`, and serialized as `DMAP 1.5`.
 `REGN`, `WRLD` and `ENCT` are compiled runtime chunks. `DSAV 1.8` persists the
 session-side door, world-rule, encounter and persistent-toggle state while remaining
 compatible with DSAV 1.6 and 1.7. The Map Composer remains an initial-map generator;
@@ -1382,8 +1382,8 @@ presentation cues reach the presentation layer through `SimulationEvent`; the wo
 `EffectSystem` remains responsible for world-space animated VFX.
 
 15D — Environment / World Integration — DONE. UMAP v2 introduced optional region
-environment effects and presentation actions; the current writer emits UMAP v3 and
-DMAP 1.4, while readers retain UMAP v1/v2 and DMAP 1.0–1.3 compatibility. DSAV 1.8
+environment effects and presentation actions; the current writer emits UMAP v4 and
+DMAP 1.5, while readers retain UMAP v1–v4 and DMAP 1.0–1.4 compatibility. DSAV 1.8
 does not persist transient or derived presentation state.
 
 The next architectural decisions after Phase 15 were deliberately delivered in this
@@ -1426,7 +1426,7 @@ not saved. No pushable blocks, weights or other actors activate plates yet.
 and `objectActive`/`objectInactive` conditions target persistent object instances and
 are processed in the same bounded event cycle as the existing world rules.
 
-16C — Persistence + Authored Content — DONE. Content JSON v4, UMAP v3, DMAP 1.4 and
+16C — Persistence + Authored Content — DONE. Content JSON v5, UMAP v4, DMAP 1.5 and
 DSAV 1.8 carry activation definitions, authored rules and persistent toggle deltas;
 readers retain the preceding compatible versions. Pressure activation remains a
 runtime derivation from the restored Player position.
@@ -1474,15 +1474,15 @@ The current format status is:
 
 ```text
 Content JSON v5  (reader v1–v5)
-UMAP v3          (unchanged)
-DMAP 1.4         (unchanged)
+UMAP v4          (unchanged)
+DMAP 1.5         (unchanged)
 DSAV 1.8         (unchanged)
 ```
 
 ### Phase 18 — Content Studio — DONE
 
-18A — Content Studio Foundation — DONE. The existing Map Maker shell now exposes MAP
-and CONTENT modes. `ContentWorkspaceDocument` preserves individual source JSON files,
+18A — Content Studio Foundation — DONE. The Python/PySide6 Content Studio now exposes MAP
+and CONTENT modes. Python `ContentWorkspace` preserves individual source JSON files,
 definition ownership, independent dirty state and derived merge/validation/compile
 results. It provides typed authoring operations for visual images, static sprites,
 animations and flexible enemy visual profiles, including frame/marker editing and
@@ -1524,21 +1524,22 @@ slicing, complex timeline editing, hot reload, node graphs, generic scripting, a
 procedural generation, semantic solvers, LLM authoring and networking are not part of
 this direction.
 
-The Content Studio shell also has an editor-only localization boundary. `EditorPreferences`
-stores the selected `EditorLanguage` outside authored JSON/UMAP/DMAP/DSAV, defaults to
-`pt-BR` and persists `pt-BR`/`en-US` between runs. `EditorLocalization` owns the typed
-`EditorTextId` catalog and the Win32 Settings > Language menu; switching language rebuilds
-only the native menu and presentation state, never authored documents. Portuguese UI text
-uses UTF-8-safe editor input and the bitmap font's small Latin accent extension. This is
+The Python Content Studio also has an editor-only localization boundary. `ProjectPreferences`
+stores the selected language outside authored JSON/UMAP/DMAP/DSAV, defaults to `pt-BR` and
+persists `pt-BR`/`en-US` between runs. `Translator` owns the translation catalog and Qt
+Language menu; switching language updates only the
+tooling presentation state, never authored documents. Portuguese UI text uses native Qt
+Unicode input. This is
 tool localization only: game content, IDs, dialogue and runtime language remain unchanged.
 
 ### Próximo foco — Content Studio production tooling
 
 Não há uma sequência obrigatória posterior de fases sem necessidade concreta. O foco
 após a Fase 18 é tornar o Content Studio a ferramenta de produção do jogo: um projeto
-`.uworld` mantém vários mapas authored na ordem estável, `WorldProjectDocument` mantém
-um `EditorDocument` vivo por mapa, e links entre mapas são validados antes de compile
-e playtest. O editor preserva UMAP standalone e exporta DMAP individual por mapa.
+`.uworld` mantém vários mapas authored na ordem estável, `WorldProject` mantém
+um `MapDocument` vivo por mapa, e links entre mapas são validados antes de compile
+e playtest. O Python Content Studio preserva UMAP standalone e exporta DMAP individual
+por mapa.
 
 O playtest compila o projeto atual em memória, inicia no mapa ativo e reutiliza
 `MapSession` para atravessar links. Preferências de tooling, layout redimensionável,
@@ -1558,8 +1559,8 @@ O workflow de entidades recebeu a mesma separação de autoria: `AuthoredEntityI
 descobre Enemy/NPC/Object/Pickup diretamente do workspace, inclusive quando outra
 definição contém erro sem relação. A palette MAP → Entities agora tem categorias,
 scroll, busca por nome/ID, origem Project/Engine, validação local, placement repetido
-e ghost/placeholder; `PlaceEntityCommand` continua cuidando da mutação e do
-undo/redo. `GameContentRegistry` permanece reservado para compile/export/playtest e
+e ghost/placeholder; o histórico de comandos do documento continua cuidando da mutação
+e do undo/redo. `GameContentRegistry` permanece reservado para compile/export/playtest e
 runtime, que continuam recusando conteúdo inválido. O editor também não escolhe mais
 um inimigo builtin implicitamente: mapas novos são blank por padrão e Player Spawn é
 uma opção explícita do diálogo, não um conteúdo de gameplay oculto.

@@ -92,13 +92,12 @@ std::filesystem::path gameplayMapsRoot(
     return currentDirectory / "maps" / "gameplay";
 }
 
-GameplayMapDiscoveryResult discoverGameplayMaps(
-    const std::filesystem::path& executableDirectory,
-    const std::filesystem::path& currentDirectory,
+GameplayMapDiscoveryResult discoverGameplayMapsAtRoot(
+    const std::filesystem::path& root,
     const MapValidationCatalogs* catalogs,
     bool allowEmpty) {
     GameplayMapDiscoveryResult result;
-    result.root = gameplayMapsRoot(executableDirectory, currentDirectory);
+    result.root = root;
 
     std::vector<std::filesystem::path> paths;
     std::error_code iteratorError;
@@ -153,6 +152,15 @@ GameplayMapDiscoveryResult discoverGameplayMaps(
         result.error = "invalid gameplay map links: " + linkError;
     }
     return result;
+}
+
+GameplayMapDiscoveryResult discoverGameplayMaps(
+    const std::filesystem::path& executableDirectory,
+    const std::filesystem::path& currentDirectory,
+    const MapValidationCatalogs* catalogs,
+    bool allowEmpty) {
+    return discoverGameplayMapsAtRoot(
+        gameplayMapsRoot(executableDirectory, currentDirectory), catalogs, allowEmpty);
 }
 
 } // namespace underworld::game::maps

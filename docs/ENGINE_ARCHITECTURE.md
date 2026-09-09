@@ -52,7 +52,7 @@ x64, MSVC 19.44.35219 (toolset da linha Visual Studio 2022), Windows SDK
 10.0.26100.0, C++20, `/W4`, 0 warnings e 347 checks, com `git diff --check` e
 smoke visual/interativo passando.
 
-A Fase 8 também está concluída: DMAP 1.4/DSAV 1.8, `MapData`, persistent IDs,
+A Fase 8 também está concluída: DMAP 1.5/DSAV 1.8, `MapData`, persistent IDs,
 `RuntimeWorldBuilder`, `MapCatalog`, `MapSession`, transições e deltas de sessão/save
 alimentam o slice jogável com os mapas authored atuais. A Fase 9 (Map Maker) foi fechada
 no checkpoint Linux atual: o editor possui validação revision-cached, culling de tiles,
@@ -1598,17 +1598,18 @@ GameContentRegistry
 ```
 
 O resultado preserva o `AuthoredContentPack`, o `GameContentRegistry` e o mapa de
-origens. A seleção é compartilhada por Game, Map Maker e `content_check`; builtin é a
-fonte transicional default e `--content` é uma substituição explícita, sem overrides.
+origens. A seleção é compartilhada por Game, o Content Studio Python e
+`content_check`; builtin só é usado por caminhos explícitos de desenvolvimento/teste,
+sem aparecer silenciosamente como conteúdo do projeto.
 Não há manifest, hot reload, mutação de registry ou autoria visual genérica.
 
 ## Authored World Source Boundary
 
-`UMAP v3` is the authored map source and `DMAP 1.4` is the compiled/runtime map
+`UMAP v4` is the authored map source and `DMAP 1.5` is the compiled/runtime map
 serialization. The production boundary is:
 
 ```text
-Human / Map Maker / future LLM
+Python Content Studio
        ↓
 AuthoredMapSource (.umap)
        ↓
@@ -1616,7 +1617,7 @@ MapCompiler
        ↓
 MapData
        ↓
-DMAP 1.4
+DMAP 1.5
        ↓
 RuntimeWorld
 ```
@@ -1722,22 +1723,22 @@ loops. Object activation is intentionally independent from `DoorState` and from
 Authored maps continue to cross the compiled boundary as:
 
 ```text
-Human / Map Maker / future author
-        ↓
-AuthoredMapSource (.umap v3)
+Human / Python Content Studio / future author
+       ↓
+AuthoredMapSource (.umap v4)
         ↓
 MapCompiler
         ↓
 MapData
         ↓
-DMAP 1.4
+DMAP 1.5
         ↓
 RuntimeWorld / GameSession
 ```
 
-Content JSON v4 carries the activation capability while readers remain compatible
-with v1–v3. UMAP v3 carries object activation triggers and conditions while readers
-remain compatible with v1–v2. DMAP 1.4 retains readers for 1.0–1.3. DSAV 1.8 stores
+Content JSON v5 carries the activation capability while readers remain compatible
+with v1–v5. UMAP v4 carries object activation triggers and conditions while readers
+remain compatible with v1–v4. DMAP 1.5 retains readers for 1.0–1.4. DSAV 1.8 stores
 only persistent toggle activation deltas; pressure activation is reconstructed from
 the restored Player position. Existing `EffectSystem` and the Phase 15
 `PresentationEffectSystem` remain separate from these authoritative gameplay
@@ -1902,8 +1903,9 @@ effects and authored gameplay visuals.
 
 ## Content Studio Foundation — Phase 18A
 
-The existing Map Maker shell is the first Content Studio shell. It has a MAP mode for
-the authored map document and a CONTENT mode for an editable external workspace:
+The official authoring shell is `python -m tools.content_studio`, implemented with
+Python/PySide6 for Windows and Linux. It has MAP and CONTENT modes for authored
+documents. The old Win32 C++ shell is no longer a product target:
 
 ```text
 Content Studio
@@ -1936,7 +1938,7 @@ introduced.
 
 Placeable entity discovery follows the same authored boundary but is intentionally
 separate from runtime compilation. `AuthoredEntityIndex` derives Enemy, NPC, Object
-and Pickup candidates from the current `ContentWorkspaceDocument`, records whether
+and Pickup candidates from the current Python `ContentWorkspace`, records whether
 the candidate's local dependency closure is valid, and records whether its source is
 project content or explicit builtin content. The MAP entity browser can therefore
 continue authoring while unrelated workspace diagnostics are repaired. Invalid
@@ -1993,7 +1995,7 @@ reflection or property-generation framework:
 ```text
 typed inspector
       ↓
-ContentWorkspaceDocument mutation API
+ContentWorkspace mutation API
       ↓
 individual AuthoredContentPack source file
       ↓
@@ -2021,8 +2023,8 @@ editing path.
 
 ## Unified MAP/CONTENT workflow — Phase 18D
 
-The Content Studio remains one immediate-mode application shell with two document
-perspectives. Source JSON files and the UMAP document are authored truth; merged
+The Python Content Studio is one Qt application with two document perspectives.
+Source JSON files and the UMAP document are authored truth; merged
 content, provenance, compiled registry and DMAP are derived artifacts:
 
 ```text
@@ -2062,9 +2064,10 @@ editable map. Definitions without authoring descriptors use their IDs as palette
 fallback labels. Tilesets, semantic tiles and stamps use the same navigation in the
 opposite direction. Regions expose presentation-effect binding, while world rules
 and encounters remain structured list editors with compatible placement pickers.
-The editor launcher chooses builtin content explicitly when no `--content` root was
-requested. A real external workspace replaces that source for runtime-derived
-content, while its authored index remains available even when compilation fails.
+Builtin content is available only through explicit development/test construction;
+opening a real project without `--content` does not synthesize builtin content.
+A real external workspace supplies runtime-derived content, while its authored
+index remains available even when compilation fails.
 An invalid workspace still invalidates content-dependent map validation,
 compile/export and playtest instead of silently using builtin or a stale registry.
 
@@ -2091,7 +2094,7 @@ O Content Studio agora possui uma camada de projeto acima do documento de mapa:
 ```text
 Content Studio
         ↓
-WorldProjectDocument
+Python WorldProject
         ├── EditorDocument map A
         ├── EditorDocument map B
         └── ... na ordem authored
@@ -2101,8 +2104,8 @@ AuthoredWorldSource (UWORLD v1)
 MapData por MapId
 ```
 
-`EditorDocument` continua representando um único mapa e mantém seu viewport,
-seleção, layer ativa e `CommandHistory`. `WorldProjectDocument` é a autoridade de
+`MapDocument` continua representando um único mapa e mantém seu viewport,
+seleção, layer ativa e `CommandHistory`. `WorldProject` é a autoridade Python de
 persistência quando os mapas pertencem a um `.uworld`; UMAP continua disponível como
 fluxo standalone e pode ser importado para o projeto. `MapId` é estável depois da
 criação: links são referências estruturadas e remoção é bloqueada quando quebraria a
@@ -2110,12 +2113,12 @@ entrada do projeto ou links existentes.
 
 `UWORLD v1` contém somente dados authored dos mapas e `entryMapId`. Preferências,
 layout e estado temporário do editor permanecem fora do arquivo. O writer é
-determinístico, estrito e atômico. Compile/export produz artefatos `DMAP 1.4`
+determinístico, estrito e atômico. Compile/export produz artefatos `DMAP 1.5`
 separados, um por mapa; DMAP não foi transformado em um container de mundo.
 
 ### Multi-map playtest
 
-O playtest usa a fonte authored atual do `WorldProjectDocument`, não a última versão
+O playtest usa a fonte authored atual do `WorldProject`, não a última versão
 salva. Todos os mapas são compilados em memória e inseridos em um provider/catalog
 runtime. A sessão inicia no mapa ativo para iteração rápida (ou no `entryMapId` quando
 solicitado) e reutiliza `MapSession`, `MapLink` e `PendingMapTransition` para carregar
@@ -2124,7 +2127,7 @@ simultaneamente e o editor não mantém um sistema de transição paralelo.
 
 ## Content Studio deep authoring tools
 
-O Content Studio mantém a autoria tipada no `ContentWorkspaceDocument`, mas a
+O Content Studio mantém a autoria tipada no Python `ContentWorkspace`, mas a
 interface agora trata referências e coleções como estruturas de produção, não
 como campos isolados. Inspectors usam seleção independente para cada coleção
 aninhada; remover uma entrada remove a linha selecionada, e não implicitamente a
@@ -2164,12 +2167,12 @@ podem rejeitar o workspace, mas um inspector não deve encerrar o Content Studio
 
 ## Content Studio localization and preferences
 
-The editor language is a tooling preference, not authored game content. The shell owns
-an `EditorPreferences` value and an `EditorLocalization` catalog. `EditorTextId` is the
+The editor language is a tooling preference, not authored game content. The Python shell
+owns a `ProjectPreferences` value and a `Translator` catalog. Translation keys are the
 typed boundary for normal menus, labels, commands, status text and enum display names;
 `pt-BR` is the first-run default and `en-US` is the second supported language. The
-Win32 shell persists the selection in a user-writable Content Studio settings file and
-rebuilds its native menu when the language changes. Tests inject a filesystem path, so
+The Python shell persists the selection in a user-writable Content Studio settings file
+and updates its Qt labels when the language changes. Tests inject a filesystem path, so
 repository documents never receive personal settings.
 
 UTF-8 is decoded into Unicode codepoints before bitmap-font lookup and text-field edits.
@@ -2178,4 +2181,4 @@ Portuguese; no installed system font or third-party typography dependency is req
 `DefinitionId`, map/save/content formats, authored `displayName`, dialogue text and all
 runtime serialization remain language-independent. Editor language is therefore not
 game content localization and does not dirty an `EditorDocument` or
-`ContentWorkspaceDocument`.
+`ContentWorkspace`.

@@ -25,6 +25,8 @@
 *.sav
 *.sav.tmp
 *.sav.bak
+__pycache__/
+*.py[cod]
 .DS_Store
 Thumbs.db
 .codex_build.bat

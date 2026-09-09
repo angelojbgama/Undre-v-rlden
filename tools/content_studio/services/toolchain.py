@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from ..formats.json_io import encode_json
+from ..formats.uworld import write_world
 from ..model.types import Diagnostic, ToolResult
 
 
@@ -83,22 +83,29 @@ class CppToolchain:
         return result, self.diagnostics(result, source)
 
     def launch_playtest(self, map_path: Path, content_root: Path | None = None,
-                        asset_root: Path | None = None) -> subprocess.Popen[str]:
+                        asset_root: Path | None = None,
+                        map_root: Path | None = None) -> subprocess.Popen[str]:
         if self.game is None:
             raise ToolchainError("game executable was not found")
         command = [str(self.game), "--map", str(map_path)]
+        if map_root is not None:
+            command.extend(["--map-root", str(map_root)])
         if content_root is not None:
             command.extend(["--content", str(content_root)])
         if asset_root or self.asset_root:
             command.extend(["--asset-root", str(asset_root or self.asset_root)])
         return subprocess.Popen(command, cwd=self.repository_root, text=True)
 
-    def compile_and_launch(self, project: object, content_root: Path | None,
+    def compile_and_launch(self, project: object, content_root: object | None,
                            asset_root: Path | None = None) -> tuple[subprocess.Popen[str] | None, list[Diagnostic]]:
-        # Kept as a service method so MainWindow never needs to know the temporary
-        # artifact policy. WorldProject supplies authored_data() and map documents.
-        del project, content_root, asset_root
-        raise NotImplementedError("use PlaytestService with a WorldProject")
+        # Keep this convenience entry point usable for integrations while the
+        # PlaytestService owns temporary authored artifacts and cleanup.
+        service = getattr(self, "_playtest_service", None)
+        if service is None:
+            service = PlaytestService(self)
+            self._playtest_service = service
+        return_value = service.start(project, content_root, asset_root)
+        return service.process if return_value[0] else None, return_value[1]
 
 
 class PlaytestService:
@@ -116,6 +123,10 @@ class PlaytestService:
             return False, [Diagnostic("error", "playtest requires a WorldProject", code="playtest_input")]
         if not isinstance(content_workspace, ContentWorkspace):
             return False, [Diagnostic("error", "playtest requires an authored content workspace", code="playtest_input")]
+        active_map = project.active_map
+        spawns = active_map.data.get("playerSpawns", [])
+        if not isinstance(spawns, list) or not any(isinstance(value, dict) for value in spawns):
+            return False, [Diagnostic("error", f"playtest unavailable: map {active_map.map_id} has no player spawn", active_map.map_id, "missing_player_spawn", map_id=active_map.map_id)]
         temporary = Path(tempfile.mkdtemp(prefix="underworld-studio-playtest-"))
         self._temporary_roots.append(temporary)
         content_copy = temporary / "content"
@@ -126,7 +137,7 @@ class PlaytestService:
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(encode_json(content_file.data), encoding="utf-8")
         world_path = temporary / "playtest.uworld"
-        world_path.write_text(json.dumps(project.authored_data(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_world(world_path, project.authored_data())
         output = temporary / "maps"
         result, diagnostics = self.toolchain.compile_world(world_path, output, content_copy)
         if not result.ok:
@@ -139,7 +150,8 @@ class PlaytestService:
             candidates = list(output.glob("*.dmap"))
             map_path = candidates[0] if candidates else map_path
         try:
-            self.process = self.toolchain.launch_playtest(map_path, content_copy, asset_root)
+            self.process = self.toolchain.launch_playtest(
+                map_path, content_copy, asset_root, output)
         except ToolchainError as error:
             self.stop()
             return False, [Diagnostic("error", str(error), code="playtest_launch")]

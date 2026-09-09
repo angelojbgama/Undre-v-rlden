@@ -1,5 +1,11 @@
 # Content Studio — deep authoring audit
 
+Este é o inventário funcional usado para conferir a paridade durante a migração.
+O produto de autoria atual é `tools/content_studio` (Python/PySide6); as referências
+a classes C++ abaixo identificam responsabilidades substituídas ou preservadas no
+toolchain, não um segundo editor oficial. A matriz final de migração e os comandos
+de execução estão em `CONTENT_STUDIO_PYTHON_MIGRATION.md`.
+
 Este documento registra a auditoria do código local do Content Studio e serve como
 checklist de produção. A autoridade para as categorias continua sendo
 `ContentWorkspaceDocument::categoryOrder()`; a tabela abaixo não substitui o código
@@ -49,15 +55,15 @@ Os estados usados nesta matriz são:
 | objectVisual | idle/opened/destroying/destroyed/activation/door | inspector/preview | ações gerais | animation IDs | sim | PARTIAL |
 
 As categorias builtin percorrem o mesmo índice e permanecem selecionáveis e
-referenceable, porém `ContentWorkspaceDocument::writable()` mantém a proteção
-read-only. O editor pode mostrar um workspace semanticamente inválido para que o
+referenceable, porém `ContentFile.origin == "builtin"` mantém a proteção read-only.
+O Python Content Studio pode mostrar um workspace semanticamente inválido para que o
 autor o corrija; validação/compile continuam sendo os pontos que bloqueiam conteúdo
 inválido.
 
 ## Fronteira de autoria de entidades
 
 O browser de entidades usa `AuthoredEntityIndex`, derivado diretamente do índice
-authored atual de `ContentWorkspaceDocument`, para `enemy`, `npc`, `object` e
+authored atual de `ContentWorkspace`, para `enemy`, `npc`, `object` e
 `pickup`. Ele não lê `GameContentRegistry` para descobrir a palette. Cada entrada
 carrega a origem (`PROJECT` ou `ENGINE`/builtin) e o resultado da validação local da
 definição mais sua cadeia mínima de dependências. Assim, um diagnóstico em uma quest
@@ -68,22 +74,24 @@ diagnóstico correspondente.
 MAP → Entities agora organiza as quatro categorias, oferece busca por display name e
 `DefinitionId`, scroll real e placement repetido. `PLACE IN MAP` ativa a ferramenta
 de entidade e mantém a definição até Escape, troca de ferramenta ou nova seleção. O
-ghost usa `EditorVisualPreview` quando o visual é resolvível e um marker editor-only
+ghost usa o preview visual Python quando o visual é resolvível e um marker editor-only
 quando não é; nenhum ghost altera o documento antes do clique. `PlaceEntityCommand`
 continua sendo a única fronteira de mutação, portanto seleção, mover, remover,
 undo/redo e IDs persistentes permanecem compartilhados.
 
 Essa separação não relaxa runtime: compilação do workspace, validação de mapa,
 export DMAP e playtest continuam exigindo o registry compilado válido. O caminho
-builtin do editor é explícito no launcher, enquanto `EditorApp` não sintetiza builtin
-silenciosamente quando recebe uma workspace ausente. Mapas novos começam sem spawn e
+builtin só é usado por caminhos explícitos de desenvolvimento/teste; a inicialização
+do Python não sintetiza builtin silenciosamente quando recebe um workspace ausente.
+Mapas novos começam sem spawn e
 sem placements de gameplay; o diálogo de novo mapa mantém o spawn como opção explícita
 para um template de trabalho.
 
-O fluxo ainda é tooling incremental: a validação local cobre diagnósticos authored e
-dependências de definição, enquanto disponibilidade física de assets continua sendo
-diagnosticada pelo `VisualContentLoader`/preview. A matriz de categorias acima não é
-promovida a `OK` apenas por causa do browser de placement.
+O fluxo local cobre diagnósticos authored e dependências de definição, enquanto a
+disponibilidade física de assets continua sendo diagnosticada pelo catálogo/preview
+Python e pela validação C++. Os estados da tabela descrevem a granularidade de cada
+inspector, não a existência de um fallback C++: a matriz de migração registra todos
+os fluxos baseline como migrados para o Python.
 
 ## Correções desta passagem
 

@@ -173,7 +173,10 @@ echo Compiling reachability validation...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\reachability.obj" "src\game\maps\reachability.cpp"
 if errorlevel 1 goto :build_failed
 
-echo Compiling map editor document...
+rem The official Content Studio is Python/PySide6.  The legacy C++ editor
+rem sources below are retained only for native regression tests and the
+rem in-memory playtest runner; no C++ editor executable is linked.
+echo Compiling legacy C++ authoring regression support...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_document.obj" "src\editor\editor_document.cpp"
 if errorlevel 1 goto :build_failed
 
@@ -197,7 +200,7 @@ echo Compiling map editor commands...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_commands.obj" "src\editor\editor_commands.cpp"
 if errorlevel 1 goto :build_failed
 
-echo Compiling map editor UI...
+echo Compiling legacy C++ editor regression UI support...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_ui.obj" "src\editor\editor_ui.cpp"
 if errorlevel 1 goto :build_failed
 
@@ -223,7 +226,7 @@ if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\scene_timeline.obj" "src\editor\scene_timeline.cpp"
 if errorlevel 1 goto :build_failed
 
-echo Compiling map editor application...
+echo Compiling legacy C++ authoring regression support...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_app.obj" "src\editor\editor_app.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\visual_preview.obj" "src\editor\visual_preview.cpp"

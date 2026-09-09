@@ -254,7 +254,7 @@ FASE 18 — Content Studio
 CONCLUÍDA — workflow MAP/CONTENT
 
 ATUAL — Content Studio production tooling
-UWORLD v1, WorldProjectDocument multimapa, validação cross-map, export por DMAP e
+UWORLD v1, Python WorldProject multimapa, validação cross-map, export por DMAP e
 playtest multimapa em memória estão em evolução incremental.
 ```
 
@@ -273,7 +273,7 @@ Phase 7 code commit: 7873e32222b1e8d72e996771a88a6890b0eb9220
 Phase 7 validation/fix commit: 7cc9da495d314de52ab097f890594dd7deb2d0a4
 Phase 8 foundation commits: 4d7d808a769b5739dc6a1e36d0e0134552b77155 + a3076f41b605b1835356d4bb0bcce4c430d9612c
 Phase 8 final code commit: d93e72429d77811c29e26c6350d5c892123b562b
-DMAP: v1.4
+DMAP: v1.5
 DSAV: v1.8
 Windows smoke: PASS (historical baseline; not rerun in the current Linux/WSL environment)
 ```
@@ -282,7 +282,7 @@ A Fase 7 foi validada no target Win32/x64 com `build.bat`, `/W4`, 0 warnings,
 347 checks e smoke visual/interativo. A validação também confirmou resize com integer
 scaling/letterbox, perda real de foco e encerramento por `WM_CLOSE` com exit code 0.
 
-A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.4/1.8, duas salas carregadas por
+A Fase 8 foi validada no mesmo target com DMAP/DSAV 1.5/1.8, duas salas carregadas por
 MapId, transitions A→B→A, deltas de sessão, F5/F9, backup atômico e restart/load entre
 processos. As fases posteriores adicionaram o Content Studio e a camada de projeto
 authored multimapa; DMAP e DSAV continuam formatos runtime separados.
@@ -328,11 +328,11 @@ EnemyVisualSet / EnemyVisualInstance
 Evil Soldier melee + Skull ranged
 ```
 
-O editor, o Content Studio, loot/XP e progressão já existem no estado atual. Ainda não
-existem ECS completo, pathfinding ou IA avançada. UWORLD v1 contém mapas authored,
+O jogo e o Content Studio já existem no estado atual; o Content Studio oficial é
+Python/PySide6 e o runtime é C++. Ainda não existem ECS completo, pathfinding ou IA avançada. UWORLD v1 contém mapas authored,
 enquanto UMAP continua standalone e DMAP/DSAV continuam artefatos/estado runtime
-separados. Nenhuma dependência externa foi adicionada e os assets licenciados
-continuam fora do Git.
+separados. O runtime não possui dependência Python; PySide6 é exclusivo do tooling
+de autoria, e os assets licenciados continuam fora do Git.
 
 ## Estado local prevalece
 
@@ -502,10 +502,11 @@ Não transformar `game.cpp` em depósito de todas as regras.
 
 ## 7.9 `editor`
 
-O editor/Content Studio já existe e deve continuar separado do runtime do jogo.
+O Content Studio Python deve continuar separado do runtime do jogo. O runtime C++
+não deve depender de Python/PySide6.
 
-O editor compartilha engine/mapa/assets/serialização, mas mantém modelo de documento
-próprio, incluindo `WorldProjectDocument` para projetos multimapa.
+O editor Python compartilha engine/mapa/assets/serialização, mas mantém modelo de documento
+próprio, incluindo `WorldProject` para projetos multimapa.
 
 ---
 
@@ -1264,9 +1265,11 @@ quest/world flags
 
 # 18. Map Maker e Content Studio — produção authored
 
-O editor é uma ferramenta central de produção depois de runtime + `.dmap` +
-transições estarem utilizáveis. O Content Studio atual possui modos MAP/CONTENT e
-um projeto de mundo `.uworld` que mantém vários mapas authored em memória.
+O Content Studio oficial é `python -m tools.content_studio`, uma ferramenta
+Python/PySide6 multiplataforma que possui modos MAP/CONTENT e um projeto de mundo
+`.uworld` que mantém vários mapas authored em memória. O jogo/runtime permanece
+inteiramente em C++; `content_check`, `map_compile` e `world_compile` continuam
+sendo as autoridades de validação/compilação.
 
 Executável recomendado:
 
@@ -1328,8 +1331,8 @@ Capacidades do workflow atual e em evolução:
 - autosave;
 - backup.
 
-Além do fluxo standalone `.umap`, `WorldProjectDocument` mantém um
-`EditorDocument` por mapa, `entryMapId`, links cross-map, validação global e exporta
+Além do fluxo standalone `.umap`, `WorldProject` mantém um
+`MapDocument` por mapa, `entryMapId`, links cross-map, validação global e exporta
 DMAP individual por mapa. Preferências e estado de layout permanecem tooling-only;
 o UWORLD não contém estado temporário do editor.
 
@@ -1932,7 +1935,7 @@ via `AuthoredContentPack`/Content JSON v4, `PresentationEffectSystem` para efeit
 tela/câmera e `PresentationEffectRenderer` para composição no framebuffer. O
 `EffectSystem` existente continua reservado a VFX em coordenadas de mundo.
 
-UMAP v3 e DMAP 1.4 podem associar efeitos persistentes a regiões e emitir cues
+UMAP v4 e DMAP 1.5 podem associar efeitos persistentes a regiões e emitir cues
 transientes por World Logic; UMAP/DMAP readers preservam compatibilidade anterior e
 DSAV 1.8 não persiste estado de apresentação. Não introduzir StatusEffectSystem,
 poison/blindness gameplay, audio, scripting, GPU post-processing, Content Studio,
@@ -1945,8 +1948,8 @@ Phase 16 adiciona somente a capability reutilizável de ativação em
 placas ativadas exclusivamente pela posição dos pés do Player. A transição emite
 `ObjectActivationChanged` no `EventBuffer`; `WorldLogicSystem` continua sendo a
 camada de composição para portas, flags, encounters e presentation. Pressure state é
-derivado e não é salvo; toggle state é persistente. Content JSON v4, UMAP v3, DMAP
-1.4 e DSAV 1.8 mantêm leitores retrocompatíveis.
+derivado e não é salvo; toggle state é persistente. Content JSON v5, UMAP v4, DMAP
+1.5 e DSAV 1.8 mantêm leitores retrocompatíveis.
 
 Não criar PuzzleEngine, push blocks, expressão booleana genérica, StatusEffectSystem,
 Visual Content Boundary, Content Studio, LLM, áudio, scripting ou networking para

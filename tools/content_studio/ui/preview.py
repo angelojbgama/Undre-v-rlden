@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
+from ..services.assets import AssetEntry
 
 
 class PreviewWidget(QWidget):
@@ -40,6 +41,16 @@ class PreviewWidget(QWidget):
             self.image.setPixmap(pixmap.scaled(256, 256, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation))
         self.info.setText(f"{definition.display_name}\n{definition.category}: {definition.definition_id}")
 
+    def show_asset(self, entry: AssetEntry | None) -> None:
+        if entry is None:
+            self.image.setText("No asset selected"); self.image.setPixmap(QPixmap()); self.info.clear(); return
+        source = QImage(str(entry.absolute_path))
+        if source.isNull():
+            self.image.setText("Asset unavailable"); self.image.setPixmap(QPixmap())
+        else:
+            self.image.setPixmap(QPixmap.fromImage(source).scaled(320, 320, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation))
+        self.info.setText(f"{entry.root}/{entry.relative_path.as_posix()}\n{source.width()} × {source.height()} px")
+
 
 def _visual_image_id(definition: ContentDefinition, workspace: ContentWorkspace) -> str:
     data = definition.data
@@ -67,7 +78,9 @@ def _visual_image_id(definition: ContentDefinition, workspace: ContentWorkspace)
         animation = workspace.find("animations", str(data.get("idleAnimationId", "")))
         return str(animation.data.get("imageId", "")) if animation else ""
     if category in {"items", "pickups", "projectiles"}:
-        return str(data.get("visualId", ""))
+        visual_id = str(data.get("visualId", ""))
+        sprite = workspace.find("staticSprites", visual_id)
+        return _visual_image_id(sprite, workspace) if sprite else visual_id
     if category in {"visualImages", "staticSprites"}:
         return definition.definition_id if category == "visualImages" else str(data.get("imageId", ""))
     return ""

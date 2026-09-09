@@ -54,6 +54,13 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             if (!*mapResult) { return std::nullopt; }
             continue;
         }
+        const bool hadMapRoot = options.mapRoot.has_value();
+        const auto mapRootResult = consumeValue(L"--map-root", "--map-root", options.mapRoot);
+        if (mapRootResult.has_value()) {
+            if (!*mapRootResult) { return std::nullopt; }
+            if (hadMapRoot) { error = "duplicate --map-root option"; return std::nullopt; }
+            continue;
+        }
         const auto assetResult = consumeValue(L"--asset-root", "--asset-root", options.assetRoot);
         if (assetResult.has_value()) {
             if (!*assetResult) { return std::nullopt; }
@@ -125,6 +132,13 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
         const auto mapResult = consumeValue("--map", options.mapPath);
         if (mapResult.has_value()) {
             if (!*mapResult) { return std::nullopt; }
+            continue;
+        }
+        const bool hadMapRoot = options.mapRoot.has_value();
+        const auto mapRootResult = consumeValue("--map-root", options.mapRoot);
+        if (mapRootResult.has_value()) {
+            if (!*mapRootResult) { return std::nullopt; }
+            if (hadMapRoot) { error = "duplicate --map-root option"; return std::nullopt; }
             continue;
         }
         const auto assetResult = consumeValue("--asset-root", options.assetRoot);

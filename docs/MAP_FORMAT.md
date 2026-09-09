@@ -319,6 +319,10 @@ Handles são sempre novos. Map Maker e conteúdo authored versionado produzem o 
 
 ## Content Studio MAP workflow — Phase 18D
 
+O Content Studio oficial que lê e grava este contrato é `python -m
+tools.content_studio` (PySide6). O C++ permanece responsável por validar e
+compilar UMAP para DMAP; nenhuma biblioteca Python faz parte do runtime.
+
 O Content Studio usa a mesma fonte authored UMAP do Map Maker. A perspectiva MAP possui
 paletas editor-only para `TILES`, `SEMANTICS`, `STAMPS` e `ENTITIES`, além das
 ferramentas de seleção, pencil, erase, rectangle, fill, eyedropper, collision,

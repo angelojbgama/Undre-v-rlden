@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -102,29 +103,60 @@ class ContentWorkspace:
         return {category: len(self.definitions(category)) for category in CONTENT_CATEGORIES}
 
     def update(self, definition: ContentDefinition, path: str, value: JsonValue) -> None:
+        self._require_project_definition(definition)
         source_path = definition.source_path
         def operation() -> None:
             target: object = definition.data
-            components = [component for component in path.split(".") if component]
+            components = _path_parts(path)
             if not components:
                 raise ValueError("definition field path is empty")
             for component in components[:-1]:
-                if not isinstance(target, dict) or component not in target:
+                if isinstance(target, dict) and isinstance(component, str) and component in target:
+                    target = target[component]
+                elif isinstance(target, list) and isinstance(component, int) and 0 <= component < len(target):
+                    target = target[component]
+                else:
                     raise KeyError(path)
-                target = target[component]
-            if not isinstance(target, dict):
+            if isinstance(target, dict) and isinstance(components[-1], str):
+                target[components[-1]] = value
+            elif isinstance(target, list) and isinstance(components[-1], int) and 0 <= components[-1] < len(target):
+                target[components[-1]] = value
+            else:
                 raise TypeError(path)
-            target[components[-1]] = value
             self._mark_file_dirty(source_path)
         self.mutate("Edit Definition", operation)
 
     def replace_definition(self, definition: ContentDefinition, data: dict[str, JsonValue]) -> None:
+        self._require_project_definition(definition)
         source_path = definition.source_path
         def operation() -> None:
             definition.data.clear()
             definition.data.update(copy.deepcopy(data))
             self._mark_file_dirty(source_path)
         self.mutate("Edit Definition", operation)
+
+    def mutate_collection(self, definition: ContentDefinition, path: str, action: str) -> None:
+        """Add/remove a typed collection entry through the document history."""
+        self._require_project_definition(definition)
+        if action not in {"add", "remove"}:
+            raise ValueError(f"unknown collection action: {action}")
+        source_path = definition.source_path
+        parts = _path_parts(path)
+
+        def operation() -> None:
+            current: object = definition.data
+            for part in parts:
+                current = current[part]  # type: ignore[index]
+            if not isinstance(current, list):
+                raise TypeError(f"{path} is not a collection")
+            if action == "remove":
+                if current:
+                    current.pop()
+            else:
+                current.append(_default_collection_entry(path, current))
+            self._mark_file_dirty(source_path)
+
+        self.mutate("Add Collection Entry" if action == "add" else "Remove Collection Entry", operation)
 
     def create_definition(self, category: str, definition_id: str, file_path: Path | None = None) -> ContentDefinition:
         if category not in CONTENT_CATEGORIES:
@@ -155,6 +187,7 @@ class ContentWorkspace:
         return result
 
     def delete_definition(self, definition: ContentDefinition) -> None:
+        self._require_project_definition(definition)
         content_file = next((value for value in self.files if value.path == definition.source_path), None)
         if content_file is None:
             raise ValueError("definition source file is unavailable")
@@ -296,6 +329,11 @@ class ContentWorkspace:
     def dirty(self) -> bool:
         return any(content_file.dirty for content_file in self.files)
 
+    @staticmethod
+    def _require_project_definition(definition: ContentDefinition) -> None:
+        if definition.origin != "project":
+            raise ValueError("builtin definitions are read-only")
+
 
 def _contains_text(value: JsonValue, needle: str) -> bool:
     if isinstance(value, str):
@@ -305,6 +343,42 @@ def _contains_text(value: JsonValue, needle: str) -> bool:
     if isinstance(value, dict):
         return any(_contains_text(item, needle) for item in value.values())
     return False
+
+
+_PATH_PART = re.compile(r"([^.[\]]+)|\[([0-9]+)\]")
+
+
+def _path_parts(path: str) -> list[str | int]:
+    result: list[str | int] = []
+    for match in _PATH_PART.finditer(path):
+        result.append(match.group(1) if match.group(1) is not None else int(match.group(2)))
+    if not result:
+        raise ValueError("collection path cannot be empty")
+    return result
+
+
+def _default_collection_entry(path: str, existing: list[JsonValue]) -> JsonValue:
+    if existing and isinstance(existing[-1], dict):
+        return copy.deepcopy(existing[-1])
+    leaf = path.rsplit(".", 1)[-1].split("[")[0]
+    defaults: dict[str, JsonValue] = {
+        "frames": {"source": {"x": 0, "y": 0, "width": 16, "height": 16}, "durationTicks": 1, "markers": []},
+        "markers": {"name": "marker", "tick": 0},
+        "nodes": {"id": "node.new", "speaker": "", "pages": []},
+        "pages": {"text": "", "choices": [], "conditions": [], "actions": []},
+        "choices": {"label": "", "targetNodeId": ""},
+        "conditions": {"kind": "flagSet", "value": ""},
+        "actions": {"kind": "setFlag", "value": ""},
+        "objectives": {"kind": "kill", "targetId": "", "requiredCount": 1},
+        "tags": "tag.new",
+        "attackIds": "attack.new",
+        "loot": {"itemId": "", "chanceBasisPoints": 10000, "minimumCount": 1, "maximumCount": 1},
+        "offers": {"itemId": "", "playerBuyPrice": 0, "playerSellPrice": 0},
+        "thresholds": 0,
+        "items": {"itemId": "", "quantity": 1},
+        "cells": {"x": 0, "y": 0, "tileId": ""},
+    }
+    return copy.deepcopy(defaults.get(leaf, {}))
 
 
 def _walk_key_values(value: JsonValue) -> Iterable[tuple[str, JsonValue]]:

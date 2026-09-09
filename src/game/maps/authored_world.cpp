@@ -153,7 +153,9 @@ AuthoredWorldDecodeResult decodeAuthoredWorldJson(std::string_view json) {
     if (!readString(field(*root, "entryMapId"), entry) || entry.empty())
         result.diagnostics.push_back(diagnostic(AuthoredWorldDiagnosticStage::decode,
             "invalid_entry_map", "entryMapId must be a non-empty string", "entryMapId"));
-    source.entryMapId = simulation::MapId{entry};
+    // Keep malformed input diagnostic-only.  MapId rejects empty values, so do
+    // not construct it until the required string has passed local decoding.
+    if (!entry.empty()) source.entryMapId = simulation::MapId{entry};
     const auto* maps = field(*root, "maps");
     const auto* array = maps ? std::get_if<JsonArray>(&maps->value) : nullptr;
     if (!array) result.diagnostics.push_back(diagnostic(AuthoredWorldDiagnosticStage::decode,

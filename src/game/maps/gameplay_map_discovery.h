@@ -33,4 +33,12 @@ struct GameplayMapDiscoveryResult final {
     const MapValidationCatalogs* catalogs = nullptr,
     bool allowEmpty = false);
 
+// Used by tooling/playtest to make an explicit authored output directory the
+// complete map universe.  The normal game startup path should continue to use
+// discoverGameplayMaps(), which resolves the production maps/gameplay root.
+[[nodiscard]] GameplayMapDiscoveryResult discoverGameplayMapsAtRoot(
+    const std::filesystem::path& root,
+    const MapValidationCatalogs* catalogs = nullptr,
+    bool allowEmpty = false);
+
 } // namespace underworld::game::maps

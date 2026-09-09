@@ -5166,10 +5166,13 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     expect(audited && audited->auditEnabled,
            "game startup options enable manual audit mode");
     const char* linuxCommandLine[] = {"game", "--map", "maps/gameplay/dungeon_01_entry.dmap",
-                                      "--spawn=entry.start", "--asset-root", "assets", "--audit"};
-    const auto linuxOptions = game::parseGameLaunchOptions(7, linuxCommandLine, optionError);
+                                      "--map-root", "maps/gameplay", "--spawn=entry.start",
+                                      "--asset-root", "assets", "--audit"};
+    const auto linuxOptions = game::parseGameLaunchOptions(9, linuxCommandLine, optionError);
     expect(linuxOptions && linuxOptions->mapPath &&
                linuxOptions->mapPath->generic_string() == "maps/gameplay/dungeon_01_entry.dmap" &&
+               linuxOptions->mapRoot &&
+               linuxOptions->mapRoot->generic_string() == "maps/gameplay" &&
                linuxOptions->spawnId && linuxOptions->spawnId->value() == "entry.start" &&
                linuxOptions->assetRoot && linuxOptions->assetRoot->generic_string() == "assets" &&
                linuxOptions->auditEnabled,

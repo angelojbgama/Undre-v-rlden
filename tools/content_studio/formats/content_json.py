@@ -37,11 +37,12 @@ def decode_content(path: Path) -> ContentDecode:
     version = value.get("version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 1 or version > CONTENT_VERSION:
         diagnostics.append(Diagnostic("error", f"unsupported content schema version: {version!r}", "version", "invalid_version", source_path=path))
+    # The canonical C++ decoder treats categories as optional arrays.  Older
+    # authored packs commonly contain only the categories they use, so an
+    # absent category is an empty collection rather than a schema failure.
     for category in CONTENT_CATEGORIES:
         entries = value.get(category)
-        if entries is None:
-            diagnostics.append(Diagnostic("error", "missing required content category", category, "missing_category", source_path=path))
-        elif not isinstance(entries, list):
+        if entries is not None and not isinstance(entries, list):
             diagnostics.append(Diagnostic("error", "content category must be an array", category, "wrong_type", source_path=path))
     # Unknown fields are intentionally reported but the raw object is retained so
     # the browser can still show recoverable authored data.

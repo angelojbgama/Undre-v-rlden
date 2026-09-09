@@ -32,6 +32,10 @@ class WorldProject:
             if not isinstance(maps, list):
                 return None, decoded.diagnostics
             documents = [MapDocument(value, path) for value in maps if isinstance(value, dict)]
+            if not documents:
+                return None, decoded.diagnostics + [Diagnostic(
+                    "error", "world project must contain at least one map", "maps",
+                    "empty_world", source_path=path)]
             project = cls(documents, str(decoded.data.get("entryMapId", "")), path)
             return project, decoded.diagnostics
         document, diagnostics = MapDocument.open(path)
@@ -87,7 +91,14 @@ class WorldProject:
 
     def validate_cross_map(self) -> list[Diagnostic]:
         issues: list[Diagnostic] = []
-        ids = {document.map_id for document in self.maps}
+        ids: set[str] = set()
+        for index, document in enumerate(self.maps):
+            if document.map_id in ids:
+                issues.append(Diagnostic(
+                    "error", f"duplicate map ID: {document.map_id}",
+                    f"maps[{index}].id", "duplicate_map_id", map_id=document.map_id,
+                    source_path=document.path or self.path))
+            ids.add(document.map_id)
         if self.entry_map_id not in ids:
             issues.append(Diagnostic("error", "entryMapId does not reference an existing map", "entryMapId", "missing_entry_map", map_id=self.entry_map_id, source_path=self.path))
         for document in self.maps:
@@ -126,4 +137,3 @@ class WorldProject:
 
     def has_unsaved_changes(self) -> bool:
         return self.dirty or any(document.dirty for document in self.maps)
-

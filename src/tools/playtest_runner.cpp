@@ -200,13 +200,27 @@ public:
             const auto fixture = scenario_ == "world_logic"
                 ? makeWorldLogicFixture(root_)
                 : makeInteractiveWorldFixture(root_);
-            const auto fixtureMap = executableDirectory_ /
+            const auto fixtureRoot = executableDirectory_ / "maps" / "gameplay";
+            std::filesystem::create_directories(fixtureRoot, error);
+            if (error) { throw std::runtime_error("could not create isolated playtest map root"); }
+            for (const auto& filename : {"dungeon_01_entry.dmap", "dungeon_02_gallery.dmap", "dungeon_03_depths.dmap"}) {
+                const auto source = root_ / "maps" / "gameplay" / filename;
+                const auto sourceMap = game::maps::readDmap(source);
+                if (!sourceMap || sourceMap.data.id == fixture.map.id) { continue; }
+                std::error_code copyError;
+                std::filesystem::copy_file(source, fixtureRoot / filename,
+                                            std::filesystem::copy_options::overwrite_existing,
+                                            copyError);
+                if (copyError) { throw std::runtime_error("could not stage isolated playtest map: " + copyError.message()); }
+            }
+            const auto fixtureMap = fixtureRoot /
                 (scenario_ == "world_logic" ? "world_logic.dmap" : "interactive_world.dmap");
             std::string writeError;
             if (!game::maps::writeDmap(fixtureMap, fixture.map, writeError)) {
                 throw std::runtime_error("could not write interactive playtest map: " + writeError);
             }
             launch.mapPath = fixtureMap;
+            launch.mapRoot = fixtureRoot;
             content = fixture.content;
         }
         demo_ = std::make_unique<game::GameRuntime>(

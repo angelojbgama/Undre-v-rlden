@@ -14,6 +14,7 @@ namespace maps { struct MapData; }
 
 struct GameLaunchOptions final {
     std::optional<std::filesystem::path> mapPath;
+    std::optional<std::filesystem::path> mapRoot;
     std::optional<std::filesystem::path> assetRoot;
     std::optional<std::filesystem::path> contentRoot;
     std::optional<simulation::SpawnId> spawnId;

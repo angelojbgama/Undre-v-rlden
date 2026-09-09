@@ -189,9 +189,12 @@ struct GameRuntime::State final {
         session.configureRewards(content.rewardProfiles(), content.pickups());
         session.configureRewardGrants(content.rewardGrants());
         session.configureShops(content.shops());
-        auto discovered = maps::discoverGameplayMaps(
-            this->executableDirectory, std::filesystem::current_path(), &validationCatalogs,
-            launchOptions.mapPath.has_value());
+        auto discovered = launchOptions.mapRoot
+            ? maps::discoverGameplayMapsAtRoot(
+                  *launchOptions.mapRoot, &validationCatalogs, launchOptions.mapPath.has_value())
+            : maps::discoverGameplayMaps(
+                  this->executableDirectory, std::filesystem::current_path(), &validationCatalogs,
+                  launchOptions.mapPath.has_value());
         if (!discovered) {
             throw std::runtime_error(discovered.error);
         }

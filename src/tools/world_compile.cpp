@@ -115,9 +115,16 @@ int main(int argc, char** argv) {
         std::cerr << "[io/create_output] " << filesystemError.message() << '\n';
         return 1;
     }
+    const auto catalogs = underworld::game::mapValidationCatalogs(content.content->registry);
     for (const auto& map : compiled.maps) {
-        if (!underworld::game::maps::writeDmap(output / safeFileName(map.id), map.data, error)) {
+        const auto outputPath = output / safeFileName(map.id);
+        if (!underworld::game::maps::writeDmap(outputPath, map.data, error)) {
             std::cerr << "[io/write_dmap] " << error << '\n';
+            return 1;
+        }
+        const auto verified = underworld::game::maps::readDmap(outputPath, &catalogs);
+        if (!verified) {
+            std::cerr << "[io/verify_dmap] " << outputPath << ": " << verified.error << '\n';
             return 1;
         }
     }
