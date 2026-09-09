@@ -21,6 +21,10 @@
 #include <utility>
 
 namespace underworld::editor {
+using game::gameplay::scenes::SceneActorKind;
+using game::gameplay::scenes::SceneClip;
+using game::gameplay::scenes::SceneClipKind;
+using game::gameplay::scenes::SceneTrackKind;
 namespace {
 constexpr std::array<double, 6> zoomSteps{0.25, 0.5, 1.0, 2.0, 4.0, 8.0};
 constexpr core::ColorRGBA8 background{20, 23, 29, 255};
@@ -331,8 +335,22 @@ void EditorApp::drawShell(EditorUiContext& ui,const EditorInputState& input){
             mapPaletteTab_ = secondaryTabs[index].first;
         }
     }
+    const auto sceneTabBounds = core::RectI{leftContent.x, leftContent.y + 44,
+                                            leftContent.width, controlHeight};
+    if (ui.button(sceneTabBounds, localization_.text(EditorTextId::scenes),
+                  mapPaletteTab_ == MapPaletteTab::scenes)) {
+        cancelActiveGesture();
+        mapPaletteTab_ = MapPaletteTab::scenes;
+        sceneClipDrag_ = {};
+        sceneActorAliasFocused_ = false;
+    }
     if (mapPaletteTab_ == MapPaletteTab::maps) {
         drawMapBrowser(ui, input, left);
+    } else if (mapPaletteTab_ == MapPaletteTab::scenes) {
+        drawSceneWorkspace(ui, input, left, layout.viewport, right, status);
+        ui.labelInRect(status, status_, true);
+        ui.drawTooltip();
+        return;
     } else {
     if (input.escapePressed) layerDrag_ = {};
     ui.label(localization_.text(EditorTextId::layers), leftContent.x, leftContent.y + 42);
@@ -4404,6 +4422,187 @@ void EditorApp::drawMapLinkInspector(EditorUiContext& ui, core::RectI panel) {
             }
         }
     }
+}
+
+void EditorApp::commitRuleEdit(std::vector<maps::WorldRuleDefinition> rules, std::string status) {
+    execute(std::make_unique<ReplaceWorldRulesCommand>(document().rules(), std::move(rules)));
+    status_ = std::move(status);
+}
+
+void EditorApp::commitSceneEdit(
+    std::vector<game::gameplay::scenes::SceneDefinition> scenes, std::string status) {
+    auto compound = std::make_unique<CompoundEditorCommand>("Edit Scene");
+    const auto beforeScenes = document().scenes();
+    if (selectedSceneIndex_ < beforeScenes.size() && selectedSceneIndex_ < scenes.size() &&
+        beforeScenes[selectedSceneIndex_].id != scenes[selectedSceneIndex_].id) {
+        auto rules = document().rules();
+        for (auto& rule : rules) for (auto& action : rule.actions) {
+            if (action.kind == maps::WorldActionKind::startScene &&
+                action.definitionTarget == beforeScenes[selectedSceneIndex_].id) {
+                action.definitionTarget = scenes[selectedSceneIndex_].id;
+            }
+        }
+        compound->add(std::make_unique<ReplaceWorldRulesCommand>(document().rules(), std::move(rules)));
+    }
+    compound->add(std::make_unique<ReplaceScenesCommand>(beforeScenes, std::move(scenes)));
+    execute(std::move(compound));
+    status_ = std::move(status);
+}
+
+void EditorApp::handleSceneMapTarget(core::RectI viewport, const EditorInputState& input) {
+    if (document().scenes().empty() || selectedSceneIndex_ >= document().scenes().size() ||
+        selectedSceneTrackIndex_ >= document().scenes()[selectedSceneIndex_].tracks.size() ||
+        selectedSceneClipIndex_ >= document().scenes()[selectedSceneIndex_].tracks[selectedSceneTrackIndex_].clips.size()) return;
+    const auto& clip = document().scenes()[selectedSceneIndex_].tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_];
+    if (clip.kind != game::gameplay::scenes::SceneClipKind::move) return;
+    const bool inside = input.pointer.x >= viewport.x && input.pointer.y >= viewport.y &&
+                        input.pointer.x < viewport.x + viewport.width && input.pointer.y < viewport.y + viewport.height;
+    if (inside && input.pointer.leftPressed) sceneMapTargetDragging_ = true;
+    if (sceneMapTargetDragging_ && input.pointer.leftReleased) {
+        auto scenes = document().scenes();
+        const auto point = screenToWorld({input.pointer.x, input.pointer.y}, viewport);
+        const int tile = static_cast<int>(document().data().tileSize);
+        const core::WorldPointI target{input.alt ? point.x : (point.x / tile) * tile,
+                                      input.alt ? point.y : (point.y / tile) * tile};
+        std::string error;
+        if (setSceneMoveTarget(scenes[selectedSceneIndex_], {selectedSceneTrackIndex_, selectedSceneClipIndex_}, target, error)) commitSceneEdit(std::move(scenes), "Scene move target updated");
+        else status_ = error;
+        sceneMapTargetDragging_ = false;
+    }
+}
+
+void EditorApp::drawScenePreview(render::Renderer2D& renderer, core::RectI viewport) const {
+    renderer.fillRect(viewport, viewportBackground);
+    drawMap(renderer, viewport);
+    drawEntities(renderer, viewport);
+    if (document().scenes().empty() || selectedSceneIndex_ >= document().scenes().size()) return;
+    const auto& scene = document().scenes()[selectedSceneIndex_];
+    std::vector<ScenePreviewActorInitial> initial;
+    for (const auto& actor : scene.actors) {
+        ScenePreviewActorInitial value; value.slotId = actor.slotId;
+        if (actor.kind == SceneActorKind::player) {
+            if (document().data().playerSpawns.empty()) continue;
+            value.position = document().data().playerSpawns.front().position;
+            value.facing = document().data().playerSpawns.front().facing;
+        } else if (actor.kind == SceneActorKind::npc) {
+            const auto found = std::find_if(document().data().npcs.begin(), document().data().npcs.end(), [&](const auto& item) { return item.id == actor.instanceId; });
+            if (found == document().data().npcs.end()) continue;
+            value.position = found->position; value.facing = found->facing;
+        } else {
+            const auto found = std::find_if(document().data().enemies.begin(), document().data().enemies.end(), [&](const auto& item) { return item.id == actor.instanceId; });
+            if (found == document().data().enemies.end()) continue;
+            value.position = found->position; value.facing = found->facing;
+        }
+        initial.push_back(value);
+    }
+    const auto preview = evaluateScenePreview(scene, initial, scenePlayheadTick_);
+    for (const auto& actor : preview.actors) {
+        const auto point = worldToScreen(actor.position, viewport); const int radius = std::max(4, static_cast<int>(5 * zoom()));
+        renderer.fillRect({point.x - radius, point.y - radius + actor.visualOffsetY, radius * 2 + 1, radius * 2 + 1}, core::ColorRGBA8{80, 210, 255, 230});
+        if (actor.emote) renderer.fillRect({point.x + radius, point.y - radius - 4, 4, 4}, selectedColor);
+    }
+    if (selectedSceneTrackIndex_ < scene.tracks.size() && selectedSceneClipIndex_ < scene.tracks[selectedSceneTrackIndex_].clips.size()) {
+        const auto& clip = scene.tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_];
+        if (clip.kind == SceneClipKind::move) { const auto point = worldToScreen(clip.targetPosition, viewport); outline(renderer, {point.x - 7, point.y - 7, 15, 15}, selectedColor); }
+    }
+}
+
+void EditorApp::drawSceneTimeline(EditorUiContext& ui, const EditorInputState& input, core::RectI bounds) {
+    if (document().scenes().empty() || selectedSceneIndex_ >= document().scenes().size()) return;
+    const auto scene = document().scenes()[selectedSceneIndex_]; const int controlY = bounds.y + 4;
+    if (ui.button({bounds.x + 4, controlY, 54, 18}, scenePlaying_ ? "PAUSE" : "PLAY", scenePlaying_)) scenePlaying_ = !scenePlaying_;
+    if (ui.button({bounds.x + 62, controlY, 54, 18}, "RESTART")) { scenePlayheadTick_ = 0; scenePlaying_ = false; }
+    if (ui.button({bounds.x + 120, controlY, 42, 18}, "STEP")) scenePlayheadTick_ = std::min(scene.durationTicks, scenePlayheadTick_ + 1U);
+    if (ui.button({bounds.x + 166, controlY, 32, 18}, "-")) sceneTimelineZoom_ = std::max(1.0F, sceneTimelineZoom_ - 0.5F);
+    if (ui.button({bounds.x + 202, controlY, 32, 18}, "+")) sceneTimelineZoom_ = std::min(12.0F, sceneTimelineZoom_ + 0.5F);
+    if (ui.button({bounds.x + 238, controlY, 68, 18}, "FIT")) { auto scenes = document().scenes(); static_cast<void>(fitSceneDurationToContent(scenes[selectedSceneIndex_])); scenePlayheadTick_ = std::min(scenePlayheadTick_, scenes[selectedSceneIndex_].durationTicks); commitSceneEdit(std::move(scenes), "Scene duration fitted to content"); }
+    if (scenePlaying_ && input.previewTicks != 0) { scenePlayheadTick_ = std::min(scene.durationTicks, scenePlayheadTick_ + static_cast<std::uint32_t>(input.previewTicks)); if (scenePlayheadTick_ >= scene.durationTicks) scenePlaying_ = false; }
+    const int labelWidth = 88; const int rulerY = bounds.y + 28; const int rowTop = rulerY + 18; const int rowHeight = 20;
+    const SceneTimelineGeometry geometry{bounds.x + labelWidth,
+        std::max(1, bounds.width - labelWidth - 6), sceneTimelineScroll_, sceneTimelineZoom_};
+    ui.fillRect({bounds.x + 2, rulerY, bounds.width - 4, 16}, core::ColorRGBA8{27, 31, 40, 255});
+    for (const auto& mark : sceneTimelineRulerMarks(geometry, 5, 25)) { ui.fillRect({mark.x, rulerY + (mark.major ? 0 : 7), 1, mark.major ? 16 : 9}, mark.major ? selectedColor : core::ColorRGBA8{100, 110, 125, 255}); if (mark.major) ui.label(std::to_string(mark.tick), mark.x + 3, rulerY + 1); }
+    ui.fillRect({sceneTimelineXForTick(geometry, scenePlayheadTick_), rulerY, 2, bounds.height - 30}, core::ColorRGBA8{255, 80, 80, 220});
+    const auto clipColor = [](SceneClipKind kind) { switch (kind) { case SceneClipKind::move: return core::ColorRGBA8{55, 135, 220, 255}; case SceneClipKind::dialogue: return core::ColorRGBA8{90, 190, 120, 255}; case SceneClipKind::worldEvent: return core::ColorRGBA8{210, 145, 65, 255}; case SceneClipKind::presentationEffect: return core::ColorRGBA8{175, 90, 205, 255}; default: return core::ColorRGBA8{90, 100, 120, 255}; } };
+    for (std::size_t trackIndex = 0; trackIndex < scene.tracks.size(); ++trackIndex) {
+        const int y = rowTop + static_cast<int>(trackIndex) * rowHeight; if (y + rowHeight > bounds.y + bounds.height) break; const auto& track = scene.tracks[trackIndex];
+        ui.fillRect({bounds.x + 2, y, bounds.width - 4, rowHeight - 2}, trackIndex == selectedSceneTrackIndex_ ? core::ColorRGBA8{43, 50, 63, 255} : core::ColorRGBA8{30, 35, 44, 255});
+        const std::string name = track.kind == SceneTrackKind::actor ? "ACTOR " + track.actorSlot : track.kind == SceneTrackKind::dialogue ? "DIALOGUE" : track.kind == SceneTrackKind::world ? "WORLD" : "PRESENTATION";
+        ui.labelInRect({bounds.x + 5, y, labelWidth - 8, rowHeight - 2}, name);
+        for (std::size_t clipIndex = 0; clipIndex < track.clips.size(); ++clipIndex) { const auto& clip = track.clips[clipIndex]; const auto clipBounds = sceneTimelineClipBounds(geometry, clip); const core::RectI rect{clipBounds.x, y + 2, clipBounds.width, rowHeight - 6}; ui.fillRect(rect, clipColor(clip.kind)); if (trackIndex == selectedSceneTrackIndex_ && clipIndex == selectedSceneClipIndex_) ui.fillRect({rect.x, rect.y, rect.width, 2}, selectedColor); if (ui.pointerInside(rect) && input.pointer.leftPressed) { selectedSceneTrackIndex_ = trackIndex; selectedSceneClipIndex_ = clipIndex; sceneClipDrag_ = {true, trackIndex, clipIndex, clip.startTick}; } }
+    }
+    const core::RectI body{bounds.x + labelWidth, rulerY, bounds.width - labelWidth - 4, std::max(1, bounds.height - 30)};
+    if (ui.pointerInside(body) && input.pointer.leftPressed) { scenePlayheadTick_ = std::min(scene.durationTicks, sceneTimelineTickForX(geometry, input.pointer.x, {true, 5})); }
+    if (sceneClipDrag_.active && input.pointer.leftReleased) { auto scenes = document().scenes(); const auto target = sceneTimelineTickForX(geometry, input.pointer.x, {true, 5}); std::string error; if (sceneClipDrag_.track < scenes[selectedSceneIndex_].tracks.size() && sceneClipDrag_.clip < scenes[selectedSceneIndex_].tracks[sceneClipDrag_.track].clips.size() && moveSceneClip(scenes[selectedSceneIndex_], {sceneClipDrag_.track, sceneClipDrag_.clip}, target, {true, 5}, error)) commitSceneEdit(std::move(scenes), "Scene clip moved"); else if (!error.empty()) status_ = error; sceneClipDrag_ = {}; }
+    if (ui.pointerInside(bounds) && input.pointer.wheelDelta != 0) sceneTimelineScroll_ = static_cast<std::uint32_t>(std::max(0, static_cast<int>(sceneTimelineScroll_) - (input.pointer.wheelDelta / 120) * 5));
+}
+
+void EditorApp::drawSceneInspector(EditorUiContext& ui, const EditorInputState& input, core::RectI panel) {
+    int y = 10; ui.label("SCENE INSPECTOR", panel.x + 8, y); y += 18;
+    if (document().scenes().empty() || selectedSceneIndex_ >= document().scenes().size()) { ui.label("Create a scene in the SCENES panel", panel.x + 8, y); return; }
+    const auto selected = document().scenes()[selectedSceneIndex_];
+    if (!sceneIdFocused_) sceneIdEdit_ = std::string(selected.id.value());
+    ui.label("ID", panel.x + 8, y); if (ui.textField({panel.x + 8, y + 14, panel.width - 16, 18}, sceneIdEdit_, sceneIdFocused_)) sceneIdFocused_ = true;
+    if (sceneIdFocused_ && input.enterPressed) { auto scenes = document().scenes(); if (!sceneIdEdit_.empty()) { scenes[selectedSceneIndex_].id = simulation::DefinitionId{sceneIdEdit_}; commitSceneEdit(std::move(scenes), "Scene ID updated"); } sceneIdFocused_ = false; }
+    y += 38; ui.label("DURATION " + std::to_string(selected.durationTicks) + " ticks", panel.x + 8, y);
+    if (ui.button({panel.x + 8, y + 16, 34, 18}, "-")) { auto scenes = document().scenes(); scenes[selectedSceneIndex_].durationTicks = std::max(1U, selected.durationTicks > 5 ? selected.durationTicks - 5 : 1U); commitSceneEdit(std::move(scenes), "Scene duration updated"); }
+    if (ui.button({panel.x + 46, y + 16, 34, 18}, "+")) { auto scenes = document().scenes(); scenes[selectedSceneIndex_].durationTicks = selected.durationTicks + 5; commitSceneEdit(std::move(scenes), "Scene duration updated"); }
+    y += 42; ui.label("ACTORS", panel.x + 8, y); y += 16;
+    for (std::size_t index = 0; index < selected.actors.size() && y < panel.height - 190; ++index) { const auto& actor = selected.actors[index]; if (ui.button({panel.x + 8, y, panel.width - 16, 18}, actor.slotId, index == selectedSceneActorIndex_)) { selectedSceneActorIndex_ = index; const auto track = std::find_if(selected.tracks.begin(), selected.tracks.end(), [&](const auto& value) { return value.kind == SceneTrackKind::actor && value.actorSlot == actor.slotId; }); selectedSceneTrackIndex_ = track == selected.tracks.end() ? 0 : static_cast<std::size_t>(track - selected.tracks.begin()); selectedSceneClipIndex_ = static_cast<std::size_t>(-1); sceneActorAliasFocused_ = false; } y += 20; }
+    if (ui.button({panel.x + 8, y, 72, 18}, "ADD NPC") && !document().data().npcs.empty()) { auto scenes = document().scenes(); auto& scene = scenes[selectedSceneIndex_]; const auto found = std::find_if(document().data().npcs.begin(), document().data().npcs.end(), [&](const auto& npc) { return std::none_of(scene.actors.begin(), scene.actors.end(), [&](const auto& actor) { return actor.instanceId == npc.id; }); }); if (found != document().data().npcs.end()) { const auto slot = "npc." + std::to_string(scene.actors.size() + 1); scene.actors.push_back({slot, SceneActorKind::npc, found->id}); scene.tracks.push_back({SceneTrackKind::actor, slot, {}}); selectedSceneActorIndex_ = scene.actors.size() - 1; commitSceneEdit(std::move(scenes), "NPC actor added to scene"); } }
+    if (ui.button({panel.x + 84, y, 82, 18}, "ADD ENEMY") && !document().data().enemies.empty()) { auto scenes = document().scenes(); auto& scene = scenes[selectedSceneIndex_]; const auto found = std::find_if(document().data().enemies.begin(), document().data().enemies.end(), [&](const auto& enemy) { return std::none_of(scene.actors.begin(), scene.actors.end(), [&](const auto& actor) { return actor.instanceId == enemy.id; }); }); if (found != document().data().enemies.end()) { const auto slot = "enemy." + std::to_string(scene.actors.size() + 1); scene.actors.push_back({slot, SceneActorKind::enemy, found->id}); scene.tracks.push_back({SceneTrackKind::actor, slot, {}}); selectedSceneActorIndex_ = scene.actors.size() - 1; commitSceneEdit(std::move(scenes), "Enemy actor added to scene"); } }
+    y += 24;
+    if (selectedSceneActorIndex_ < selected.actors.size()) { const auto& actor = selected.actors[selectedSceneActorIndex_]; if (!sceneActorAliasFocused_) sceneActorAliasEdit_ = actor.slotId; ui.label("ALIAS", panel.x + 8, y); if (ui.textField({panel.x + 8, y + 14, panel.width - 16, 18}, sceneActorAliasEdit_, sceneActorAliasFocused_)) sceneActorAliasFocused_ = true; if (sceneActorAliasFocused_ && input.enterPressed) { auto scenes = document().scenes(); auto& scene = scenes[selectedSceneIndex_]; const auto old = scene.actors[selectedSceneActorIndex_].slotId; if (!sceneActorAliasEdit_.empty() && std::none_of(scene.actors.begin(), scene.actors.end(), [&](const auto& item) { return item.slotId == sceneActorAliasEdit_ && item.slotId != old; })) { scene.actors[selectedSceneActorIndex_].slotId = sceneActorAliasEdit_; for (auto& track : scene.tracks) if (track.actorSlot == old) { track.actorSlot = sceneActorAliasEdit_; for (auto& clip : track.clips) clip.actorSlot = sceneActorAliasEdit_; } commitSceneEdit(std::move(scenes), "Scene actor alias updated"); } sceneActorAliasFocused_ = false; } y += 38; }
+    y = panel.height - 174;
+    if (selectedSceneTrackIndex_ < selected.tracks.size()) { const auto& track = selected.tracks[selectedSceneTrackIndex_]; ui.label("TRACK " + std::to_string(selectedSceneTrackIndex_), panel.x + 8, y); y += 16; const auto addClip = [&](SceneClip clip, const char* message) { auto scenes = document().scenes(); auto& scene = scenes[selectedSceneIndex_]; std::string error; if (addSceneClip(scene, selectedSceneTrackIndex_, std::move(clip), {true, 5}, error)) { selectedSceneClipIndex_ = scene.tracks[selectedSceneTrackIndex_].clips.size() - 1; commitSceneEdit(std::move(scenes), message); } else status_ = error; }; if (track.kind == SceneTrackKind::actor) { if (ui.button({panel.x + 8, y, 78, 18}, "ADD MOVE")) addClip({SceneClipKind::move, track.actorSlot, scenePlayheadTick_, 30, {0, 0}}, "Move clip added"); if (ui.button({panel.x + 90, y, 78, 18}, "ADD FACE")) addClip({SceneClipKind::face, track.actorSlot, scenePlayheadTick_, 0, {}, game::gameplay::FacingDirection::down}, "Face clip added"); if (ui.button({panel.x + 172, y, 78, 18}, "ADD HOP")) addClip({SceneClipKind::hop, track.actorSlot, scenePlayheadTick_, 20, {}, {}, {}, 4}, "Hop clip added"); } else if (track.kind == SceneTrackKind::dialogue) { if (ui.button({panel.x + 8, y, panel.width - 16, 18}, "ADD DIALOGUE")) { SceneClip clip{SceneClipKind::dialogue, {}, scenePlayheadTick_, 0}; if (contentWorkspace_) { const auto candidates = contentReferenceCandidates(*contentWorkspace_, ContentDefinitionKind::dialogue); if (!candidates.empty()) clip.dialogueId = candidates.front().key.id; } if (clip.dialogueId.empty()) clip.dialogueId = simulation::DefinitionId{"dialogue.editor"}; clip.waitForCompletion = true; addClip(std::move(clip), "Dialogue clip added"); } } else if (track.kind == SceneTrackKind::presentation) { if (ui.button({panel.x + 8, y, panel.width - 16, 18}, "ADD EFFECT")) { SceneClip clip{SceneClipKind::presentationEffect, {}, scenePlayheadTick_, 0}; if (contentWorkspace_) { const auto candidates = contentReferenceCandidates(*contentWorkspace_, ContentDefinitionKind::presentationEffect); if (!candidates.empty()) clip.effectId = candidates.front().key.id; } if (clip.effectId.empty() && !content_.presentationEffects().definitions().empty()) clip.effectId = content_.presentationEffects().definitions().front().id; addClip(std::move(clip), "Presentation effect clip added"); } } else if (ui.button({panel.x + 8, y, panel.width - 16, 18}, "ADD WORLD EVENT")) { addClip({SceneClipKind::worldEvent, {}, scenePlayheadTick_, 0, {}, {}, {}, 0, {}, false, {}, {maps::WorldActionKind::setFlag, {"flag.scene"}, {}, {}}}, "World event clip added"); } }
+    if (selectedSceneTrackIndex_ < selected.tracks.size() && selectedSceneClipIndex_ < selected.tracks[selectedSceneTrackIndex_].clips.size()) { const auto& clip = selected.tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_]; y += 22; ui.label("CLIP " + std::to_string(clip.startTick) + " / " + std::to_string(clip.durationTicks), panel.x + 8, y); if (ui.button({panel.x + 8, y + 16, 34, 18}, "-5")) { auto scenes = document().scenes(); std::string error; static_cast<void>(moveSceneClip(scenes[selectedSceneIndex_], {selectedSceneTrackIndex_, selectedSceneClipIndex_}, clip.startTick > 5 ? clip.startTick - 5 : 0, {false, 1}, error)); commitSceneEdit(std::move(scenes), "Clip moved"); } if (ui.button({panel.x + 46, y + 16, 34, 18}, "+5")) { auto scenes = document().scenes(); std::string error; static_cast<void>(moveSceneClip(scenes[selectedSceneIndex_], {selectedSceneTrackIndex_, selectedSceneClipIndex_}, clip.startTick + 5, {true, 5}, error)); commitSceneEdit(std::move(scenes), "Clip moved"); } if (ui.button({panel.x + 84, y + 16, 42, 18}, "DUP")) { auto scenes = document().scenes(); std::string error; static_cast<void>(duplicateSceneClip(scenes[selectedSceneIndex_], {selectedSceneTrackIndex_, selectedSceneClipIndex_}, selectedSceneTrackIndex_, clip.startTick + 5, {true, 5}, error)); commitSceneEdit(std::move(scenes), "Clip duplicated"); } if (ui.button({panel.x + 130, y + 16, 42, 18}, "DEL")) { auto scenes = document().scenes(); std::string error; static_cast<void>(removeSceneClip(scenes[selectedSceneIndex_], {selectedSceneTrackIndex_, selectedSceneClipIndex_}, error)); selectedSceneClipIndex_ = static_cast<std::size_t>(-1); commitSceneEdit(std::move(scenes), "Clip removed"); } if (clip.kind == SceneClipKind::move) ui.label("TARGET " + std::to_string(clip.targetPosition.x) + "," + std::to_string(clip.targetPosition.y), panel.x + 8, y + 38); }
+    if (selectedSceneTrackIndex_ < selected.tracks.size() && selectedSceneClipIndex_ < selected.tracks[selectedSceneTrackIndex_].clips.size()) {
+        const auto& clip = selected.tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_];
+        if (clip.kind == SceneClipKind::dialogue && ui.button({panel.x + 8, panel.height - 104, panel.width - 16, 18}, "CYCLE DIALOGUE")) {
+            auto scenes = document().scenes();
+            if (contentWorkspace_) {
+                const auto candidates = contentReferenceCandidates(*contentWorkspace_, ContentDefinitionKind::dialogue);
+                if (!candidates.empty()) {
+                    auto& value = scenes[selectedSceneIndex_].tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_].dialogueId;
+                    const auto found = std::find_if(candidates.begin(), candidates.end(), [&](const auto& candidate) { return candidate.key.id == value; });
+                    value = (found == candidates.end() || std::next(found) == candidates.end()) ? candidates.front().key.id : std::next(found)->key.id;
+                    commitSceneEdit(std::move(scenes), "Dialogue reference updated");
+                }
+            }
+        }
+        if (clip.kind == SceneClipKind::presentationEffect && ui.button({panel.x + 8, panel.height - 104, panel.width - 16, 18}, "CYCLE EFFECT")) {
+            auto scenes = document().scenes(); std::vector<simulation::DefinitionId> ids;
+            for (const auto& effect : content_.presentationEffects().definitions()) ids.push_back(effect.id);
+            if (contentWorkspace_) for (const auto& candidate : contentReferenceCandidates(*contentWorkspace_, ContentDefinitionKind::presentationEffect)) ids.push_back(candidate.key.id);
+            if (!ids.empty()) { auto& value = scenes[selectedSceneIndex_].tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_].effectId; const auto found = std::find(ids.begin(), ids.end(), value); value = found == ids.end() || std::next(found) == ids.end() ? ids.front() : *std::next(found); commitSceneEdit(std::move(scenes), "Presentation effect reference updated"); }
+        }
+        if (clip.kind == SceneClipKind::worldEvent && ui.button({panel.x + 8, panel.height - 104, panel.width - 16, 18}, "CYCLE WORLD ACTION")) {
+            auto scenes = document().scenes(); auto& action = scenes[selectedSceneIndex_].tracks[selectedSceneTrackIndex_].clips[selectedSceneClipIndex_].worldAction;
+            const std::array<maps::WorldActionKind, 5> kinds{{maps::WorldActionKind::setFlag, maps::WorldActionKind::clearFlag, maps::WorldActionKind::startEncounter, maps::WorldActionKind::setDoorState, maps::WorldActionKind::playPresentationEffect}};
+            const auto found = std::find(kinds.begin(), kinds.end(), action.kind); const auto next = found == kinds.end() || std::next(found) == kinds.end() ? kinds.front() : *std::next(found); action.kind = next;
+            if (next == maps::WorldActionKind::setFlag || next == maps::WorldActionKind::clearFlag) action.definitionTarget = simulation::DefinitionId{"flag.scene"};
+            else if (next == maps::WorldActionKind::startEncounter && !document().encounters().empty()) action.definitionTarget = document().encounters().front().id;
+            else if (next == maps::WorldActionKind::playPresentationEffect && !content_.presentationEffects().definitions().empty()) action.definitionTarget = content_.presentationEffects().definitions().front().id;
+            else if (next == maps::WorldActionKind::setDoorState && !document().data().objects.empty()) action.instanceTarget = document().data().objects.front().id;
+            commitSceneEdit(std::move(scenes), "World action updated");
+        }
+    }
+    y = panel.height - 52;
+    if (ui.button({panel.x + 8, y, 70, 18}, "MARKER +")) { auto scenes = document().scenes(); std::string error; if (addSceneMarker(scenes[selectedSceneIndex_], {"marker." + std::to_string(scenes[selectedSceneIndex_].markers.size() + 1), scenePlayheadTick_}, {true, 5}, error)) { selectedSceneMarkerIndex_ = scenes[selectedSceneIndex_].markers.size() - 1; commitSceneEdit(std::move(scenes), "Scene marker added"); } else status_ = error; }
+    if (selectedSceneMarkerIndex_ < selected.markers.size() && ui.button({panel.x + 84, y, 70, 18}, "MARKER -")) { auto scenes = document().scenes(); std::string error; static_cast<void>(removeSceneMarker(scenes[selectedSceneIndex_], selectedSceneMarkerIndex_, error)); selectedSceneMarkerIndex_ = static_cast<std::size_t>(-1); commitSceneEdit(std::move(scenes), "Scene marker removed"); }
+    if (selectedSceneMarkerIndex_ < selected.markers.size() && ui.button({panel.x + 160, y, 70, 18}, "JUMP MARKER")) scenePlayheadTick_ = selected.markers[selectedSceneMarkerIndex_].tick;
+    if (ui.button({panel.x + 84, y, 70, 18}, "FIT DURATION")) { auto scenes = document().scenes(); static_cast<void>(fitSceneDurationToContent(scenes[selectedSceneIndex_])); commitSceneEdit(std::move(scenes), "Scene duration fitted"); }
+    if (ui.button({panel.x + 160, y, panel.width - 168, 18}, "ADD ACTIVATION")) { const std::array<maps::WorldTriggerKind, 4> kinds{{maps::WorldTriggerKind::mapEntered, maps::WorldTriggerKind::regionEntered, maps::WorldTriggerKind::objectActivated, maps::WorldTriggerKind::encounterCompleted}}; const auto kind = kinds[sceneActivationTriggerIndex_ % kinds.size()]; maps::WorldRuleDefinition rule; rule.id = simulation::DefinitionId{"rule.scene." + std::string(selected.id.value()) + "." + std::to_string(document().rules().size() + 1)}; rule.trigger.kind = kind; rule.actions.push_back({maps::WorldActionKind::startScene, selected.id, {}, {}}); if (kind == maps::WorldTriggerKind::regionEntered && !document().regions().empty()) rule.trigger.definitionTarget = simulation::DefinitionId{document().regions().front().regionId}; if (kind == maps::WorldTriggerKind::objectActivated && !document().data().objects.empty()) rule.trigger.instanceTarget = document().data().objects.front().id; if (kind == maps::WorldTriggerKind::encounterCompleted && !document().encounters().empty()) rule.trigger.definitionTarget = document().encounters().front().id; auto rules = document().rules(); rules.push_back(std::move(rule)); commitRuleEdit(std::move(rules), "Scene activation rule added"); sceneActivationTriggerIndex_ = (sceneActivationTriggerIndex_ + 1) % kinds.size(); }
+    const auto npcIds = [&] { std::vector<simulation::PersistentInstanceId> ids; for (const auto& value : document().data().npcs) ids.push_back(value.id); return ids; }(); const auto enemyIds = [&] { std::vector<simulation::PersistentInstanceId> ids; for (const auto& value : document().data().enemies) ids.push_back(value.id); return ids; }(); const auto validation = validateSceneTimeline(selected, {document().data().width * document().data().tileSize, document().data().height * document().data().tileSize, npcIds, enemyIds}); ui.labelInRect({panel.x + 8, panel.height - 28, panel.width - 16, 18}, validation.valid ? "SCENE VALID" : "SCENE INVALID: " + validation.error);
+}
+
+void EditorApp::drawSceneWorkspace(EditorUiContext& ui, const EditorInputState& input, core::RectI left, core::RectI viewport, core::RectI right, core::RectI status) {
+    ui.label("SCENES / " + std::string(document().data().id.value()), left.x + 8, left.y + 64);
+    if (ui.button({left.x + 8, left.y + 82, 66, 18}, "NEW SCENE")) { auto scenes = document().scenes(); game::gameplay::scenes::SceneDefinition scene; scene.id = simulation::DefinitionId{"scene.editor." + std::to_string(scenes.size() + 1)}; scene.durationTicks = 180; scene.actors.push_back({"player", SceneActorKind::player, {}}); scene.tracks.push_back({SceneTrackKind::actor, "player", {}}); scene.tracks.push_back({SceneTrackKind::dialogue, {}, {}}); scene.tracks.push_back({SceneTrackKind::world, {}, {}}); scene.tracks.push_back({SceneTrackKind::presentation, {}, {}}); scenes.push_back(std::move(scene)); selectedSceneIndex_ = scenes.size() - 1; selectedSceneTrackIndex_ = 0; selectedSceneClipIndex_ = static_cast<std::size_t>(-1); scenePlayheadTick_ = 0; commitSceneEdit(std::move(scenes), "Scene created"); }
+    if (ui.button({left.x + 80, left.y + 82, 76, 18}, "DUPLICATE") && selectedSceneIndex_ < document().scenes().size()) { auto scenes = document().scenes(); auto copy = scenes[selectedSceneIndex_]; copy.id = simulation::DefinitionId{"scene.editor." + std::to_string(scenes.size() + 1)}; scenes.push_back(std::move(copy)); selectedSceneIndex_ = scenes.size() - 1; commitSceneEdit(std::move(scenes), "Scene duplicated"); }
+    if (ui.button({left.x + 162, left.y + 82, 66, 18}, "DELETE") && selectedSceneIndex_ < document().scenes().size()) { auto scenes = document().scenes(); const auto id = scenes[selectedSceneIndex_].id; const bool referenced = std::any_of(document().rules().begin(), document().rules().end(), [&](const auto& rule) { return std::any_of(rule.actions.begin(), rule.actions.end(), [&](const auto& action) { return action.kind == maps::WorldActionKind::startScene && action.definitionTarget == id; }); }); if (referenced) status_ = "Scene is referenced by an activation rule"; else { scenes.erase(scenes.begin() + static_cast<std::ptrdiff_t>(selectedSceneIndex_)); selectedSceneIndex_ = scenes.empty() ? 0 : std::min(selectedSceneIndex_, scenes.size() - 1); commitSceneEdit(std::move(scenes), "Scene deleted"); } }
+    int listY = left.y + 108; for (std::size_t index = 0; index < document().scenes().size(); ++index) { if (ui.button({left.x + 8, listY, left.width - 16, 18}, document().scenes()[index].id.value(), selectedSceneIndex_ == index)) { selectedSceneIndex_ = index; scenePlayheadTick_ = 0; selectedSceneTrackIndex_ = 0; selectedSceneClipIndex_ = static_cast<std::size_t>(-1); sceneIdFocused_ = false; sceneActorAliasFocused_ = false; } listY += 20; if (listY > left.y + left.height - 30) break; }
+    const int timelineHeight = 154; const core::RectI mapViewport{viewport.x, viewport.y, viewport.width, std::max(1, viewport.height - timelineHeight)}; viewportBounds_ = mapViewport; render::Renderer2D renderer(*framebuffer_); drawScenePreview(renderer, mapViewport); handleSceneMapTarget(mapViewport, input); drawSceneTimeline(ui, input, {viewport.x, viewport.y + mapViewport.height, viewport.width, timelineHeight}); drawSceneInspector(ui, input, right); ui.labelInRect(status, status_, true);
 }
 
 void EditorApp::drawInspector(EditorUiContext& ui,core::RectI panel){int y=10;ui.label("PROPERTIES",panel.x+8,y);y+=18;ui.label(std::string(document().data().id.value()),panel.x+8,y);y+=18;

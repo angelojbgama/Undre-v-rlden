@@ -569,6 +569,26 @@ void CompoundEditorCommand::add(std::unique_ptr<EditorCommand> command){if(comma
 bool CompoundEditorCommand::apply(EditorDocument& document,std::string& error){std::size_t applied=0;for(auto& command:commands_){if(!command->apply(document,error)){while(applied>0){commands_[--applied]->revert(document);}return false;}++applied;}return true;}
 void CompoundEditorCommand::revert(EditorDocument& document) noexcept{for(auto it=commands_.rbegin();it!=commands_.rend();++it)(*it)->revert(document);}
 
+bool ReplaceScenesCommand::apply(EditorDocument& document, std::string& error) {
+    document.commandReplaceScenes(after_);
+    error.clear();
+    return true;
+}
+
+void ReplaceScenesCommand::revert(EditorDocument& document) noexcept {
+    document.commandReplaceScenes(before_);
+}
+
+bool ReplaceWorldRulesCommand::apply(EditorDocument& document, std::string& error) {
+    document.commandReplaceWorldRules(after_);
+    error.clear();
+    return true;
+}
+
+void ReplaceWorldRulesCommand::revert(EditorDocument& document) noexcept {
+    document.commandReplaceWorldRules(before_);
+}
+
 std::vector<TileCoordinate> rectangleCells(int x0,int y0,int x1,int y1,const maps::MapData& data){
     const int left=std::max(0,std::min(x0,x1));const int top=std::max(0,std::min(y0,y1));
     const int right=std::min(static_cast<int>(data.width)-1,std::max(x0,x1));

@@ -39,7 +39,7 @@ enum class EditorTextId {
     resetOnMapEnterDescription, containerResetWarning, destructibleResetWarning,
     missingDefinition, readOnlyCategory, fontUnavailable, initializationError,
     languagePortugueseBrazil, languageEnglish, unknown,
-    maps, newProject, importMap, removeMap, entryMap, setEntry, targetMap,
+    maps, scenes, newProject, importMap, removeMap, entryMap, setEntry, targetMap,
     targetSpawn, goToTarget, openProject, saveProject, saveProjectAs,
     validateProject, projectValid, projectInvalid, findInProject,
     duplicate, deleteDefinition, chooseImage, assetBrowser, search, selectSource,

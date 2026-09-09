@@ -8,6 +8,7 @@
 #include "editor/asset_browser.h"
 #include "editor/content_collection.h"
 #include "editor/content_reference_tools.h"
+#include "editor/scene_timeline.h"
 #include "editor/content_workspace_document.h"
 #include "editor/world_project_document.h"
 #include "editor/visual_preview.h"
@@ -83,7 +84,7 @@ public:
     [[nodiscard]] const EditorLocalization& localization() const noexcept { return localization_; }
 
 private:
-    enum class MapPaletteTab { maps, tiles, semantics, stamps, entities, rules, encounters };
+    enum class MapPaletteTab { maps, tiles, semantics, stamps, entities, rules, encounters, scenes };
     struct MapTileSelection final {
         TileCoordinate origin{};
         std::uint32_t width{};
@@ -148,6 +149,18 @@ private:
     void drawQuickInspect(EditorUiContext& ui, const EditorInputState& input);
     void drawMapBrowser(EditorUiContext& ui, const EditorInputState& input, core::RectI panel);
     void drawMapLinkInspector(EditorUiContext& ui, core::RectI panel);
+    void drawSceneWorkspace(EditorUiContext& ui, const EditorInputState& input,
+                            core::RectI left, core::RectI viewport, core::RectI right,
+                            core::RectI status);
+    void drawScenePreview(render::Renderer2D& renderer, core::RectI viewport) const;
+    void drawSceneTimeline(EditorUiContext& ui, const EditorInputState& input,
+                           core::RectI bounds);
+    void drawSceneInspector(EditorUiContext& ui, const EditorInputState& input,
+                            core::RectI panel);
+    void commitSceneEdit(std::vector<game::gameplay::scenes::SceneDefinition> scenes,
+                         std::string status);
+    void commitRuleEdit(std::vector<maps::WorldRuleDefinition> rules, std::string status);
+    void handleSceneMapTarget(core::RectI viewport, const EditorInputState& input);
     void handlePanelSplitters(const EditorInputState& input);
     void centerOnWorldPoint(core::WorldPointI point) noexcept;
 
@@ -190,6 +203,27 @@ private:
     std::size_t selectedStampCellIndex_{static_cast<std::size_t>(-1)};
     std::size_t selectedRuleIndex_{};
     std::size_t selectedEncounterIndex_{};
+    std::size_t selectedSceneIndex_{};
+    std::size_t selectedSceneActorIndex_{};
+    std::size_t selectedSceneTrackIndex_{};
+    std::size_t selectedSceneClipIndex_{static_cast<std::size_t>(-1)};
+    std::size_t selectedSceneMarkerIndex_{static_cast<std::size_t>(-1)};
+    std::uint32_t scenePlayheadTick_{};
+    float sceneTimelineZoom_{3.0F};
+    std::uint32_t sceneTimelineScroll_{};
+    bool scenePlaying_{};
+    bool sceneActorAliasFocused_{};
+    std::string sceneActorAliasEdit_;
+    bool sceneIdFocused_{};
+    std::string sceneIdEdit_;
+    struct SceneClipDragState final {
+        bool active{};
+        std::size_t track{};
+        std::size_t clip{};
+        std::uint32_t startTick{};
+    } sceneClipDrag_;
+    bool sceneMapTargetDragging_{};
+    std::size_t sceneActivationTriggerIndex_{};
     std::optional<MapTileSelection> mapTileSelection_;
     std::optional<game::content::AuthoredStamp> pendingStampFromSelection_;
     bool rawPalette_{};

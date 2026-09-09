@@ -668,6 +668,20 @@ bool EditorDocument::updateScene(const simulation::DefinitionId& sceneId,
     return true;
 }
 
+void EditorDocument::commandReplaceScenes(
+    std::vector<game::gameplay::scenes::SceneDefinition> scenes) noexcept {
+    data_.scenes = std::move(scenes);
+    authoredSource_.scenes = data_.scenes;
+    markMutated();
+}
+
+void EditorDocument::commandReplaceWorldRules(
+    std::vector<maps::WorldRuleDefinition> rules) noexcept {
+    data_.worldRules = std::move(rules);
+    authoredSource_.worldRules = data_.worldRules;
+    markMutated();
+}
+
 ValidationReport EditorDocument::validate(const game::GameContentRegistry& content) const {
     ValidationReport report;
     const auto catalogs = game::mapValidationCatalogs(content);

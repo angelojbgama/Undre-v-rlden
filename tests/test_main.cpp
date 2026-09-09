@@ -3401,6 +3401,18 @@ void testSceneTimelineAuthoring() {
                !ruler.empty() && ruler.front().tick >= 60 &&
                editor::sceneTimelineClipBounds(geometry, scene.tracks.front().clips.front()).width > 1,
            "scene timeline geometry exposes deterministic ruler, tick and clip layout helpers");
+
+    auto document = editor::EditorDocument::newMap(simulation::MapId{"map.scene.history"}, 8, 8, 16);
+    auto authoredScenes = document.scenes();
+    authoredScenes.push_back(scene);
+    std::string historyError;
+    expect(document.execute(std::make_unique<editor::ReplaceScenesCommand>(
+                                document.scenes(), authoredScenes), historyError) &&
+               document.scenes().size() == 1 && document.scenes().front().id == scene.id,
+           "scene authoring is recorded as one document command");
+    expect(document.undo() && document.scenes().empty() && document.redo(historyError) &&
+               document.scenes().size() == 1 && document.authoredSource().scenes == document.scenes(),
+           "scene command undo/redo keeps authored source and runtime map view synchronized");
 }
 
 void testWorldObjectPersistencePolicies() {
@@ -7841,7 +7853,7 @@ void testPhase15PresentationFeedback() {
     // A genuine v1 source predates both map-authored scenes and placement
     // persistence.  The current encoder always emits the optional fields, so
     // remove them from this fixture before exercising the legacy reader.
-    const auto legacyScenes = legacyUmap.find("\"scenes\":[]");
+    const auto legacyScenes = legacyUmap.find("\"scenes\"");
     if (legacyScenes != std::string::npos) {
         const auto comma = legacyUmap.find(',', legacyScenes);
         legacyUmap.erase(legacyScenes,

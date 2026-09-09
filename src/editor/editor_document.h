@@ -230,6 +230,13 @@ public:
     bool updateScene(const simulation::DefinitionId& sceneId,
                      game::gameplay::scenes::SceneDefinition scene, std::string& error);
 
+    // Command implementations use this narrow replacement primitive so scene
+    // authoring participates in the same history as map edits.  It intentionally
+    // changes only the scene collection; the authored source remains the single
+    // source of truth for save/export.
+    void commandReplaceScenes(
+        std::vector<game::gameplay::scenes::SceneDefinition> scenes) noexcept;
+
     // These small document operations are the Map Maker's structured authoring
     // surface for world logic.  They intentionally edit the authored source and
     // refresh the compiled compatibility view used by the existing tools.
@@ -246,6 +253,7 @@ public:
     bool removeRuleAction(const simulation::DefinitionId& ruleId, std::size_t index,
                           std::string& error);
     bool setRuleOnce(const simulation::DefinitionId& ruleId, bool once, std::string& error);
+    void commandReplaceWorldRules(std::vector<maps::WorldRuleDefinition> rules) noexcept;
 
     bool addEncounter(maps::EncounterDefinition encounter, std::string& error);
     bool removeEncounter(const simulation::DefinitionId& encounterId, std::string& error);

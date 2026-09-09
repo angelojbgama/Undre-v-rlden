@@ -258,6 +258,33 @@ private:
     std::vector<std::unique_ptr<EditorCommand>> commands_;
 };
 
+class ReplaceScenesCommand final : public EditorCommand {
+public:
+    ReplaceScenesCommand(
+        std::vector<game::gameplay::scenes::SceneDefinition> before,
+        std::vector<game::gameplay::scenes::SceneDefinition> after)
+        : before_(std::move(before)), after_(std::move(after)) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Edit Scene"; }
+private:
+    std::vector<game::gameplay::scenes::SceneDefinition> before_;
+    std::vector<game::gameplay::scenes::SceneDefinition> after_;
+};
+
+class ReplaceWorldRulesCommand final : public EditorCommand {
+public:
+    ReplaceWorldRulesCommand(std::vector<maps::WorldRuleDefinition> before,
+                             std::vector<maps::WorldRuleDefinition> after)
+        : before_(std::move(before)), after_(std::move(after)) {}
+    bool apply(EditorDocument& document, std::string& error) override;
+    void revert(EditorDocument& document) noexcept override;
+    [[nodiscard]] const char* label() const noexcept override { return "Edit Scene Activation"; }
+private:
+    std::vector<maps::WorldRuleDefinition> before_;
+    std::vector<maps::WorldRuleDefinition> after_;
+};
+
 class PlaceStampCommand final : public EditorCommand {
 public:
     PlaceStampCommand(std::size_t layer, const game::authoring::StampDefinition& stamp,
