@@ -9,6 +9,7 @@
 #include "engine/render/renderer_2d.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace underworld::editor {
 namespace {
@@ -17,6 +18,78 @@ constexpr core::ColorRGBA8 borderColor{70, 78, 92, 255};
 constexpr core::ColorRGBA8 buttonColor{48, 55, 67, 255};
 constexpr core::ColorRGBA8 activeColor{62, 100, 148, 255};
 constexpr core::ColorRGBA8 tooltipColor{23, 27, 34, 255};
+
+std::vector<std::size_t> codepointBoundaries(std::string_view text) {
+    std::vector<std::size_t> result{0};
+    std::size_t offset = 0;
+    while (offset < text.size()) {
+        const std::size_t before = offset;
+        static_cast<void>(core::decodeUtf8Codepoint(text, offset));
+        if (offset == before) ++offset;
+        result.push_back(offset);
+    }
+    return result;
+}
+
+struct VisibleTextRange final {
+    std::size_t first{};
+    std::size_t last{};
+};
+
+VisibleTextRange visibleTextRange(std::size_t count, std::size_t cursor,
+                                  int maximumCharacters) noexcept {
+    if (maximumCharacters <= 0) return {cursor, cursor};
+    if (count <= static_cast<std::size_t>(maximumCharacters)) return {0, count};
+    const auto capacity = static_cast<std::size_t>(maximumCharacters);
+    const auto first = std::min(cursor > capacity ? cursor - capacity : std::size_t{},
+                                count - capacity);
+    return {first, first + capacity};
+}
+
+std::size_t cursorFromPointer(const VisibleTextRange& range, std::size_t count,
+                              core::RectI bounds, int pointerX, int advance) noexcept {
+    const int relative = pointerX - (bounds.x + 4);
+    const auto column = relative <= 0 ? std::size_t{} :
+        static_cast<std::size_t>((relative + advance / 2) / advance);
+    return std::min(count, range.first + column);
+}
+
+void insertTextAtCursor(std::string& value, TextEditState& state,
+                        std::string_view text, std::size_t maximumLength) {
+    auto boundaries = codepointBoundaries(value);
+    state.cursor = std::min(state.cursor, boundaries.size() - 1U);
+    std::size_t offset = 0;
+    while (offset < text.size() && boundaries.size() - 1U < maximumLength) {
+        const std::size_t before = offset;
+        const auto codepoint = core::decodeUtf8Codepoint(text, offset);
+        if (offset == before) ++offset;
+        if (!codepoint || *codepoint < 32U || *codepoint == 127U || *codepoint == '\n' ||
+            *codepoint == '\r' || *codepoint == '\t') continue;
+        std::string encoded;
+        static_cast<void>(core::appendUtf8Codepoint(encoded, *codepoint));
+        const auto byteOffset = boundaries[state.cursor];
+        value.insert(byteOffset, encoded);
+        ++state.cursor;
+        boundaries = codepointBoundaries(value);
+    }
+}
+
+void eraseBeforeCursor(std::string& value, TextEditState& state) {
+    const auto boundaries = codepointBoundaries(value);
+    state.cursor = std::min(state.cursor, boundaries.size() - 1U);
+    if (state.cursor == 0) return;
+    value.erase(boundaries[state.cursor - 1U], boundaries[state.cursor] -
+                                             boundaries[state.cursor - 1U]);
+    --state.cursor;
+}
+
+void eraseAtCursor(std::string& value, TextEditState& state) {
+    const auto boundaries = codepointBoundaries(value);
+    state.cursor = std::min(state.cursor, boundaries.size() - 1U);
+    if (state.cursor >= boundaries.size() - 1U) return;
+    value.erase(boundaries[state.cursor], boundaries[state.cursor + 1U] -
+                                             boundaries[state.cursor]);
+}
 }
 
 void EditorUiContext::panel(core::RectI bounds) const {
@@ -99,23 +172,53 @@ bool EditorUiContext::toggle(core::RectI bounds, std::string_view text, bool val
 bool EditorUiContext::textField(core::RectI bounds, std::string& value, bool active,
                                std::size_t maximumLength) const {
     const bool hovered = pointerInside(bounds);
-    renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
-    if (font_) render::drawText(renderer_, *font_, fitText(value, std::max(0, bounds.width - 8), active, font_->advance()),
-                                bounds.x + 4, bounds.y + (bounds.height - 9) / 2);
-    if (active) {
-        std::size_t offset = 0;
-        while (offset < input_.textInput.size() && core::utf8CodepointCount(value) < maximumLength) {
-            const std::size_t before = offset;
-            const auto codepoint = core::decodeUtf8Codepoint(input_.textInput, offset);
-            if (offset == before) ++offset;
-            if (codepoint && *codepoint >= 32U && *codepoint != 127U && *codepoint != '\n' &&
-                *codepoint != '\r' && *codepoint != '\t') {
-                static_cast<void>(core::appendUtf8Codepoint(value, *codepoint));
-            }
-        }
-        if (input_.backspacePressed) static_cast<void>(core::eraseLastUtf8Codepoint(value));
+    const bool clicked = hovered && input_.pointer.leftPressed;
+    auto& edit = *textEditState_;
+    if (clicked || (active && edit.field != &value)) {
+        edit.field = &value;
+        edit.cursor = core::utf8CodepointCount(value);
     }
-    return hovered && input_.pointer.leftPressed;
+    const bool focused = active || clicked;
+    const auto boundaries = codepointBoundaries(value);
+    edit.cursor = std::min(edit.cursor, boundaries.size() - 1U);
+    const int advance = font_ ? std::max(1, font_->advance()) : 7;
+    const int innerWidth = std::max(0, bounds.width - 8);
+    const auto visible = visibleTextRange(boundaries.size() - 1U, edit.cursor,
+                                          innerWidth / advance);
+    if (clicked) {
+        edit.cursor = cursorFromPointer(visible, boundaries.size() - 1U, bounds,
+                                        input_.pointer.x, advance);
+    }
+    if (focused) {
+        edit.cursor = std::min(edit.cursor, boundaries.size() - 1U);
+        if (input_.homePressed) edit.cursor = 0;
+        if (input_.endPressed) edit.cursor = boundaries.size() - 1U;
+        if (input_.leftPressed && edit.cursor > 0) --edit.cursor;
+        if (input_.rightPressed && edit.cursor < boundaries.size() - 1U) ++edit.cursor;
+        if (input_.backspacePressed) eraseBeforeCursor(value, edit);
+        if (input_.deletePressed) eraseAtCursor(value, edit);
+        insertTextAtCursor(value, edit, input_.textInput, maximumLength);
+    }
+    const auto renderedBoundaries = codepointBoundaries(value);
+    edit.cursor = std::min(edit.cursor, renderedBoundaries.size() - 1U);
+    const auto renderedRange = visibleTextRange(renderedBoundaries.size() - 1U, edit.cursor,
+                                                innerWidth / advance);
+    renderer_.fillRect(bounds, active ? activeColor : (hovered ? borderColor : buttonColor));
+    if (font_) {
+        const auto rendered = std::string_view(value).substr(
+            renderedBoundaries[renderedRange.first],
+            renderedBoundaries[renderedRange.last] - renderedBoundaries[renderedRange.first]);
+        render::drawText(renderer_, *font_, rendered, bounds.x + 4,
+                         bounds.y + (bounds.height - 9) / 2);
+    }
+    if (focused) {
+        const int caretX = bounds.x + 4 +
+            static_cast<int>((edit.cursor - renderedRange.first) *
+                             static_cast<std::size_t>(advance));
+        renderer_.fillRect({caretX, bounds.y + 3, 1, std::max(1, bounds.height - 6)},
+                            core::ColorRGBA8{255, 255, 255, 255});
+    }
+    return clicked;
 }
 
 bool EditorUiContext::pointerInside(core::RectI bounds) const noexcept {

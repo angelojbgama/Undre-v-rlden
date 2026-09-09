@@ -5,6 +5,7 @@
 #include "editor/editor_icons.h"
 #include "editor/editor_localization.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -45,8 +46,16 @@ struct EditorInputState final {
     bool down{};
     bool left{};
     bool right{};
+    bool leftPressed{};
+    bool rightPressed{};
+    bool endPressed{};
     std::uint64_t previewTicks{};
     std::string textInput;
+};
+
+struct TextEditState final {
+    const std::string* field{};
+    std::size_t cursor{};
 };
 
 class EditorUiContext final {
@@ -54,9 +63,10 @@ public:
     EditorUiContext(render::Renderer2D& renderer, const render::BitmapFont* font,
                     const EditorInputState& input,
                     const EditorLocalization& localization,
-                    core::RectI canvas = {}) noexcept
+                    core::RectI canvas = {}, TextEditState* textEditState = nullptr) noexcept
         : renderer_(renderer), font_(font), input_(input), localization_(localization),
-          canvas_(canvas) {}
+          canvas_(canvas),
+          textEditState_(textEditState ? textEditState : &fallbackTextEditState_) {}
 
     void panel(core::RectI bounds) const;
     void fillRect(core::RectI bounds, core::ColorRGBA8 color) const noexcept;
@@ -93,6 +103,8 @@ private:
     const EditorInputState& input_;
     const EditorLocalization& localization_;
     core::RectI canvas_{};
+    mutable TextEditState fallbackTextEditState_{};
+    TextEditState* textEditState_{};
     mutable std::optional<TooltipRequest> tooltip_;
 };
 

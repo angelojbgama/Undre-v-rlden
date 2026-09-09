@@ -9788,6 +9788,52 @@ void testEditorLocalization() {
     std::string field;
     (void)ui.textField({0, 0, 20, 9}, field, true, 2);
     expect(field == "çã", "Editor text fields accept Portuguese UTF-8 input");
+    {
+        render::Framebuffer editFramebuffer(160, 16);
+        editor::EditorInputState editInput;
+        editor::TextEditState editState;
+        render::Renderer2D editRenderer(editFramebuffer);
+        editor::EditorUiContext editUi(editRenderer, nullptr, editInput, portuguese,
+                                       {}, &editState);
+        std::string editable = "map.untitled";
+        const core::RectI editBounds{0, 0, 160, 16};
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.pointer.x = 4 + 4 * 7;
+        editInput.pointer.leftPressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.pointer.leftPressed = false;
+        editInput.textInput = "room.";
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        expect(editable == "map.room.untitled",
+               "text fields insert UTF-8 text at the clicked cursor position");
+        editInput.textInput.clear();
+        editInput.endPressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.endPressed = false;
+        editInput.leftPressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.leftPressed = false;
+        editInput.textInput = "X";
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        expect(editable == "map.room.untitleXd",
+               "text fields move the cursor with the arrow keys before insertion");
+        editInput.textInput.clear();
+        editInput.backspacePressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.backspacePressed = false;
+        editInput.homePressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        editInput.homePressed = false;
+        editInput.textInput = "X";
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        expect(editable == "Xmap.room.untitled",
+               "text fields support Backspace and Home cursor navigation");
+        editInput.textInput.clear();
+        editInput.deletePressed = true;
+        static_cast<void>(editUi.textField(editBounds, editable, true));
+        expect(editable == "Xap.room.untitled",
+               "text fields delete the character at the cursor");
+    }
 }
 
 void testEditorResponsiveLayerWorkflow() {

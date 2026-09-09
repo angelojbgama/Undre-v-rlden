@@ -286,7 +286,7 @@ void EditorApp::updateAndRender(const EditorInputState& input){
     }
     render::Renderer2D renderer(*framebuffer_);framebuffer_->clear(background);
     EditorUiContext ui(renderer, font_.get(), input, localization_,
-                       {0, 0, framebuffer_->width(), framebuffer_->height()});
+                       {0, 0, framebuffer_->width(), framebuffer_->height()}, &textEditState_);
     drawShell(ui,input);
     updateStatus(viewportBounds_,input);
 }
@@ -4242,7 +4242,7 @@ void EditorApp::handleContentPreview(EditorUiContext& ui, const EditorInputState
 void EditorApp::drawViewport(render::Renderer2D& renderer,core::RectI viewport,const EditorInputState& input){
     renderer.fillRect(viewport,viewportBackground);
     drawMap(renderer,viewport);
-    if (!playtest_.active()) handleViewport(viewport,input);
+    if (!playtest_.active() && !newMapDialog_) handleViewport(viewport,input);
     drawEntities(renderer,viewport);
     if (!playtest_.active()) drawPlacementPreview(renderer, viewport);
 }
@@ -4385,7 +4385,7 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
     const core::PointI pointer{input.pointer.x,input.pointer.y};const auto worldPoint=screenToWorld(pointer,viewport);const int tileSize=document().data().tileSize;
     auto snapped=worldPoint;if(!input.alt){snapped.x=(snapped.x/tileSize)*tileSize;snapped.y=(snapped.y/tileSize)*tileSize;}
     placementPreviewPoint_.reset();
-    if(input.homePressed)frameMap(viewport);
+    if(input.homePressed && !layerNameFocused_)frameMap(viewport);
     if(inside&&input.pointer.wheelDelta!=0){const auto anchor=worldPoint;auto& step=document().viewport().zoomStep;if(input.pointer.wheelDelta>0&&step+1<zoomSteps.size())++step;else if(input.pointer.wheelDelta<0&&step>0)--step;document().viewport().worldX=anchor.x-(pointer.x-viewport.x)/zoom();document().viewport().worldY=anchor.y-(pointer.y-viewport.y)/zoom();}
     if(inside&&(input.pointer.middlePressed||(input.space&&input.pointer.leftPressed))){drag_.kind=DragState::Kind::pan;drag_.pointerStart=pointer;drag_.worldStart={static_cast<int>(document().viewport().worldX),static_cast<int>(document().viewport().worldY)};}
     if(drag_.kind==DragState::Kind::pan){if(input.pointer.middleDown||(input.space&&input.pointer.leftDown)){document().viewport().worldX=drag_.worldStart.x-(pointer.x-drag_.pointerStart.x)/zoom();document().viewport().worldY=drag_.worldStart.y-(pointer.y-drag_.pointerStart.y)/zoom();}else drag_={};return;}
@@ -4437,7 +4437,7 @@ void EditorApp::handleViewport(core::RectI viewport,const EditorInputState& inpu
         else if(drag_.kind==DragState::Kind::regionResize){world::AabbI after=drag_.regionStart;after.width=std::max(1,drag_.worldCurrent.x-after.x);after.height=std::max(1,drag_.worldCurrent.y-after.y);execute(std::make_unique<ResizeRegionCommand>(document().selection().instanceId,drag_.regionStart,after));}
         drag_={};
     }
-    if(input.deletePressed&&document().selection().kind!=SelectionKind::none)execute(std::make_unique<DeleteEntityCommand>(document().selection().kind,document().selection().instanceId,document().selection().authoredId));
+    if(input.deletePressed&&!layerNameFocused_&&document().selection().kind!=SelectionKind::none)execute(std::make_unique<DeleteEntityCommand>(document().selection().kind,document().selection().instanceId,document().selection().authoredId));
     if(input.duplicatePressed){const auto& selection=document().selection();if(selection.instanceId){const auto id=document().allocatePersistentId();const auto copy=duplicatePlacement(document(),selection.kind,selection.instanceId,id,tileSize);if(copy){std::optional<PropertyOverrideSet> overrides;const auto found=document().propertyOverrides().find(selection.instanceId.value);if(found!=document().propertyOverrides().end())overrides=found->second;execute(std::make_unique<PlaceEntityCommand>(*copy,std::move(overrides)));}}else {const auto copy=duplicateAuthoredPlacement(document(),selection.kind,selection.authoredId,tileSize);if(copy)execute(std::make_unique<PlaceEntityCommand>(*copy));}}
     if(input.undoPressed) { document().undo(); }
     if(input.redoPressed){std::string error;if(!document().redo(error))status_=error;}
@@ -5157,7 +5157,7 @@ void EditorApp::cancelActiveGesture() noexcept{
     previewRectangleDragging_=false;
 }
 void EditorApp::shellCommand(EditorShellCommand command){
-    if(command==EditorShellCommand::newMap){cancelActiveGesture();playtest_.stop();newMapDialog_=true;}
+    if(command==EditorShellCommand::newMap){cancelActiveGesture();playtest_.stop();layerNameFocused_=false;newMapDialog_=true;}
     else if(command==EditorShellCommand::newProject){
         cancelActiveGesture(); playtest_.stop(); worldProject_=WorldProjectDocument::newProject(initialDocument(content_));
         selectedDefinition_ = {};

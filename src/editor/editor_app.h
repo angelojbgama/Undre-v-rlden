@@ -187,6 +187,7 @@ private:
     enum class Splitter { none, left, right } activeSplitter_{Splitter::none};
     DragState drag_;
     LayerDragState layerDrag_;
+    TextEditState textEditState_;
     simulation::DefinitionId selectedDefinition_{};
     game::AuthoringCategory selectedCategory_{game::AuthoringCategory::enemy};
     simulation::DefinitionId selectedTileset_{"tileset.dungeon"};
