@@ -3376,7 +3376,7 @@ void testSceneTimelineAuthoring() {
            "scene timeline supports duplicate, resize, map-target edit and delete without runtime state");
     expect(editor::addSceneMarker(scene, {"reaction", 72}, {true, 5}, error) &&
                editor::renameSceneMarker(scene, 0, "reaction.start", error) &&
-               editor::jumpToSceneMarker(scene, "reaction.start") == 70 &&
+               editor::jumpToSceneMarker(scene, "reaction.start") == std::uint32_t{70} &&
                editor::fitSceneDurationToContent(scene) == 90,
            "scene markers support snap, rename, jump and fit-duration navigation");
 
