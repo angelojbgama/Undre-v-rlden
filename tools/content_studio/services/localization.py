@@ -19,7 +19,7 @@ TRANSLATIONS = {
         "new_content": "Novo Workspace de Conteúdo", "open_project": "Abrir Projeto...",
         "open_content": "Abrir Conteúdo", "quit": "Sair", "frame": "Enquadrar Mapa",
         "language": "Idioma", "definitions": "Definições", "assets": "Assets",
-        "semantics_stamps": "Semântica / Stamps", "scenes": "Cenas", "rules_links": "Regras / Links",
+        "semantics_stamps": "Semântica / Stamps", "map_elements": "Elementos do Mapa", "scenes": "Cenas", "rules_links": "Regras / Links",
         "tools_select": "Selecionar", "tools_pencil": "Lápis", "tools_erase": "Apagar",
         "tools_rectangle": "Retângulo", "tools_fill": "Preencher", "tools_eyedropper": "Escolher Tile",
         "tools_tile_selection": "Selecionar Tiles", "tools_collision": "Colisão +",
@@ -28,6 +28,14 @@ TRANSLATIONS = {
         "tools_collision_fill_erase": "Colisão Fill -", "tools_entity": "Entidade",
         "tools_spawn": "Player Spawn", "tools_link": "Link de Mapa", "tools_region": "Região",
         "tools_stamp": "Stamp", "tools_pan": "Pan", "ready": "Pronto",
+        "snap": "Snap", "overlays": "Sobreposições", "playtest_toolbar": "Playtest",
+        "player_spawn": "Player Spawn", "map_transition": "Transição de Mapa", "region_element": "Região / Trigger",
+        "map_elements_hint": "Arraste um elemento para o mapa", "tileset_import": "Importar Tileset", "import_tileset": "Importar Tileset...",
+        "browse": "Procurar", "source_image": "Imagem fonte", "tileset_id": "ID do Tileset",
+        "display_name": "Nome exibido", "tile_width": "Largura do tile", "tile_height": "Altura do tile",
+        "spacing": "Espaçamento", "margin": "Margem", "copy_to_workspace": "Copiar para o workspace",
+        "no_image": "Nenhuma imagem", "image_unavailable": "Imagem indisponível", "invalid_image": "Imagem inválida",
+        "grid_summary": "{width} × {height} px — {columns} × {rows} tiles",
     },
     "en-US": {
         "app": "Dungeon Underworld — Content Studio", "map": "Map", "content": "Content",
@@ -45,7 +53,7 @@ TRANSLATIONS = {
         "new_content": "New Content Workspace", "open_project": "Open Project...",
         "open_content": "Open Content", "quit": "Exit", "frame": "Frame Map",
         "language": "Language", "definitions": "Definitions", "assets": "Assets",
-        "semantics_stamps": "Semantics / Stamps", "scenes": "Scenes", "rules_links": "Rules / Links",
+        "semantics_stamps": "Semantics / Stamps", "map_elements": "Map Elements", "scenes": "Scenes", "rules_links": "Rules / Links",
         "tools_select": "Select", "tools_pencil": "Pencil", "tools_erase": "Erase",
         "tools_rectangle": "Rectangle", "tools_fill": "Fill", "tools_eyedropper": "Pick Tile",
         "tools_tile_selection": "Select Tiles", "tools_collision": "Collision +",
@@ -54,6 +62,14 @@ TRANSLATIONS = {
         "tools_collision_fill_erase": "Collision Fill -", "tools_entity": "Entity",
         "tools_spawn": "Player Spawn", "tools_link": "Map Link", "tools_region": "Region",
         "tools_stamp": "Stamp", "tools_pan": "Pan", "ready": "Ready",
+        "snap": "Snap", "overlays": "Overlays", "playtest_toolbar": "Playtest",
+        "player_spawn": "Player Spawn", "map_transition": "Map Transition", "region_element": "Region / Trigger",
+        "map_elements_hint": "Drag an element to the map", "tileset_import": "Import Tileset", "import_tileset": "Import Tileset...",
+        "browse": "Browse", "source_image": "Source image", "tileset_id": "Tileset ID",
+        "display_name": "Display name", "tile_width": "Tile width", "tile_height": "Tile height",
+        "spacing": "Spacing", "margin": "Margin", "copy_to_workspace": "Copy to workspace",
+        "no_image": "No image", "image_unavailable": "Image unavailable", "invalid_image": "Invalid image",
+        "grid_summary": "{width} × {height} px — {columns} × {rows} tiles",
     },
 }
 
@@ -67,5 +83,6 @@ class Translator:
             raise ValueError(language)
         self.language = language
 
-    def __call__(self, key: str) -> str:
-        return TRANSLATIONS[self.language].get(key, key)
+    def __call__(self, key: str, **values: object) -> str:
+        text = TRANSLATIONS[self.language].get(key, key)
+        return text.format(**values) if values else text

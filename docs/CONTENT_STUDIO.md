@@ -11,7 +11,8 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
-No Windows, use `.venv\\Scripts\\activate`. A dependência PySide6 está restrita
+No Windows, use `.venv\\Scripts\\activate` (ou execute diretamente
+`.venv\\Scripts\\python.exe`). A dependência PySide6 está restrita
 ao pacote de ferramentas de autoria. A faixa suportada é `PySide6 >= 6.7, < 7`;
 PySide6/Qt for Python é distribuído sob as opções de licença LGPLv3/GPLv3 ou
 comercial do Qt, conforme a instalação escolhida. O repositório não incorpora a
@@ -29,6 +30,16 @@ python -m tools.content_studio --project content/world.uworld \\
 Os wrappers `content_studio.sh`, `content_studio.bat` e o entrypoint instalado
 `du-content-studio` são equivalentes. `--asset-root` aponta para os assets
 licenciados externos; eles não são copiados para o repositório.
+
+`content_studio.bat` usa automaticamente `.venv` quando ela existe e informa o
+comando de preparação quando PySide6 ainda não foi instalado. O primeiro setup
+no Windows pode ser feito com:
+
+```bat
+py -3.11 -m venv .venv
+.venv\\Scripts\\python.exe -m pip install -e .
+content_studio.bat
+```
 
 ## Fluxo de produção
 

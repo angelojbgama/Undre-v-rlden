@@ -5,8 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QPixmap, QIcon
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QDrag, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
 from ..model.content_workspace import ContentWorkspace
 from ..model.authored_entity_index import AuthoredEntityIndex
 from ..model.types import ContentDefinition, JsonValue
+from ..interaction.drag_payload import StudioDragPayload
 from ..services.assets import AssetCatalog
+from ..services.localization import Translator
 
 _PATH_PART = re.compile(r"([^.[\]]+)|\[([0-9]+)\]")
 ENUM_VALUES: dict[str, tuple[str, ...]] = {
@@ -75,6 +77,27 @@ def set_path(value: JsonValue, path: str, replacement: JsonValue) -> None:
 
 def pretty_path(path: str) -> str:
     return path.replace(".", " / ").replace("[", " [").replace("]", "]")
+
+
+class PayloadListWidget(QListWidget):
+    """List widget that emits the shared typed drag payload."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.payload_factory: Callable[[list[QListWidgetItem]], StudioDragPayload | None] | None = None
+
+    def startDrag(self, supported_actions: Qt.DropActions) -> None:  # type: ignore[override]
+        if self.payload_factory is None:
+            return
+        payload = self.payload_factory(self.selectedItems())
+        if payload is None:
+            return
+        mime = QMimeData()
+        payload.put_mime_data(mime)
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.CopyAction)
 
 
 class StructuredInspector(QWidget):
@@ -317,10 +340,12 @@ class ContentBrowser(QWidget):
     find_usages_requested = Signal(object)
     back_requested = Signal()
 
-    def __init__(self, workspace: ContentWorkspace | None = None, allowed: tuple[str, ...] | None = None, parent: QWidget | None = None) -> None:
+    def __init__(self, workspace: ContentWorkspace | None = None, allowed: tuple[str, ...] | None = None,
+                 parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.allowed = allowed
+        self.translate = translator or Translator()
         self.index = AuthoredEntityIndex(workspace)
         self._selected: ContentDefinition | None = None
         self.search = QLineEdit()
@@ -328,17 +353,20 @@ class ContentBrowser(QWidget):
         self.search.textChanged.connect(self.refresh)
         self.category = QComboBox()
         self.category.currentIndexChanged.connect(self.refresh)
-        self.list = QListWidget()
+        self.list = PayloadListWidget()
+        self.list.payload_factory = self._drag_payload
         self.list.currentItemChanged.connect(self._selection_changed)
         self.create_button = QPushButton("Create")
         self.delete_button = QPushButton("Delete")
         self.duplicate_button = QPushButton("Duplicate")
+        self.rename_button = QPushButton(self.translate("rename"))
         self.place_button = QPushButton("Place in Map")
         self.usages_button = QPushButton("Find Usages")
         self.back_button = QPushButton("Back")
         self.create_button.clicked.connect(self._create)
         self.delete_button.clicked.connect(self._delete)
         self.duplicate_button.clicked.connect(self._duplicate)
+        self.rename_button.clicked.connect(self._rename)
         self.place_button.clicked.connect(self._place)
         self.usages_button.clicked.connect(lambda: self.find_usages_requested.emit(self._selected) if self._selected else None)
         self.back_button.clicked.connect(self.back_requested.emit)
@@ -350,8 +378,9 @@ class ContentBrowser(QWidget):
         buttons.addWidget(self.delete_button, 0, 1)
         buttons.addWidget(self.duplicate_button, 1, 0)
         buttons.addWidget(self.place_button, 1, 1)
-        buttons.addWidget(self.usages_button, 2, 0)
-        buttons.addWidget(self.back_button, 2, 1)
+        buttons.addWidget(self.rename_button, 2, 0)
+        buttons.addWidget(self.usages_button, 3, 0)
+        buttons.addWidget(self.back_button, 3, 1)
         buttons.setColumnStretch(0, 1)
         buttons.setColumnStretch(1, 1)
         layout = QVBoxLayout(self)
@@ -365,6 +394,10 @@ class ContentBrowser(QWidget):
         self.workspace = workspace
         self.index.set_workspace(workspace)
         self.refresh()
+
+    def set_translator(self, translator: Translator) -> None:
+        self.translate = translator
+        self.rename_button.setText(self.translate("rename"))
 
     def select_definition(self, category: str, definition_id: str) -> None:
         if self.allowed and category not in self.allowed:
@@ -453,9 +486,27 @@ class ContentBrowser(QWidget):
             self.refresh()
             self.definition_changed.emit()
 
+    def _rename(self) -> None:
+        if not self.workspace or not self._selected or self._selected.origin != "project":
+            return
+        from PySide6.QtWidgets import QInputDialog
+        definition_id, accepted = QInputDialog.getText(self, self.translate("rename"), "DefinitionId:", text=self._selected.definition_id)
+        if accepted and definition_id.strip():
+            self.workspace.rename_definition(self._selected, definition_id.strip())
+            self.refresh()
+            self.definition_changed.emit()
+
     def _place(self) -> None:
         if self._selected and self._selected.category in {"enemies", "npcs", "objects", "pickups"}:
             self.place_requested.emit(self._selected.category, self._selected.definition_id)
+
+    def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
+        if not items:
+            return None
+        key = items[0].data(Qt.ItemDataRole.UserRole)
+        if key is None or not hasattr(key, "category") or not hasattr(key, "definition_id"):
+            return None
+        return StudioDragPayload.content(str(key.category), str(key.definition_id))
 
 
 class TilePalette(QWidget):
@@ -473,7 +524,8 @@ class TilePalette(QWidget):
         self.source_index.setRange(0, 65535)
         self.source_index.valueChanged.connect(self._emit_selection)
         self.tilesets.currentIndexChanged.connect(self._tileset_changed)
-        self.tiles = QListWidget()
+        self.tiles = PayloadListWidget()
+        self.tiles.payload_factory = self._drag_payload
         self.tiles.setViewMode(QListWidget.ViewMode.IconMode)
         self.tiles.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.tiles.setMovement(QListWidget.Movement.Static)
@@ -559,6 +611,12 @@ class TilePalette(QWidget):
         data = definition.data  # type: ignore[attr-defined]
         return self.asset_root if data.get("root", "gameAssets") == "gameAssets" else self.workspace.root
 
+    def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
+        if not items or self.tilesets.currentIndex() < 0:
+            return None
+        indices = [int(item.data(Qt.ItemDataRole.UserRole)) for item in items]
+        return StudioDragPayload.tile_brush(str(self.tilesets.currentData()), indices)
+
 
 class SemanticPalette(QWidget):
     """Authored semantic tiles and stamps, kept separate from raw atlas cells."""
@@ -603,6 +661,49 @@ class SemanticPalette(QWidget):
     def _stamp_selected(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
         del unused
         if item: self.stamp_selected.emit(str(item.data(Qt.ItemDataRole.UserRole)))
+
+
+class MapElementsPalette(QWidget):
+    """Palette for positional map elements, backed by the common drag contract."""
+
+    selected = Signal(object)
+
+    def __init__(self, labels: dict[str, str] | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        labels = labels or {}
+        self.elements = PayloadListWidget()
+        entries = (
+            ("player_spawn", labels.get("player_spawn", "Player Spawn")),
+            ("map_transition", labels.get("map_transition", "Map Transition")),
+            ("region", labels.get("region", "Region / Trigger")),
+        )
+        for element, label in entries:
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, element)
+            self.elements.addItem(item)
+        self.elements.payload_factory = self._drag_payload
+        self.elements.currentItemChanged.connect(self._selection_changed)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.elements)
+        layout.addWidget(QLabel(labels.get("hint", "Drag an element to the map")))
+        self._hint = layout.itemAt(1).widget()
+
+    def retranslate(self, labels: dict[str, str]) -> None:
+        labels_by_element = ("player_spawn", "map_transition", "region")
+        for index, key in enumerate(labels_by_element):
+            if index < self.elements.count():
+                self.elements.item(index).setText(labels.get(key, self.elements.item(index).text()))
+        self._hint.setText(labels.get("hint", self._hint.text()))
+
+    def _selection_changed(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
+        del unused
+        if item:
+            self.selected.emit(StudioDragPayload.map_element_payload(str(item.data(Qt.ItemDataRole.UserRole))))
+
+    def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
+        if not items:
+            return None
+        return StudioDragPayload.map_element_payload(str(items[0].data(Qt.ItemDataRole.UserRole)))
 
 
 class MapBrowser(QWidget):

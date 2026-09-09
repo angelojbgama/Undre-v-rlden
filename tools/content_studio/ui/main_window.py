@@ -17,6 +17,9 @@ from ..model.map_document import MapDocument
 from ..model.types import ContentDefinition, Diagnostic
 from ..model.world_project import WorldProject
 from ..formats.uworld import write_world
+from ..interaction.command_coordinator import CommandCoordinator
+from ..interaction.drag_payload import StudioDragPayload
+from ..services.import_service import ImportService
 from ..services.localization import Translator
 from ..services.autosave import autosave
 from ..services.preferences import load_preferences, save_preferences
@@ -24,7 +27,8 @@ from ..services.toolchain import CppToolchain, PlaytestService
 from .map_canvas import MapCanvas
 from .preview import PreviewWidget
 from .scene_editor import SceneEditorWidget
-from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, SemanticPalette, StructuredInspector, TilePalette, set_path
+from .tileset_import_dialog import TilesetImportDialog
+from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, TilePalette, set_path
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +42,8 @@ class MainWindow(QMainWindow):
         self.asset_root = asset_root or (Path(self.preferences.asset_root) if self.preferences.asset_root else None)
         self.toolchain = toolchain or CppToolchain(asset_root=self.asset_root)
         self.playtest = PlaytestService(self.toolchain)
+        self.import_service = ImportService()
+        self.command_coordinator = CommandCoordinator()
         self.selected_definition: ContentDefinition | None = None
         self._definition_history: list[tuple[str, str]] = []
         self._last_content_definition: tuple[str, str] | None = None
@@ -58,7 +64,7 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu(self.translator("view"))
         self._menus = {"file": file_menu, "edit": edit_menu, "view": view_menu}
         self.actions: dict[str, QAction] = {}
-        for key, title, callback in (("new", "New Project", self.new_project), ("open", "Open Project...", self.open_project), ("new_content", "New Content Workspace...", self.new_content), ("open_content", "Open Content...", self.open_content), ("save", "Save", self.save), ("save_as", "Save As...", self.save_as), ("save_all", "Save All", self.save_all), ("validate", "Validate Workspace", self.validate), ("export", "Export DMAP", self.export_maps), ("playtest", "Playtest", self.toggle_playtest), ("quit", "Exit", self.close)):
+        for key, title, callback in (("new", "New Project", self.new_project), ("open", "Open Project...", self.open_project), ("new_content", "New Content Workspace...", self.new_content), ("open_content", "Open Content...", self.open_content), ("save", "Save", self.save), ("save_as", "Save As...", self.save_as), ("save_all", "Save All", self.save_all), ("validate", "Validate Workspace", self.validate), ("export", "Export DMAP", self.export_maps), ("playtest", "Playtest", self.toggle_playtest), ("import_tileset", "Import Tileset...", self.import_tileset), ("quit", "Exit", self.close)):
             action = QAction(title, self); action.triggered.connect(callback); self.actions[key] = action; file_menu.addAction(action)
         self.actions["new"].setShortcut("Ctrl+Shift+N")
         self.actions["open"].setShortcut("Ctrl+O")
@@ -68,7 +74,9 @@ class MainWindow(QMainWindow):
         self.actions["playtest"].setShortcut("F5")
         self.actions["undo"] = QAction("Undo", self); self.actions["undo"].setShortcut("Ctrl+Z"); self.actions["undo"].triggered.connect(self.undo); edit_menu.addAction(self.actions["undo"])
         self.actions["redo"] = QAction("Redo", self); self.actions["redo"].setShortcut("Ctrl+Y"); self.actions["redo"].triggered.connect(self.redo); edit_menu.addAction(self.actions["redo"])
-        grid = QAction("Grid", self, checkable=True, checked=True); grid.triggered.connect(self.map_canvas_grid); view_menu.addAction(grid); self.actions["grid"] = grid
+        grid = QAction(self.translator("grid"), self, checkable=True, checked=True); grid.triggered.connect(self.map_canvas_grid); view_menu.addAction(grid); self.actions["grid"] = grid
+        snap = QAction(self.translator("snap"), self, checkable=True, checked=True); snap.triggered.connect(self.map_canvas_snap); view_menu.addAction(snap); self.actions["snap"] = snap
+        overlays = QAction(self.translator("overlays"), self, checkable=True, checked=False); overlays.triggered.connect(self.map_canvas_overlays); view_menu.addAction(overlays); self.actions["overlays"] = overlays
         frame = QAction("Frame Map", self); frame.setShortcut("Home"); frame.triggered.connect(lambda: self.map_canvas.fit_map()); view_menu.addAction(frame); self.actions["frame"] = frame
         language = view_menu.addMenu(self.translator("language")); self._language_menu = language
         for code, name in (("pt-BR", "Português (Brasil)"), ("en-US", "English")):
@@ -81,15 +89,18 @@ class MainWindow(QMainWindow):
         tool_group = QActionGroup(self)
         tool_group.setExclusive(True)
         self._tool_keys: list[str] = []
-        for key, title in (("select", "Select"), ("pencil", "Pencil"), ("erase", "Erase"), ("rectangle", "Rectangle"), ("fill", "Fill"), ("eyedropper", "Pick Tile"), ("tile_selection", "Select Tiles"), ("collision", "Collision +"), ("collision_erase", "Collision -"), ("collision_rectangle", "Collision Rect +"), ("collision_rectangle_erase", "Collision Rect -"), ("collision_fill", "Collision Fill +"), ("collision_fill_erase", "Collision Fill -"), ("entity", "Entity"), ("spawn", "Player Spawn"), ("link", "Map Link"), ("region", "Region"), ("stamp", "Stamp"), ("pan", "Pan")):
-            action = QAction(title, self); action.setCheckable(True); action.triggered.connect(lambda checked=False, value=key: self.set_tool(value)); toolbar.addAction(action); tool_group.addAction(action)
-            self._tool_keys.append(f"tools_{key}")
-            if key == "select": action.setChecked(True)
-        self.tool_actions = toolbar.actions()
+        select = QAction(self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.triggered.connect(lambda: self.set_tool("select")); tool_group.addAction(select); toolbar.addAction(select)
+        toolbar.addAction(self.actions["grid"])
+        toolbar.addAction(self.actions["snap"])
+        toolbar.addAction(self.actions["overlays"])
+        toolbar.addSeparator()
+        toolbar.addAction(self.actions["playtest"])
+        self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["overlays"], self.actions["playtest"]]
+        self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar"]
         self.mode_tabs = QTabWidget()
         self.map_canvas = MapCanvas()
         self.map_canvas.selection_changed.connect(self._map_selection_changed)
-        self.map_canvas.document_changed.connect(self._refresh_map)
+        self.map_canvas.document_changed.connect(self._map_changed)
         self.map_canvas.status_changed.connect(self.set_status)
         self.map_browser = MapBrowser()
         self.map_browser.selected.connect(self._select_map)
@@ -98,7 +109,7 @@ class MainWindow(QMainWindow):
         self.map_browser.remove_requested.connect(self.remove_map)
         self.map_browser.entry_requested.connect(self.set_entry_map)
         self.layers = LayersPanel()
-        self.layers.changed.connect(self._refresh_map)
+        self.layers.changed.connect(self._map_changed)
         self.layers.selected.connect(self._layer_selected)
         self.tile_palette = TilePalette()
         self.tile_palette.selected.connect(self._tile_selected)
@@ -106,16 +117,21 @@ class MainWindow(QMainWindow):
         self.semantic_palette = SemanticPalette()
         self.semantic_palette.tile_selected.connect(self._tile_selected)
         self.semantic_palette.stamp_selected.connect(self.map_canvas.set_stamp_selection)
+        self.map_elements = MapElementsPalette({
+            "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
+            "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
+        })
+        self.map_elements.selected.connect(self.map_canvas.set_active_payload)
         self.map_collections = {
             name: CollectionPanel(name, label)
             for name, label in (("links", "Map Links"), ("playerSpawns", "Player Spawns"), ("regions", "Regions"), ("worldRules", "World Rules"), ("encounters", "Encounters"))
         }
         for panel in self.map_collections.values():
-            panel.changed.connect(self._refresh_map)
-        self.entity_browser = ContentBrowser(self.workspace, ("enemies", "npcs", "objects", "pickups"))
+            panel.changed.connect(self._map_changed)
+        self.entity_browser = ContentBrowser(self.workspace, ("enemies", "npcs", "objects", "pickups"), translator=self.translator)
         self.entity_browser.selected.connect(self._entity_selected)
         self.entity_browser.place_requested.connect(self._place_definition)
-        self.entity_browser.definition_changed.connect(self._refresh_all)
+        self.entity_browser.definition_changed.connect(self._content_changed)
         self.map_inspector = StructuredInspector()
         self.map_inspector.changed.connect(self._edit_map_field)
         map_left_tabs = QTabWidget()
@@ -123,9 +139,10 @@ class MainWindow(QMainWindow):
         map_left_tabs.addTab(self.layers, "Layers")
         map_left_tabs.addTab(self.tile_palette, "Tiles")
         map_left_tabs.addTab(self.semantic_palette, "Semantics / Stamps")
+        map_left_tabs.addTab(self.map_elements, self.translator("map_elements"))
         map_left_tabs.addTab(self.entity_browser, "Entities")
         self.scene_editor = SceneEditorWidget()
-        self.scene_editor.changed.connect(self._refresh_map)
+        self.scene_editor.changed.connect(self._map_changed)
         self.scene_editor.diagnostics_changed.connect(self._refresh_diagnostics)
         map_left_tabs.addTab(self.scene_editor, "Scenes")
         collections_tabs = QTabWidget()
@@ -142,12 +159,12 @@ class MainWindow(QMainWindow):
         map_page = QWidget(); map_layout = QVBoxLayout(map_page); map_layout.addWidget(map_split)
         self.mode_tabs.addTab(map_page, "MAP")
 
-        self.content_browser = ContentBrowser(self.workspace)
+        self.content_browser = ContentBrowser(self.workspace, translator=self.translator)
         self.content_browser.selected.connect(self._content_selected)
         self.content_browser.place_requested.connect(self._place_definition)
         self.content_browser.find_usages_requested.connect(self._show_usages)
         self.content_browser.back_requested.connect(self._back_definition)
-        self.content_browser.definition_changed.connect(self._refresh_all)
+        self.content_browser.definition_changed.connect(self._content_changed)
         self.content_inspector = StructuredInspector()
         self.content_inspector.changed.connect(self._edit_content_field)
         self.content_inspector.collection_changed.connect(self._edit_content_collection)
@@ -165,6 +182,7 @@ class MainWindow(QMainWindow):
         content_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
         content_page = QWidget(); content_layout = QVBoxLayout(content_page); content_layout.addWidget(content_split)
         self.mode_tabs.addTab(content_page, "CONTENT")
+        self.mode_tabs.currentChanged.connect(lambda index: self.command_coordinator.mark("content" if index == 1 else "map"))
         self._content_browsers = content_browsers
         self.diagnostics_view = QPlainTextEdit(); self.diagnostics_view.setReadOnly(True); self.diagnostics_view.setMaximumHeight(150)
         root = QSplitter(Qt.Orientation.Vertical); root.addWidget(self.mode_tabs); root.addWidget(self.diagnostics_view); root.setStretchFactor(0, 1)
@@ -178,7 +196,7 @@ class MainWindow(QMainWindow):
             "new": "new_project", "open": "open_project", "new_content": "new_content",
             "open_content": "open_content", "save": "save", "save_as": "save_as",
             "save_all": "save_all", "validate": "validate", "export": "export",
-            "playtest": "playtest", "quit": "quit", "undo": "undo", "redo": "redo",
+            "playtest": "playtest", "import_tileset": "import_tileset", "quit": "quit", "undo": "undo", "redo": "redo",
             "grid": "grid", "frame": "frame",
         }
         for action_key, translation_key in labels.items():
@@ -193,11 +211,17 @@ class MainWindow(QMainWindow):
         self._toolbar.setWindowTitle(self.translator("tools"))
         self.mode_tabs.setTabText(0, self.translator("map"))
         self.mode_tabs.setTabText(1, self.translator("content"))
-        for index, key in enumerate(("maps", "layers", "tiles", "semantics_stamps", "entities", "scenes", "rules_links")):
+        for index, key in enumerate(("maps", "layers", "tiles", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):
             if index < self._map_left_tabs.count():
                 self._map_left_tabs.setTabText(index, self.translator(key))
         self._content_browsers.setTabText(0, self.translator("definitions"))
         self._content_browsers.setTabText(1, self.translator("assets"))
+        self.entity_browser.set_translator(self.translator)
+        self.content_browser.set_translator(self.translator)
+        self.map_elements.retranslate({
+            "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
+            "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
+        })
 
     def _refresh_all(self) -> None:
         self.map_browser.refresh([document.map_id for document in self.project.maps], self.project.active_map.map_id)
@@ -228,6 +252,10 @@ class MainWindow(QMainWindow):
         self.map_browser.refresh([value.map_id for value in self.project.maps], document.map_id)
         if self.map_canvas.selected_entity:
             self._map_selection_changed(self.map_canvas.selected_entity)
+
+    def _map_changed(self) -> None:
+        self.command_coordinator.mark("map")
+        self._refresh_map()
 
     def _entity_selected(self, definition: ContentDefinition | None) -> None:
         self.selected_definition = definition
@@ -300,6 +328,7 @@ class MainWindow(QMainWindow):
     def _edit_content_field(self, path: str, value: object) -> None:
         if self.workspace and self.selected_definition:
             try:
+                self.command_coordinator.mark("content")
                 self.workspace.update(self.selected_definition, path, value)
                 self.set_status("Definition edited")
                 self._refresh_diagnostics(self.workspace.validate_local(self.selected_definition))
@@ -311,6 +340,7 @@ class MainWindow(QMainWindow):
         if not self.workspace or not self.selected_definition:
             return
         try:
+            self.command_coordinator.mark("content")
             self.workspace.mutate_collection(self.selected_definition, path, action)
             self.set_status("Collection updated")
             self._refresh_all()
@@ -338,6 +368,7 @@ class MainWindow(QMainWindow):
                                   if isinstance(entry, dict) and entry.get("id") == identifier), None)
         if value_to_edit is None:
             return
+        self.command_coordinator.mark("map")
         self.project.active_map.mutate("Edit Placement", lambda: set_path(value_to_edit, path, value))
         self._refresh_map()
 
@@ -356,12 +387,32 @@ class MainWindow(QMainWindow):
         self.map_canvas.set_entity_selection(category, definition_id)
         self.set_status(f"Placement active: {definition_id}. Click the map or press Escape.")
 
+    def _content_changed(self) -> None:
+        self.command_coordinator.mark("content")
+        self._refresh_all()
+
     def set_tool(self, tool: str) -> None:
         self.map_canvas.set_tool(tool)
         self.set_status(f"Tool: {tool}")
 
     def map_canvas_grid(self, checked: bool) -> None:
         self.map_canvas.set_grid_visible(checked)
+
+    def map_canvas_snap(self, checked: bool) -> None:
+        self.map_canvas.set_snap_enabled(checked)
+
+    def map_canvas_overlays(self, checked: bool) -> None:
+        self.map_canvas.set_collision_overlay(checked)
+
+    def import_tileset(self) -> None:
+        if self.workspace is None:
+            self.show_error("Open a content workspace before importing a tileset")
+            return
+        dialog = TilesetImportDialog(self.workspace, self.asset_root, self.import_service, self.translator, self)
+        if dialog.exec():
+            self.command_coordinator.mark("content")
+            self._refresh_all()
+            self.set_status("Tileset imported")
 
     def _tile_selected(self, tileset_id: str, source_index: int, flags: int) -> None:
         self.map_canvas.selected_tile = (tileset_id, source_index, flags)
@@ -491,11 +542,11 @@ class MainWindow(QMainWindow):
         self._refresh_diagnostics(issues); self.set_status("Playtest started" if success else "Playtest failed")
 
     def undo(self) -> None:
-        changed = self.project.active_map.undo() or (self.workspace.undo() if self.workspace else False)
+        changed = self.command_coordinator.undo(self.project.active_map, self.workspace)
         if changed: self._refresh_all()
 
     def redo(self) -> None:
-        changed = self.project.active_map.redo() or (self.workspace.redo() if self.workspace else False)
+        changed = self.command_coordinator.redo(self.project.active_map, self.workspace)
         if changed: self._refresh_all()
 
     def import_map(self) -> None:

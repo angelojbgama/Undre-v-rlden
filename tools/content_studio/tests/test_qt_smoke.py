@@ -58,6 +58,38 @@ class QtSmokeTests(unittest.TestCase):
             self.assertEqual(1, browser.list.count())
             self.assertEqual("enemies", browser.category.currentData())
 
+    def test_context_toolbar_canvas_drop_and_map_elements_are_available(self) -> None:
+        from tools.content_studio.interaction.drag_payload import StudioDragPayload
+        from tools.content_studio.ui.main_window import MainWindow
+        from tools.content_studio.ui.widgets import MapElementsPalette
+
+        with tempfile.TemporaryDirectory() as directory:
+            content = {"format": "dungeon-underworld-content", "version": 5}
+            content.update({category: [] for category in CONTENT_CATEGORIES})
+            root = Path(directory)
+            (root / "content.json").write_text(encode_json(content), encoding="utf-8")
+            window = MainWindow(WorldProject.new(), ContentWorkspace.open(root))
+            self.addCleanup(window.close)
+            visible_actions = [action.text() for action in window._toolbar.actions() if not action.isSeparator()]
+            self.assertLessEqual(len(visible_actions), 5)
+            self.assertTrue(window.map_canvas.acceptDrops())
+            self.assertTrue(MapElementsPalette().elements.dragEnabled())
+            payload = StudioDragPayload.content("enemies", "enemy.test")
+            self.assertEqual(payload, StudioDragPayload.from_bytes(payload.to_bytes()))
+
+    def test_tileset_import_dialog_opens_offscreen(self) -> None:
+        from tools.content_studio.ui.tileset_import_dialog import TilesetImportDialog
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = {"format": "dungeon-underworld-content", "version": 5}
+            content.update({category: [] for category in CONTENT_CATEGORIES})
+            (root / "content.json").write_text(encode_json(content), encoding="utf-8")
+            dialog = TilesetImportDialog(ContentWorkspace.open(root), None)
+            self.addCleanup(dialog.deleteLater)
+            self.assertTrue(dialog.windowTitle())
+            self.assertTrue(dialog.source.isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()

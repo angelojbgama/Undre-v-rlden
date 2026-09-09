@@ -143,7 +143,9 @@ class PlaytestService:
         if not result.ok:
             self.stop()
             return False, diagnostics
-        entry = project.entry_map_id
+        # The world is still compiled in full so cross-map transitions work,
+        # but iteration must launch from the map currently being authored.
+        entry = active_map.map_id
         safe_entry = "".join(character if character.isalnum() or character in ".-_" else f"%{ord(character):02X}" for character in entry) or "map"
         map_path = output / f"{safe_entry}.dmap"
         if not map_path.is_file():
