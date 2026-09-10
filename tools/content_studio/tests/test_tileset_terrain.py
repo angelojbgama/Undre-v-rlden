@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,7 +17,7 @@ from tools.content_studio.services.autotile_resolver import AutoTileResolver, EA
 from tools.content_studio.services.import_service import TilesetImportRequest
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
 from tools.content_studio.services.terrain_painting_service import TerrainCollisionPolicy, TerrainPaintingService
-from tools.content_studio.services.terrain_rule_service import RULE_SLOTS, TerrainRuleService
+from tools.content_studio.services.terrain_rule_service import RULE_SLOTS, RULE_SLOT_MASK, TerrainRuleService
 from tools.content_studio.services.tileset_library import BatchTilesetImportRequest, TilesetLibrary, TilesetUsageIndex
 
 
@@ -147,6 +148,55 @@ class TerrainRuleTests(unittest.TestCase):
                              {str(value.data["topology"]) for value in definitions})
             self.assertTrue(workspace.undo())
             self.assertEqual([], workspace.definitions("tileSemantics"))
+
+    def test_rule_is_crud_and_reopens_the_same_visual_slots(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            service = TerrainRuleService()
+            assignments = {slot: index for index, slot in enumerate(RULE_SLOTS)}
+            service.save_rule(workspace, "tileset.rule", "dungeon.stone", "wall", assignments)
+            self.assertEqual({("dungeon.stone", "wall")},
+                             {(value.family, value.role) for value in service.list_rules(workspace, "tileset.rule")})
+            self.assertEqual(assignments, service.load_assignments(workspace, "tileset.rule", "dungeon.stone", "wall"))
+            service.save_rule(workspace, "tileset.rule", "dungeon.stone.alt", "wall", {"center": 9})
+            self.assertEqual(2, len(service.list_rules(workspace, "tileset.rule")))
+            self.assertTrue(service.delete_rule(workspace, "tileset.rule", "dungeon.stone.alt", "wall"))
+            self.assertEqual(1, len(service.list_rules(workspace, "tileset.rule")))
+            self.assertTrue(workspace.undo())
+            self.assertEqual(2, len(service.list_rules(workspace, "tileset.rule")))
+
+    def test_rule_slots_resolve_directional_corners_and_edges(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            service = TerrainRuleService()
+            assignments = {slot: index for index, slot in enumerate(RULE_SLOTS)}
+            service.save_rule(workspace, "tileset.rule", "dungeon.stone", "wall", assignments)
+            resolver = AutoTileResolver(TileSemanticCatalog(workspace))
+            for slot, mask in RULE_SLOT_MASK.items():
+                resolved = resolver.resolve_mask("dungeon.stone", "wall", (3, 3), mask, "map.rule")
+                self.assertIsNotNone(resolved)
+                self.assertEqual(assignments[slot], resolved.source_index)  # type: ignore[union-attr]
+
+    def test_generated_rule_keeps_content_v5_cpp_compatible(self) -> None:
+        content_check = Path(__file__).resolve().parents[3] / "build" / "linux" / "content_check"
+        if not content_check.is_file():
+            self.skipTest("C++ content_check is not available")
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = workspace_from(data, root)
+            TerrainRuleService().save_rule(
+                workspace, "tileset.rule", "dungeon.stone", "wall",
+                {slot: index for index, slot in enumerate(RULE_SLOTS)},
+            )
+            workspace.save_all()
+            result = subprocess.run([str(content_check), str(root)], capture_output=True, text=True, check=False)
+            self.assertEqual(0, result.returncode, result.stderr)
 
 
 class SemanticAndAutotileTests(unittest.TestCase):

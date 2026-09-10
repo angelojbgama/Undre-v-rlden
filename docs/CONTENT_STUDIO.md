@@ -93,10 +93,15 @@ Para configurar uma regra visual sem editar cada definição manualmente, clique
 com o botão direito em um tileset na Tileset Library e escolha `Configurar
 lógica de Smart Terrain`. A janela apresenta nove slots em uma grade 3 × 3:
 `NW`, `N`, `NE`, `W`, `X`, `E`, `SW`, `S`, `SE`. Selecione um slot e clique em
-um tile do atlas para associá-lo. Os slots geram definições `tileSemantics`
-com `family`, `role` e topologias existentes; não há uma segunda base de dados
-de regras. Slots da mesma topologia são tratados como variantes determinísticas
-pelo `AutoTileResolver`.
+um tile do atlas para associá-lo. A janela permite criar, listar, editar e
+excluir regras; a lista de regras é uma visão derivada das definições
+`tileSemantics`, não uma segunda base de dados. Cada slot também grava a
+vizinhança ortogonal correspondente usando os campos de borda já existentes,
+para que NW/NE/SW/SE não sejam confundidos durante a pintura.
+
+O atlas visual preserva a grade original da imagem: o índice continua sendo
+`sourceIndex = linha * colunas + coluna`. Redimensionar o painel não reordena
+os tiles nem altera a referência escolhida pela regra.
 
 O modo Raw Tiles continua pintando exatamente o tile escolhido. O modo Smart
 Terrain seleciona uma família e um papel:

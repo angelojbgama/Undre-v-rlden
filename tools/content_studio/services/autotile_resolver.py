@@ -63,19 +63,66 @@ class AutoTileResolver:
             return None
         topology_order = self._topology_order(role, mask)
         chosen: tuple[TileSemantic, ...] = ()
+        topology_fallback: tuple[TileSemantic, ...] = ()
         for topology in topology_order:
-            chosen = tuple(value for value in candidates if value.topology == topology)
+            topology_candidates = tuple(value for value in candidates if value.topology == topology)
+            if topology_candidates and not topology_fallback:
+                topology_fallback = topology_candidates
+            chosen = self._mask_candidates(topology_candidates, mask)
             if chosen:
                 break
+            # A configured rule is allowed to be partial.  Do not silently
+            # use a tile from another direction when the exact slot is
+            # missing; prefer an unprofiled semantic or the deterministic
+            # topology fallback below.
+            if topology_candidates and not any(self._is_rule_semantic(value) for value in topology_candidates):
+                chosen = topology_candidates
+                break
+            if topology_candidates and any(not self._is_rule_semantic(value) for value in topology_candidates):
+                chosen = tuple(value for value in topology_candidates if not self._is_rule_semantic(value))
+                if chosen:
+                    break
         if not chosen:
             # A semantic can be useful even before every topology has been
             # classified.  Interior/unknown is an explicit predictable
-            # fallback, followed by any same-family/same-role candidate.
-            chosen = tuple(value for value in candidates if value.topology in {"interior", "unknown"}) or candidates
+            # fallback, followed by the first requested topology and finally
+            # any same-family/same-role candidate.  A partial visual rule thus
+            # remains usable without borrowing a tile from another family.
+            chosen = (topology_fallback
+                      or tuple(value for value in candidates if value.topology in {"interior", "unknown"})
+                      or candidates)
         ordered = tuple(sorted(chosen, key=lambda value: (value.definition_id, value.tileset_id, value.source_index)))
         index = _stable_index(map_id, position, family, role, seed, len(ordered))
         value = ordered[index]
         return ResolvedTile(value.tileset_id, value.source_index, 0, value.definition_id)
+
+    @staticmethod
+    def _is_rule_semantic(value: TileSemantic) -> bool:
+        return value.definition_id.startswith("semantic.rule.")
+
+    @classmethod
+    def _mask_candidates(cls, candidates: tuple[TileSemantic, ...], mask: int) -> tuple[TileSemantic, ...]:
+        if not candidates:
+            return ()
+        exact: list[TileSemantic] = []
+        unprofiled: list[TileSemantic] = []
+        for value in candidates:
+            if not cls._is_rule_semantic(value):
+                unprofiled.append(value)
+                continue
+            profile = {"north": value.north, "east": value.east,
+                       "south": value.south, "west": value.west}
+            if all(edge != "unknown" for edge in profile.values()):
+                expected = {
+                    "north": bool(mask & NORTH), "east": bool(mask & EAST),
+                    "south": bool(mask & SOUTH), "west": bool(mask & WEST),
+                }
+                actual = {name: edge == "masonry" for name, edge in profile.items()}
+                if actual == expected:
+                    exact.append(value)
+            else:
+                unprofiled.append(value)
+        return tuple(exact or unprofiled)
 
     def _compatible(self, candidates: Iterable[TileSemantic], map_tile_size: int | None) -> tuple[TileSemantic, ...]:
         # The catalog can be used without a workspace.  In that case structural
@@ -110,8 +157,16 @@ class AutoTileResolver:
             return ("straightHorizontal", "interior", "unknown")
         if mask in {NORTH | EAST, EAST | SOUTH, SOUTH | WEST, WEST | NORTH}:
             return ("outerCorner", "innerCorner", "corner", "cap", "interior", "unknown")
-        if mask in {NORTH, EAST, SOUTH, WEST, 0}:
-            return ("cap", "outerCorner", "interior", "unknown")
+        if mask in {EAST | SOUTH | WEST, NORTH | EAST | WEST}:
+            return ("straightHorizontal", "junction", "interior", "unknown")
+        if mask in {NORTH | EAST | SOUTH, NORTH | SOUTH | WEST}:
+            return ("straightVertical", "junction", "interior", "unknown")
+        if mask in {NORTH, SOUTH}:
+            return ("cap", "straightVertical", "outerCorner", "interior", "unknown")
+        if mask in {EAST, WEST}:
+            return ("cap", "straightHorizontal", "outerCorner", "interior", "unknown")
+        if mask == 0:
+            return ("cap", "interior", "unknown")
         if mask in {NORTH | EAST | SOUTH, EAST | SOUTH | WEST,
                     SOUTH | WEST | NORTH, WEST | NORTH | EAST}:
             return ("junction", "innerCorner", "interior", "unknown")
