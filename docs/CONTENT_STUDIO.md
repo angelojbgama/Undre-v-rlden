@@ -109,7 +109,11 @@ Terrain seleciona uma família e um papel:
 * Smart Floor escolhe deterministicamente entre os candidates `floor`;
 * Smart Wall usa a vizinhança ortogonal N/E/S/W para escolher
   `straightHorizontal`, `straightVertical`, `outerCorner`, `cap`, `junction`
-  ou fallbacks `interior`/`unknown`;
+  ou fallbacks `interior`/`unknown`. Em um traçado aberto, E/W não contém
+  informação suficiente para distinguir a borda de cima da de baixo (e o
+  mesmo vale para N/S); nesse caso o resolver escolhe um lado canônico fixo,
+  evitando alternância visual. Em áreas fechadas, as máscaras com o vizinho
+  interno selecionam N/S/E/W e os quatro cantos individualmente;
 * Room / Area Brush pinta o perímetro como Wall e o interior como Floor usando
   os mesmos serviços de floor/wall.
 

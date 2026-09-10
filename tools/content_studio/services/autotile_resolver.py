@@ -15,6 +15,10 @@ EAST = 2
 SOUTH = 4
 WEST = 8
 ORTHOGONAL_MASKS = {"north": NORTH, "east": EAST, "south": SOUTH, "west": WEST}
+_RULE_SLOTS = frozenset({
+    "north_west", "north", "north_east", "west", "center", "east",
+    "south_west", "south", "south_east",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +92,7 @@ class AutoTileResolver:
             # fallback, followed by the first requested topology and finally
             # any same-family/same-role candidate.  A partial visual rule thus
             # remains usable without borrowing a tile from another family.
-            chosen = (topology_fallback
+            chosen = (self._canonical_rule_fallback(topology_fallback, mask)
                       or tuple(value for value in candidates if value.topology in {"interior", "unknown"})
                       or candidates)
         ordered = tuple(sorted(chosen, key=lambda value: (value.definition_id, value.tileset_id, value.source_index)))
@@ -123,6 +127,58 @@ class AutoTileResolver:
             else:
                 unprofiled.append(value)
         return tuple(exact or unprofiled)
+
+    @classmethod
+    def _canonical_rule_fallback(cls, candidates: tuple[TileSemantic, ...], mask: int) -> tuple[TileSemantic, ...]:
+        """Choose one visual side for an under-specified freehand stroke.
+
+        A 3x3 area rule can distinguish the top and bottom edge because their
+        masks contain different inward neighbours.  A one-cell stroke cannot:
+        both horizontal sides have only E/W connectivity.  Picking between
+        them with the variant hash makes a stroke appear to swap sides.  Use a
+        stable canonical slot for that case and retain hash variants only
+        between candidates that represent the same slot.
+        """
+        if not candidates or not all(cls._is_rule_semantic(value) for value in candidates):
+            return candidates
+        if mask in {EAST | WEST, EAST, WEST}:
+            preferred = ("north", "south")
+        elif mask in {NORTH | SOUTH, NORTH, SOUTH}:
+            preferred = ("west", "east")
+        elif mask == 0:
+            preferred = ("center", "north_west")
+        elif mask == EAST | SOUTH:
+            preferred = ("north_west",)
+        elif mask == SOUTH | WEST:
+            preferred = ("north_east",)
+        elif mask == NORTH | EAST:
+            preferred = ("south_west",)
+        elif mask == NORTH | WEST:
+            preferred = ("south_east",)
+        elif mask == EAST | SOUTH | WEST:
+            preferred = ("north",)
+        elif mask == NORTH | EAST | WEST:
+            preferred = ("south",)
+        elif mask == NORTH | EAST | SOUTH:
+            preferred = ("west",)
+        elif mask == NORTH | SOUTH | WEST:
+            preferred = ("east",)
+        elif mask == NORTH | EAST | SOUTH | WEST:
+            preferred = ("center",)
+        else:
+            preferred = ()
+        for slot in preferred:
+            selected = tuple(value for value in candidates if cls._rule_slot(value) == slot)
+            if selected:
+                return selected
+        return candidates
+
+    @staticmethod
+    def _rule_slot(value: TileSemantic) -> str | None:
+        parts = value.definition_id.split(".")
+        if len(parts) >= 3 and parts[-2] in _RULE_SLOTS:
+            return parts[-2]
+        return None
 
     def _compatible(self, candidates: Iterable[TileSemantic], map_tile_size: int | None) -> tuple[TileSemantic, ...]:
         # The catalog can be used without a workspace.  In that case structural

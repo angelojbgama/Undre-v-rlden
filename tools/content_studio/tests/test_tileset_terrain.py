@@ -180,6 +180,15 @@ class TerrainRuleTests(unittest.TestCase):
                 resolved = resolver.resolve_mask("dungeon.stone", "wall", (3, 3), mask, "map.rule")
                 self.assertIsNotNone(resolved)
                 self.assertEqual(assignments[slot], resolved.source_index)  # type: ignore[union-attr]
+            # A freehand horizontal/vertical stroke has no information that
+            # distinguishes its two visual sides.  It must therefore keep one
+            # canonical side instead of alternating between N/S or W/E.
+            horizontal = [resolver.resolve_mask("dungeon.stone", "wall", (x, 3), EAST | WEST, "map.stroke")
+                          for x in range(5)]
+            vertical = [resolver.resolve_mask("dungeon.stone", "wall", (3, y), NORTH | SOUTH, "map.stroke")
+                        for y in range(5)]
+            self.assertEqual({assignments["north"]}, {value.source_index for value in horizontal if value})
+            self.assertEqual({assignments["west"]}, {value.source_index for value in vertical if value})
 
     def test_generated_rule_keeps_content_v5_cpp_compatible(self) -> None:
         content_check = Path(__file__).resolve().parents[3] / "build" / "linux" / "content_check"
