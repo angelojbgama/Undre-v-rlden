@@ -37,6 +37,7 @@ struct TileSemanticDefinition final {
     SemanticConfidence visualConfidence{SemanticConfidence::confirmed};
     SemanticConfidence semanticConfidence{SemanticConfidence::unverified};
     SemanticConfidence gameplayConfidence{SemanticConfidence::unverified};
+    std::uint32_t variantWeight{1};
 };
 
 struct StampCell final { int x{}; int y{}; simulation::DefinitionId tileId{}; };

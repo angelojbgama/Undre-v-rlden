@@ -388,6 +388,11 @@ class MapDocument:
                 current.append(copy.deepcopy(current[-1]) if current and isinstance(current[-1], dict) else _default_map_collection_value(parts[-1]))
             elif action == "remove":
                 if current: current.pop()
+            elif action.startswith("remove_at:"):
+                remove_index = int(action.split(":", 1)[1])
+                if remove_index < 0 or remove_index >= len(current):
+                    raise IndexError("collection item out of range")
+                current.pop(remove_index)
             else:
                 raise ValueError(f"unknown collection action: {action}")
 

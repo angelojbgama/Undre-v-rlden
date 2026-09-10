@@ -11,6 +11,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from ..formats.content_json import CONTENT_VERSION
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import JsonValue
 from .autotile_resolver import EAST, NORTH, SOUTH, WEST
@@ -162,9 +163,30 @@ class TerrainRuleService:
             cursors[topology] = cursor + 1
         return result
 
+    @staticmethod
+    def load_weights(workspace: ContentWorkspace | None, tileset_id: str,
+                     family: str, role: str) -> dict[str, int]:
+        """Load weights for generated slots; legacy semantics default to one."""
+        if workspace is None:
+            return {}
+        result: dict[str, int] = {}
+        for definition in workspace.definitions("tileSemantics"):
+            data = definition.data
+            definition_id = data.get("id")
+            if (data.get("tilesetId") != tileset_id or data.get("family") != family
+                    or data.get("role") != role or not isinstance(definition_id, str)
+                    or not definition_id.startswith("semantic.rule.")):
+                continue
+            slot = _rule_slot_from_id(definition_id)
+            weight = data.get("variantWeight", 1)
+            if slot and isinstance(weight, int) and not isinstance(weight, bool):
+                result[slot] = max(1, weight)
+        return result
+
     def save_rule(self, workspace: ContentWorkspace, tileset_id: str, family: str, role: str,
                   assignments: Mapping[str, int], previous_family: str | None = None,
-                  previous_role: str | None = None, label: str = "Configure Smart Terrain Rule") -> None:
+                  previous_role: str | None = None, label: str = "Configure Smart Terrain Rule",
+                  weights: Mapping[str, int] | None = None) -> None:
         family = family.strip()
         role = role.strip()
         if not family:
@@ -185,6 +207,9 @@ class TerrainRuleService:
             raise ValueError("assign at least one atlas tile to the terrain rule")
         if any(source_index < 0 or source_index >= columns * rows for source_index in normalized.values()):
             raise ValueError("terrain rule contains a tile outside the tileset atlas")
+        normalized_weights = {slot: int((weights or {}).get(slot, 1)) for slot in normalized}
+        if any(weight < 1 or weight > 100 for weight in normalized_weights.values()):
+            raise ValueError("terrain variation weights must be between 1 and 100")
         slot_by_source: dict[int, str] = {}
         for slot, source_index in normalized.items():
             previous = slot_by_source.setdefault(source_index, slot)
@@ -219,6 +244,7 @@ class TerrainRuleService:
             content_file = next((value for value in workspace.files if value.origin == "project"), None)
             if content_file is None:
                 raise ValueError("no project content file is available")
+            content_file.data["version"] = CONTENT_VERSION
             values = content_file.data.setdefault("tileSemantics", [])
             if not isinstance(values, list):
                 raise ValueError("tileSemantics category must be an array")
@@ -245,6 +271,7 @@ class TerrainRuleService:
                     "visualConfidence": "confirmed",
                     "semanticConfidence": "probable",
                     "gameplayConfidence": "unverified",
+                    "variantWeight": normalized_weights[slot],
                 }
                 existing = next((value for value in values
                                  if isinstance(value, dict) and value.get("id") == definition_id), None)

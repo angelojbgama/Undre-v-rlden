@@ -22,18 +22,15 @@ dependência nem seus binários; consulte a licença da distribuição usada.
 
 ```bash
 python -m tools.content_studio
-python -m tools.content_studio --project content/world.uworld \\
-    --content content/definitions --asset-root /path/to/licensed/assets \\
-    --cpp-root .
+python -m tools.content_studio --project-root . --cpp-root .
 ```
 
-Os wrappers `content_studio.sh` e `content_studio.bat` usam `assets/` na raiz do
-repositório como `asset root` padrão. Ao iniciar sem `--content`, o Studio
-procura primeiro `content/definitions`, depois `content/` e, por fim, um
-`content.json` na raiz. Também é possível informar outro caminho com
-`--asset-root` e `--content`; o conteúdo pode ser uma pasta authored ou um
-arquivo JSON authored individual. Os assets licenciados não são copiados
-automaticamente para o repositório.
+Os wrappers `content_studio.sh` e `content_studio.bat` abrem a raiz do
+repositório como projeto do Studio. O conteúdo authored fica sempre em
+`content/definitions`, o projeto de mundo padrão em `content/world.uworld` e as
+imagens em `assets/`. Se ainda não houver conteúdo, o Studio cria
+`content/definitions/content.json`; não existe uma etapa separada para ativar,
+criar ou abrir um workspace de conteúdo.
 
 `content_studio.bat` usa automaticamente `.venv` quando ela existe e informa o
 comando de preparação quando PySide6 ainda não foi instalado. O primeiro setup
@@ -61,6 +58,18 @@ regions, links, rules, encounters e scenes escrevem apenas JSON authored.
 cria cópias temporárias do estado atual, compila com C++ e inicia o runtime;
 conteúdo inválido ou mapa sem Player Spawn é recusado antes de iniciar.
 
+A interface usa ações contextuais: controles que exigem uma seleção ficam
+desabilitados quando não podem operar, e a toolbar de mapa aparece somente no
+modo MAP. Definições possuem Create/Duplicate/Rename/Delete; placements e
+elementos selecionados podem ser editados no inspetor e excluídos pelo botão
+visível ou pela tecla Delete. Entradas de arrays authored podem ser removidas
+individualmente e todas essas mutações continuam passando pelo undo/redo.
+
+Painéis principais e internos usam divisores redimensionáveis. O atlas pode
+refluir visualmente quando sua largura muda, mas cada tile conserva seu
+`sourceIndex` authored; redimensionar a interface nunca altera o mapa ou as
+regras de Smart Terrain.
+
 ## Tilesets, semantics e Smart Terrain
 
 Um `Tileset` é somente a fonte visual/atlas. `Terrain` é a intenção de autoria:
@@ -77,9 +86,10 @@ Reimport ou Change ID. Reimport preserva o ID e é bloqueado quando o novo atlas
 invalidaria índices usados. Excluir um tileset também consulta usos em mapas,
 semantics e stamps.
 
-Imagens de tileset devem permanecer sob o `--asset-root` configurado. Tilesets
-não suportam `root` por definição e o Studio não copia assets externos para o
-workspace; isso preserva a política de assets licenciados e o contrato C++.
+Imagens escolhidas fora do projeto são copiadas para `assets/tilesets` com nome
+derivado do `TilesetId`; o arquivo de origem é preservado. Tilesets continuam
+sem um campo `root`: `relativeAssetPath` aponta para a cópia gerenciada sob
+`assets/`, que permanece ignorada pelo Git por conter arte licenciada/local.
 Tilesets cujo `tileSize` não coincide com o `tileSize` do mapa ficam
 incompatíveis para pintura.
 
@@ -99,6 +109,12 @@ excluir regras; a lista de regras é uma visão derivada das definições
 vizinhança ortogonal correspondente usando os campos de borda já existentes,
 para que NW/NE/SW/SE não sejam confundidos durante a pintura.
 
+Quando o papel é `Floor`, os nove espaços funcionam como variações visuais.
+Cada uma possui peso relativo (`variantWeight`): piso liso com peso 8 e rachado
+com peso 2 resulta em aproximadamente 80%/20%. A janela mostra a porcentagem,
+permite remover uma variação individual e usa o seed para manter a pintura
+reproduzível.
+
 O atlas visual preserva a grade original da imagem: o índice continua sendo
 `sourceIndex = linha * colunas + coluna`. Redimensionar o painel não reordena
 os tiles nem altera a referência escolhida pela regra.
@@ -106,7 +122,8 @@ os tiles nem altera a referência escolhida pela regra.
 O modo Raw Tiles continua pintando exatamente o tile escolhido. O modo Smart
 Terrain seleciona uma família e um papel:
 
-* Smart Floor escolhe deterministicamente entre os candidates `floor`;
+* Smart Floor escolhe deterministicamente entre os candidates `floor`, respeitando
+  seus pesos relativos;
 * Smart Wall usa a vizinhança ortogonal N/E/S/W para escolher
   `straightHorizontal`, `straightVertical`, `outerCorner`, `cap`, `junction`
   ou fallbacks `interior`/`unknown`. Em um traçado aberto, E/W não contém

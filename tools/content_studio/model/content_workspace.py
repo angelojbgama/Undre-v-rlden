@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from ..formats.content_json import CONTENT_CATEGORIES, ID_FIELDS, decode_content, iter_definitions, write_content
+from ..formats.content_json import CONTENT_CATEGORIES, CONTENT_VERSION, ID_FIELDS, decode_content, iter_definitions, write_content
 from .commands import Command, CommandHistory
 from .types import ContentDefinition, ContentFile, Diagnostic, JsonValue
 
@@ -57,7 +57,7 @@ class ContentWorkspace:
     @classmethod
     def new(cls, root: Path) -> "ContentWorkspace":
         root = root.expanduser().resolve()
-        data: dict[str, JsonValue] = {"format": "dungeon-underworld-content", "version": 5}
+        data: dict[str, JsonValue] = {"format": "dungeon-underworld-content", "version": CONTENT_VERSION}
         data.update({name: [] for name in CONTENT_CATEGORIES})
         return cls(root, [ContentFile(root / "content.json", data, True, True)])
 
@@ -139,13 +139,18 @@ class ContentWorkspace:
         def operation() -> None:
             definition.data.clear()
             definition.data.update(copy.deepcopy(data))
+            if definition.category == "tileSemantics" and "variantWeight" in data:
+                content_file = next((value for value in self.files if value.path == source_path), None)
+                if content_file is not None:
+                    content_file.data["version"] = CONTENT_VERSION
             self._mark_file_dirty(source_path)
         self.mutate("Edit Definition", operation)
 
     def mutate_collection(self, definition: ContentDefinition, path: str, action: str) -> None:
         """Add/remove a typed collection entry through the document history."""
         self._require_project_definition(definition)
-        if action not in {"add", "remove"}:
+        remove_index = int(action.split(":", 1)[1]) if action.startswith("remove_at:") else None
+        if action not in {"add", "remove"} and remove_index is None:
             raise ValueError(f"unknown collection action: {action}")
         source_path = definition.source_path
         parts = _path_parts(path)
@@ -156,7 +161,11 @@ class ContentWorkspace:
                 current = current[part]  # type: ignore[index]
             if not isinstance(current, list):
                 raise TypeError(f"{path} is not a collection")
-            if action == "remove":
+            if remove_index is not None:
+                if remove_index < 0 or remove_index >= len(current):
+                    raise IndexError("collection item out of range")
+                current.pop(remove_index)
+            elif action == "remove":
                 if current:
                     current.pop()
             else:
@@ -176,11 +185,13 @@ class ContentWorkspace:
             nonlocal created
             content_file = next((value for value in self.files if value.path == target_file), None)
             if content_file is None:
-                data: dict[str, JsonValue] = {"format": "dungeon-underworld-content", "version": 5}
+                data: dict[str, JsonValue] = {"format": "dungeon-underworld-content", "version": CONTENT_VERSION}
                 data.update({name: [] for name in CONTENT_CATEGORIES})
                 content_file = ContentFile(target_file, data, True, True)
                 self.files.append(content_file)
             entry = default_definition(category, definition_id)
+            if category == "tileSemantics":
+                content_file.data["version"] = CONTENT_VERSION
             values = content_file.data.setdefault(category, [])
             if not isinstance(values, list):
                 raise ValueError(f"category {category} is not an array")
@@ -474,7 +485,7 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "rewardGrants": {"id": definition_id, "experience": 0, "gold": 0, "items": []},
         "shops": {"id": definition_id, "offers": []},
         "authoringDescriptors": {"definitionId": definition_id, "displayName": definition_id, "category": "enemy", "tags": []},
-        "tileSemantics": {"id": definition_id, "tilesetId": "", "sourceIndex": 0, "family": "", "role": "unknown", "topology": "unknown", "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown", "preferredLayer": "", "flipXAllowed": False, "visualConfidence": "unknown", "semanticConfidence": "unknown", "gameplayConfidence": "unknown"},
+        "tileSemantics": {"id": definition_id, "tilesetId": "", "sourceIndex": 0, "family": "", "role": "unknown", "topology": "unknown", "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown", "preferredLayer": "", "flipXAllowed": False, "visualConfidence": "unknown", "semanticConfidence": "unknown", "gameplayConfidence": "unknown", "variantWeight": 1},
         "stamps": {"id": definition_id, "displayName": definition_id, "width": 1, "height": 1, "cells": [], "anchor": {"x": 0, "y": 0}, "flipXAllowed": False, "atomic": True, "confidence": "unknown"},
         "presentationEffects": {"id": definition_id, "lifetime": "transient", "durationTicks": 1, "priority": 0, "cameraShake": None, "overlay": None, "visionMask": None, "fade": None},
         "visualImages": {"id": definition_id, "root": "gameAssets", "relativePath": ""},

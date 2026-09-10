@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import shutil
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,7 +72,7 @@ class ImportRecipeRegistry:
 
 
 class TilesetImporter:
-    """Imports only the authored tileset metadata; source assets stay external."""
+    """Import tileset metadata and keep an editor-managed image under assets/."""
 
     def inspect(self, source_image: Path) -> ImageDimensions:
         source_image = source_image.expanduser()
@@ -86,7 +88,7 @@ class TilesetImporter:
             self._validate_request(request)
             dimensions = self.inspect(request.source_image)
             columns, rows = calculate_grid(dimensions, request.tile_width, request.tile_height, request.spacing, request.margin)
-            root_name, relative_path = self._resolve_asset(request)
+            root_name, relative_path = self._import_asset(request)
             repository = DefinitionRepository(workspace)
             existing = workspace.find("tilesets", request.tileset_id)
             if existing is not None and not request.allow_replace:
@@ -122,18 +124,20 @@ class TilesetImporter:
             raise ValueError("spacing and margin cannot be negative")
         if request.spacing or request.margin:
             raise ValueError("spacing and margin are not representable by the current authored tileset contract")
-        if request.copy_to_workspace:
-            raise ValueError("tileset images must remain inside the configured asset root")
-
-    def _resolve_asset(self, request: TilesetImportRequest) -> tuple[str, str]:
+    def _import_asset(self, request: TilesetImportRequest) -> tuple[str, str]:
         source = request.source_image.expanduser().resolve()
         root = request.asset_root.expanduser().resolve() if request.asset_root else None
         if root is None:
-            raise ValueError("tileset images must be inside the configured asset root")
+            raise ValueError("the repository assets directory is unavailable")
         try:
             relative = source.relative_to(root)
-        except ValueError as error:
-            raise ValueError("tileset images must be inside the configured asset root") from error
+        except ValueError:
+            safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", request.tileset_id.strip()).strip("._") or "imported"
+            relative = Path("tilesets") / f"{safe_id}{source.suffix.casefold()}"
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if source != destination.resolve():
+                shutil.copy2(source, destination)
         relative_text = relative.as_posix()
         if not is_safe_relative_path(relative_text):
             raise ValueError("asset path is not safe")

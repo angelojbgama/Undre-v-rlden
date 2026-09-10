@@ -9,8 +9,8 @@ from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDrag, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
-    QTabWidget,
+    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
+    QVBoxLayout, QWidget, QTabWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
@@ -192,24 +192,25 @@ class StructuredInspector(QWidget):
                 child_path = f"{path}[{index}]"
                 if isinstance(child, (dict, list)):
                     group = QGroupBox(f"{path}[{index}]")
+                    group_layout = QVBoxLayout(group)
+                    nested = QFormLayout()
+                    self._populate_into(nested, child, child_path)
+                    group_layout.addLayout(nested)
                     if isinstance(child, list):
-                        group_layout = QVBoxLayout(group)
-                        nested = QFormLayout()
-                        self._populate_into(nested, child, child_path)
-                        group_layout.addLayout(nested)
                         self._collection_buttons(group_layout, child_path)
-                    else:
-                        nested = QFormLayout(group)
-                        self._populate_into(nested, child, child_path)
+                    remove = QPushButton("Delete item")
+                    remove.clicked.connect(lambda unused=False, p=path, i=index: self.collection_changed.emit(p, f"remove_at:{i}"))
+                    group_layout.addWidget(remove)
                     form.addRow(group)
                 else:
-                    self._add_editor(form, f"[{index}]", child_path, child)
+                    self._add_editor(form, f"[{index}]", child_path, child, (path, index))
             if not value:
                 form.addRow(QLabel("(empty collection)"))
         else:
             self._add_editor(form, path, path, value)
 
-    def _add_editor(self, form: QFormLayout, label: str, path: str, value: JsonValue) -> None:
+    def _add_editor(self, form: QFormLayout, label: str, path: str, value: JsonValue,
+                    remove_from: tuple[str, int] | None = None) -> None:
         if self._root is None or value == "<empty list>":
             form.addRow(QLabel(label), QLabel(str(value)))
             return
@@ -248,7 +249,20 @@ class StructuredInspector(QWidget):
         else:
             editor = QLineEdit(str(value))
             editor.editingFinished.connect(lambda p=path, control=editor: self._commit(p, control.text()))  # type: ignore[attr-defined]
-        form.addRow(QLabel(pretty_path(label)), editor)
+        if remove_from is None:
+            form.addRow(QLabel(pretty_path(label)), editor)
+            return
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(editor, 1)
+        remove = QPushButton("×")
+        remove.setToolTip("Delete item")
+        remove.clicked.connect(
+            lambda unused=False, p=remove_from[0], i=remove_from[1]:
+            self.collection_changed.emit(p, f"remove_at:{i}"))
+        row_layout.addWidget(remove)
+        form.addRow(QLabel(pretty_path(label)), row)
 
     def _collection_buttons(self, layout: QVBoxLayout, path: str) -> None:
         buttons = QHBoxLayout()
@@ -426,6 +440,7 @@ class ContentBrowser(QWidget):
         self.category.blockSignals(False)
         self.list.clear()
         if not self.workspace:
+            self._refresh_actions()
             return
         selected_category = self.category.currentData()
         if self.allowed:
@@ -443,6 +458,7 @@ class ContentBrowser(QWidget):
             self.list.addItem(item)
             if current and definition.key() == current:
                 self.list.setCurrentItem(item)
+        self._refresh_actions()
 
     def _selection_changed(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
         del unused
@@ -450,7 +466,19 @@ class ContentBrowser(QWidget):
         if item and self.workspace:
             key = item.data(Qt.ItemDataRole.UserRole)
             self._selected = self.workspace.find(key.category, key.definition_id)
+        self._refresh_actions()
         self.selected.emit(self._selected)
+
+    def _refresh_actions(self) -> None:
+        category_selected = bool(self.category.currentData())
+        selected = self._selected
+        editable = bool(selected and selected.origin == "project")
+        self.create_button.setEnabled(bool(self.workspace and category_selected))
+        self.delete_button.setEnabled(editable)
+        self.rename_button.setEnabled(editable)
+        self.duplicate_button.setEnabled(selected is not None)
+        self.place_button.setEnabled(bool(selected and selected.category in {"enemies", "npcs", "objects", "pickups"}))
+        self.usages_button.setEnabled(selected is not None)
 
     def _create(self) -> None:
         if not self.workspace:
@@ -459,12 +487,23 @@ class ContentBrowser(QWidget):
         from PySide6.QtWidgets import QInputDialog
         definition_id, accepted = QInputDialog.getText(self, "Create Definition", "DefinitionId:")
         if accepted and definition_id.strip():
-            self.workspace.create_definition(category, definition_id.strip())
-            self.refresh()
-            self.definition_changed.emit()
+            try:
+                self.workspace.create_definition(category, definition_id.strip())
+                self.refresh()
+                self.select_definition(category, definition_id.strip())
+                self.definition_changed.emit()
+            except ValueError as error:
+                QMessageBox.warning(self, "Create Definition", str(error))
 
     def _delete(self) -> None:
         if self.workspace and self._selected and self._selected.origin == "project":
+            answer = QMessageBox.question(
+                self, self.translate("delete"),
+                f"Delete {self._selected.definition_id}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
             self.workspace.delete_definition(self._selected)
             self._selected = None
             self.refresh()
@@ -476,15 +515,20 @@ class ContentBrowser(QWidget):
         from PySide6.QtWidgets import QInputDialog
         definition_id, accepted = QInputDialog.getText(self, "Duplicate Definition", "New DefinitionId:", text=f"{self._selected.definition_id}.copy")
         if accepted and definition_id.strip():
-            data = dict(self._selected.data)
-            key = "definitionId" if self._selected.category == "authoringDescriptors" else "id"
-            data[key] = definition_id.strip()
-            self.workspace.create_definition(self._selected.category, definition_id.strip())
-            created = self.workspace.find(self._selected.category, definition_id.strip())
-            if created:
-                self.workspace.replace_definition(created, data)
-            self.refresh()
-            self.definition_changed.emit()
+            category = self._selected.category
+            try:
+                data = dict(self._selected.data)
+                key = "definitionId" if category == "authoringDescriptors" else "id"
+                data[key] = definition_id.strip()
+                self.workspace.create_definition(category, definition_id.strip())
+                created = self.workspace.find(category, definition_id.strip())
+                if created:
+                    self.workspace.replace_definition(created, data)
+                self.refresh()
+                self.select_definition(category, definition_id.strip())
+                self.definition_changed.emit()
+            except ValueError as error:
+                QMessageBox.warning(self, "Duplicate Definition", str(error))
 
     def _rename(self) -> None:
         if not self.workspace or not self._selected or self._selected.origin != "project":
@@ -492,9 +536,14 @@ class ContentBrowser(QWidget):
         from PySide6.QtWidgets import QInputDialog
         definition_id, accepted = QInputDialog.getText(self, self.translate("rename"), "DefinitionId:", text=self._selected.definition_id)
         if accepted and definition_id.strip():
-            self.workspace.rename_definition(self._selected, definition_id.strip())
-            self.refresh()
-            self.definition_changed.emit()
+            category = self._selected.category
+            try:
+                self.workspace.rename_definition(self._selected, definition_id.strip())
+                self.refresh()
+                self.select_definition(category, definition_id.strip())
+                self.definition_changed.emit()
+            except ValueError as error:
+                QMessageBox.warning(self, self.translate("rename"), str(error))
 
     def _place(self) -> None:
         if self._selected and self._selected.category in {"enemies", "npcs", "objects", "pickups"}:
@@ -719,6 +768,7 @@ class MapBrowser(QWidget):
         super().__init__(parent)
         self.list = QListWidget()
         self.list.currentTextChanged.connect(self.selected.emit)
+        self.list.currentRowChanged.connect(lambda unused: self._refresh_actions())
         self.new_button = QPushButton("New Map")
         self.import_button = QPushButton("Import UMAP")
         self.remove_button = QPushButton("Remove Map")
@@ -727,9 +777,9 @@ class MapBrowser(QWidget):
         self.import_button.clicked.connect(self.import_requested.emit)
         self.remove_button.clicked.connect(lambda: self.remove_requested.emit(self.list.currentItem().text()) if self.list.currentItem() else None)
         self.entry_button.clicked.connect(lambda: self.entry_requested.emit(self.list.currentItem().text()) if self.list.currentItem() else None)
-        buttons = QHBoxLayout()
-        for button in (self.new_button, self.import_button, self.remove_button, self.entry_button):
-            buttons.addWidget(button)
+        buttons = QGridLayout()
+        for index, button in enumerate((self.new_button, self.import_button, self.remove_button, self.entry_button)):
+            buttons.addWidget(button, index // 2, index % 2)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Maps"))
         layout.addWidget(self.list, 1)
@@ -744,6 +794,12 @@ class MapBrowser(QWidget):
             if matches:
                 self.list.setCurrentItem(matches[0])
         self.list.blockSignals(False)
+        self._refresh_actions()
+
+    def _refresh_actions(self) -> None:
+        has_selection = self.list.currentItem() is not None
+        self.remove_button.setEnabled(has_selection and self.list.count() > 1)
+        self.entry_button.setEnabled(has_selection)
 
 
 class LayersPanel(QWidget):
@@ -753,7 +809,7 @@ class LayersPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.list = QListWidget()
-        self.list.currentRowChanged.connect(self.selected.emit)
+        self.list.currentRowChanged.connect(self._row_changed)
         self.add_button = QPushButton("Add")
         self.rename_button = QPushButton("Rename")
         self.up_button = QPushButton("Move Up")
@@ -766,9 +822,9 @@ class LayersPanel(QWidget):
         self.down_button.clicked.connect(lambda: self._move(1))
         self.visibility_button.clicked.connect(self._toggle_visibility)
         self.remove_button.clicked.connect(self._remove)
-        buttons = QHBoxLayout()
-        for button in (self.add_button, self.rename_button, self.up_button, self.down_button, self.visibility_button, self.remove_button):
-            buttons.addWidget(button)
+        buttons = QGridLayout()
+        for index, button in enumerate((self.add_button, self.rename_button, self.up_button, self.down_button, self.visibility_button, self.remove_button)):
+            buttons.addWidget(button, index // 2, index % 2)
         layout = QVBoxLayout(self)
         layout.addWidget(self.list)
         layout.addLayout(buttons)
@@ -779,11 +835,28 @@ class LayersPanel(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        previous_row = self.list.currentRow()
         self.list.clear()
         if self.document:
             for layer in self.document.layers:  # type: ignore[attr-defined]
                 visible = bool(layer.get("visible", True))
                 self.list.addItem(("● " if visible else "○ ") + str(layer.get("name", "Layer")))
+        if self.list.count():
+            self.list.setCurrentRow(min(max(previous_row, 0), self.list.count() - 1))
+        self._refresh_actions()
+
+    def _row_changed(self, row: int) -> None:
+        self._refresh_actions()
+        self.selected.emit(row)
+
+    def _refresh_actions(self) -> None:
+        row = self.list.currentRow()
+        has_selection = row >= 0
+        self.rename_button.setEnabled(has_selection)
+        self.visibility_button.setEnabled(has_selection)
+        self.remove_button.setEnabled(has_selection and self.list.count() > 1)
+        self.up_button.setEnabled(row > 0)
+        self.down_button.setEnabled(has_selection and row < self.list.count() - 1)
 
     def _add(self) -> None:
         if not self.document:
@@ -850,14 +923,18 @@ class CollectionPanel(QWidget):
         self.delete_button = QPushButton("Delete")
         self.add_button.clicked.connect(self._add)
         self.delete_button.clicked.connect(self._delete)
-        self.entries.currentRowChanged.connect(lambda unused: self._show_current())
+        self.entries.currentRowChanged.connect(lambda unused: self._selection_changed())
         buttons = QHBoxLayout()
         buttons.addWidget(self.add_button); buttons.addWidget(self.delete_button)
         left = QVBoxLayout(); left.addWidget(QLabel(label)); left.addWidget(self.entries, 1); left.addLayout(buttons)
-        left_widget = QWidget(); left_widget.setLayout(left); left_widget.setMinimumWidth(180)
+        left_widget = QWidget(); left_widget.setLayout(left)
         self.inspector.changed.connect(self._edit)
         self.inspector.collection_changed.connect(self._edit_collection)
-        layout = QHBoxLayout(self); layout.addWidget(left_widget); layout.addWidget(self.inspector, 1)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(True); splitter.setHandleWidth(8)
+        splitter.addWidget(left_widget); splitter.addWidget(self.inspector)
+        splitter.setStretchFactor(1, 1); splitter.setSizes([220, 420])
+        layout = QHBoxLayout(self); layout.addWidget(splitter)
 
     def set_document(self, document: object | None) -> None:
         self.document = document
@@ -878,6 +955,11 @@ class CollectionPanel(QWidget):
                     identifier = value.get("id", f"{self.collection}[{index}]")
                     self.entries.addItem(str(identifier))
         self._show_current()
+        self.delete_button.setEnabled(self.entries.currentRow() >= 0)
+
+    def _selection_changed(self) -> None:
+        self._show_current()
+        self.delete_button.setEnabled(self.entries.currentRow() >= 0)
 
     def _current(self) -> dict[str, JsonValue] | None:
         if not self.document or self.entries.currentRow() < 0:

@@ -178,7 +178,7 @@ class TilesetLibrary:
 
     def import_batch(self, request: BatchTilesetImportRequest) -> BatchTilesetImportResult:
         if self.workspace is None:
-            return BatchTilesetImportResult([], [Diagnostic("error", "no content workspace is active", code="workspace_missing")])
+            return BatchTilesetImportResult([], [Diagnostic("error", "repository content is unavailable", code="workspace_missing")])
         policy = request.conflict_policy.casefold()
         if policy not in {"skip", "reimport", "replace", "change_id"}:
             return BatchTilesetImportResult([], [Diagnostic("error", f"unknown conflict policy: {request.conflict_policy}", code="tileset_conflict_policy")])
@@ -221,7 +221,7 @@ class TilesetLibrary:
     def reimport(self, definition_id: str, source_image: Path, asset_root: Path | None,
                  tile_width: int | None = None, tile_height: int | None = None) -> TilesetImportResult:
         if self.workspace is None:
-            return TilesetImportResult(None, None, diagnostics=[Diagnostic("error", "no content workspace is active", code="workspace_missing")])
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic("error", "repository content is unavailable", code="workspace_missing")])
         definition = self.workspace.find("tilesets", definition_id)
         if definition is None:
             return TilesetImportResult(None, None, diagnostics=[Diagnostic("error", f"tileset not found: {definition_id}", code="tileset_missing")])
@@ -238,7 +238,7 @@ class TilesetLibrary:
 
     def delete(self, definition_id: str) -> tuple[bool, list[Diagnostic]]:
         if self.workspace is None:
-            return False, [Diagnostic("error", "no content workspace is active", code="workspace_missing")]
+            return False, [Diagnostic("error", "repository content is unavailable", code="workspace_missing")]
         self.usage_index.rebuild()
         usages = self.usage_index.usages(definition_id)
         if usages:

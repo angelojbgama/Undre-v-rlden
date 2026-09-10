@@ -6138,6 +6138,12 @@ void testAuthoredContentBoundary() {
     expect(!invalidResult && hasDiagnostic(invalidResult.report, "unknown_reference",
                                            "behaviorProfileId"),
            "content validation reports unknown references before registry publication");
+    auto invalidWeight = builtin;
+    invalidWeight.tileSemantics.front().variantWeight = 0;
+    const auto invalidWeightResult = content::compileContent(invalidWeight);
+    expect(!invalidWeightResult && hasDiagnostic(invalidWeightResult.report, "invalid_variant_weight",
+                                                  "variantWeight"),
+           "content validation rejects a zero Smart Terrain variant weight");
 
     auto invalidStamp = builtin;
     invalidStamp.stamps.front().cells.front().tileId = simulation::DefinitionId{"tile.missing"};
@@ -6717,11 +6723,12 @@ void testPhase13A3JsonDecoders() {
     expect(quest.content && quest.content->quests[0].objectives[0].kind == gameplay::quests::QuestObjectiveKind::deliver &&
                quest.content->quests[0].objectives[0].requiredCount == 2 && quest.content->quests[0].rewardGrantId,
            "13A3 quest decoder preserves objective, tags and reward reference");
-    const auto semantic = document("tileSemantics", R"({"id":"tile.semantic.test","tilesetId":"tileset.test","sourceIndex":7,"family":"masonry","role":"corner","topology":"innerCorner","north":"masonry","east":"floor","south":"voidEdge","west":"terminal","preferredLayer":"walls","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})");
+    const auto semantic = document("tileSemantics", R"({"id":"tile.semantic.test","tilesetId":"tileset.test","sourceIndex":7,"family":"masonry","role":"corner","topology":"innerCorner","north":"masonry","east":"floor","south":"voidEdge","west":"terminal","preferredLayer":"walls","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified","variantWeight":7})");
     expect(semantic.content && semantic.content->tileSemantics[0].role == underworld::game::authoring::TileRole::corner &&
                semantic.content->tileSemantics[0].topology == underworld::game::authoring::TileTopology::innerCorner &&
-               semantic.content->tileSemantics[0].east == underworld::game::authoring::EdgeProfile::floor && semantic.content->tileSemantics[0].flipXAllowed,
-           "13A3 tile semantic decoder preserves enums, edges and bool");
+               semantic.content->tileSemantics[0].east == underworld::game::authoring::EdgeProfile::floor && semantic.content->tileSemantics[0].flipXAllowed &&
+               semantic.content->tileSemantics[0].variantWeight == 7,
+           "13A3 tile semantic decoder preserves enums, edges, bool and variant weight");
     const auto stamp = document("stamps", R"({"id":"stamp.test","displayName":"Test Stamp","width":2,"height":3,"cells":[{"x":-1,"y":2,"tileId":"tile.semantic.test"}],"anchor":{"x":-2,"y":1},"flipXAllowed":true,"atomic":false,"confidence":"probable"})");
     expect(stamp.content && stamp.content->stamps[0].width == 2 && stamp.content->stamps[0].cells[0].x == -1 &&
                stamp.content->stamps[0].anchor.x == -2 && stamp.content->stamps[0].atomic == false &&
@@ -6754,7 +6761,8 @@ void testPhase13A3JsonDecoders() {
     expect(invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":4294967296,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].sourceIndex") &&
                invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"bad","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].topology") &&
                invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"bad","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].north") &&
-               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":1,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].flipXAllowed"),
+               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":1,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified"})", "tileSemantics[0].flipXAllowed") &&
+               invalidPath("tileSemantics", R"({"id":"t","tilesetId":"ts","sourceIndex":0,"family":"f","role":"floor","topology":"unknown","north":"unknown","east":"unknown","south":"unknown","west":"unknown","preferredLayer":"l","flipXAllowed":true,"visualConfidence":"confirmed","semanticConfidence":"probable","gameplayConfidence":"unverified","variantWeight":4294967296})", "tileSemantics[0].variantWeight"),
            "13A3 tile semantic nested enums, range and bool are strict");
     expect(invalidPath("stamps", R"({"id":"s","displayName":"s","width":4294967296,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].width") &&
                invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":{},"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":false,"confidence":"unverified"})", "stamps[0].cells") &&
@@ -6836,7 +6844,7 @@ void testPhase13A3JsonDecoders() {
             const auto da = descriptor(a); const auto db = descriptor(b);
             same(da != a.authoringDescriptors().end() && db != b.authoringDescriptors().end() && da->displayName == db->displayName && da->tags == db->tags, "registry equivalence preserves authoring descriptor");
             const auto* ats = a.authoringSemantics().findTile({"tile.dungeon.masonry.16"}); const auto* bts = b.authoringSemantics().findTile({"tile.dungeon.masonry.16"});
-            same(ats && bts && ats->sourceIndex == bts->sourceIndex && ats->role == bts->role && ats->topology == bts->topology && ats->north == bts->north, "registry equivalence preserves tile semantic");
+            same(ats && bts && ats->sourceIndex == bts->sourceIndex && ats->role == bts->role && ats->topology == bts->topology && ats->north == bts->north && ats->variantWeight == bts->variantWeight, "registry equivalence preserves tile semantic and variant weight");
             const auto* ast = a.authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"}); const auto* bst = b.authoringSemantics().findStamp({"stamp.dungeon.masonry_frame_3x3"});
             same(ast && bst && ast->width == bst->width && ast->height == bst->height && ast->cells.size() == bst->cells.size() && ast->anchor == bst->anchor && ast->confidence == bst->confidence, "registry equivalence preserves stamp");
         }

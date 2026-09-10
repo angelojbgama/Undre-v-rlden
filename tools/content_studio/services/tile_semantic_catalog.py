@@ -63,6 +63,8 @@ class TileSemanticCatalog:
                 diagnostics.append(Diagnostic("warning", f"unknown tile semantic topology: {semantic.topology}", path, "semantic_topology_unknown", semantic.definition_id))
             if any(value not in EDGES for value in semantic.edges.values()):
                 diagnostics.append(Diagnostic("warning", "tile semantic has an unknown edge profile", path, "semantic_edge_unknown", semantic.definition_id))
+            if semantic.variant_weight <= 0:
+                diagnostics.append(Diagnostic("error", "tile semantic variantWeight must be greater than zero", path, "semantic_variant_weight_invalid", semantic.definition_id))
             tileset = tilesets.get(semantic.tileset_id)
             if tileset is None:
                 diagnostics.append(Diagnostic("error", f"semantic references missing tileset: {semantic.tileset_id}", path, "semantic_tileset_missing", semantic.definition_id))

@@ -1,0 +1,38 @@
+{
+  "format": "dungeon-underworld-content",
+  "version": 5,
+  "tilesets": [
+    {
+      "id": "tileset.imported",
+      "displayName": "tileset.imported",
+      "relativeAssetPath": "tilesets/tileset.imported.png",
+      "tileSize": 16,
+      "columns": 19,
+      "rows": 12
+    }
+  ],
+  "projectiles": [],
+  "attacks": [],
+  "behaviors": [],
+  "enemies": [],
+  "items": [],
+  "objects": [],
+  "pickups": [],
+  "npcVisuals": [],
+  "npcs": [],
+  "dialogues": [],
+  "quests": [],
+  "playerProgressions": [],
+  "rewardProfiles": [],
+  "rewardGrants": [],
+  "shops": [],
+  "authoringDescriptors": [],
+  "tileSemantics": [],
+  "stamps": [],
+  "presentationEffects": [],
+  "visualImages": [],
+  "staticSprites": [],
+  "animations": [],
+  "enemyVisuals": [],
+  "objectVisuals": []
+}

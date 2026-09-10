@@ -35,7 +35,7 @@ class MapCanvas(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(160, 120)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
         self.document: MapDocument | None = None
@@ -378,20 +378,26 @@ class MapCanvas(QWidget):
             return
         if event.key() == Qt.Key.Key_Escape:
             self.cancel_placement()
-        elif event.key() == Qt.Key.Key_Delete and self.selection_controller.current and self.document:
-            selection = self.selection_controller.current
-            try:
-                if selection.category in ENTITY_CATEGORIES:
-                    self.editing.delete_entity(selection.category, int(selection.identifier))
-                else:
-                    self.editing.delete_map_element(selection.category, selection.identifier)
-                self.selection_controller.clear()
-                self.document_changed.emit()
-            except (TypeError, ValueError):
-                pass
-            self.update()
+        elif event.key() == Qt.Key.Key_Delete:
+            self.delete_selection()
         else:
             super().keyPressEvent(event)
+
+    def delete_selection(self) -> bool:
+        selection = self.selection_controller.current
+        if selection is None or self.document is None:
+            return False
+        try:
+            if selection.category in ENTITY_CATEGORIES:
+                self.editing.delete_entity(selection.category, int(selection.identifier))
+            else:
+                self.editing.delete_map_element(selection.category, selection.identifier)
+        except (TypeError, ValueError):
+            return False
+        self.selection_controller.clear()
+        self.document_changed.emit()
+        self.update()
+        return True
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Space:

@@ -297,6 +297,14 @@ class MapAuthoringTests(unittest.TestCase):
         definition = workspace.find("dialogues", "dialogue.test")
         self.assertIsNotNone(definition)
         workspace.mutate_collection(definition, "nodes", "add")  # type: ignore[arg-type]
+        definition = workspace.find("dialogues", "dialogue.test")
+        workspace.mutate_collection(definition, "nodes", "add")  # type: ignore[arg-type]
+        definition = workspace.find("dialogues", "dialogue.test")
+        workspace.mutate_collection(definition, "nodes", "remove_at:0")  # type: ignore[arg-type]
+        self.assertEqual(1, len(workspace.find("dialogues", "dialogue.test").data["nodes"]))  # type: ignore[union-attr]
+        self.assertTrue(workspace.undo())
+        self.assertEqual(2, len(workspace.find("dialogues", "dialogue.test").data["nodes"]))  # type: ignore[union-attr]
+        self.assertTrue(workspace.undo())
         self.assertEqual(1, len(workspace.find("dialogues", "dialogue.test").data["nodes"]))  # type: ignore[union-attr]
         self.assertTrue(workspace.undo())
         self.assertEqual([], workspace.find("dialogues", "dialogue.test").data["nodes"])  # type: ignore[union-attr]
@@ -387,6 +395,27 @@ class AuthoringInfrastructureTests(unittest.TestCase):
             self.assertEqual("dungeon.png", result.definition.data["relativeAssetPath"])  # type: ignore[union-attr]
             self.assertNotIn("root", result.definition.data)  # type: ignore[union-attr]
             self.assertNotIn("spacing", result.definition.data)  # type: ignore[union-attr]
+            self.assertTrue(source.is_file())
+
+    def test_tileset_import_copies_external_image_into_managed_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"
+            source = root / "downloads" / "dungeon.png"
+            source.parent.mkdir()
+            header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 32, 48)
+            source.write_bytes(header)
+            workspace = ContentWorkspace.new(root / "content" / "definitions")
+
+            result = ImportService().import_tileset(
+                workspace,
+                TilesetImportRequest(source, "tileset.dungeon", 16, 16, asset_root=assets),
+            )
+
+            managed = assets / "tilesets" / "tileset.dungeon.png"
+            self.assertTrue(result.ok)
+            self.assertEqual("tilesets/tileset.dungeon.png", result.definition.data["relativeAssetPath"])  # type: ignore[union-attr]
+            self.assertEqual(source.read_bytes(), managed.read_bytes())
             self.assertTrue(source.is_file())
 
     def test_tileset_import_rejects_invalid_grid(self) -> None:

@@ -488,6 +488,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     for (const auto& value : pack.tileSemantics) {
         const auto tileset = std::find_if(pack.tilesets.begin(), pack.tilesets.end(), [&](const auto& other) { return other.id == value.tilesetId; });
         if (!contains(tilesets, value.tilesetId) || tileset == pack.tilesets.end() || value.sourceIndex >= tileset->columns * tileset->rows) error(report, ContentKind::tileSemantic, value.id, "invalid_tile_reference", "semantic tile references an invalid tileset index", "sourceIndex");
+        if (value.variantWeight == 0) error(report, ContentKind::tileSemantic, value.id, "invalid_variant_weight", "semantic variant weight must be greater than zero", "variantWeight");
     }
     for (const auto& value : pack.stamps) {
         if (value.width == 0 || value.height == 0 || value.cells.empty()) error(report, ContentKind::stamp, value.id, "invalid_stamp_cell", "stamp dimensions and cells are required", "cells");

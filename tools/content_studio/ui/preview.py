@@ -16,7 +16,7 @@ class PreviewWidget(QWidget):
         super().__init__(parent)
         self.image = QLabel("No visual selected")
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image.setMinimumSize(180, 180)
+        self.image.setMinimumSize(80, 80)
         self.image.setStyleSheet("background: #222831; color: #aeb8c4;")
         self.info = QLabel()
         self.info.setWordWrap(True)

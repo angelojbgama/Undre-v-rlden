@@ -13,9 +13,7 @@ if errorlevel 1 (
     popd
     exit /b 2
 )
-rem The repository-local assets directory is the default root. An explicit
-rem --asset-root supplied by the caller appears later and overrides it.
-"%STUDIO_PYTHON%" -m tools.content_studio --asset-root "%~dp0assets" %*
+"%STUDIO_PYTHON%" -m tools.content_studio --project-root "%CD%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 popd
 exit /b %EXIT_CODE%

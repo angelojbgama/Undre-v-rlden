@@ -70,8 +70,7 @@ python3 -m venv .venv
 .venv\\Scripts\\activate             # Windows
 python -m pip install -e .
 python -m tools.content_studio
-python -m tools.content_studio --project path/to/world.uworld \\
-    --content path/to/content --asset-root path/to/licensed/assets
+python -m tools.content_studio --project-root .
 ```
 
 Na raiz também existem `content_studio.sh` e `content_studio.bat`. O entrypoint

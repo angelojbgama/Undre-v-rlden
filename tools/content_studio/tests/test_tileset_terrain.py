@@ -28,12 +28,13 @@ def content_root() -> dict[str, object]:
 
 
 def semantic(semantic_id: str, tileset_id: str, source_index: int, role: str, topology: str,
-             family: str = "dungeon.stone") -> dict[str, object]:
+             family: str = "dungeon.stone", variant_weight: int = 1) -> dict[str, object]:
     return {"id": semantic_id, "tilesetId": tileset_id, "sourceIndex": source_index,
             "family": family, "role": role, "topology": topology,
             "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown",
             "preferredLayer": "", "flipXAllowed": False, "visualConfidence": "confirmed",
-            "semanticConfidence": "probable", "gameplayConfidence": "unverified"}
+            "semanticConfidence": "probable", "gameplayConfidence": "unverified",
+            "variantWeight": variant_weight}
 
 
 def terrain_content() -> dict[str, object]:
@@ -167,6 +168,25 @@ class TerrainRuleTests(unittest.TestCase):
             self.assertTrue(workspace.undo())
             self.assertEqual(2, len(service.list_rules(workspace, "tileset.rule")))
 
+    def test_floor_rule_persists_relative_variant_weights(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            service = TerrainRuleService()
+            assignments = {"north_west": 0, "north": 1, "center": 2}
+            weights = {"north_west": 8, "north": 2, "center": 1}
+            service.save_rule(workspace, "tileset.rule", "dungeon.floor", "floor",
+                              assignments, weights=weights)
+            self.assertEqual(weights, service.load_weights(
+                workspace, "tileset.rule", "dungeon.floor", "floor"))
+            self.assertEqual({1, 2, 8}, {
+                value.data["variantWeight"] for value in workspace.definitions("tileSemantics")
+            })
+            with self.assertRaisesRegex(ValueError, "between 1 and 100"):
+                service.save_rule(workspace, "tileset.rule", "dungeon.floor", "floor",
+                                  assignments, weights={"north_west": 0})
+
     def test_rule_slots_resolve_directional_corners_and_edges(self) -> None:
         data = content_root()
         data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
@@ -239,6 +259,22 @@ class SemanticAndAutotileTests(unittest.TestCase):
         self.assertEqual(2, single.source_index)  # type: ignore[union-attr]
         self.assertEqual("tileset.floor", floor_a.tileset_id)  # type: ignore[union-attr]
         self.assertEqual(self.resolver.resolve("dungeon.stone", "floor", (2, 2), (), "map.a"), floor_a)
+
+    def test_floor_variants_use_deterministic_relative_weights(self) -> None:
+        clean = self.workspace.find("tileSemantics", "floor.clean")
+        variant = self.workspace.find("tileSemantics", "floor.variant")
+        clean.data["variantWeight"] = 9  # type: ignore[union-attr]
+        variant.data["variantWeight"] = 1  # type: ignore[union-attr]
+        self.catalog.invalidate()
+        results = [self.resolver.resolve("dungeon.stone", "floor", (x, y), (), "map.weighted", 17)
+                   for y in range(20) for x in range(20)]
+        clean_count = sum(value is not None and value.source_index == 0 for value in results)
+        cracked_count = sum(value is not None and value.source_index == 1 for value in results)
+        self.assertGreater(clean_count, 320)
+        self.assertGreater(cracked_count, 0)
+        self.assertEqual(results, [self.resolver.resolve(
+            "dungeon.stone", "floor", (x, y), (), "map.weighted", 17)
+            for y in range(20) for x in range(20)])
 
     def test_smart_wall_and_room_are_single_undoable_operations(self) -> None:
         document = MapDocument.new("map.smart", 8, 8)

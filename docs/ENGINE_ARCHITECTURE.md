@@ -1931,8 +1931,8 @@ The browser uses a fixed order for all twenty-five content categories and lexica
 `ContentDefinitionKey`, not a pointer into a vector. 18A has concrete typed editors
 for `visualImages`, `staticSprites`, `animations` (including frame and marker
 operations) and flexible `enemyVisuals`; other categories are browsable read-only.
-Builtin content is read-only, while `--content <workspace>` supplies the editable
-workspace root. The same document and compiler APIs are suitable for future human or
+Builtin content is read-only, while the repository project supplies the editable
+`content/definitions` root automatically. The same document and compiler APIs are suitable for future human or
 LLM authored DTOs; no reflection, generic editor framework or raw JSON editor is
 introduced.
 
@@ -2065,8 +2065,8 @@ fallback labels. Tilesets, semantic tiles and stamps use the same navigation in 
 opposite direction. Regions expose presentation-effect binding, while world rules
 and encounters remain structured list editors with compatible placement pickers.
 Builtin content is available only through explicit development/test construction;
-opening a real project without `--content` does not synthesize builtin content.
-A real external workspace supplies runtime-derived content, while its authored
+opening the repository project does not synthesize builtin content.
+The repository-owned content directory supplies runtime-derived content, while its authored
 index remains available even when compilation fails.
 An invalid workspace still invalidates content-dependent map validation,
 compile/export and playtest instead of silently using builtin or a stale registry.

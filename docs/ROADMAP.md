@@ -1467,8 +1467,8 @@ animators remain per-instance mutable state while clips/images are shared.
 system remains responsible for camera/screen effects, and this visual-content loader
 is a separate content-to-runtime asset boundary. Player visuals, HUD/font assets,
 tileset loading and generic impact VFX remain fixed game presentation assets by
-explicit Phase 17 scope; automatic asset importing, hot reload, status effects and
-audio remain outside the current product direction.
+explicit Phase 17 scope. Managed tileset copying is tooling-only; hot reload, status
+effects and audio remain outside the current product direction.
 
 The current format status is:
 
@@ -1494,8 +1494,8 @@ reports VisualContentLoader asset/decode/bounds diagnostics without changing Con
 JSON v5.
 
 The browser lists all twenty-five categories in deterministic order; all categories
-have typed authoring paths after 18D. Builtin content is read-only and an explicit
-`--content` workspace is editable. The unified shell preserves the existing MAP mode
+have typed authoring paths after 18D. Builtin content is read-only and the repository's
+`content/definitions` directory is always the editable workspace. The unified shell preserves the existing MAP mode
 and keeps both map and content documents alive when switching modes.
 
 18B — Visual Asset + Animation Authoring — DONE. The CONTENT mode now uses a shared

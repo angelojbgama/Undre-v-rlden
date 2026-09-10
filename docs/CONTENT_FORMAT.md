@@ -28,6 +28,12 @@ surrogate pairs. Source diagnostics include line, column and logical path. The
 writer uses two-space indentation, a final newline and stable field order while
 preserving authored vector order.
 
+`tileSemantics` aceita o campo opcional positivo `variantWeight` (padrão `1`).
+Ele define a frequência relativa de uma variação visual no Smart Terrain;
+pesos 8 e 2 produzem aproximadamente 80% de piso liso e 20% rachado. A escolha
+é determinística por mapa, coordenada, família, papel e seed, sem estado de RNG
+persistente, e o campo é compatível com o schema v5.
+
 Visual definitions are flexible. A visible creature requires only one `idle`
 directional binding; every binding may be non-directional (`default`), partial
 directional (`down`, `up`, `side`) or fully directional. `move`, `hurt`, `death`,

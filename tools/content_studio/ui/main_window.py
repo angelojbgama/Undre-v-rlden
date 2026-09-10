@@ -9,7 +9,8 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
-    QPlainTextEdit, QSplitter, QTabWidget, QToolBar, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar, QTabWidget,
+    QToolBar, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
@@ -42,6 +43,11 @@ class MainWindow(QMainWindow):
         self.translator = Translator(self.preferences.language)
         self.project = project or WorldProject.new()
         self.workspace = workspace
+        self.default_project_path = (
+            self.workspace.root.parent / "world.uworld"
+            if self.workspace and self.workspace.root.name == "definitions"
+            else self.project.path
+        )
         self.asset_root = asset_root or (Path(self.preferences.asset_root) if self.preferences.asset_root else None)
         self.toolchain = toolchain or CppToolchain(asset_root=self.asset_root)
         self.playtest = PlaytestService(self.toolchain)
@@ -68,7 +74,7 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu(self.translator("view"))
         self._menus = {"file": file_menu, "edit": edit_menu, "view": view_menu}
         self.actions: dict[str, QAction] = {}
-        for key, title, callback in (("new", "New Project", self.new_project), ("open", "Open Project...", self.open_project), ("new_content", "New Content Workspace...", self.new_content), ("open_content", "Open Content...", self.open_content), ("save", "Save", self.save), ("save_as", "Save As...", self.save_as), ("save_all", "Save All", self.save_all), ("validate", "Validate Workspace", self.validate), ("export", "Export DMAP", self.export_maps), ("playtest", "Playtest", self.toggle_playtest), ("import_tileset", "Import Tileset...", self.import_tileset), ("quit", "Exit", self.close)):
+        for key, title, callback in (("new", "New Project", self.new_project), ("open", "Open Project...", self.open_project), ("save", "Save", self.save), ("save_as", "Save As...", self.save_as), ("save_all", "Save All", self.save_all), ("validate", "Validate Workspace", self.validate), ("export", "Export DMAP", self.export_maps), ("playtest", "Playtest", self.toggle_playtest), ("import_tileset", "Import Tileset...", self.import_tileset), ("quit", "Exit", self.close)):
             action = QAction(title, self); action.triggered.connect(callback); self.actions[key] = action; file_menu.addAction(action)
         self.actions["new"].setShortcut("Ctrl+Shift+N")
         self.actions["open"].setShortcut("Ctrl+O")
@@ -101,7 +107,9 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.actions["playtest"])
         self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["overlays"], self.actions["playtest"]]
         self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar"]
-        self.mode_tabs = QTabWidget()
+        self.mode_tabs = QTabBar()
+        self.mode_tabs.setExpanding(False)
+        self.mode_tabs.setDrawBase(True)
         self.map_canvas = MapCanvas()
         self.map_canvas.set_translator(self.translator)
         self.map_canvas.selection_changed.connect(self._map_selection_changed)
@@ -148,32 +156,38 @@ class MainWindow(QMainWindow):
         self.entity_browser.definition_changed.connect(self._content_changed)
         self.map_inspector = StructuredInspector()
         self.map_inspector.changed.connect(self._edit_map_field)
-        map_left_tabs = QTabWidget()
-        map_left_tabs.addTab(self.map_browser, "Maps")
-        map_left_tabs.addTab(self.layers, "Layers")
-        map_left_tabs.addTab(self.tile_palette, "Tiles")
-        map_left_tabs.addTab(self.smart_terrain, self.translator("smart_terrain"))
-        map_left_tabs.addTab(self.semantic_editor, self.translator("semantic_editor"))
-        map_left_tabs.addTab(self.semantic_palette, "Semantics / Stamps")
-        map_left_tabs.addTab(self.map_elements, self.translator("map_elements"))
-        map_left_tabs.addTab(self.entity_browser, "Entities")
+        self.delete_map_selection_button = QPushButton(self.translator("delete"))
+        self.delete_map_selection_button.setEnabled(False)
+        self.delete_map_selection_button.clicked.connect(self.map_canvas.delete_selection)
+        map_inspector_panel = QWidget()
+        map_inspector_layout = QVBoxLayout(map_inspector_panel)
+        map_inspector_layout.setContentsMargins(0, 0, 0, 0)
+        map_inspector_layout.addWidget(self.map_inspector, 1)
+        map_inspector_layout.addWidget(self.delete_map_selection_button)
+        self._map_panels = QStackedWidget()
+        self._map_panels.addWidget(self.map_browser)
+        self._map_panels.addWidget(self.layers)
+        self._map_panels.addWidget(self.tile_palette)
+        self._map_panels.addWidget(self.smart_terrain)
+        self._map_panels.addWidget(self.semantic_editor)
+        self._map_panels.addWidget(self.semantic_palette)
+        self._map_panels.addWidget(self.map_elements)
+        self._map_panels.addWidget(self.entity_browser)
         self.scene_editor = SceneEditorWidget()
         self.scene_editor.changed.connect(self._map_changed)
         self.scene_editor.diagnostics_changed.connect(self._refresh_diagnostics)
-        map_left_tabs.addTab(self.scene_editor, "Scenes")
+        self._map_panels.addWidget(self.scene_editor)
         collections_tabs = QTabWidget()
         for name, panel in self.map_collections.items():
             collections_tabs.addTab(panel, panel.windowTitle() or name)
-        map_left_tabs.addTab(collections_tabs, "Rules / Links")
-        self._map_left_tabs = map_left_tabs
+        self._map_panels.addWidget(collections_tabs)
         self._collections_tabs = collections_tabs
         map_split = QSplitter(Qt.Orientation.Horizontal)
-        map_split.addWidget(map_left_tabs); map_split.addWidget(self.map_canvas); map_split.addWidget(self.map_inspector)
+        map_split.addWidget(self._map_panels); map_split.addWidget(self.map_canvas); map_split.addWidget(map_inspector_panel)
+        self._configure_workspace_splitter(map_split)
         map_split.setStretchFactor(1, 1)
         self._map_split = map_split
         map_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
-        map_page = QWidget(); map_layout = QVBoxLayout(map_page); map_layout.addWidget(map_split)
-        self.mode_tabs.addTab(map_page, "MAP")
 
         self.content_browser = ContentBrowser(self.workspace, translator=self.translator)
         self.content_browser.selected.connect(self._content_selected)
@@ -188,29 +202,93 @@ class MainWindow(QMainWindow):
         self.asset_browser.selected.connect(self._asset_selected)
         self.asset_browser.assign_requested.connect(self._assign_asset)
         self.preview = PreviewWidget()
-        content_browsers = QTabWidget()
-        content_browsers.addTab(self.content_browser, "Definitions")
-        content_browsers.addTab(self.asset_browser, "Assets")
+        self._content_panels = QStackedWidget()
+        self._content_panels.addWidget(self.content_browser)
+        self._content_panels.addWidget(self.asset_browser)
         content_split = QSplitter(Qt.Orientation.Horizontal)
-        content_split.addWidget(content_browsers); content_split.addWidget(self.preview); content_split.addWidget(self.content_inspector)
+        content_split.addWidget(self._content_panels); content_split.addWidget(self.preview); content_split.addWidget(self.content_inspector)
+        self._configure_workspace_splitter(content_split)
         content_split.setStretchFactor(1, 1)
         self._content_split = content_split
         content_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
-        content_page = QWidget(); content_layout = QVBoxLayout(content_page); content_layout.addWidget(content_split)
-        self.mode_tabs.addTab(content_page, "CONTENT")
-        self.mode_tabs.currentChanged.connect(lambda index: self.command_coordinator.mark("content" if index == 1 else "map"))
-        self._content_browsers = content_browsers
+        self.mode_tabs.addTab(self.translator("maps_mode"))
+        self.mode_tabs.addTab(self.translator("content_mode"))
+        self._section_tabs = QTabBar()
+        self._section_tabs.setExpanding(False)
+        self._section_tabs.setDrawBase(True)
+        self._workspace_pages = QStackedWidget()
+        self._workspace_pages.addWidget(map_split)
+        self._workspace_pages.addWidget(content_split)
+        self._mode_section_indexes = [0, 0]
+        self.mode_tabs.currentChanged.connect(self._select_mode)
+        self._section_tabs.currentChanged.connect(self._select_section)
         self.diagnostics_view = QPlainTextEdit(); self.diagnostics_view.setReadOnly(True); self.diagnostics_view.setMaximumHeight(150)
-        root = QSplitter(Qt.Orientation.Vertical); root.addWidget(self.mode_tabs); root.addWidget(self.diagnostics_view); root.setStretchFactor(0, 1)
+        workspace = QWidget()
+        workspace_layout = QVBoxLayout(workspace)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
+        workspace_layout.addWidget(self.mode_tabs)
+        workspace_layout.addWidget(self._section_tabs)
+        workspace_layout.addWidget(self._workspace_pages, 1)
+        root = QSplitter(Qt.Orientation.Vertical); root.addWidget(workspace); root.addWidget(self.diagnostics_view); root.setStretchFactor(0, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage(self.translator("ready"))
         self._retranslate_ui()
+        self._select_mode(0)
+
+    @staticmethod
+    def _configure_workspace_splitter(splitter: QSplitter) -> None:
+        """Allow VS Code-like narrow, wide, and hidden side panels."""
+        splitter.setChildrenCollapsible(True)
+        splitter.setHandleWidth(8)
+        splitter.setOpaqueResize(True)
+        splitter.setCollapsible(0, True)
+        splitter.setCollapsible(1, False)
+        splitter.setCollapsible(2, True)
+        for index in (0, 2):
+            panel = splitter.widget(index)
+            panel.setMinimumWidth(0)
+            policy = panel.sizePolicy()
+            policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+            panel.setSizePolicy(policy)
+
+    def _section_labels(self, mode_index: int) -> tuple[str, ...]:
+        if mode_index == 0:
+            return tuple(self.translator(key) for key in (
+                "maps", "layers", "tiles", "smart_terrain", "semantic_editor",
+                "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
+            ))
+        return (self.translator("definitions"), self.translator("assets"))
+
+    def _select_mode(self, mode_index: int) -> None:
+        if mode_index < 0:
+            return
+        self._workspace_pages.setCurrentIndex(mode_index)
+        self.command_coordinator.mark("content" if mode_index == 1 else "map")
+        map_mode = mode_index == 0
+        self._toolbar.setVisible(map_mode)
+        for action_key in ("grid", "snap", "overlays", "frame"):
+            self.actions[action_key].setEnabled(map_mode)
+        while self._section_tabs.count():
+            self._section_tabs.removeTab(0)
+        for label in self._section_labels(mode_index):
+            self._section_tabs.addTab(label)
+        section_index = min(self._mode_section_indexes[mode_index], self._section_tabs.count() - 1)
+        self._section_tabs.setCurrentIndex(section_index)
+        self._select_section(section_index)
+
+    def _select_section(self, section_index: int) -> None:
+        mode_index = self.mode_tabs.currentIndex()
+        if mode_index < 0 or section_index < 0:
+            return
+        self._mode_section_indexes[mode_index] = section_index
+        panels = self._content_panels if mode_index == 1 else self._map_panels
+        panels.setCurrentIndex(section_index)
 
     def _retranslate_ui(self) -> None:
         """Retranslate the application shell without replacing native editors."""
         labels = {
-            "new": "new_project", "open": "open_project", "new_content": "new_content",
-            "open_content": "open_content", "save": "save", "save_as": "save_as",
+            "new": "new_project", "open": "open_project", "save": "save", "save_as": "save_as",
             "save_all": "save_all", "validate": "validate", "export": "export",
             "playtest": "playtest", "import_tileset": "import_tileset", "quit": "quit", "undo": "undo", "redo": "redo",
             "grid": "grid", "frame": "frame",
@@ -228,19 +306,17 @@ class MainWindow(QMainWindow):
         self.tileset_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
-        self.mode_tabs.setTabText(0, self.translator("map"))
-        self.mode_tabs.setTabText(1, self.translator("content"))
-        for index, key in enumerate(("maps", "layers", "tiles", "smart_terrain", "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):
-            if index < self._map_left_tabs.count():
-                self._map_left_tabs.setTabText(index, self.translator(key))
-        self._content_browsers.setTabText(0, self.translator("definitions"))
-        self._content_browsers.setTabText(1, self.translator("assets"))
+        self.mode_tabs.setTabText(0, self.translator("maps_mode"))
+        self.mode_tabs.setTabText(1, self.translator("content_mode"))
+        for index, label in enumerate(self._section_labels(self.mode_tabs.currentIndex())):
+            self._section_tabs.setTabText(index, label)
         self.entity_browser.set_translator(self.translator)
         self.content_browser.set_translator(self.translator)
         self.map_elements.retranslate({
             "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
             "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
         })
+        self.delete_map_selection_button.setText(self.translator("delete"))
 
     def _refresh_all(self) -> None:
         self.map_browser.refresh([document.map_id for document in self.project.maps], self.project.active_map.map_id)
@@ -376,9 +452,11 @@ class MainWindow(QMainWindow):
     def _map_selection_changed(self, selection: object) -> None:
         if not selection:
             self.map_inspector.clear("No selection")
+            self.delete_map_selection_button.setEnabled(False)
             return
         category, identifier = selection
         value = self.project.active_map.entity(category, identifier) if category in {"enemies", "npcs", "objects", "pickups"} else next((entry for entry in self.project.active_map.all_collection(category) if entry.get("id") == identifier), None)
+        self.delete_map_selection_button.setEnabled(value is not None)
         if value is not None:
             self.map_inspector.set_object(f"{category}: {identifier}", value)
 
@@ -433,7 +511,7 @@ class MainWindow(QMainWindow):
 
     def import_tileset(self) -> None:
         if self.workspace is None:
-            self.show_error("Open a content workspace before importing a tileset")
+            self.show_error("The repository content directory is unavailable")
             return
         self.tileset_library.add_files()
 
@@ -471,19 +549,9 @@ class MainWindow(QMainWindow):
     def new_project(self) -> None:
         if not self._confirm_unsaved():
             return
-        self.project = WorldProject.new(); self._refresh_all(); self.set_status("New blank project")
-
-    def new_content(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "New Content Workspace")
-        if not path or not self._confirm_unsaved():
-            return
-        try:
-            self.workspace = ContentWorkspace.new(Path(path))
-            self.workspace.save_all()
-            self._refresh_all()
-            self.set_status("New project content workspace")
-        except OSError as error:
-            self.show_error(str(error))
+        self.project = WorldProject.new()
+        self.project.path = self.default_project_path
+        self._refresh_all(); self.set_status("New blank project")
 
     def new_map(self) -> None:
         map_id, accepted = QInputDialog.getText(self, "New Map", "MapId:", text=f"map.{len(self.project.maps) + 1}")
@@ -508,12 +576,6 @@ class MainWindow(QMainWindow):
             self._refresh_diagnostics(diagnostics); return
         self.project = project; self.preferences.last_project = path; save_preferences(self.preferences)
         self._refresh_all(); self._refresh_diagnostics(diagnostics)
-
-    def open_content(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Open Content Workspace")
-        if not path or not self._confirm_unsaved(): return
-        self.workspace = ContentWorkspace.open(Path(path)); self.preferences.last_project = path; save_preferences(self.preferences)
-        self._refresh_all(); self.set_status("Content workspace opened")
 
     def save(self) -> None:
         try:
@@ -573,7 +635,7 @@ class MainWindow(QMainWindow):
         if self.playtest.process and self.playtest.process.poll() is None:
             self.playtest.stop(); self.set_status("Playtest stopped"); return
         if not self.workspace:
-            self.show_error("Open a content workspace before starting playtest"); return
+            self.show_error("The repository content directory is unavailable"); return
         success, issues = self.playtest.start(self.project, self.workspace, self.asset_root)
         self._refresh_diagnostics(issues); self.set_status("Playtest started" if success else "Playtest failed")
 
@@ -657,31 +719,37 @@ def _format_diagnostic(issue: Diagnostic) -> str:
     return f"{prefix}{location}[{issue.severity}] {issue.message}"
 
 
-def _default_content_path() -> Path | None:
-    repository_root = Path(__file__).resolve().parents[3]
-    for candidate in (repository_root / "content" / "definitions", repository_root / "content"):
-        if candidate.is_dir() and any(candidate.rglob("*.json")):
-            return candidate
-    candidate = repository_root / "content.json"
-    return candidate if candidate.is_file() else None
+def _open_repository_workspace(repository_root: Path) -> ContentWorkspace:
+    content_root = repository_root / "content" / "definitions"
+    if content_root.is_dir() and any(content_root.rglob("*.json")):
+        return ContentWorkspace.open(content_root)
+    workspace = ContentWorkspace.new(content_root)
+    workspace.save_all()
+    return workspace
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = __import__("argparse").ArgumentParser(description="Dungeon Underworld Python Content Studio")
-    parser.add_argument("--content", type=Path, help="authored content workspace directory or JSON file")
+    parser.add_argument("--project-root", type=Path, help="repository root used by the Content Studio")
     parser.add_argument("--project", type=Path, help="authored .uworld or .umap")
-    parser.add_argument("--asset-root", type=Path, help="licensed game asset root")
     parser.add_argument("--cpp-root", type=Path, help="repository root containing C++ tools")
     args = parser.parse_args(argv)
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
-    content_path = args.content or _default_content_path()
-    workspace = ContentWorkspace.open(content_path) if content_path else None
+    repository_root = (args.project_root or Path.cwd()).expanduser().resolve()
+    workspace = _open_repository_workspace(repository_root)
+    asset_root = repository_root / "assets"
+    asset_root.mkdir(parents=True, exist_ok=True)
+    project_path = args.project or (repository_root / "content" / "world.uworld")
     project = None
-    if args.project:
-        project, diagnostics = WorldProject.open(args.project)
+    if project_path.is_file():
+        project, diagnostics = WorldProject.open(project_path)
         if project is None:
             print("\n".join(issue.message for issue in diagnostics), file=sys.stderr)
             return 1
-    window = MainWindow(project, workspace, args.asset_root, CppToolchain(args.cpp_root, asset_root=args.asset_root) if args.cpp_root else None)
+    else:
+        project = WorldProject.new()
+        project.path = project_path
+    cpp_root = args.cpp_root or repository_root
+    window = MainWindow(project, workspace, asset_root, CppToolchain(cpp_root, asset_root=asset_root))
     window.show()
     return app.exec()

@@ -111,14 +111,9 @@ class TileAtlasWidget(QWidget):
         rows = max(1, int(definition.data.get("rows", 1)))
         tile_size = max(1, int(definition.data.get("tileSize", 16)))
         self.tiles.columns = columns
-        # QListView normally chooses the number of IconMode columns from the
-        # current widget width.  That makes a 16-column source atlas appear as
-        # a different layout when the dock is resized.  Keep the viewport
-        # exactly wide enough for the authored grid so visual position and
-        # sourceIndex (row * columns + column) stay identical.
-        grid_width = self.tiles.gridSize().width()
-        scrollbar_width = self.tiles.verticalScrollBar().sizeHint().width()
-        self.tiles.setFixedWidth(columns * grid_width + 2 * self.tiles.frameWidth() + scrollbar_width + 6)
+        # Reflow only changes presentation. Source identity remains the
+        # authored row-major index stored in each item.
+        self.tiles.setMinimumWidth(0)
         self.tiles.setProperty("tilesetId", self.tileset_id)
         self.title.setText(f"{definition.display_name}\n{columns} × {rows} tiles")
         relative = definition.data.get("relativeAssetPath")

@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton,
+    QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton,
     QSplitter, QVBoxLayout, QWidget, QLineEdit,
 )
 
@@ -41,13 +41,18 @@ class TilesetLibraryWidget(QWidget):
         self.tilesets.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tilesets.customContextMenuRequested.connect(self._context_menu)
         self.atlas = TileAtlasWidget(); self.atlas.selected.connect(self.selected); self.atlas.brush_selected.connect(self.brush_selected)
+        self.atlas.tiles.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.atlas.tiles.customContextMenuRequested.connect(self._atlas_context_menu)
         self.add_files_button = QPushButton(self.translate("add_files")); self.add_files_button.clicked.connect(self.add_files)
         self.add_folder_button = QPushButton(self.translate("add_folder")); self.add_folder_button.clicked.connect(self.add_folder)
         self.reimport_button = QPushButton(self.translate("reimport")); self.reimport_button.clicked.connect(self.reimport_selected)
         self.delete_button = QPushButton(self.translate("delete")); self.delete_button.clicked.connect(self.delete_selected)
-        buttons = QHBoxLayout(); buttons.addWidget(self.add_files_button); buttons.addWidget(self.add_folder_button); buttons.addWidget(self.reimport_button); buttons.addWidget(self.delete_button)
+        buttons = QGridLayout()
+        for index, button in enumerate((self.add_files_button, self.add_folder_button, self.reimport_button, self.delete_button)):
+            buttons.addWidget(button, index // 2, index % 2)
         left = QWidget(); left_layout = QVBoxLayout(left); left_layout.addWidget(QLabel(self.translate("tilesets"))); left_layout.addWidget(self.search); left_layout.addWidget(self.tilesets, 1); left_layout.addLayout(buttons)
         splitter = QSplitter(Qt.Orientation.Horizontal); splitter.addWidget(left); splitter.addWidget(self.atlas); splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(True); splitter.setHandleWidth(8); splitter.setSizes([240, 520])
         layout = QVBoxLayout(self); layout.addWidget(splitter)
         self.setAcceptDrops(True)
         self.set_workspace(workspace, project)
@@ -104,6 +109,9 @@ class TilesetLibraryWidget(QWidget):
             self.tilesets.setCurrentRow(row)
         else:
             self.atlas.set_tileset("")
+        has_selection = self._selected_definition() is not None
+        self.reimport_button.setEnabled(has_selection)
+        self.delete_button.setEnabled(has_selection)
 
     def add_files(self) -> None:
         dialog = BatchTilesetImportDialog(self.library, self.asset_root, self.translate, self)
@@ -157,10 +165,22 @@ class TilesetLibraryWidget(QWidget):
         definition = self.library.workspace.find("tilesets", str(item.data(Qt.ItemDataRole.UserRole))) if item and self.library.workspace else None
         if definition is None or self.library.workspace is None:
             return
+        self.tilesets.setCurrentItem(item)
+        menu = self._tileset_context_menu(definition.definition_id)
+        menu.exec(self.tilesets.viewport().mapToGlobal(position))  # type: ignore[arg-type]
+
+    def _atlas_context_menu(self, position: object) -> None:
+        definition = self._selected_definition()
+        if definition is None:
+            return
+        menu = self._tileset_context_menu(definition.definition_id)
+        menu.exec(self.atlas.tiles.viewport().mapToGlobal(position))  # type: ignore[arg-type]
+
+    def _tileset_context_menu(self, tileset_id: str) -> QMenu:
         menu = QMenu(self)
-        configure = menu.addAction(self.translate("configure_terrain_rule"))
-        configure.triggered.connect(lambda: self._open_terrain_rule(definition.definition_id))
-        menu.exec(self.tilesets.mapToGlobal(position))  # type: ignore[arg-type]
+        manage = menu.addAction(self.translate("configure_terrain_rule"))
+        manage.triggered.connect(lambda: self._open_terrain_rule(tileset_id))
+        return menu
 
     def _open_terrain_rule(self, tileset_id: str) -> None:
         if self.library.workspace is None:
@@ -175,12 +195,15 @@ class TilesetLibraryWidget(QWidget):
     def _tileset_changed(self, item: QListWidgetItem | None, unused: QListWidgetItem | None = None) -> None:
         del unused
         if item is None:
-            self.atlas.set_tileset(""); return
+            self.atlas.set_tileset("")
+            self.reimport_button.setEnabled(False); self.delete_button.setEnabled(False)
+            return
         definition = self._selected_definition()
         if definition is None:
             return
         self.atlas.set_context(self.library.workspace, self.asset_root)
         self.atlas.set_tileset(definition.definition_id)
+        self.reimport_button.setEnabled(True); self.delete_button.setEnabled(True)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if any(url.isLocalFile() and Path(url.toLocalFile()).suffix.casefold() in SUPPORTED_IMAGE_SUFFIXES for url in event.mimeData().urls()):

@@ -3,8 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QInputDialog, QLabel, QListWidget, QPushButton, QScrollArea,
-    QSlider, QVBoxLayout, QWidget,
+    QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QListWidget, QPushButton,
+    QScrollArea, QSlider, QSplitter, QVBoxLayout, QWidget,
 )
 
 from ..model.map_document import MapDocument
@@ -159,9 +159,11 @@ class SceneEditorWidget(QWidget):
         self.scenes = QListWidget(); self.scenes.currentRowChanged.connect(self._scene_changed)
         self.new_button = QPushButton("New Scene"); self.duplicate_button = QPushButton("Duplicate"); self.delete_button = QPushButton("Delete")
         self.new_button.clicked.connect(self._new_scene); self.duplicate_button.clicked.connect(self._duplicate_scene); self.delete_button.clicked.connect(self._delete_scene)
-        scene_buttons = QHBoxLayout(); [scene_buttons.addWidget(button) for button in (self.new_button, self.duplicate_button, self.delete_button)]
+        scene_buttons = QGridLayout()
+        for index, button in enumerate((self.new_button, self.duplicate_button, self.delete_button)):
+            scene_buttons.addWidget(button, index // 2, index % 2)
         left = QVBoxLayout(); left.addWidget(QLabel("Scenes")); left.addWidget(self.scenes, 1); left.addLayout(scene_buttons)
-        left_widget = QWidget(); left_widget.setLayout(left); left_widget.setMinimumWidth(180)
+        left_widget = QWidget(); left_widget.setLayout(left)
 
         self.inspector = StructuredInspector(); self.inspector.changed.connect(self._edit_field)
         self.timeline = TimelineWidget(); self.timeline.clip_selected.connect(self._clip_selected); self.timeline.clip_moved.connect(self._clip_moved)
@@ -175,16 +177,23 @@ class SceneEditorWidget(QWidget):
         self.clip_kind = QComboBox()
         self.add_clip_button = QPushButton("Add Clip"); self.duplicate_clip_button = QPushButton("Duplicate Clip"); self.remove_clip_button = QPushButton("Remove Clip"); self.add_track_button = QPushButton("Add Track")
         self.add_clip_button.clicked.connect(self._add_clip); self.duplicate_clip_button.clicked.connect(self._duplicate_clip); self.remove_clip_button.clicked.connect(self._remove_clip); self.add_track_button.clicked.connect(self._add_track)
-        controls = QHBoxLayout(); [controls.addWidget(widget) for widget in (self.track_selector, self.clip_kind, self.add_clip_button, self.duplicate_clip_button, self.remove_clip_button, self.add_track_button)]
+        controls = QGridLayout()
+        for index, widget in enumerate((self.track_selector, self.clip_kind, self.add_clip_button, self.duplicate_clip_button, self.remove_clip_button, self.add_track_button)):
+            controls.addWidget(widget, index // 3, index % 3)
         self.add_marker_button = QPushButton("Add Marker"); self.rename_marker_button = QPushButton("Rename Marker"); self.remove_marker_button = QPushButton("Remove Marker"); self.fit_button = QPushButton("Fit Duration"); self.activation_button = QPushButton("Add Activation")
         self.add_marker_button.clicked.connect(self._add_marker); self.rename_marker_button.clicked.connect(self._rename_marker); self.remove_marker_button.clicked.connect(self._remove_marker); self.fit_button.clicked.connect(self._fit_duration); self.activation_button.clicked.connect(self._add_activation)
-        marker_controls = QHBoxLayout(); [marker_controls.addWidget(widget) for widget in (self.add_marker_button, self.rename_marker_button, self.remove_marker_button, self.fit_button, self.activation_button)]
+        marker_controls = QGridLayout()
+        for index, widget in enumerate((self.add_marker_button, self.rename_marker_button, self.remove_marker_button, self.fit_button, self.activation_button)):
+            marker_controls.addWidget(widget, index // 3, index % 3)
         self.markers = QListWidget(); self.markers.currentRowChanged.connect(self._marker_selected)
         self.actors = QListWidget(); self.add_actor_button = QPushButton("Add Actor"); self.remove_actor_button = QPushButton("Remove Actor"); self.add_actor_button.clicked.connect(self._add_actor); self.remove_actor_button.clicked.connect(self._remove_actor)
         actor_controls = QHBoxLayout(); actor_controls.addWidget(self.add_actor_button); actor_controls.addWidget(self.remove_actor_button)
         playback = QHBoxLayout(); playback.addWidget(self.play_button); playback.addWidget(self.restart_button); playback.addWidget(QLabel("Timeline zoom")); playback.addWidget(self.timeline_zoom); playback.addWidget(QLabel("Playhead")); playback.addWidget(self.playhead)
         center = QVBoxLayout(); center.addWidget(self.inspector, 2); center.addWidget(QLabel("Actors")); center.addWidget(self.actors); center.addLayout(actor_controls); center.addWidget(QLabel("Timeline")); center.addLayout(controls); center.addWidget(self.timeline_scroll, 2); center.addLayout(playback); center.addWidget(QLabel("Markers")); center.addWidget(self.markers); center.addLayout(marker_controls); center.addWidget(self.preview, 1); center.addWidget(self.status)
-        center_widget = QWidget(); center_widget.setLayout(center); layout = QHBoxLayout(self); layout.addWidget(left_widget); layout.addWidget(center_widget, 1)
+        center_widget = QWidget(); center_widget.setLayout(center)
+        splitter = QSplitter(Qt.Orientation.Horizontal); splitter.setHandleWidth(8); splitter.setChildrenCollapsible(True)
+        splitter.addWidget(left_widget); splitter.addWidget(center_widget); splitter.setStretchFactor(1, 1); splitter.setSizes([220, 700])
+        layout = QHBoxLayout(self); layout.addWidget(splitter)
 
     def set_document(self, document: MapDocument | None) -> None:
         self.document = document; self.refresh()

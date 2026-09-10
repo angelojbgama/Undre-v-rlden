@@ -30,8 +30,8 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
         language=data.get("language", "pt-BR") if data.get("language") in {"pt-BR", "en-US"} else "pt-BR",
         asset_root=str(data.get("assetRoot", "")),
         last_project=str(data.get("lastProject", "")),
-        left_panel_width=max(180, int(data.get("leftPanelWidth", 260))),
-        right_panel_width=max(240, int(data.get("rightPanelWidth", 340))),
+        left_panel_width=max(0, int(data.get("leftPanelWidth", 260))),
+        right_panel_width=max(0, int(data.get("rightPanelWidth", 340))),
     )
 
 
@@ -43,4 +43,3 @@ def save_preferences(preferences: ProjectPreferences, path: Path | None = None) 
         "leftPanelWidth": preferences.left_panel_width,
         "rightPanelWidth": preferences.right_panel_width,
     })
-

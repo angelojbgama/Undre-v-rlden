@@ -1,6 +1,6 @@
 """Typed, tooling-only views over the authored tile semantic definitions.
 
-The JSON contract remains the existing Content v5 contract.  These small
+The JSON contract remains the authored Content contract.  These small
 objects make the rest of the Studio independent from dictionary key spelling
 and provide a single place for topology/edge names.
 """
@@ -35,6 +35,7 @@ class TileSemantic:
     west: str = "unknown"
     preferred_layer: str = ""
     flip_x_allowed: bool = False
+    variant_weight: int = 1
     source_definition: ContentDefinition | None = None
 
     @classmethod
@@ -53,6 +54,7 @@ class TileSemantic:
             _text(data.get("west"), "unknown"),
             _text(data.get("preferredLayer")),
             bool(data.get("flipXAllowed", False)),
+            _integer(data.get("variantWeight"), 1),
             definition,
         )
 
