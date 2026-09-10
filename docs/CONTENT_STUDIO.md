@@ -28,9 +28,12 @@ python -m tools.content_studio --project content/world.uworld \\
 ```
 
 Os wrappers `content_studio.sh` e `content_studio.bat` usam `assets/` na raiz do
-repositório como `asset root` padrão. Também é possível informar outro caminho
-com `--asset-root`; ele deve apontar para a pasta que contém os assets do jogo.
-Os assets licenciados não são copiados automaticamente para o repositório.
+repositório como `asset root` padrão. Ao iniciar sem `--content`, o Studio
+procura primeiro `content/definitions`, depois `content/` e, por fim, um
+`content.json` na raiz. Também é possível informar outro caminho com
+`--asset-root` e `--content`; o conteúdo pode ser uma pasta authored ou um
+arquivo JSON authored individual. Os assets licenciados não são copiados
+automaticamente para o repositório.
 
 `content_studio.bat` usa automaticamente `.venv` quando ela existe e informa o
 comando de preparação quando PySide6 ainda não foi instalado. O primeiro setup

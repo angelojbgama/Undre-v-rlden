@@ -657,15 +657,25 @@ def _format_diagnostic(issue: Diagnostic) -> str:
     return f"{prefix}{location}[{issue.severity}] {issue.message}"
 
 
+def _default_content_path() -> Path | None:
+    repository_root = Path(__file__).resolve().parents[3]
+    for candidate in (repository_root / "content" / "definitions", repository_root / "content"):
+        if candidate.is_dir() and any(candidate.rglob("*.json")):
+            return candidate
+    candidate = repository_root / "content.json"
+    return candidate if candidate.is_file() else None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = __import__("argparse").ArgumentParser(description="Dungeon Underworld Python Content Studio")
-    parser.add_argument("--content", type=Path, help="authored content workspace directory")
+    parser.add_argument("--content", type=Path, help="authored content workspace directory or JSON file")
     parser.add_argument("--project", type=Path, help="authored .uworld or .umap")
     parser.add_argument("--asset-root", type=Path, help="licensed game asset root")
     parser.add_argument("--cpp-root", type=Path, help="repository root containing C++ tools")
     args = parser.parse_args(argv)
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
-    workspace = ContentWorkspace.open(args.content) if args.content else None
+    content_path = args.content or _default_content_path()
+    workspace = ContentWorkspace.open(content_path) if content_path else None
     project = None
     if args.project:
         project, diagnostics = WorldProject.open(args.project)

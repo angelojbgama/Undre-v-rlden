@@ -34,18 +34,25 @@ class ContentWorkspace:
     def open(cls, root: Path) -> "ContentWorkspace":
         root = root.expanduser().resolve()
         diagnostics: list[Diagnostic] = []
-        if not root.is_dir():
+        if root.is_file():
+            if root.suffix.casefold() != ".json":
+                return cls(root.parent, [], [Diagnostic("error", "content workspace file must be JSON", str(root), "workspace_file_invalid")])
+            paths = [root]
+            workspace_root = root.parent
+        elif root.is_dir():
+            paths = sorted((path for path in root.rglob("*.json") if path.is_file()), key=lambda path: path.as_posix())
+            workspace_root = root
+        else:
             return cls(root, [], [Diagnostic("error", "content workspace directory does not exist", str(root), "workspace_root_missing")])
-        paths = sorted((path for path in root.rglob("*.json") if path.is_file()), key=lambda path: path.as_posix())
         if not paths:
-            return cls(root, [], [Diagnostic("error", "workspace contains no JSON source files", str(root), "empty_workspace")])
+            return cls(workspace_root, [], [Diagnostic("error", "workspace contains no JSON source files", str(root), "empty_workspace")])
         files: list[ContentFile] = []
         for path in paths:
             decoded = decode_content(path)
             if decoded.data is not None:
                 files.append(ContentFile(path, decoded.data, False, True))
             diagnostics.extend(decoded.diagnostics)
-        return cls(root, files, diagnostics)
+        return cls(workspace_root, files, diagnostics)
 
     @classmethod
     def new(cls, root: Path) -> "ContentWorkspace":

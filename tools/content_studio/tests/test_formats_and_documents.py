@@ -46,6 +46,16 @@ def content_root(*definitions: tuple[str, dict[str, object]]) -> dict[str, objec
 
 
 class FormatTests(unittest.TestCase):
+    def test_content_workspace_can_open_a_single_authored_json_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "content.json"
+            source.write_text(encode_json(content_root()), encoding="utf-8")
+            workspace = ContentWorkspace.open(source)
+            self.assertEqual(root, workspace.root)
+            self.assertEqual([], workspace.diagnostics)
+            self.assertEqual([], workspace.definitions())
+
     def test_content_v4_round_trip_preserves_unknown_future_to_python_fields(self) -> None:
         source = FIXTURES / "phase16-content-v4" / "content.json"
         original = json.loads(source.read_text(encoding="utf-8"))
