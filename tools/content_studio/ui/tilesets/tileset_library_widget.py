@@ -71,7 +71,8 @@ class TilesetLibraryWidget(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        current = self.tilesets.currentData(Qt.ItemDataRole.UserRole)
+        current_item = self.tilesets.currentItem()
+        current = current_item.data(Qt.ItemDataRole.UserRole) if current_item else None
         self.tilesets.blockSignals(True); self.tilesets.clear()
         for definition in self.library.definitions(self.search.text()):
             item = QListWidgetItem(f"{definition.display_name}")
@@ -84,7 +85,16 @@ class TilesetLibraryWidget(QWidget):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             self.tilesets.addItem(item)
         self.tilesets.blockSignals(False)
-        row = self.tilesets.findData(current) if current else -1
+        row = -1
+        if current:
+            row = next(
+                (
+                    index
+                    for index in range(self.tilesets.count())
+                    if self.tilesets.item(index).data(Qt.ItemDataRole.UserRole) == current
+                ),
+                -1,
+            )
         if row < 0:
             row = next((index for index in range(self.tilesets.count()) if self.tilesets.item(index).flags() & Qt.ItemFlag.ItemIsEnabled), -1)
         if row >= 0:
