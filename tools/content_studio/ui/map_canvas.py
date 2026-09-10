@@ -174,6 +174,9 @@ class MapCanvas(QWidget):
         self.update()
 
     def set_brush(self, tileset_id: str, source_indices: list[int], flags: int = 0) -> None:
+        self.interaction.set_terrain_selection(None)
+        self.interaction.set_room_profile(None)
+        self.interaction.set_collision_overlay(False)
         self.selected_brush = []
         if not source_indices:
             self.interaction.set_active_payload(None)
@@ -196,6 +199,7 @@ class MapCanvas(QWidget):
             self.interaction.set_terrain_selection(None)
             return
         self.tool = "terrain"
+        self.interaction.set_collision_overlay(False)
         self.selected_entity_category = ""
         self.selected_definition_id = ""
         self.interaction.set_terrain_selection(selection)
@@ -207,6 +211,7 @@ class MapCanvas(QWidget):
             self.interaction.set_room_profile(None)
             return
         self.tool = "room"
+        self.interaction.set_collision_overlay(False)
         self.selected_entity_category = ""
         self.selected_definition_id = ""
         self.interaction.set_room_profile(profile)

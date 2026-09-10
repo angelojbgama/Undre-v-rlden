@@ -103,6 +103,11 @@ mesmo mapa não troca tiles aleatoriamente. A engine não assume que uma famíli
 pertence a um único tileset, o que permite floor em A, parede em B e corner em
 C sem alterar UMAP.
 
+Collision automática é uma policy opcional do `TerrainPaintingService`; sem
+policy, Smart Terrain não modifica a layer de collision. Isso permite que uma
+parede authored não seja universalmente tratada como sólida e deixa espaço para
+água, ponte, low wall e decoração com regras diferentes.
+
 ## Build/testes
 
 ```bash

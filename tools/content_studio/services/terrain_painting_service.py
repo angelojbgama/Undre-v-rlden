@@ -20,18 +20,30 @@ class TerrainPaintResult:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class TerrainCollisionPolicy:
+    """Opt-in role policy; the default terrain workflow never changes collision."""
+
+    solid_roles: frozenset[str] = frozenset()
+
+    def solid_for(self, role: str) -> bool | None:
+        return True if role in self.solid_roles else None
+
+
 class TerrainPaintingService:
     """UI-neutral authoring operations for smart floor, wall and rooms."""
 
     def __init__(self, document: MapDocument | None = None, workspace: ContentWorkspace | None = None,
                  editing: MapEditingService | None = None,
                  catalog: TileSemanticCatalog | None = None,
-                 resolver: AutoTileResolver | None = None) -> None:
+                 resolver: AutoTileResolver | None = None,
+                 collision_policy: TerrainCollisionPolicy | None = None) -> None:
         self.document = document
         self.workspace = workspace
         self.editing = editing or MapEditingService(document, workspace=workspace)
         self.catalog = catalog or TileSemanticCatalog(workspace)
         self.resolver = resolver or AutoTileResolver(self.catalog)
+        self.collision_policy = collision_policy
 
     def set_context(self, document: MapDocument | None, workspace: ContentWorkspace | None) -> None:
         self.document = document
@@ -62,19 +74,22 @@ class TerrainPaintingService:
                 affected.update(self._neighbors((x, y), document))
             affected = {cell for cell in affected if cell in active or cell in old_active or cell in target}
         assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
+        collision: dict[tuple[int, int], bool] = {}
         warnings: list[str] = []
         for position in sorted(affected, key=lambda value: (value[1], value[0])):
             if position not in active:
                 if position in target:
                     assignments[position] = None
+                    self._set_collision(collision, position, selection.role, False)
                 continue
             resolved = self._resolve(selection, position, active, document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
+                self._set_collision(collision, position, selection.role, True)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
         try:
-            changed = self.editing.apply_tile_assignments(assignments, label)
+            changed = self.editing.apply_tile_assignments(assignments, label, collision)
         except ValueError as error:
             warnings.append(str(error))
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
@@ -106,19 +121,22 @@ class TerrainPaintingService:
             return TerrainPaintResult()
         boundary = {cell for cell in rect if cell[0] in {left, right} or cell[1] in {top, bottom}}
         assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
+        collision: dict[tuple[int, int], bool] = {}
         warnings: list[str] = []
         for position in sorted(boundary, key=lambda value: (value[1], value[0])):
             resolved = self._resolve(profile.boundary, position, boundary, document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
+                self._set_collision(collision, position, profile.boundary.role, True)
         for position in sorted(rect - boundary, key=lambda value: (value[1], value[0])):
             resolved = self._resolve(profile.floor, position, set(), document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
+                self._set_collision(collision, position, profile.floor.role, True)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(rect)), tuple(dict.fromkeys(warnings)))
         try:
-            changed = self.editing.apply_tile_assignments(assignments, "Create Smart Room")
+            changed = self.editing.apply_tile_assignments(assignments, "Create Smart Room", collision)
         except ValueError as error:
             warnings.append(str(error))
             return TerrainPaintResult(False, tuple(sorted(rect)), tuple(dict.fromkeys(warnings)))
@@ -131,6 +149,13 @@ class TerrainPaintingService:
         if resolved is None:
             warnings.append(f"no compatible {selection.role} candidate for {selection.family}")
         return resolved
+
+    def _set_collision(self, target: dict[tuple[int, int], bool], position: tuple[int, int], role: str, painting: bool) -> None:
+        if self.collision_policy is None:
+            return
+        policy_value = self.collision_policy.solid_for(role)
+        if policy_value is not None:
+            target[position] = policy_value if painting else False
 
     def _active_cells(self, layer: int, selection: TerrainSelection) -> set[tuple[int, int]]:
         document = self._require_document()

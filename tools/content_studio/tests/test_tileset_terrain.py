@@ -15,7 +15,7 @@ from tools.content_studio.model.tile_semantics import TerrainProfile, TerrainSel
 from tools.content_studio.services.autotile_resolver import AutoTileResolver, EAST, NORTH, SOUTH, WEST
 from tools.content_studio.services.import_service import TilesetImportRequest
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
-from tools.content_studio.services.terrain_painting_service import TerrainPaintingService
+from tools.content_studio.services.terrain_painting_service import TerrainCollisionPolicy, TerrainPaintingService
 from tools.content_studio.services.tileset_library import BatchTilesetImportRequest, TilesetLibrary, TilesetUsageIndex
 
 
@@ -175,3 +175,12 @@ class SemanticAndAutotileTests(unittest.TestCase):
         self.assertTrue(room.changed); cells = document.layers[0]["cells"]
         self.assertEqual(20, sum(value is not None for value in cells))
         self.assertTrue(document.undo()); self.assertEqual(0, sum(value is not None for value in document.layers[0]["cells"]))
+
+    def test_collision_policy_is_opt_in_and_part_of_the_same_gesture(self) -> None:
+        document = MapDocument.new("map.collision.policy", 4, 4)
+        editing = MapEditingService(document, workspace=self.workspace)
+        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver,
+                                         TerrainCollisionPolicy(frozenset({"wall"})))
+        result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall"))
+        self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
+        self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])

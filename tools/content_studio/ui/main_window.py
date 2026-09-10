@@ -224,6 +224,8 @@ class MainWindow(QMainWindow):
         for action, translation_key in zip(self.tool_actions, self._tool_keys):
             action.setText(self.translator(translation_key))
         self._toolbar.setWindowTitle(self.translator("tools"))
+        self.tileset_library.retranslate(self.translator)
+        self.smart_terrain.retranslate(self.translator)
         self.mode_tabs.setTabText(0, self.translator("map"))
         self.mode_tabs.setTabText(1, self.translator("content"))
         for index, key in enumerate(("maps", "layers", "tiles", "smart_terrain", "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):

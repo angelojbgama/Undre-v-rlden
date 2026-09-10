@@ -35,6 +35,12 @@ class SmartTerrainPalette(QWidget):
     def refresh(self) -> None:
         self.set_workspace(self.workspace)
 
+    def retranslate(self, translator: Translator) -> None:
+        self.translate = translator
+        self.room.setText(self.translate("room_brush"))
+        self.role.setItemText(0, self.translate("floor")); self.role.setItemText(1, self.translate("wall"))
+        self._selection_changed()
+
     def selection(self) -> TerrainSelection | None:
         family = self.family.currentText().strip()
         return TerrainSelection(family, str(self.role.currentData() or "floor"), self.seed.value()) if family else None

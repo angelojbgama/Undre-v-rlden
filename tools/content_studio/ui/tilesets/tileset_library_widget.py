@@ -64,6 +64,12 @@ class TilesetLibraryWidget(QWidget):
         self.map_tile_size = tile_size
         self.refresh()
 
+    def retranslate(self, translator: Translator) -> None:
+        self.translate = translator
+        self.search.setPlaceholderText(self.translate("search_tilesets"))
+        self.add_files_button.setText(self.translate("add_files")); self.add_folder_button.setText(self.translate("add_folder")); self.reimport_button.setText(self.translate("reimport")); self.delete_button.setText(self.translate("delete"))
+        self.refresh()
+
     def refresh(self) -> None:
         current = self.tilesets.currentData(Qt.ItemDataRole.UserRole)
         self.tilesets.blockSignals(True); self.tilesets.clear()

@@ -43,7 +43,8 @@ class MapEditingService:
         document.set_tiles(self.layer_index, cells, None)
 
     def apply_tile_assignments(self, assignments: Mapping[tuple[int, int], tuple[str, int, int] | None],
-                               label: str = "Paint Tiles") -> bool:
+                               label: str = "Paint Tiles",
+                               collision: Mapping[tuple[int, int], bool] | None = None) -> bool:
         """Apply many concrete references as one authored command.
 
         Terrain painting uses this entry point so neighbor updates are a single
@@ -66,6 +67,12 @@ class MapEditingService:
             for (x, y), value in values.items():
                 target[y * document.width + x] = None if value is None else document.tile_reference(
                     str(value[0]), int(value[1]), int(value[2]))
+            if collision:
+                collision_values = document.data.setdefault("collision", [])
+                assert isinstance(collision_values, list)
+                for (x, y), solid in collision.items():
+                    if 0 <= x < document.width and 0 <= y < document.height:
+                        collision_values[y * document.width + x] = 1 if solid else 0
 
         document.mutate(label, operation)
         return before != document.data
