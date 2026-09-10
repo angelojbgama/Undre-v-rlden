@@ -50,6 +50,9 @@ TRANSLATIONS = {
         "role": "Papel", "topology": "Topologia", "preferred_layer": "Camada preferida", "north": "Norte",
         "east": "Leste", "south": "Sul", "west": "Oeste", "flip_x_allowed": "Permitir flip X",
         "save_semantic": "Salvar semântica",
+        "room_preview": "Pré-visualização da sala", "terrain_rectangle_preview": "Pré-visualização do retângulo de terreno",
+        "semantic_saved": "Tile semantic salvo",
+        "terrain_missing_candidate": "Nenhum tile semântico compatível foi encontrado",
     },
     "en-US": {
         "app": "Dungeon Underworld — Content Studio", "map": "Map", "content": "Content",
@@ -98,6 +101,9 @@ TRANSLATIONS = {
         "role": "Role", "topology": "Topology", "preferred_layer": "Preferred layer", "north": "North",
         "east": "East", "south": "South", "west": "West", "flip_x_allowed": "Allow X flip",
         "save_semantic": "Save semantic",
+        "room_preview": "Room preview", "terrain_rectangle_preview": "Terrain rectangle preview",
+        "semantic_saved": "Tile semantic saved",
+        "terrain_missing_candidate": "No compatible semantic tile was found",
     },
 }
 

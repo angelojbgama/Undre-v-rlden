@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar"]
         self.mode_tabs = QTabWidget()
         self.map_canvas = MapCanvas()
+        self.map_canvas.set_translator(self.translator)
         self.map_canvas.selection_changed.connect(self._map_selection_changed)
         self.map_canvas.document_changed.connect(self._map_changed)
         self.map_canvas.status_changed.connect(self.set_status)
@@ -226,6 +227,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setWindowTitle(self.translator("tools"))
         self.tileset_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
+        self.map_canvas.set_translator(self.translator)
         self.mode_tabs.setTabText(0, self.translator("map"))
         self.mode_tabs.setTabText(1, self.translator("content"))
         for index, key in enumerate(("maps", "layers", "tiles", "smart_terrain", "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes", "rules_links")):
@@ -451,7 +453,7 @@ class MainWindow(QMainWindow):
         self.command_coordinator.mark("content")
         self.semantic_catalog.invalidate()
         self._refresh_all()
-        self.set_status("Semantic tile saved")
+        self.set_status(self.translator("semantic_saved"))
 
     def _brush_selected(self, tileset_id: str, source_indices: object, flags: int) -> None:
         if isinstance(source_indices, list) and all(isinstance(value, int) for value in source_indices):

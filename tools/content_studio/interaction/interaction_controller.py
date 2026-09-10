@@ -24,11 +24,13 @@ class InteractionController:
 
     def __init__(self, editing: MapEditingService, selection: SelectionController,
                  workspace: ContentWorkspace | None = None,
-                 status: Callable[[str], None] | None = None) -> None:
+                 status: Callable[[str], None] | None = None,
+                 message: Callable[[str], str] | None = None) -> None:
         self.editing = editing
         self.selection = selection
         self.workspace = workspace
         self.status = status
+        self.message = message or (lambda value: value)
         self.active_payload: StudioDragPayload | None = None
         self.collision_overlay = False
         self._collision_fill_solid = True
@@ -70,7 +72,7 @@ class InteractionController:
         self._drag_origin = tile
         self._last_cell = tile
         if self.active_room and self.terrain_painter and button == "left":
-            return InteractionResult(status="Room rectangle preview")
+            return InteractionResult(status=self.message("room_preview"))
         if self.active_terrain and self.terrain_painter and button in {"left", "right"}:
             if "ctrl" in modifiers and button == "left":
                 result = self.terrain_painter.fill_terrain(tile, self.active_terrain)
@@ -79,7 +81,7 @@ class InteractionController:
                 return self._terrain_result(result)
             self._terrain_cells = {tile}
             if "shift" in modifiers:
-                return InteractionResult(status="Terrain rectangle preview")
+                return InteractionResult(status=self.message("terrain_rectangle_preview"))
             return InteractionResult()
         payload = self.active_payload
         if self.collision_overlay:
@@ -117,7 +119,7 @@ class InteractionController:
         previous = self._last_cell
         self._last_cell = tile
         if self.active_room and self.terrain_painter and "left" in buttons:
-            return InteractionResult(status="Room rectangle preview")
+            return InteractionResult(status=self.message("room_preview"))
         if self.active_terrain and self.terrain_painter and ("left" in buttons or "right" in buttons):
             if "shift" not in modifiers:
                 self._terrain_cells.add(tile)
@@ -197,10 +199,11 @@ class InteractionController:
         self.editing.fill_tiles(tile, payload.tileset_id, payload.source_indices[0], payload.flags)
         return InteractionResult(True)
 
-    @staticmethod
-    def _terrain_result(result: object) -> InteractionResult:
+    def _terrain_result(self, result: object) -> InteractionResult:
         changed = bool(getattr(result, "changed", False))
         warnings = tuple(getattr(result, "warnings", ()))
+        if any(value.startswith("no compatible") for value in warnings):
+            return InteractionResult(changed, status=self.message("terrain_missing_candidate"))
         return InteractionResult(changed, status="; ".join(warnings))
 
     def _brush(self, payload: StudioDragPayload) -> list[tuple[int, int, str, int, int]]:

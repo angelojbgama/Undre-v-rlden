@@ -17,6 +17,7 @@ from .canvas_camera import CanvasCamera
 from .canvas_renderer import CanvasRenderer
 from .preview import load_definition_image
 from ..services.terrain_painting_service import TerrainPaintingService
+from ..services.localization import Translator
 
 
 class MapCanvas(QWidget):
@@ -40,10 +41,11 @@ class MapCanvas(QWidget):
         self.document: MapDocument | None = None
         self.workspace: ContentWorkspace | None = None
         self.asset_root: Path | None = None
+        self.translate = Translator()
         self.camera = CanvasCamera()
         self.selection_controller = SelectionController(self._selection_changed)
         self.editing = MapEditingService()
-        self.interaction = InteractionController(self.editing, self.selection_controller, status=self._set_status)
+        self.interaction = InteractionController(self.editing, self.selection_controller, status=self._set_status, message=self.translate)
         self.terrain_painter = TerrainPaintingService(editing=self.editing)
         self.interaction.set_terrain_painter(self.terrain_painter)
         self.renderer = CanvasRenderer(self.camera, self.selection_controller)
@@ -101,6 +103,10 @@ class MapCanvas(QWidget):
         self.renderer.preview_world = None
         self.renderer.pointer_tile = None
         self.update()
+
+    def set_translator(self, translator: Translator) -> None:
+        self.translate = translator
+        self.interaction.message = translator
 
     def set_tool(self, tool: str) -> None:
         self.tool = tool
