@@ -16,6 +16,7 @@ from tools.content_studio.services.autotile_resolver import AutoTileResolver, EA
 from tools.content_studio.services.import_service import TilesetImportRequest
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
 from tools.content_studio.services.terrain_painting_service import TerrainCollisionPolicy, TerrainPaintingService
+from tools.content_studio.services.terrain_rule_service import RULE_SLOTS, TerrainRuleService
 from tools.content_studio.services.tileset_library import BatchTilesetImportRequest, TilesetLibrary, TilesetUsageIndex
 
 
@@ -131,6 +132,23 @@ class TilesetLibraryTests(unittest.TestCase):
             self.assertFalse(deleted); self.assertTrue(any(issue.code == "tileset_in_use" for issue in diagnostics))
 
 
+class TerrainRuleTests(unittest.TestCase):
+    def test_visual_rule_saves_nine_slots_as_one_semantic_operation(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            service = TerrainRuleService()
+            assignments = {slot: index for index, slot in enumerate(RULE_SLOTS)}
+            service.save_rule(workspace, "tileset.rule", "dungeon.stone", "wall", assignments)
+            definitions = workspace.definitions("tileSemantics")
+            self.assertEqual(9, len(definitions))
+            self.assertEqual({"outerCorner", "straightHorizontal", "straightVertical", "interior"},
+                             {str(value.data["topology"]) for value in definitions})
+            self.assertTrue(workspace.undo())
+            self.assertEqual([], workspace.definitions("tileSemantics"))
+
+
 class SemanticAndAutotileTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -182,5 +200,13 @@ class SemanticAndAutotileTests(unittest.TestCase):
         painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver,
                                          TerrainCollisionPolicy(frozenset({"wall"})))
         result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall"))
+        self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
+        self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])
+
+    def test_explicit_terrain_collision_override_is_part_of_the_same_gesture(self) -> None:
+        document = MapDocument.new("map.collision.override", 4, 4)
+        editing = MapEditingService(document, workspace=self.workspace)
+        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver)
+        result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall", collision=True))
         self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
         self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])

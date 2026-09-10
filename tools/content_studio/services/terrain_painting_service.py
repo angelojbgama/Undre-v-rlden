@@ -80,12 +80,12 @@ class TerrainPaintingService:
             if position not in active:
                 if position in target:
                     assignments[position] = None
-                    self._set_collision(collision, position, selection.role, False)
+                    self._set_collision(collision, position, selection.role, False, selection.collision)
                 continue
             resolved = self._resolve(selection, position, active, document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, selection.role, True)
+                self._set_collision(collision, position, selection.role, True, selection.collision)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
         try:
@@ -127,12 +127,12 @@ class TerrainPaintingService:
             resolved = self._resolve(profile.boundary, position, boundary, document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, profile.boundary.role, True)
+                self._set_collision(collision, position, profile.boundary.role, True, profile.boundary.collision)
         for position in sorted(rect - boundary, key=lambda value: (value[1], value[0])):
             resolved = self._resolve(profile.floor, position, set(), document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, profile.floor.role, True)
+                self._set_collision(collision, position, profile.floor.role, True, profile.floor.collision)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(rect)), tuple(dict.fromkeys(warnings)))
         try:
@@ -150,7 +150,11 @@ class TerrainPaintingService:
             warnings.append(f"no compatible {selection.role} candidate for {selection.family}")
         return resolved
 
-    def _set_collision(self, target: dict[tuple[int, int], bool], position: tuple[int, int], role: str, painting: bool) -> None:
+    def _set_collision(self, target: dict[tuple[int, int], bool], position: tuple[int, int], role: str,
+                       painting: bool, override: bool | None = None) -> None:
+        if override is not None:
+            target[position] = override if painting else False
+            return
         if self.collision_policy is None:
             return
         policy_value = self.collision_policy.solid_for(role)

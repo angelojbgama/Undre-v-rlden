@@ -89,6 +89,15 @@ O catálogo deriva famílias e indexa por família/papel/topologia e por
 tileset/sourceIndex, produzindo diagnósticos para referências inválidas,
 índices fora do atlas e duplicidades.
 
+Para configurar uma regra visual sem editar cada definição manualmente, clique
+com o botão direito em um tileset na Tileset Library e escolha `Configurar
+lógica de Smart Terrain`. A janela apresenta nove slots em uma grade 3 × 3:
+`NW`, `N`, `NE`, `W`, `X`, `E`, `SW`, `S`, `SE`. Selecione um slot e clique em
+um tile do atlas para associá-lo. Os slots geram definições `tileSemantics`
+com `family`, `role` e topologias existentes; não há uma segunda base de dados
+de regras. Slots da mesma topologia são tratados como variantes determinísticas
+pelo `AutoTileResolver`.
+
 O modo Raw Tiles continua pintando exatamente o tile escolhido. O modo Smart
 Terrain seleciona uma família e um papel:
 
@@ -111,6 +120,12 @@ Collision automática é uma policy opcional do `TerrainPaintingService`; sem
 policy, Smart Terrain não modifica a layer de collision. Isso permite que uma
 parede authored não seja universalmente tratada como sólida e deixa espaço para
 água, ponte, low wall e decoração com regras diferentes.
+
+O painel Smart Terrain também oferece `Preservar colisão atual`, `Ativar
+colisão` e `Desativar colisão`. A escolha é aplicada às células pintadas pelo
+gesto e salva na grade de colisão do UMAP junto com a pintura. `Preservar` é o
+padrão; assim, paredes não se tornam sólidas automaticamente sem uma decisão
+explícita do autor.
 
 ## Build/testes
 

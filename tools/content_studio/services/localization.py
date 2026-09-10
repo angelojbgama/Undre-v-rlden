@@ -53,6 +53,11 @@ TRANSLATIONS = {
         "room_preview": "Pré-visualização da sala", "terrain_rectangle_preview": "Pré-visualização do retângulo de terreno",
         "semantic_saved": "Tile semantic salvo",
         "terrain_missing_candidate": "Nenhum tile semântico compatível foi encontrado",
+        "configure_terrain_rule": "Configurar lógica de Smart Terrain...", "terrain_rule_editor": "Lógica de Smart Terrain",
+        "terrain_rule_family": "Família da regra", "terrain_rule_role": "Papel da regra", "terrain_rule_slots": "Slots visuais 3 × 3",
+        "terrain_rule_slots_hint": "Selecione um slot e clique em um tile do atlas para associá-lo à regra. Slots com a mesma topologia são variantes determinísticas.",
+        "terrain_rule_click_atlas": "selecione um tile no atlas", "terrain_rule_save": "Salvar lógica", "terrain_rule_saved": "Lógica de Smart Terrain salva",
+        "terrain_collision": "Colisão ao pintar", "preserve_collision": "Preservar colisão atual", "collision_on": "Ativar colisão", "collision_off": "Desativar colisão",
     },
     "en-US": {
         "app": "Dungeon Underworld — Content Studio", "map": "Map", "content": "Content",
@@ -104,6 +109,11 @@ TRANSLATIONS = {
         "room_preview": "Room preview", "terrain_rectangle_preview": "Terrain rectangle preview",
         "semantic_saved": "Tile semantic saved",
         "terrain_missing_candidate": "No compatible semantic tile was found",
+        "configure_terrain_rule": "Configure Smart Terrain logic...", "terrain_rule_editor": "Smart Terrain Logic",
+        "terrain_rule_family": "Rule family", "terrain_rule_role": "Rule role", "terrain_rule_slots": "3 × 3 visual slots",
+        "terrain_rule_slots_hint": "Select a slot and click an atlas tile to assign it to the rule. Slots with the same topology are deterministic variants.",
+        "terrain_rule_click_atlas": "select a tile in the atlas", "terrain_rule_save": "Save logic", "terrain_rule_saved": "Smart Terrain logic saved",
+        "terrain_collision": "Collision while painting", "preserve_collision": "Preserve current collision", "collision_on": "Enable collision", "collision_off": "Disable collision",
     },
 }
 

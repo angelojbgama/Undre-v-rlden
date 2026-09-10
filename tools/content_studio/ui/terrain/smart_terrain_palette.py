@@ -21,10 +21,11 @@ class SmartTerrainPalette(QWidget):
         self.workspace: ContentWorkspace | None = None
         self.family = QComboBox(); self.family.currentTextChanged.connect(self._selection_changed)
         self.role = QComboBox(); self.role.addItem(self.translate("floor"), "floor"); self.role.addItem(self.translate("wall"), "wall"); self.role.currentIndexChanged.connect(self._selection_changed)
+        self.collision = QComboBox(); self.collision.addItem(self.translate("preserve_collision"), None); self.collision.addItem(self.translate("collision_on"), True); self.collision.addItem(self.translate("collision_off"), False); self.collision.currentIndexChanged.connect(self._selection_changed)
         self.seed = QSpinBox(); self.seed.setRange(-2_147_483_648, 2_147_483_647); self.seed.setValue(0); self.seed.valueChanged.connect(self._selection_changed)
         self.room = QPushButton(self.translate("room_brush")); self.room.clicked.connect(self._room_requested)
         self.status = QLabel(); self.status.setWordWrap(True)
-        layout = QVBoxLayout(self); layout.addWidget(QLabel(self.translate("smart_terrain"))); layout.addWidget(QLabel(self.translate("terrain_family"))); layout.addWidget(self.family); layout.addWidget(QLabel(self.translate("terrain_role"))); layout.addWidget(self.role); layout.addWidget(QLabel(self.translate("terrain_seed"))); layout.addWidget(self.seed); layout.addWidget(self.room); layout.addWidget(self.status); layout.addStretch(1)
+        layout = QVBoxLayout(self); layout.addWidget(QLabel(self.translate("smart_terrain"))); layout.addWidget(QLabel(self.translate("terrain_family"))); layout.addWidget(self.family); layout.addWidget(QLabel(self.translate("terrain_role"))); layout.addWidget(self.role); layout.addWidget(QLabel(self.translate("terrain_collision"))); layout.addWidget(self.collision); layout.addWidget(QLabel(self.translate("terrain_seed"))); layout.addWidget(self.seed); layout.addWidget(self.room); layout.addWidget(self.status); layout.addStretch(1)
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
@@ -43,13 +44,14 @@ class SmartTerrainPalette(QWidget):
 
     def selection(self) -> TerrainSelection | None:
         family = self.family.currentText().strip()
-        return TerrainSelection(family, str(self.role.currentData() or "floor"), self.seed.value()) if family else None
+        return TerrainSelection(family, str(self.role.currentData() or "floor"), self.seed.value(), self.collision.currentData()) if family else None
 
     def profile(self) -> TerrainProfile | None:
         family = self.family.currentText().strip()
         if not family:
             return None
-        return TerrainProfile(f"terrain.{family}.room", TerrainSelection(family, "floor", self.seed.value()), TerrainSelection(family, "wall", self.seed.value()))
+        collision = self.collision.currentData()
+        return TerrainProfile(f"terrain.{family}.room", TerrainSelection(family, "floor", self.seed.value(), collision if self.role.currentData() == "floor" else None), TerrainSelection(family, "wall", self.seed.value(), collision if self.role.currentData() == "wall" else None))
 
     def _selection_changed(self) -> None:
         selection = self.selection()

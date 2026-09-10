@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton,
     QSplitter, QVBoxLayout, QWidget, QLineEdit,
 )
 
@@ -17,6 +17,7 @@ from ...services.localization import Translator
 from ...services.tileset_library import TilesetLibrary
 from .batch_tileset_import_dialog import BatchTilesetImportDialog
 from .tile_atlas_widget import TileAtlasWidget
+from ..terrain.terrain_rule_dialog import TerrainRuleDialog
 
 
 class TilesetLibraryWidget(QWidget):
@@ -37,6 +38,8 @@ class TilesetLibraryWidget(QWidget):
         self.map_tile_size: int | None = None
         self.search = QLineEdit(); self.search.setPlaceholderText(self.translate("search_tilesets")); self.search.textChanged.connect(self.refresh)
         self.tilesets = QListWidget(); self.tilesets.currentItemChanged.connect(self._tileset_changed)
+        self.tilesets.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tilesets.customContextMenuRequested.connect(self._context_menu)
         self.atlas = TileAtlasWidget(); self.atlas.selected.connect(self.selected); self.atlas.brush_selected.connect(self.brush_selected)
         self.add_files_button = QPushButton(self.translate("add_files")); self.add_files_button.clicked.connect(self.add_files)
         self.add_folder_button = QPushButton(self.translate("add_folder")); self.add_folder_button.clicked.connect(self.add_folder)
@@ -148,6 +151,26 @@ class TilesetLibraryWidget(QWidget):
     def _selected_definition(self):
         item = self.tilesets.currentItem()
         return self.library.workspace.find("tilesets", str(item.data(Qt.ItemDataRole.UserRole))) if item and self.library.workspace else None
+
+    def _context_menu(self, position: object) -> None:
+        item = self.tilesets.itemAt(position)  # type: ignore[arg-type]
+        definition = self.library.workspace.find("tilesets", str(item.data(Qt.ItemDataRole.UserRole))) if item and self.library.workspace else None
+        if definition is None or self.library.workspace is None:
+            return
+        menu = QMenu(self)
+        configure = menu.addAction(self.translate("configure_terrain_rule"))
+        configure.triggered.connect(lambda: self._open_terrain_rule(definition.definition_id))
+        menu.exec(self.tilesets.mapToGlobal(position))  # type: ignore[arg-type]
+
+    def _open_terrain_rule(self, tileset_id: str) -> None:
+        if self.library.workspace is None:
+            return
+        dialog = TerrainRuleDialog(self.library.workspace, self.asset_root, tileset_id, self.translate, self)
+        if dialog.exec():
+            self.library.usage_index.rebuild()
+            self.refresh()
+            self.changed.emit()
+            self.status_changed.emit(self.translate("terrain_rule_saved"))
 
     def _tileset_changed(self, item: QListWidgetItem | None, unused: QListWidgetItem | None = None) -> None:
         del unused

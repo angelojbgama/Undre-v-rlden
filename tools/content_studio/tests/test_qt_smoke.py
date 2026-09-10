@@ -93,6 +93,7 @@ class QtSmokeTests(unittest.TestCase):
     def test_tileset_library_smart_terrain_and_semantic_editor_open_offscreen(self) -> None:
         from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
         from tools.content_studio.ui.terrain.smart_terrain_palette import SmartTerrainPalette
+        from tools.content_studio.ui.terrain.terrain_rule_dialog import TerrainRuleDialog
         from tools.content_studio.ui.terrain.tile_semantic_editor import TileSemanticEditor
         from tools.content_studio.ui.tilesets.batch_tileset_import_dialog import BatchTilesetImportDialog
         from tools.content_studio.ui.tilesets.tileset_library_widget import TilesetLibraryWidget
@@ -109,11 +110,14 @@ class QtSmokeTests(unittest.TestCase):
             widget = TilesetLibraryWidget(workspace, WorldProject.new(), None)
             palette = SmartTerrainPalette(TileSemanticCatalog(workspace))
             editor = TileSemanticEditor(workspace, TileSemanticCatalog(workspace))
+            rule_dialog = TerrainRuleDialog(workspace, None, "tileset.test")
             dialog = BatchTilesetImportDialog(library, None)
-            for value in (widget, palette, editor, dialog):
+            for value in (widget, palette, editor, rule_dialog, dialog):
                 self.addCleanup(value.deleteLater)
             self.assertTrue(widget.acceptDrops())
             self.assertTrue(palette.room.isEnabled())
+            self.assertEqual(9, len(rule_dialog.slots))
+            self.assertTrue(palette.collision.isEnabled())
             self.assertTrue(editor.save_button.isEnabled())
             self.assertTrue(dialog.windowTitle())
 
