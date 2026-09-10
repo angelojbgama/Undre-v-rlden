@@ -27,9 +27,10 @@ python -m tools.content_studio --project content/world.uworld \\
     --cpp-root .
 ```
 
-Os wrappers `content_studio.sh`, `content_studio.bat` e o entrypoint instalado
-`du-content-studio` são equivalentes. `--asset-root` aponta para os assets
-licenciados externos; eles não são copiados para o repositório.
+Os wrappers `content_studio.sh` e `content_studio.bat` usam `assets/` na raiz do
+repositório como `asset root` padrão. Também é possível informar outro caminho
+com `--asset-root`; ele deve apontar para a pasta que contém os assets do jogo.
+Os assets licenciados não são copiados automaticamente para o repositório.
 
 `content_studio.bat` usa automaticamente `.venv` quando ela existe e informa o
 comando de preparação quando PySide6 ainda não foi instalado. O primeiro setup
