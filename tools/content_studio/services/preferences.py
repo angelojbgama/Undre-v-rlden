@@ -33,6 +33,18 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
         str(project): {str(map_id): str(folder) for map_id, folder in values.items() if str(folder).strip()}
         for project, values in folders.items() if isinstance(values, dict)
     }
+    tileset_folders = data.get("tilesetFolders", {})
+    if not isinstance(tileset_folders, dict):
+        tileset_folders = {}
+    normalized_tileset_folders = {
+        str(workspace): {
+            str(folder): list(dict.fromkeys(str(tileset_id) for tileset_id in tilesets if str(tileset_id).strip()))
+            for folder, tilesets in groups.items()
+            if str(folder).strip() and isinstance(tilesets, list)
+        }
+        for workspace, groups in tileset_folders.items()
+        if isinstance(groups, dict)
+    }
     return ProjectPreferences(
         language=data.get("language", "pt-BR") if data.get("language") in {"pt-BR", "en-US"} else "pt-BR",
         asset_root=str(data.get("assetRoot", "")),
@@ -40,6 +52,7 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
         left_panel_width=max(0, int(data.get("leftPanelWidth", 260))),
         right_panel_width=max(0, int(data.get("rightPanelWidth", 340))),
         map_folders=normalized_folders,
+        tileset_folders=normalized_tileset_folders,
     )
 
 
@@ -51,4 +64,5 @@ def save_preferences(preferences: ProjectPreferences, path: Path | None = None) 
         "leftPanelWidth": preferences.left_panel_width,
         "rightPanelWidth": preferences.right_panel_width,
         "mapFolders": preferences.map_folders,
+        "tilesetFolders": preferences.tileset_folders,
     })

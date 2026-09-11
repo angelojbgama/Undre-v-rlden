@@ -129,6 +129,7 @@ class TileAtlasWidget(QWidget):
         self.workspace: ContentWorkspace | None = None
         self.asset_root: Path | None = None
         self.tileset_id = ""
+        self.family_label = "Family"
         self._rendered_tileset_id = ""
         self.tiles = TileAtlasListWidget()
         self.tiles.setIconSize(QPixmap(32, 32).size())
@@ -147,6 +148,9 @@ class TileAtlasWidget(QWidget):
     def set_tileset(self, tileset_id: str) -> None:
         self.tileset_id = tileset_id
         self.refresh()
+
+    def set_family_label(self, label: str) -> None:
+        self.family_label = label
 
     def refresh(self) -> None:
         selected_indices = (
@@ -175,9 +179,23 @@ class TileAtlasWidget(QWidget):
         self.title.setText(f"{definition.display_name}\n{columns} × {rows} tiles")
         relative = definition.data.get("relativeAssetPath")
         image = QImage(str(self.asset_root / relative)) if self.asset_root and isinstance(relative, str) else QImage()
+        semantics = {
+            int(value.data.get("sourceIndex", -1)): value
+            for value in self.workspace.definitions("tileSemantics")
+            if value.data.get("tilesetId") == self.tileset_id
+        }
         for source_index in range(columns * rows):
             item = QTableWidgetItem()
-            item.setToolTip(f"{self.tileset_id} / {source_index}")
+            semantic = semantics.get(source_index)
+            if semantic is None:
+                item.setToolTip(f"{self.tileset_id} / {source_index}")
+            else:
+                family = str(semantic.data.get("family", "")).strip()
+                details = [semantic.display_name, semantic.definition_id]
+                if family:
+                    details.append(f"{self.family_label}: {family}")
+                details.append(f"{self.tileset_id} / {source_index}")
+                item.setToolTip("\n".join(details))
             item.setData(Qt.ItemDataRole.UserRole, source_index)
             if not image.isNull():
                 tile = image.copy(source_index % columns * tile_size, source_index // columns * tile_size, tile_size, tile_size)

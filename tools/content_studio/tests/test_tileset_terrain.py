@@ -134,6 +134,34 @@ class TilesetLibraryTests(unittest.TestCase):
             deleted, diagnostics = library.delete("tileset.atlas")
             self.assertFalse(deleted); self.assertTrue(any(issue.code == "tileset_in_use" for issue in diagnostics))
 
+    def test_tileset_properties_recalculate_grid_and_protect_used_tilesets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); asset_root = root / "assets"; asset_root.mkdir()
+            fake_png(asset_root / "atlas.png", 64, 32)
+            workspace = workspace_from(content_root(), root / "content")
+            project = WorldProject.new("map.properties", 2, 2)
+            library = TilesetLibrary(workspace, project)
+            imported = library.import_batch(BatchTilesetImportRequest((TilesetImportRequest(
+                asset_root / "atlas.png", "tileset.properties", asset_root=asset_root,
+            ),)))
+            self.assertTrue(imported.ok)
+
+            updated = library.update_properties("tileset.properties", "Dungeon Walls", 8, asset_root)
+            definition = workspace.find("tilesets", "tileset.properties")
+            self.assertTrue(updated.ok)
+            self.assertEqual(("Dungeon Walls", 8, 8, 4), (
+                definition.data["displayName"], definition.data["tileSize"],
+                definition.data["columns"], definition.data["rows"],
+            ))
+            self.assertEqual("Dungeon Walls", library.definitions()[0].display_name)
+
+            project.active_map.set_tile(0, 0, 0, "tileset.properties", 0)
+            library.usage_index.rebuild()
+            rejected = library.update_properties("tileset.properties", "Dungeon Walls", 16, asset_root)
+            self.assertFalse(rejected.ok)
+            self.assertTrue(any(issue.code == "tileset_resize_in_use" for issue in rejected.diagnostics or []))
+            self.assertEqual(8, workspace.find("tilesets", "tileset.properties").data["tileSize"])
+
 
 class TerrainRuleTests(unittest.TestCase):
     def test_visual_rule_saves_nine_slots_as_one_semantic_operation(self) -> None:
@@ -228,6 +256,40 @@ class TerrainRuleTests(unittest.TestCase):
                         for y in range(5)]
             self.assertEqual({assignments["north"]}, {value.source_index for value in horizontal if value})
             self.assertEqual({assignments["west"]}, {value.source_index for value in vertical if value})
+
+    def test_unassigned_wall_rule_center_stays_empty(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            assignments = {slot: index for index, slot in enumerate(RULE_SLOTS) if slot != "center"}
+            TerrainRuleService().save_rule(
+                workspace, "tileset.rule", "dungeon.hollow", "wall", assignments,
+            )
+            document = MapDocument.new("map.hollow", 5, 5)
+            document.set_tile(0, 2, 2, "tileset.rule", 15)
+            document.set_collision([(2, 2)], True, 0)
+            before = document.snapshot()
+            catalog = TileSemanticCatalog(workspace)
+            painter = TerrainPaintingService(
+                document, workspace, MapEditingService(document, workspace=workspace),
+                catalog, AutoTileResolver(catalog),
+            )
+
+            result = painter.paint_terrain(
+                {(x, y) for y in range(1, 4) for x in range(1, 4)},
+                TerrainSelection("dungeon.hollow", "wall", collision=True),
+            )
+
+            cells = document.layers[0]["cells"]
+            self.assertTrue(result.changed)
+            self.assertEqual(8, sum(cells[y * document.width + x] is not None
+                                    for y in range(1, 4) for x in range(1, 4)))
+            self.assertIsNone(cells[2 * document.width + 2])
+            self.assertEqual(0, document.data["collision"][2 * document.width + 2])
+            self.assertEqual((), result.warnings)
+            self.assertTrue(document.undo())
+            self.assertEqual(before, document.data)
 
     def test_room_uses_distinct_top_and_bottom_rule_slots(self) -> None:
         data = content_root()

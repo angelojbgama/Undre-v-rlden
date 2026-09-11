@@ -31,6 +31,7 @@ from .preview import PreviewWidget
 from .scene_editor import SceneEditorWidget
 from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, set_path
 from .tilesets.tileset_library_widget import TilesetLibraryWidget
+from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
 from .terrain.tile_semantic_editor import TileSemanticEditor
 from ..services.tile_semantic_catalog import TileSemanticCatalog
@@ -143,6 +144,12 @@ class MainWindow(QMainWindow):
         self.tileset_library.brush_selected.connect(self._brush_selected)
         self.tileset_library.selected.connect(self._atlas_tile_selected)
         self.tileset_library.changed.connect(self._content_changed)
+        self.tileset_library.folder_groups_changed.connect(self._tileset_folders_changed)
+        self.tileset_library.status_changed.connect(self.set_status)
+        self.spritesheet_library = SpritesheetLibraryWidget(
+            self.workspace, self.asset_root, self.translator)
+        self.spritesheet_library.changed.connect(self._content_changed)
+        self.spritesheet_library.status_changed.connect(self.set_status)
         # Compatibility alias for integrations that used the old palette name.
         self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette()
@@ -182,6 +189,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.map_browser)
         self._map_panels.addWidget(self.layers)
         self._map_panels.addWidget(self.tile_palette)
+        self._map_panels.addWidget(self.spritesheet_library)
         self._map_panels.addWidget(self.smart_terrain)
         self._map_panels.addWidget(self.semantic_editor)
         self._map_panels.addWidget(self.semantic_palette)
@@ -269,7 +277,7 @@ class MainWindow(QMainWindow):
     def _section_labels(self, mode_index: int) -> tuple[str, ...]:
         if mode_index == 0:
             return tuple(self.translator(key) for key in (
-                "maps", "layers", "tiles", "smart_terrain", "semantic_editor",
+                "maps", "layers", "tiles", "spritesheets_animations", "smart_terrain", "semantic_editor",
                 "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
             ))
         return (self.translator("definitions"), self.translator("assets"))
@@ -318,6 +326,7 @@ class MainWindow(QMainWindow):
             action.setText(self.translator(translation_key))
         self._toolbar.setWindowTitle(self.translator("tools"))
         self.tileset_library.retranslate(self.translator)
+        self.spritesheet_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
         self.map_browser.set_translator(self.translator)
@@ -342,8 +351,10 @@ class MainWindow(QMainWindow):
         self.content_browser.set_project(self.project)
         self.entity_browser.set_workspace(self.workspace)
         self.tileset_library.set_workspace(self.workspace, self.project)
+        self.tileset_library.set_folder_groups(self._tileset_folders())
         self.tileset_library.set_asset_root(self.asset_root)
         self.tileset_library.set_map_tile_size(self.project.active_map.tile_size)
+        self.spritesheet_library.set_context(self.workspace, self.asset_root)
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_editor.set_workspace(self.workspace)
         self.smart_terrain.set_workspace(self.workspace)
@@ -780,6 +791,22 @@ class MainWindow(QMainWindow):
             folders[map_id] = folder.strip()
         else:
             folders.pop(map_id, None)
+        save_preferences(self.preferences)
+
+    def _tileset_folder_key(self) -> str:
+        return str(self.workspace.root) if self.workspace else "<no-content-workspace>"
+
+    def _tileset_folders(self) -> dict[str, list[str]]:
+        return self.preferences.tileset_folders.setdefault(self._tileset_folder_key(), {})
+
+    def _tileset_folders_changed(self, folders: object) -> None:
+        if not isinstance(folders, dict):
+            return
+        self.preferences.tileset_folders[self._tileset_folder_key()] = {
+            str(folder): [str(tileset_id) for tileset_id in tileset_ids]
+            for folder, tileset_ids in folders.items()
+            if str(folder).strip() and isinstance(tileset_ids, list)
+        }
         save_preferences(self.preferences)
 
     def _update_title(self) -> None:

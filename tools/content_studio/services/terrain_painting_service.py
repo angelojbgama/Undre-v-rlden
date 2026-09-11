@@ -84,8 +84,10 @@ class TerrainPaintingService:
                 continue
             resolved = self._resolve(selection, position, active, document, warnings)
             if resolved is not None:
-                assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, selection.role, True, selection.collision)
+                assignments[position] = (None if resolved.empty else
+                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                self._set_collision(collision, position, selection.role,
+                                    not resolved.empty, selection.collision)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
         try:
@@ -129,13 +131,17 @@ class TerrainPaintingService:
             # stroke, so the resolver cannot distinguish their inward side.
             resolved = self._resolve(profile.boundary, position, rect, document, warnings)
             if resolved is not None:
-                assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, profile.boundary.role, True, profile.boundary.collision)
+                assignments[position] = (None if resolved.empty else
+                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                self._set_collision(collision, position, profile.boundary.role,
+                                    not resolved.empty, profile.boundary.collision)
         for position in sorted(rect - boundary, key=lambda value: (value[1], value[0])):
             resolved = self._resolve(profile.floor, position, set(), document, warnings)
             if resolved is not None:
-                assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
-                self._set_collision(collision, position, profile.floor.role, True, profile.floor.collision)
+                assignments[position] = (None if resolved.empty else
+                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                self._set_collision(collision, position, profile.floor.role,
+                                    not resolved.empty, profile.floor.collision)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(rect)), tuple(dict.fromkeys(warnings)))
         try:

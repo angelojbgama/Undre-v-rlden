@@ -19,6 +19,17 @@ _RULE_SLOTS = frozenset({
     "north_west", "north", "north_east", "west", "center", "east",
     "south_west", "south", "south_east",
 })
+_AREA_RULE_MASKS = frozenset({
+    EAST | SOUTH,
+    EAST | SOUTH | WEST,
+    SOUTH | WEST,
+    NORTH | EAST | SOUTH,
+    NORTH | EAST | SOUTH | WEST,
+    NORTH | SOUTH | WEST,
+    NORTH | EAST,
+    NORTH | EAST | WEST,
+    NORTH | WEST,
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +38,7 @@ class ResolvedTile:
     source_index: int
     flags: int = 0
     semantic_id: str = ""
+    empty: bool = False
 
 
 def neighbor_mask(position: tuple[int, int], neighbors: Mapping[object, object] | Iterable[tuple[int, int]]) -> int:
@@ -65,6 +77,8 @@ class AutoTileResolver:
         candidates = self._compatible(self._candidate_pool(family, role), map_tile_size)
         if not candidates:
             return None
+        if self._is_intentional_rule_gap(candidates, role, mask):
+            return ResolvedTile("", 0, empty=True)
         topology_order = self._topology_order(role, mask)
         chosen: tuple[TileSemantic, ...] = ()
         topology_fallback: tuple[TileSemantic, ...] = ()
@@ -102,6 +116,31 @@ class AutoTileResolver:
     @staticmethod
     def _is_rule_semantic(value: TileSemantic) -> bool:
         return value.definition_id.startswith("semantic.rule.")
+
+    @classmethod
+    def _is_intentional_rule_gap(cls, candidates: tuple[TileSemantic, ...], role: str, mask: int) -> bool:
+        """Treat an omitted 3x3 wall-rule slot as transparent.
+
+        Legacy/manual semantics retain their permissive fallback behavior, and
+        freehand stroke masks remain canonicalized as before.  Only masks that
+        correspond to actual 3x3 area slots can express an intentional gap.
+        """
+        if role != "wall" or mask not in _AREA_RULE_MASKS:
+            return False
+        rule_candidates = tuple(value for value in candidates if cls._is_rule_semantic(value))
+        if not rule_candidates:
+            return False
+        expected = {
+            "north": bool(mask & NORTH), "east": bool(mask & EAST),
+            "south": bool(mask & SOUTH), "west": bool(mask & WEST),
+        }
+        for value in rule_candidates:
+            profile = {"north": value.north, "east": value.east,
+                       "south": value.south, "west": value.west}
+            if (all(edge != "unknown" for edge in profile.values())
+                    and {name: edge == "masonry" for name, edge in profile.items()} == expected):
+                return False
+        return True
 
     @classmethod
     def _mask_candidates(cls, candidates: tuple[TileSemantic, ...], mask: int) -> tuple[TileSemantic, ...]:

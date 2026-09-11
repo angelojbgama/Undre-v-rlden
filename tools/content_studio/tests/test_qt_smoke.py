@@ -254,6 +254,7 @@ class QtSmokeTests(unittest.TestCase):
         from tools.content_studio.ui.terrain.terrain_rule_dialog import TerrainRuleDialog
         from tools.content_studio.ui.terrain.tile_semantic_editor import TileSemanticEditor
         from tools.content_studio.ui.tilesets.batch_tileset_import_dialog import BatchTilesetImportDialog
+        from tools.content_studio.ui.tilesets.tileset_properties_dialog import TilesetPropertiesDialog
         from tools.content_studio.ui.tilesets.tileset_library_widget import TilesetLibraryWidget
         from tools.content_studio.services.tileset_library import TilesetLibrary
 
@@ -300,7 +301,8 @@ class QtSmokeTests(unittest.TestCase):
             editor = TileSemanticEditor(workspace, TileSemanticCatalog(workspace))
             rule_dialog = TerrainRuleDialog(workspace, None, "tileset.test")
             dialog = BatchTilesetImportDialog(library, None)
-            for value in (widget, palette, editor, rule_dialog, dialog):
+            properties = TilesetPropertiesDialog(library, "tileset.test", root)
+            for value in (widget, palette, editor, rule_dialog, dialog, properties):
                 self.addCleanup(value.deleteLater)
             self.assertTrue(widget.acceptDrops())
             self.assertFalse(palette.room.isEnabled())
@@ -361,7 +363,31 @@ class QtSmokeTests(unittest.TestCase):
             self.assertEqual(Qt.ContextMenuPolicy.CustomContextMenu, widget.atlas.tiles.contextMenuPolicy())
             menu = widget._tileset_context_menu("tileset.test")
             self.addCleanup(menu.deleteLater)
-            self.assertEqual(["Gerenciar lógica Smart Terrain..."], [action.text() for action in menu.actions()])
+            self.assertEqual(
+                ["Gerenciar tileset...", "Adicionar à pasta", "", "Gerenciar lógica Smart Terrain..."],
+                [action.text() for action in menu.actions()],
+            )
+            self.assertEqual(0, properties.folder_memberships.count())
+            properties.name.setText("Tileset Renomeado")
+            properties._save()
+            self.assertEqual(
+                "Tileset Renomeado",
+                workspace.find("tilesets", "tileset.test").data["displayName"],
+            )
+            tile_menu = widget._atlas_tile_context_menu("tileset.test", 3)
+            self.addCleanup(tile_menu.deleteLater)
+            self.assertEqual(
+                ["Editar nome e família do tile...", "", "Gerenciar lógica Smart Terrain..."],
+                [action.text() for action in tile_menu.actions()],
+            )
+            editor.set_selection("tileset.test", 3)
+            editor.semantic_id.setText("tile.test.named")
+            self.assertIn("terrain.test", [editor.family.itemText(index) for index in range(editor.family.count())])
+            editor.family.setCurrentText("terrain.named")
+            editor.save_semantic()
+            saved = workspace.find("tileSemantics", "tile.test.named")
+            self.assertIsNotNone(saved)
+            self.assertEqual("terrain.named", saved.data["family"])
             self.assertTrue(editor.save_button.isEnabled())
             self.assertTrue(dialog.windowTitle())
 

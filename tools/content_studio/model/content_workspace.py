@@ -92,7 +92,12 @@ class ContentWorkspace:
             if definition.category == DISPLAY_CATEGORY
         }
         for definition in self._definitions:
-            definition.display_name = descriptor_names.get(definition.definition_id, "") or self._fallback_name(definition.definition_id)
+            authored_name = definition.data.get("displayName", "")
+            definition.display_name = (
+                descriptor_names.get(definition.definition_id, "")
+                or (authored_name.strip() if isinstance(authored_name, str) else "")
+                or self._fallback_name(definition.definition_id)
+            )
 
     @staticmethod
     def _fallback_name(definition_id: str) -> str:

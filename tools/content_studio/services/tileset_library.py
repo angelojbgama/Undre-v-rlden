@@ -219,7 +219,8 @@ class TilesetLibrary:
         return BatchTilesetImportResult(imported, diagnostics)
 
     def reimport(self, definition_id: str, source_image: Path, asset_root: Path | None,
-                 tile_width: int | None = None, tile_height: int | None = None) -> TilesetImportResult:
+                 tile_width: int | None = None, tile_height: int | None = None,
+                 display_name: str | None = None) -> TilesetImportResult:
         if self.workspace is None:
             return TilesetImportResult(None, None, diagnostics=[Diagnostic("error", "repository content is unavailable", code="workspace_missing")])
         definition = self.workspace.find("tilesets", definition_id)
@@ -228,13 +229,53 @@ class TilesetLibrary:
         width = tile_width or int(definition.data.get("tileSize", 16))
         height = tile_height or width
         entry = TilesetImportRequest(source_image, definition_id, width, height, asset_root=asset_root,
-                                     display_name=str(definition.data.get("displayName", definition_id)), allow_replace=True)
+                                     display_name=(display_name if display_name is not None else
+                                                   str(definition.data.get("displayName", definition_id))),
+                                     allow_replace=True)
         guard = self._check_reimport(definition, entry)
         if guard:
             return TilesetImportResult(None, None, diagnostics=[guard])
         result = self.importer.import_tileset(self.workspace, entry)
         self.usage_index.rebuild()
         return result
+
+    def update_properties(self, definition_id: str, display_name: str, tile_size: int,
+                          asset_root: Path | None) -> TilesetImportResult:
+        if self.workspace is None:
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", "repository content is unavailable", code="workspace_missing")])
+        definition = self.workspace.find("tilesets", definition_id)
+        if definition is None:
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", f"tileset not found: {definition_id}", code="tileset_missing")])
+        name = display_name.strip()
+        if not name:
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", "tileset display name cannot be empty", code="tileset_name_missing")])
+        if tile_size <= 0:
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", "tile size must be positive", code="tileset_size_invalid")])
+        current_size = int(definition.data.get("tileSize", 16))
+        if tile_size == current_size:
+            if definition.data.get("displayName") != name:
+                self.workspace.update(definition, "displayName", name)
+                definition = self.workspace.find("tilesets", definition_id)
+            return TilesetImportResult(
+                definition, None, int(definition.data.get("columns", 0)),
+                int(definition.data.get("rows", 0)), diagnostics=[] if definition else None,
+            )
+        self.usage_index.rebuild()
+        if self.usage_index.is_used(definition_id):
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", f"cannot change tile size while {definition_id} is in use by {self.usage_index.describe(definition_id)}",
+                code="tileset_resize_in_use", definition_id=definition_id)])
+        relative = definition.data.get("relativeAssetPath")
+        if asset_root is None or not isinstance(relative, str):
+            return TilesetImportResult(None, None, diagnostics=[Diagnostic(
+                "error", "the repository assets directory is unavailable", code="workspace_missing")])
+        return self.reimport(
+            definition_id, asset_root / relative, asset_root, tile_size, tile_size, name,
+        )
 
     def delete(self, definition_id: str) -> tuple[bool, list[Diagnostic]]:
         if self.workspace is None:

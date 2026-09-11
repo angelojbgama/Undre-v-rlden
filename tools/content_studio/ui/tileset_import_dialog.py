@@ -3,15 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
+    QLineEdit, QMessageBox, QPushButton, QSpinBox, QSplitter, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
 from ..services.import_service import ImportService, TilesetImportRequest
 from ..services.localization import Translator
+from .frame_grid_preview import FrameGridPreview
 
 
 class TilesetImportDialog(QDialog):
@@ -39,12 +40,14 @@ class TilesetImportDialog(QDialog):
         self.margin = self._spin(0)
         for control in (self.tile_width, self.tile_height, self.spacing, self.margin):
             control.valueChanged.connect(self._refresh_preview)
-        self.preview = QLabel(self.translate("no_image"))
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(260, 180)
-        self.preview.setStyleSheet("background: #222831; color: #aeb8c4;")
+        self.preview = FrameGridPreview(self.translate("no_image"))
         self.details = QLabel()
         self.details.setWordWrap(True)
+        self.frame_help = QLabel(self.translate("frame_preview_help"))
+        self.frame_help.setWordWrap(True)
+        self.frame_help.setStyleSheet("color: #aeb8c4;")
+        self.frame_bounds = QLabel()
+        self.frame_bounds.setWordWrap(True)
         form = QFormLayout()
         form.addRow(self.translate("source_image"), source_row)
         form.addRow(self.translate("tileset_id"), self.tileset_id)
@@ -53,17 +56,34 @@ class TilesetImportDialog(QDialog):
         form.addRow(self.translate("tile_height"), self.tile_height)
         form.addRow(self.translate("spacing"), self.spacing)
         form.addRow(self.translate("margin"), self.margin)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.addLayout(form)
+        asset_note = QLabel(self.translate("tileset_asset_root_note")); asset_note.setWordWrap(True)
+        left_layout.addWidget(asset_note)
+        left_layout.addStretch(1)
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        preview_title = QLabel(self.translate("frames_preview"))
+        preview_title.setStyleSheet("font-weight: bold;")
+        right_layout.addWidget(preview_title)
+        right_layout.addWidget(self.preview, 1)
+        right_layout.addWidget(self.details)
+        right_layout.addWidget(self.frame_help)
+        right_layout.addWidget(self.frame_bounds)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([340, 600])
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(QLabel(self.translate("tileset_asset_root_note")))
-        layout.addWidget(self.preview, 1)
-        layout.addWidget(self.details)
+        layout.addWidget(splitter, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self._import)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.setWindowTitle(self.translate("tileset_import"))
-        self.resize(520, 560)
+        self.resize(980, 620)
 
     @staticmethod
     def _spin(value: int) -> QSpinBox:
@@ -85,7 +105,7 @@ class TilesetImportDialog(QDialog):
     def _refresh_preview(self) -> None:
         source = Path(self.source.text()) if self.source.text() else None
         if source is None:
-            self.preview.setText(self.translate("no_image")); self.preview.setPixmap(QPixmap()); self.details.clear(); return
+            self.preview.clear_image(self.translate("no_image")); self.details.clear(); self.frame_bounds.clear(); return
         try:
             dimensions = self.import_service.inspect_image(source)
             request = self._request()
@@ -94,10 +114,21 @@ class TilesetImportDialog(QDialog):
             image = QImage(str(source))
             if image.isNull():
                 raise ValueError(self.translate("image_unavailable"))
-            self.preview.setPixmap(QPixmap.fromImage(image).scaled(self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation))
-            self.details.setText(self.translate("grid_summary", width=dimensions.width, height=dimensions.height, columns=columns, rows=rows))
+            left = request.margin
+            top = request.margin
+            self.preview.show_image(image, (
+                left, top, request.tile_width, request.tile_height,
+                request.spacing, columns, rows,
+            ))
+            self.details.setText(self.translate(
+                "grid_summary", width=dimensions.width, height=dimensions.height,
+                columns=columns, rows=rows, frames=columns * rows))
+            self.frame_bounds.setText(self.translate(
+                "frame_bounds", left=left, right=left + request.tile_width - 1,
+                top=top, bottom=top + request.tile_height - 1,
+                width=request.tile_width, height=request.tile_height))
         except (OSError, ValueError) as error:
-            self.preview.setText(self.translate("invalid_image")); self.preview.setPixmap(QPixmap()); self.details.setText(str(error))
+            self.preview.clear_image(self.translate("invalid_image")); self.details.setText(str(error)); self.frame_bounds.clear()
 
     def _import(self) -> None:
         result = self.import_service.import_tileset(self.workspace, self._request())

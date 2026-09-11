@@ -79,6 +79,7 @@ class ProjectPreferences:
     left_panel_width: int = 260
     right_panel_width: int = 340
     map_folders: dict[str, dict[str, str]] = field(default_factory=dict)
+    tileset_folders: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
