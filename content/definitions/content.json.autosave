@@ -175,9 +175,623 @@
   ],
   "stamps": [],
   "presentationEffects": [],
-  "visualImages": [],
+  "visualImages": [
+    {
+      "id": "image.chest",
+      "root": "gameAssets",
+      "relativePath": "Tileset/chest.png"
+    },
+    {
+      "id": "image.fire_block_with_fire",
+      "root": "gameAssets",
+      "relativePath": "Tileset/fire_block_with_fire.png"
+    },
+    {
+      "id": "image.breaking_crate",
+      "root": "gameAssets",
+      "relativePath": "Tileset/breaking_crate.png"
+    },
+    {
+      "id": "image.breaking_vase",
+      "root": "gameAssets",
+      "relativePath": "Tileset/breaking_vase.png"
+    },
+    {
+      "id": "image.door_back",
+      "root": "gameAssets",
+      "relativePath": "Tileset/door_back.png"
+    },
+    {
+      "id": "image.door_front",
+      "root": "gameAssets",
+      "relativePath": "Tileset/door_front.png"
+    }
+  ],
   "staticSprites": [],
-  "animations": [],
+  "animations": [
+    {
+      "id": "animation.chest",
+      "imageId": "image.chest",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.fire_block_with_fire",
+      "imageId": "image.fire_block_with_fire",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.breaking_crate",
+      "imageId": "image.breaking_crate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 128,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 160,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 192,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.breaking_vase",
+      "imageId": "image.breaking_vase",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 128,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 160,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.door_back",
+      "imageId": "image.door_back",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.door_front",
+      "imageId": "image.door_front",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 1,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    }
+  ],
   "enemyVisuals": [],
   "objectVisuals": []
 }
