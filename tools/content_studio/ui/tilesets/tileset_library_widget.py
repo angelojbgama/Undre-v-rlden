@@ -69,6 +69,8 @@ class TilesetLibraryWidget(QWidget):
         self.atlas.set_context(self.library.workspace, asset_root)
 
     def set_map_tile_size(self, tile_size: int | None) -> None:
+        if self.map_tile_size == tile_size:
+            return
         self.map_tile_size = tile_size
         self.refresh()
 
@@ -185,7 +187,8 @@ class TilesetLibraryWidget(QWidget):
     def _open_terrain_rule(self, tileset_id: str) -> None:
         if self.library.workspace is None:
             return
-        dialog = TerrainRuleDialog(self.library.workspace, self.asset_root, tileset_id, self.translate, self)
+        dialog = TerrainRuleDialog(self.library.workspace, self.asset_root, tileset_id, self.translate, self,
+                                   self.library.project)
         if dialog.exec():
             self.library.usage_index.rebuild()
             self.refresh()

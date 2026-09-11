@@ -7104,6 +7104,12 @@ void testPhase14AuthoredMapFoundation() {
     source.geometry.tileSize = 16;
     source.geometry.layers.push_back({"ground", true, std::vector<std::optional<std::uint32_t>>(4)});
     source.geometry.collision.assign(4, 0);
+    source.geometry.tileReferences.push_back({simulation::DefinitionId{"tileset.test"}, 7,
+                                               underworld::world::TileFlags::none});
+    source.geometry.layers.front().cells[1] = 0;
+    source.geometry.collision[1] = 1;
+    source.geometry.collisionBindings.push_back({0, 1, 0,
+        source.geometry.tileReferences.front()});
     source.geometry.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {8, 8},
                                        underworld::game::gameplay::FacingDirection::down});
     source.geometry.enemies.push_back({{42}, simulation::DefinitionId{"enemy.test"}, {8, 8},
@@ -7117,6 +7123,15 @@ void testPhase14AuthoredMapFoundation() {
            "authored map JSON decodes through the strict parser");
     expect(decoded.source && maps::encodeAuthoredMapJson(*decoded.source) == json,
            "authored map JSON roundtrip is deterministic");
+    expect(decoded.source && decoded.source->geometry.collisionBindings.size() == 1 &&
+               decoded.source->geometry.collisionBindings.front().layer == 0 &&
+               decoded.source->geometry.collisionBindings.front().x == 1 &&
+               decoded.source->geometry.collisionBindings.front().tile.sourceIndex == 7,
+           "authored collision binding roundtrips its layer, cell and tile reference");
+    auto invalidBinding = source;
+    invalidBinding.geometry.layers.front().cells[1] = std::nullopt;
+    expect(!maps::decodeAuthoredMapJson(maps::encodeAuthoredMapJson(invalidBinding)).source,
+           "authored collision binding cannot point at an empty layer cell");
 
     const auto compiled = maps::mapDataFromAuthored(source);
     const auto dmap = maps::deserializeDmap(maps::serializeDmap(compiled));

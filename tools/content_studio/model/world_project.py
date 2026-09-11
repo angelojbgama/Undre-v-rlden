@@ -74,19 +74,54 @@ class WorldProject:
     def remove_map(self, map_id: str) -> None:
         if len(self.maps) <= 1:
             raise ValueError("a world project must keep at least one map")
-        if map_id == self.entry_map_id:
-            raise ValueError("cannot remove the entry map")
         index = next((index for index, value in enumerate(self.maps) if value.map_id == map_id), None)
         if index is None:
             raise ValueError("map was not found")
+        removed = self.maps[index]
+        active = self.active_map
+        replacement_index = index + 1 if index + 1 < len(self.maps) else index - 1
+        replacement_entry_id = self.maps[replacement_index].map_id
         self.maps.pop(index)
-        self.active_index = min(self.active_index, len(self.maps) - 1)
+        if active is removed:
+            self.active_index = min(index, len(self.maps) - 1)
+        else:
+            self.active_index = self.maps.index(active)
+        if map_id == self.entry_map_id:
+            self.entry_map_id = replacement_entry_id
         self.dirty = True
 
     def set_entry_map(self, map_id: str) -> None:
         if not self.map_by_id(map_id):
             raise ValueError("entry map must exist")
         self.entry_map_id = map_id
+        self.dirty = True
+
+    def set_map_properties(self, map_id: str, new_map_id: str, width: int,
+                           height: int, tile_size: int) -> None:
+        document = self.map_by_id(map_id)
+        if document is None:
+            raise ValueError("map was not found")
+        new_map_id = new_map_id.strip()
+        existing = self.map_by_id(new_map_id)
+        if not new_map_id:
+            raise ValueError("map id cannot be empty")
+        if existing is not None and existing is not document:
+            raise ValueError(f"map already exists: {new_map_id}")
+
+        document.set_properties(new_map_id, width, height, tile_size)
+        if new_map_id != map_id:
+            if self.entry_map_id == map_id:
+                self.entry_map_id = new_map_id
+            for other in self.maps:
+                links = other.data.get("links", [])
+                if not isinstance(links, list):
+                    continue
+                matching = [link for link in links if isinstance(link, dict) and link.get("targetMapId") == map_id]
+                if matching:
+                    def rename_links(values: list[dict[str, JsonValue]] = matching) -> None:
+                        for value in values:
+                            value["targetMapId"] = new_map_id
+                    other.mutate("Rename Map References", rename_links)
         self.dirty = True
 
     def validate_cross_map(self) -> list[Diagnostic]:

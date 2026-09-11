@@ -950,6 +950,41 @@ std::optional<std::pair<std::string, std::string>> validateAuthoredOverrides(
     return std::nullopt;
 }
 
+std::optional<std::pair<std::string, std::string>> validateCollisionBindings(
+    const AuthoredMapSource& source) {
+    std::unordered_set<std::uint64_t> locations;
+    const auto& geometry = source.geometry;
+    for (std::size_t index = 0; index < geometry.collisionBindings.size(); ++index) {
+        const auto& binding = geometry.collisionBindings[index];
+        const std::string path = "collisionBindings[" + std::to_string(index) + "]";
+        if (binding.layer >= geometry.layers.size()) {
+            return std::pair{path + ".layer", "collision binding references an unknown layer"};
+        }
+        if (binding.x >= geometry.width || binding.y >= geometry.height) {
+            return std::pair{path, "collision binding is outside the map bounds"};
+        }
+        const std::uint64_t location = (static_cast<std::uint64_t>(binding.layer) << 32U) |
+                                       (static_cast<std::uint64_t>(binding.y) << 16U) |
+                                       binding.x;
+        if (!locations.emplace(location).second) {
+            return std::pair{path, "duplicate collision binding for the same layer cell"};
+        }
+        const auto& cells = geometry.layers[binding.layer].cells;
+        const std::size_t cellIndex = static_cast<std::size_t>(binding.y) * geometry.width + binding.x;
+        if (cellIndex >= cells.size() || !cells[cellIndex]) {
+            return std::pair{path, "collision binding must point at a tile in its layer"};
+        }
+        if (*cells[cellIndex] >= geometry.tileReferences.size() ||
+            geometry.tileReferences[*cells[cellIndex]] != binding.tile) {
+            return std::pair{path + ".tile", "collision binding does not match the tile in its layer"};
+        }
+        if (cellIndex >= geometry.collision.size() || geometry.collision[cellIndex] == 0) {
+            return std::pair{path, "collision binding requires a solid collision cell"};
+        }
+    }
+    return std::nullopt;
+}
+
 JsonValue encodeEncounter(const EncounterDefinition& value) {
     JsonObject objectValue;
     put(objectValue, "id", idValue(value.id.value()));
@@ -1333,6 +1368,18 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
     JsonArray collision;
     for (const auto value : geometry.collision) collision.push_back(unsignedValue(value));
     put(root, "collision", arrayValue(std::move(collision)));
+    JsonArray collisionBindings;
+    for (const auto& value : geometry.collisionBindings) {
+        JsonObject item;
+        put(item, "layer", unsignedValue(value.layer));
+        put(item, "x", unsignedValue(value.x));
+        put(item, "y", unsignedValue(value.y));
+        put(item, "tilesetId", idValue(value.tile.tilesetId.value()));
+        put(item, "sourceIndex", unsignedValue(value.tile.sourceIndex));
+        put(item, "flags", unsignedValue(static_cast<std::uint8_t>(value.tile.flags)));
+        collisionBindings.push_back(objectValue(std::move(item)));
+    }
+    put(root, "collisionBindings", arrayValue(std::move(collisionBindings)));
     JsonArray spawns;
     for (const auto& value : geometry.playerSpawns) {
         JsonObject item;
@@ -1387,7 +1434,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     const auto* root = object(*parsed.value, reader, "");
     if (root == nullptr) return result;
     allowed(*root, reader, "", {"format", "version", "id", "width", "height", "tileSize",
-                                "tileReferences", "layers", "collision", "playerSpawns",
+                                "tileReferences", "layers", "collision", "collisionBindings", "playerSpawns",
                                 "enemies", "npcs", "objects", "pickups", "links", "regions",
                                 "worldRules", "encounters", "scenes", "placementOverrides"});
     const auto* format = required(*root, *parsed.value, reader, "", "format");
@@ -1399,6 +1446,7 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     const auto* references = required(*root, *parsed.value, reader, "", "tileReferences");
     const auto* layers = required(*root, *parsed.value, reader, "", "layers");
     const auto* collision = required(*root, *parsed.value, reader, "", "collision");
+    const auto* collisionBindings = field(*root, "collisionBindings");
     const auto* spawns = required(*root, *parsed.value, reader, "", "playerSpawns");
     AuthoredMapSource source;
     bool good = true;
@@ -1632,6 +1680,39 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
             good = itemGood && good;
         }
     }
+    if (collisionBindings != nullptr) {
+        const auto* bindingArray = array(*collisionBindings, reader, "collisionBindings");
+        if (bindingArray == nullptr) good = false;
+        else {
+            for (std::size_t index = 0; index < bindingArray->size(); ++index) {
+                const auto& value = (*bindingArray)[index];
+                const std::string path = "collisionBindings[" + std::to_string(index) + "]";
+                const auto* item = object(value, reader, path);
+                if (item == nullptr) { good = false; continue; }
+                allowed(*item, reader, path, {"layer", "x", "y", "tilesetId", "sourceIndex", "flags"});
+                const auto* layer = required(*item, value, reader, path, "layer");
+                const auto* x = required(*item, value, reader, path, "x");
+                const auto* y = required(*item, value, reader, path, "y");
+                const auto* tileset = required(*item, value, reader, path, "tilesetId");
+                const auto* sourceIndex = required(*item, value, reader, path, "sourceIndex");
+                const auto* flags = required(*item, value, reader, path, "flags");
+                AuthoredMapGeometry::CollisionBinding decoded;
+                bool itemGood = layer != nullptr && readU32(*layer, reader, path + ".layer", decoded.layer);
+                itemGood = x != nullptr && readU32(*x, reader, path + ".x", decoded.x) && itemGood;
+                itemGood = y != nullptr && readU32(*y, reader, path + ".y", decoded.y) && itemGood;
+                itemGood = tileset != nullptr && readId(*tileset, reader, path + ".tilesetId",
+                                                         decoded.tile.tilesetId) && itemGood;
+                itemGood = sourceIndex != nullptr && readU32(*sourceIndex, reader,
+                    path + ".sourceIndex", decoded.tile.sourceIndex) && itemGood;
+                std::uint32_t flagValue{};
+                itemGood = flags != nullptr && readU32(*flags, reader, path + ".flags", flagValue, 1) &&
+                           itemGood;
+                decoded.tile.flags = static_cast<world::TileFlags>(flagValue);
+                if (itemGood) source.geometry.collisionBindings.push_back(std::move(decoded));
+                good = itemGood && good;
+            }
+        }
+    }
     const auto* spawnArray = spawns == nullptr ? nullptr : array(*spawns, reader, "playerSpawns");
     if (spawnArray == nullptr) good = false;
     else {
@@ -1743,7 +1824,10 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
         }, source.placementOverrides);
 
     if (reader.diagnostics.empty() && good) {
-        if (const auto overrideError = validateAuthoredOverrides(source)) {
+        if (const auto bindingError = validateCollisionBindings(source)) {
+            reader.diagnostics.push_back({AuthoredMapDiagnosticStage::validation,
+                "invalid_collision_binding", bindingError->second, bindingError->first, 1, 1});
+        } else if (const auto overrideError = validateAuthoredOverrides(source)) {
             reader.diagnostics.push_back({AuthoredMapDiagnosticStage::validation,
                 "invalid_override", overrideError->second, overrideError->first, 1, 1});
         } else {

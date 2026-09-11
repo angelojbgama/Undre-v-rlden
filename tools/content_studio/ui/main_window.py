@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox,
+    QApplication, QFileDialog, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar, QTabWidget,
     QToolBar, QVBoxLayout, QWidget,
 )
@@ -26,6 +26,7 @@ from ..services.autosave import autosave
 from ..services.preferences import load_preferences, save_preferences
 from ..services.toolchain import CppToolchain, PlaytestService
 from .map_canvas import MapCanvas
+from .map_properties_dialog import MapPropertiesDialog
 from .preview import PreviewWidget
 from .scene_editor import SceneEditorWidget
 from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, set_path
@@ -67,6 +68,8 @@ class MainWindow(QMainWindow):
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
         self._refresh_all()
+        self.actions["select"].setChecked(True)
+        self.map_canvas.set_tool("select")
 
     def _build_actions(self) -> None:
         file_menu = self.menuBar().addMenu(self.translator("file"))
@@ -97,16 +100,23 @@ class MainWindow(QMainWindow):
         self._toolbar = toolbar
         self.addToolBar(toolbar)
         tool_group = QActionGroup(self)
-        tool_group.setExclusive(True)
+        tool_group.setExclusionPolicy(QActionGroup.ExclusionPolicy.ExclusiveOptional)
+        self._tool_group = tool_group
         self._tool_keys: list[str] = []
-        select = QAction(self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.triggered.connect(lambda: self.set_tool("select")); tool_group.addAction(select); toolbar.addAction(select)
+        select = QAction(self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.toggled.connect(self._select_tool_toggled); tool_group.addAction(select); toolbar.addAction(select); self.actions["select"] = select
         toolbar.addAction(self.actions["grid"])
         toolbar.addAction(self.actions["snap"])
         toolbar.addAction(self.actions["overlays"])
         toolbar.addSeparator()
         toolbar.addAction(self.actions["playtest"])
-        self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["overlays"], self.actions["playtest"]]
-        self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar"]
+        erase_tiles = QAction(self.translator("tools_erase"), self)
+        erase_tiles.setCheckable(True)
+        erase_tiles.toggled.connect(self._erase_tool_toggled)
+        tool_group.addAction(erase_tiles)
+        toolbar.addAction(erase_tiles)
+        self.actions["erase_tiles"] = erase_tiles
+        self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["overlays"], self.actions["playtest"], erase_tiles]
+        self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar", "tools_erase"]
         self.mode_tabs = QTabBar()
         self.mode_tabs.setExpanding(False)
         self.mode_tabs.setDrawBase(True)
@@ -115,12 +125,16 @@ class MainWindow(QMainWindow):
         self.map_canvas.selection_changed.connect(self._map_selection_changed)
         self.map_canvas.document_changed.connect(self._map_changed)
         self.map_canvas.status_changed.connect(self.set_status)
+        self.map_canvas.map_properties_requested.connect(
+            lambda: self.edit_map(self.project.active_map.map_id))
         self.map_browser = MapBrowser()
+        self.map_browser.set_translator(self.translator)
         self.map_browser.selected.connect(self._select_map)
         self.map_browser.new_requested.connect(self.new_map)
         self.map_browser.import_requested.connect(self.import_map)
         self.map_browser.remove_requested.connect(self.remove_map)
         self.map_browser.entry_requested.connect(self.set_entry_map)
+        self.map_browser.edit_requested.connect(self.edit_map)
         self.layers = LayersPanel()
         self.layers.changed.connect(self._map_changed)
         self.layers.selected.connect(self._layer_selected)
@@ -133,17 +147,17 @@ class MainWindow(QMainWindow):
         self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette()
         self.semantic_palette.tile_selected.connect(self._tile_selected)
-        self.semantic_palette.stamp_selected.connect(self.map_canvas.set_stamp_selection)
+        self.semantic_palette.stamp_selected.connect(self._stamp_selected)
         self.semantic_editor = TileSemanticEditor(self.workspace, self.semantic_catalog, self.translator)
         self.semantic_editor.saved.connect(self._semantic_saved)
         self.smart_terrain = SmartTerrainPalette(self.semantic_catalog, self.translator)
-        self.smart_terrain.terrain_selected.connect(self.map_canvas.set_terrain_selection)
-        self.smart_terrain.room_requested.connect(self.map_canvas.set_room_profile)
+        self.smart_terrain.terrain_selected.connect(self._terrain_selected)
+        self.smart_terrain.room_requested.connect(self._room_selected)
         self.map_elements = MapElementsPalette({
             "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
             "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
         })
-        self.map_elements.selected.connect(self.map_canvas.set_active_payload)
+        self.map_elements.selected.connect(self._map_element_selected)
         self.map_collections = {
             name: CollectionPanel(name, label)
             for name, label in (("links", "Map Links"), ("playerSpawns", "Player Spawns"), ("regions", "Regions"), ("worldRules", "World Rules"), ("encounters", "Encounters"))
@@ -158,7 +172,7 @@ class MainWindow(QMainWindow):
         self.map_inspector.changed.connect(self._edit_map_field)
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
         self.delete_map_selection_button.setEnabled(False)
-        self.delete_map_selection_button.clicked.connect(self.map_canvas.delete_selection)
+        self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
         map_inspector_panel = QWidget()
         map_inspector_layout = QVBoxLayout(map_inspector_panel)
         map_inspector_layout.setContentsMargins(0, 0, 0, 0)
@@ -189,7 +203,7 @@ class MainWindow(QMainWindow):
         self._map_split = map_split
         map_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
 
-        self.content_browser = ContentBrowser(self.workspace, translator=self.translator)
+        self.content_browser = ContentBrowser(self.workspace, translator=self.translator, project=self.project)
         self.content_browser.selected.connect(self._content_selected)
         self.content_browser.place_requested.connect(self._place_definition)
         self.content_browser.find_usages_requested.connect(self._show_usages)
@@ -306,6 +320,7 @@ class MainWindow(QMainWindow):
         self.tileset_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
+        self.map_browser.set_translator(self.translator)
         self.mode_tabs.setTabText(0, self.translator("maps_mode"))
         self.mode_tabs.setTabText(1, self.translator("content_mode"))
         for index, label in enumerate(self._section_labels(self.mode_tabs.currentIndex())):
@@ -319,9 +334,12 @@ class MainWindow(QMainWindow):
         self.delete_map_selection_button.setText(self.translator("delete"))
 
     def _refresh_all(self) -> None:
-        self.map_browser.refresh([document.map_id for document in self.project.maps], self.project.active_map.map_id)
+        self.map_browser.refresh(
+            [document.map_id for document in self.project.maps],
+            self.project.active_map.map_id, self._map_folders())
         self._refresh_map()
         self.content_browser.set_workspace(self.workspace)
+        self.content_browser.set_project(self.project)
         self.entity_browser.set_workspace(self.workspace)
         self.tileset_library.set_workspace(self.workspace, self.project)
         self.tileset_library.set_asset_root(self.asset_root)
@@ -329,6 +347,7 @@ class MainWindow(QMainWindow):
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_editor.set_workspace(self.workspace)
         self.smart_terrain.set_workspace(self.workspace)
+        self.smart_terrain.set_asset_root(self.asset_root)
         self.content_inspector.set_workspace(self.workspace)
         self.scene_editor.inspector.set_workspace(self.workspace)
         self.map_inspector.set_workspace(self.workspace)
@@ -348,7 +367,9 @@ class MainWindow(QMainWindow):
         self.scene_editor.set_document(document)
         for panel in self.map_collections.values():
             panel.set_document(document)
-        self.map_browser.refresh([value.map_id for value in self.project.maps], document.map_id)
+        self.map_browser.refresh(
+            [value.map_id for value in self.project.maps], document.map_id,
+            self._map_folders())
         if self.map_canvas.selected_entity:
             self._map_selection_changed(self.map_canvas.selected_entity)
 
@@ -361,6 +382,7 @@ class MainWindow(QMainWindow):
         if definition:
             self.content_inspector.set_object(f"{definition.display_name} [{definition.origin}]", definition.data)
             self.preview.show_definition(definition, self.workspace, self.asset_root)
+            self._clear_toolbar_tools()
             self.map_canvas.set_entity_selection(definition.category, definition.definition_id)
 
     def _content_selected(self, definition: ContentDefinition | None) -> None:
@@ -456,9 +478,14 @@ class MainWindow(QMainWindow):
             return
         category, identifier = selection
         value = self.project.active_map.entity(category, identifier) if category in {"enemies", "npcs", "objects", "pickups"} else next((entry for entry in self.project.active_map.all_collection(category) if entry.get("id") == identifier), None)
-        self.delete_map_selection_button.setEnabled(value is not None)
+        can_delete = value is not None
+        self.delete_map_selection_button.setEnabled(can_delete)
         if value is not None:
             self.map_inspector.set_object(f"{category}: {identifier}", value)
+
+    def _delete_map_selection(self) -> None:
+        if self.map_canvas.delete_selection():
+            self.set_status(self.translator("selection_deleted"))
 
     def _edit_map_field(self, path: str, value: object) -> None:
         selection = self.map_canvas.selected_entity
@@ -488,6 +515,7 @@ class MainWindow(QMainWindow):
                 self.set_status(f"Cannot place {definition_id}: fix its dependencies first")
                 return
         self.mode_tabs.setCurrentIndex(0)
+        self._clear_toolbar_tools()
         self.map_canvas.set_entity_selection(category, definition_id)
         self.set_status(f"Placement active: {definition_id}. Click the map or press Escape.")
 
@@ -499,6 +527,40 @@ class MainWindow(QMainWindow):
     def set_tool(self, tool: str) -> None:
         self.map_canvas.set_tool(tool)
         self.set_status(f"Tool: {tool}")
+
+    def _select_tool_toggled(self, checked: bool) -> None:
+        if checked:
+            self.set_tool("select")
+        elif self.map_canvas.tool == "select":
+            self.set_tool("none")
+
+    def _erase_tool_toggled(self, checked: bool) -> None:
+        if checked:
+            self.set_tool("erase")
+        elif self.map_canvas.tool == "erase":
+            self.set_tool("none")
+
+    def _clear_toolbar_tools(self) -> None:
+        for key in ("select", "erase_tiles"):
+            action = self.actions.get(key)
+            if action is not None and action.isChecked():
+                action.setChecked(False)
+
+    def _stamp_selected(self, stamp_id: str) -> None:
+        self._clear_toolbar_tools()
+        self.map_canvas.set_stamp_selection(stamp_id)
+
+    def _terrain_selected(self, selection: object) -> None:
+        self._clear_toolbar_tools()
+        self.map_canvas.set_terrain_selection(selection)  # type: ignore[arg-type]
+
+    def _room_selected(self, profile: object) -> None:
+        self._clear_toolbar_tools()
+        self.map_canvas.set_room_profile(profile)  # type: ignore[arg-type]
+
+    def _map_element_selected(self, payload: object) -> None:
+        self._clear_toolbar_tools()
+        self.map_canvas.set_active_payload(payload)  # type: ignore[arg-type]
 
     def map_canvas_grid(self, checked: bool) -> None:
         self.map_canvas.set_grid_visible(checked)
@@ -520,6 +582,7 @@ class MainWindow(QMainWindow):
         if not valid:
             self.set_status(message)
             return
+        self._clear_toolbar_tools()
         self.map_canvas.selected_tile = (tileset_id, source_index, flags)
         self.map_canvas.set_brush(tileset_id, [source_index], flags)
         self.set_status(f"Tile selected: {tileset_id} [{source_index}]")
@@ -535,6 +598,7 @@ class MainWindow(QMainWindow):
 
     def _brush_selected(self, tileset_id: str, source_indices: object, flags: int) -> None:
         if isinstance(source_indices, list) and all(isinstance(value, int) for value in source_indices):
+            self._clear_toolbar_tools()
             self.map_canvas.set_brush(tileset_id, source_indices, flags)
 
     def _layer_selected(self, index: int) -> None:
@@ -554,15 +618,41 @@ class MainWindow(QMainWindow):
         self._refresh_all(); self.set_status("New blank project")
 
     def new_map(self) -> None:
-        map_id, accepted = QInputDialog.getText(self, "New Map", "MapId:", text=f"map.{len(self.project.maps) + 1}")
-        if not accepted or not map_id.strip():
+        folders = self._map_folders()
+        dialog = MapPropertiesDialog(
+            self.translator, suggested_id=f"map.{len(self.project.maps) + 1}",
+            folders=list(folders.values()), parent=self)
+        if dialog.exec() != MapPropertiesDialog.DialogCode.Accepted:
             return
-        width, accepted = QInputDialog.getInt(self, "New Map", "Width:", 32, 1, 4096)
-        if not accepted: return
-        height, accepted = QInputDialog.getInt(self, "New Map", "Height:", 24, 1, 4096)
-        if not accepted: return
+        properties = dialog.properties()
         try:
-            self.project.add_map(MapDocument.new(map_id.strip(), width, height))
+            self.project.add_map(MapDocument.new(
+                properties.map_id, properties.width, properties.height,
+                properties.tile_size, properties.include_player_spawn))
+            self._set_map_folder(properties.map_id, properties.folder)
+            self._refresh_all()
+        except ValueError as error:
+            self.show_error(str(error))
+
+    def edit_map(self, map_id: str) -> None:
+        document = self.project.map_by_id(map_id)
+        if document is None:
+            self.show_error("map was not found")
+            return
+        folders = self._map_folders()
+        dialog = MapPropertiesDialog(
+            self.translator, document=document, folders=list(folders.values()),
+            current_folder=folders.get(map_id, ""), parent=self)
+        if dialog.exec() != MapPropertiesDialog.DialogCode.Accepted:
+            return
+        properties = dialog.properties()
+        try:
+            self.project.set_map_properties(
+                map_id, properties.map_id, properties.width,
+                properties.height, properties.tile_size)
+            if properties.map_id != map_id:
+                folders.pop(map_id, None)
+            self._set_map_folder(properties.map_id, properties.folder)
             self._refresh_all()
         except ValueError as error:
             self.show_error(str(error))
@@ -591,7 +681,14 @@ class MainWindow(QMainWindow):
     def save_as(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Save Authored Project", "", "World Project (*.uworld);;Map (*.umap)")
         if path:
-            try: self.project.save_as(Path(path)); self.set_status("Saved")
+            try:
+                old_key = self._map_folder_key()
+                self.project.save_as(Path(path))
+                new_key = self._map_folder_key()
+                if old_key != new_key and old_key in self.preferences.map_folders:
+                    self.preferences.map_folders[new_key] = self.preferences.map_folders.pop(old_key)
+                    save_preferences(self.preferences)
+                self.set_status("Saved")
             except (OSError, ValueError) as error: self.show_error(str(error))
 
     def save_all(self) -> None:
@@ -654,7 +751,11 @@ class MainWindow(QMainWindow):
             except ValueError as error: self.show_error(str(error))
 
     def remove_map(self, map_id: str) -> None:
-        try: self.project.remove_map(map_id); self._refresh_all()
+        try:
+            self.project.remove_map(map_id)
+            self._map_folders().pop(map_id, None)
+            save_preferences(self.preferences)
+            self._refresh_all()
         except ValueError as error: self.show_error(str(error))
 
     def set_entry_map(self, map_id: str) -> None:
@@ -665,6 +766,21 @@ class MainWindow(QMainWindow):
         self.translator.set_language(language); self.preferences.language = language; save_preferences(self.preferences)
         self._retranslate_ui()
         self._update_title()
+
+    def _map_folder_key(self) -> str:
+        path = self.project.path or self.default_project_path
+        return str(path) if path else "<unsaved-project>"
+
+    def _map_folders(self) -> dict[str, str]:
+        return self.preferences.map_folders.setdefault(self._map_folder_key(), {})
+
+    def _set_map_folder(self, map_id: str, folder: str) -> None:
+        folders = self._map_folders()
+        if folder.strip():
+            folders[map_id] = folder.strip()
+        else:
+            folders.pop(map_id, None)
+        save_preferences(self.preferences)
 
     def _update_title(self) -> None:
         self.setWindowTitle(self.translator("app") + (" *" if self.has_unsaved_changes() else ""))

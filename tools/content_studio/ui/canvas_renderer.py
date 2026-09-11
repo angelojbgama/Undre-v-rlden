@@ -29,6 +29,8 @@ class CanvasRenderer:
         self.preview_kind = ""
         self.pointer_tile: tuple[int, int] | None = None
         self.rectangle_start: tuple[int, int] | None = None
+        self.moving_selection: tuple[str, str | int] | None = None
+        self.moving_world: tuple[int, int] | None = None
 
     def set_context(self, document: MapDocument | None, workspace: ContentWorkspace | None,
                     asset_root: Path | None) -> None:
@@ -185,7 +187,11 @@ class CanvasRenderer:
             if not isinstance(value, dict) or not isinstance(value.get("position"), dict):
                 continue
             position = value["position"]
-            point = self._point(int(position.get("x", 0)), int(position.get("y", 0)), viewport_width, viewport_height)
+            world = (int(position.get("x", 0)), int(position.get("y", 0)))
+            if (self.moving_selection == ("playerSpawns", value.get("id"))
+                    and self.moving_world is not None):
+                world = self.moving_world
+            point = self._point(*world, viewport_width, viewport_height)
             radius = max(5, round(7 * self.camera.zoom))
             painter.setPen(QPen(QColor("#ffec99") if self.selection.matches("playerSpawns", value.get("id")) else QColor("#ffffff"), 3 if self.selection.matches("playerSpawns", value.get("id")) else 2))
             painter.drawLine(point.x() - radius, point.y(), point.x() + radius, point.y()); painter.drawLine(point.x(), point.y() - radius, point.x(), point.y() + radius)

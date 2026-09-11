@@ -65,14 +65,30 @@ class MapEditingService:
             target = document.layers[self.layer_index].setdefault("cells", [])
             assert isinstance(target, list)
             for (x, y), value in values.items():
-                target[y * document.width + x] = None if value is None else document.tile_reference(
+                index = y * document.width + x
+                old_value = target[index]
+                new_value = None if value is None else document.tile_reference(
                     str(value[0]), int(value[1]), int(value[2]))
-            if collision:
+                if old_value != new_value:
+                    document._unlink_tile_collision(self.layer_index, x, y)
+                target[index] = new_value
+            if collision is not None:
                 collision_values = document.data.setdefault("collision", [])
                 assert isinstance(collision_values, list)
                 for (x, y), solid in collision.items():
                     if 0 <= x < document.width and 0 <= y < document.height:
-                        collision_values[y * document.width + x] = 1 if solid else 0
+                        index = y * document.width + x
+                        tile_index = target[index]
+                        reference = None
+                        references = document.data.get("tileReferences", [])
+                        if (isinstance(tile_index, int) and isinstance(references, list)
+                                and 0 <= tile_index < len(references)
+                                and isinstance(references[tile_index], dict)):
+                            tile = references[tile_index]
+                            reference = (str(tile.get("tilesetId", "")),
+                                         int(tile.get("sourceIndex", 0)),
+                                         int(tile.get("flags", 0)))
+                        document._set_collision_binding(self.layer_index, x, y, reference, bool(solid))
 
         document.mutate(label, operation)
         return before != document.data
@@ -112,7 +128,7 @@ class MapEditingService:
         document.set_tiles(self.layer_index, visited, tileset_id, source_index, flags)
 
     def set_collision(self, cells: Iterable[tuple[int, int]], solid: bool) -> None:
-        self._require_document().set_collision(cells, solid)
+        self._require_document().set_collision(cells, solid, self.layer_index)
 
     def fill_collision(self, origin: tuple[int, int], solid: bool) -> None:
         document = self._require_document()
@@ -135,7 +151,7 @@ class MapEditingService:
                 continue
             pending.extend(((current[0] - 1, current[1]), (current[0] + 1, current[1]),
                             (current[0], current[1] - 1), (current[0], current[1] + 1)))
-        document.set_collision(visited, solid)
+        document.set_collision(visited, solid, self.layer_index)
 
     def place_payload(self, payload: StudioDragPayload, world: tuple[int, int],
                       facing: str = "down") -> Selection | None:

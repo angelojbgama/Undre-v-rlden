@@ -38,6 +38,13 @@ não podem conter `scenes`, `persistence` ou `startScene`. `DMAP` é a serializa
 não o documento authored e não é savegame. O reader produz `MapData`, valida o documento inteiro e somente então
 `RuntimeWorldBuilder` cria handles e estado runtime.
 
+O campo authored opcional `collisionBindings` registra a origem da colisão de cada
+célula vinculada a um tile: `layer`, `x`, `y`, `tilesetId`, `sourceIndex` e `flags`.
+Ele é validado pelo codec estrito para garantir que o tile realmente esteja na
+camada indicada. A grade `collision` continua sendo a representação compilada usada
+pelo runtime; o vínculo existe para que o Content Studio possa remover a colisão
+automaticamente quando o tile ou a camada for removido.
+
 Todos os inteiros são little-endian. Strings são bytes com comprimento `u32`, sem
 NUL. Nenhuma estrutura C++, ponteiro, `EntityHandle`, animator ou estado transitório
 é persistido.

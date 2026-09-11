@@ -9,11 +9,12 @@ from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDrag, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
-    QVBoxLayout, QWidget, QTabWidget,
+    QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
+    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QTabWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
+from ..model.world_project import WorldProject
 from ..model.authored_entity_index import AuthoredEntityIndex
 from ..model.types import ContentDefinition, JsonValue
 from ..interaction.drag_payload import StudioDragPayload
@@ -355,9 +356,11 @@ class ContentBrowser(QWidget):
     back_requested = Signal()
 
     def __init__(self, workspace: ContentWorkspace | None = None, allowed: tuple[str, ...] | None = None,
-                 parent: QWidget | None = None, translator: Translator | None = None) -> None:
+                 parent: QWidget | None = None, translator: Translator | None = None,
+                 project: WorldProject | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
+        self.project = project
         self.allowed = allowed
         self.translate = translator or Translator()
         self.index = AuthoredEntityIndex(workspace)
@@ -408,6 +411,9 @@ class ContentBrowser(QWidget):
         self.workspace = workspace
         self.index.set_workspace(workspace)
         self.refresh()
+
+    def set_project(self, project: WorldProject | None) -> None:
+        self.project = project
 
     def set_translator(self, translator: Translator) -> None:
         self.translate = translator
@@ -504,7 +510,18 @@ class ContentBrowser(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-            self.workspace.delete_definition(self._selected)
+            deleted = self._selected
+            terrain_reference = None
+            if deleted.category == "tileSemantics":
+                try:
+                    terrain_reference = (str(deleted.data.get("tilesetId", "")), int(deleted.data.get("sourceIndex", 0)))
+                except (TypeError, ValueError):
+                    terrain_reference = None
+            self.workspace.delete_definition(deleted)
+            if terrain_reference and self.project is not None:
+                for document in self.project.maps:
+                    if document.remove_tile_references({terrain_reference}):
+                        self.project.dirty = True
             self._selected = None
             self.refresh()
             self.definition_changed.emit()
@@ -763,43 +780,104 @@ class MapBrowser(QWidget):
     import_requested = Signal()
     remove_requested = Signal(str)
     entry_requested = Signal(str)
+    edit_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.list = QListWidget()
-        self.list.currentTextChanged.connect(self.selected.emit)
-        self.list.currentRowChanged.connect(lambda unused: self._refresh_actions())
+        self.translate = Translator()
+        self.list = QTreeWidget()
+        self.list.setHeaderHidden(True)
+        self.list.currentItemChanged.connect(self._selection_changed)
+        self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._show_context_menu)
+        self._map_count = 0
         self.new_button = QPushButton("New Map")
         self.import_button = QPushButton("Import UMAP")
         self.remove_button = QPushButton("Remove Map")
         self.entry_button = QPushButton("Set Entry")
         self.new_button.clicked.connect(self.new_requested.emit)
         self.import_button.clicked.connect(self.import_requested.emit)
-        self.remove_button.clicked.connect(lambda: self.remove_requested.emit(self.list.currentItem().text()) if self.list.currentItem() else None)
-        self.entry_button.clicked.connect(lambda: self.entry_requested.emit(self.list.currentItem().text()) if self.list.currentItem() else None)
+        self.remove_button.clicked.connect(lambda: self._emit_current(self.remove_requested))
+        self.entry_button.clicked.connect(lambda: self._emit_current(self.entry_requested))
+        self.title = QLabel()
         buttons = QGridLayout()
         for index, button in enumerate((self.new_button, self.import_button, self.remove_button, self.entry_button)):
             buttons.addWidget(button, index // 2, index % 2)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Maps"))
+        layout.addWidget(self.title)
         layout.addWidget(self.list, 1)
         layout.addLayout(buttons)
+        self.set_translator(self.translate)
 
-    def refresh(self, map_ids: list[str], active: str = "") -> None:
+    def set_translator(self, translator: Translator) -> None:
+        self.translate = translator
+        self.title.setText(translator("maps"))
+        self.new_button.setText(translator("map_new"))
+        self.import_button.setText(translator("map_import"))
+        self.remove_button.setText(translator("map_remove"))
+        self.entry_button.setText(translator("map_set_entry"))
+
+    def refresh(self, map_ids: list[str], active: str = "", folders: dict[str, str] | None = None) -> None:
         self.list.blockSignals(True)
         self.list.clear()
-        self.list.addItems(map_ids)
-        if active:
-            matches = self.list.findItems(active, Qt.MatchFlag.MatchExactly)
-            if matches:
-                self.list.setCurrentItem(matches[0])
+        self._map_count = len(map_ids)
+        folder_nodes: dict[str, QTreeWidgetItem] = {}
+        active_item: QTreeWidgetItem | None = None
+        for map_id in map_ids:
+            folder = (folders or {}).get(map_id, "").strip()
+            parent = None
+            if folder:
+                parent = folder_nodes.get(folder)
+                if parent is None:
+                    parent = QTreeWidgetItem([folder])
+                    parent.setData(0, Qt.ItemDataRole.UserRole, None)
+                    folder_nodes[folder] = parent
+                    self.list.addTopLevelItem(parent)
+            item = QTreeWidgetItem([map_id])
+            item.setData(0, Qt.ItemDataRole.UserRole, map_id)
+            if parent is None:
+                self.list.addTopLevelItem(item)
+            else:
+                parent.addChild(item)
+                parent.setExpanded(True)
+            if map_id == active:
+                active_item = item
+        if active_item is not None:
+            self.list.setCurrentItem(active_item)
         self.list.blockSignals(False)
         self._refresh_actions()
 
     def _refresh_actions(self) -> None:
-        has_selection = self.list.currentItem() is not None
-        self.remove_button.setEnabled(has_selection and self.list.count() > 1)
+        has_selection = self._current_map_id() is not None
+        self.remove_button.setEnabled(has_selection and self._map_count > 1)
         self.entry_button.setEnabled(has_selection)
+
+    def _current_map_id(self) -> str | None:
+        item = self.list.currentItem()
+        value = item.data(0, Qt.ItemDataRole.UserRole) if item else None
+        return str(value) if value else None
+
+    def _selection_changed(self, current: QTreeWidgetItem | None, unused: QTreeWidgetItem | None) -> None:
+        del unused
+        self._refresh_actions()
+        map_id = str(current.data(0, Qt.ItemDataRole.UserRole)) if current and current.data(0, Qt.ItemDataRole.UserRole) else ""
+        if map_id:
+            self.selected.emit(map_id)
+
+    def _emit_current(self, signal: object) -> None:
+        map_id = self._current_map_id()
+        if map_id:
+            signal.emit(map_id)  # type: ignore[attr-defined]
+
+    def _show_context_menu(self, position: object) -> None:
+        item = self.list.itemAt(position)  # type: ignore[arg-type]
+        if item is None or not item.data(0, Qt.ItemDataRole.UserRole):
+            return
+        self.list.setCurrentItem(item)
+        menu = QMenu(self)
+        edit_action = menu.addAction(self.translate("map_edit_properties_action"))
+        edit_action.triggered.connect(lambda: self.edit_requested.emit(str(item.data(0, Qt.ItemDataRole.UserRole))))
+        menu.exec(self.list.viewport().mapToGlobal(position))  # type: ignore[arg-type]
 
 
 class LayersPanel(QWidget):

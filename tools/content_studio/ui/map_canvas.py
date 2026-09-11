@@ -29,6 +29,7 @@ class MapCanvas(QWidget):
     compatibility shims for the existing MainWindow API.
     """
 
+    map_properties_requested = Signal()
     selection_changed = Signal(object)
     document_changed = Signal()
     status_changed = Signal(str)
@@ -99,6 +100,8 @@ class MapCanvas(QWidget):
             self.layer_index = 0
             self.selection_controller.clear()
             self._moving = None
+            self.renderer.moving_selection = None
+            self.renderer.moving_world = None
         self.editing.set_layer(self.layer_index)
         self.renderer.preview_world = None
         self.renderer.pointer_tile = None
@@ -110,6 +113,11 @@ class MapCanvas(QWidget):
 
     def set_tool(self, tool: str) -> None:
         self.tool = tool
+        if tool != "select":
+            self._moving = None
+            self.renderer.moving_selection = None
+            self.renderer.moving_world = None
+        self.interaction.set_tile_erase_mode(tool == "erase")
         collision_tools = {"collision", "collision_erase", "collision_rectangle", "collision_rectangle_erase", "collision_fill", "collision_fill_erase"}
         self.interaction.set_collision_overlay(tool in collision_tools)
         self.interaction.set_collision_fill_solid(tool != "collision_fill_erase")
@@ -160,6 +168,7 @@ class MapCanvas(QWidget):
         self.update()
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
+        self.interaction.set_tile_erase_mode(False)
         self.interaction.set_active_payload(payload)
         self.interaction.set_terrain_selection(None)
         self.interaction.set_room_profile(None)
@@ -180,6 +189,7 @@ class MapCanvas(QWidget):
         self.update()
 
     def set_brush(self, tileset_id: str, source_indices: list[int], flags: int = 0) -> None:
+        self.interaction.set_tile_erase_mode(False)
         self.interaction.set_terrain_selection(None)
         self.interaction.set_room_profile(None)
         self.interaction.set_collision_overlay(False)
@@ -278,12 +288,23 @@ class MapCanvas(QWidget):
         if not self.document:
             return
         button = self._button_name(event.button())
+        if self.tool == "none":
+            return
+        if self.tool == "select" and button == "right":
+            self.map_properties_requested.emit()
+            return
         modifiers = self._modifiers(event.modifiers())
         tile = self.tile_at(point)
         world = self._snap_world(self.screen_to_world(point))
         if self.tool == "select" and button == "left":
             self._moving = self._hit_selection(self.screen_to_world(point))
             self.selection_controller.select_value(self._moving)
+            if self._moving is not None:
+                self.renderer.moving_selection = self._moving.as_tuple()
+                self.renderer.moving_world = self._snap_world(self.screen_to_world(point))
+            else:
+                self.renderer.moving_selection = None
+                self.renderer.moving_world = None
             self.update()
             return
         if self.tool == "eyedropper" and button == "left":
@@ -306,7 +327,7 @@ class MapCanvas(QWidget):
             modifiers = frozenset((*modifiers, "shift"))
         result = self.interaction.press(button, tile, world, modifiers)
         self._apply_result(result)
-        if "shift" in modifiers:
+        if "shift" in modifiers or self.tool in {"erase", "terrain"}:
             self.renderer.rectangle_start = tile
         self.renderer.pointer_tile = tile
         self.update()
@@ -330,6 +351,11 @@ class MapCanvas(QWidget):
             self.renderer.preview_image = self._payload_image(payload)
         modifiers = self._modifiers(event.modifiers())
         buttons = frozenset(self._button_name(button) for button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton) if event.buttons() & button)
+        if self._moving is not None and "left" in buttons:
+            self.renderer.moving_selection = self._moving.as_tuple()
+            self.renderer.moving_world = self._snap_world(self.screen_to_world(point))
+            self.update()
+            return
         if self.tool in {"erase", "collision_erase"} and "left" in buttons:
             buttons = frozenset({"right", *[value for value in buttons if value != "left"]})
         if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"}:
@@ -350,7 +376,7 @@ class MapCanvas(QWidget):
         tile = self.tile_at(point)
         modifiers = self._modifiers(event.modifiers())
         button = self._button_name(event.button())
-        if self.tool in {"collision_rectangle_erase"} and button == "left":
+        if self.tool in {"erase", "collision_rectangle_erase"} and button == "left":
             button = "right"
         if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"}:
             modifiers = frozenset((*modifiers, "shift"))
@@ -362,6 +388,8 @@ class MapCanvas(QWidget):
         if self._moving and event.button() == Qt.MouseButton.LeftButton:
             self._move_selection(self._snap_world(self.screen_to_world(point)))
             self._moving = None
+            self.renderer.moving_selection = None
+            self.renderer.moving_world = None
         self.renderer.rectangle_start = None
         self.renderer.pointer_tile = None
         if button == "left" and self.tool not in {"entity", "spawn", "region", "link", "transition"}:
@@ -518,6 +546,8 @@ class MapCanvas(QWidget):
             else:
                 self.editing.move_map_element(self._moving.category, self._moving.identifier, *world)
             self.document_changed.emit()
+            if self._moving.category == "playerSpawns":
+                self._set_status(self.translate("player_start_moved"))
         except (TypeError, ValueError):
             pass
 

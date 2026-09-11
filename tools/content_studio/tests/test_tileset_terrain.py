@@ -13,6 +13,7 @@ from tools.content_studio.interaction.map_editing_service import MapEditingServi
 from tools.content_studio.model.content_workspace import ContentWorkspace
 from tools.content_studio.model.map_document import MapDocument
 from tools.content_studio.model.tile_semantics import TerrainProfile, TerrainSelection
+from tools.content_studio.model.world_project import WorldProject
 from tools.content_studio.services.autotile_resolver import AutoTileResolver, EAST, NORTH, SOUTH, WEST
 from tools.content_studio.services.import_service import TilesetImportRequest
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
@@ -168,6 +169,24 @@ class TerrainRuleTests(unittest.TestCase):
             self.assertTrue(workspace.undo())
             self.assertEqual(2, len(service.list_rules(workspace, "tileset.rule")))
 
+    def test_deleting_rule_removes_its_tiles_from_every_world_map(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            service = TerrainRuleService()
+            service.save_rule(workspace, "tileset.rule", "dungeon.wall", "wall", {"center": 3, "north": 4})
+            project = WorldProject.new("map.one", 3, 2)
+            project.maps[0].set_tile(0, 0, 0, "tileset.rule", 3)
+            project.maps[0].set_tile(0, 1, 0, "tileset.rule", 4)
+            project.maps[0].set_tile(0, 2, 0, "tileset.other", 9)
+
+            self.assertTrue(service.delete_rule(workspace, "tileset.rule", "dungeon.wall", "wall", project))
+            cells = project.maps[0].layers[0]["cells"]
+            self.assertEqual([None, None, 0], cells[:3])
+            self.assertEqual([{"tilesetId": "tileset.other", "sourceIndex": 9, "flags": 0}],
+                             project.maps[0].data["tileReferences"])
+
     def test_floor_rule_persists_relative_variant_weights(self) -> None:
         data = content_root()
         data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
@@ -209,6 +228,42 @@ class TerrainRuleTests(unittest.TestCase):
                         for y in range(5)]
             self.assertEqual({assignments["north"]}, {value.source_index for value in horizontal if value})
             self.assertEqual({assignments["west"]}, {value.source_index for value in vertical if value})
+
+    def test_room_uses_distinct_top_and_bottom_rule_slots(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(data, Path(directory))
+            assignments = {slot: index for index, slot in enumerate(RULE_SLOTS)}
+            TerrainRuleService().save_rule(
+                workspace, "tileset.rule", "dungeon.stone", "wall", assignments,
+            )
+            document = MapDocument.new("map.room.directional", 5, 5)
+            catalog = TileSemanticCatalog(workspace)
+            painter = TerrainPaintingService(
+                document, workspace, MapEditingService(document, workspace=workspace),
+                catalog, AutoTileResolver(catalog),
+            )
+            painter.paint_room(
+                (1, 1), (3, 3),
+                TerrainProfile(
+                    "dungeon.stone.room",
+                    TerrainSelection("dungeon.stone", "floor"),
+                    TerrainSelection("dungeon.stone", "wall"),
+                ),
+            )
+
+            references = document.data["tileReferences"]
+            cells = document.layers[0]["cells"]
+
+            def source_at(x: int, y: int) -> int | None:
+                reference_index = cells[y * document.width + x]
+                if not isinstance(reference_index, int):
+                    return None
+                return int(references[reference_index]["sourceIndex"])
+
+            self.assertEqual(assignments["north"], source_at(2, 1))
+            self.assertEqual(assignments["south"], source_at(2, 3))
 
     def test_generated_rule_keeps_content_v5_cpp_compatible(self) -> None:
         content_check = Path(__file__).resolve().parents[3] / "build" / "linux" / "content_check"
@@ -305,3 +360,17 @@ class SemanticAndAutotileTests(unittest.TestCase):
         result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall", collision=True))
         self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
         self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])
+
+    def test_smart_wall_collision_binding_is_removed_when_wall_is_erased(self) -> None:
+        document = MapDocument.new("map.collision.binding", 4, 4)
+        editing = MapEditingService(document, workspace=self.workspace)
+        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver)
+        selection = TerrainSelection("dungeon.stone", "wall", collision=True)
+        result = painter.paint_terrain([(1, 1)], selection)
+        self.assertTrue(result.changed)
+        self.assertTrue(document.data["collision"][5])
+        self.assertTrue(document.data["collisionBindings"])
+        erased = painter.paint_terrain([(1, 1)], selection, erase=True)
+        self.assertTrue(erased.changed)
+        self.assertEqual(0, document.data["collision"][5])
+        self.assertEqual([], document.data["collisionBindings"])

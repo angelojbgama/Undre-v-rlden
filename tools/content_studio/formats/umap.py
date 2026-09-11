@@ -34,6 +34,26 @@ def decode_map(value: object, source_path: Path | None = None) -> MapDecode:
     version = value.get("version")
     if isinstance(version, int) and version < 4 and "scenes" in value:
         diagnostics.append(Diagnostic("error", "scenes require map schema version 4", "scenes", "unsupported_version", source_path=source_path))
+    bindings = value.get("collisionBindings")
+    if bindings is not None:
+        if not isinstance(bindings, list):
+            diagnostics.append(Diagnostic("error", "collisionBindings must be an array", "collisionBindings", "wrong_type", source_path=source_path))
+        else:
+            required = ("layer", "x", "y", "tilesetId", "sourceIndex", "flags")
+            for index, binding in enumerate(bindings):
+                path = f"collisionBindings[{index}]"
+                if not isinstance(binding, dict):
+                    diagnostics.append(Diagnostic("error", "collision binding must be an object", path, "wrong_type", source_path=source_path))
+                    continue
+                for name in required:
+                    if name not in binding:
+                        diagnostics.append(Diagnostic("error", f"missing collision binding field: {name}", f"{path}.{name}", "missing_field", source_path=source_path))
+                for name in ("layer", "x", "y", "sourceIndex", "flags"):
+                    number = binding.get(name)
+                    if not isinstance(number, int) or isinstance(number, bool) or number < 0:
+                        diagnostics.append(Diagnostic("error", "collision binding numeric field is invalid", f"{path}.{name}", "wrong_type", source_path=source_path))
+                if not isinstance(binding.get("tilesetId"), str) or not binding.get("tilesetId"):
+                    diagnostics.append(Diagnostic("error", "collision binding tilesetId is invalid", f"{path}.tilesetId", "wrong_type", source_path=source_path))
     return MapDecode(value, diagnostics)
 
 
@@ -69,6 +89,7 @@ def new_map(map_id: str, width: int, height: int, tile_size: int = 16, include_p
         "tileReferences": [],
         "layers": [{"name": "Ground", "visible": True, "cells": [None] * cells}],
         "collision": [0] * cells,
+        "collisionBindings": [],
         "playerSpawns": ([{"id": "player.start", "position": {"x": tile_size * 2, "y": tile_size * 2}, "facing": "down"}] if include_player_spawn else []),
         "enemies": [],
         "npcs": [],

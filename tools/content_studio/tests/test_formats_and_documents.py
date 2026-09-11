@@ -7,6 +7,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 
 from tools.content_studio.formats.content_json import CONTENT_CATEGORIES, decode_content, write_content
@@ -23,14 +24,17 @@ from tools.content_studio.interaction.drag_payload import StudioDragPayload
 from tools.content_studio.interaction.interaction_controller import InteractionController
 from tools.content_studio.interaction.map_editing_service import MapEditingService
 from tools.content_studio.interaction.selection_controller import SelectionController
+from tools.content_studio.model.tile_semantics import TerrainSelection
 from tools.content_studio.model.scene_timeline import (
     add_clip, add_marker, add_track, evaluate_preview, fit_duration, move_clip,
     new_scene, validate_scene,
 )
 from tools.content_studio.services.toolchain import CppToolchain, PlaytestService
 from tools.content_studio.services.autosave import autosave
+from tools.content_studio.services.preferences import load_preferences, save_preferences
 from tools.content_studio.services.import_service import ImageDimensions, ImportService, TilesetImporter, TilesetImportRequest, calculate_grid
 from tools.content_studio.model.types import ContentReference, ToolResult
+from tools.content_studio.model.types import ProjectPreferences
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -46,6 +50,19 @@ def content_root(*definitions: tuple[str, dict[str, object]]) -> dict[str, objec
 
 
 class FormatTests(unittest.TestCase):
+    def test_map_folders_round_trip_as_tooling_preferences(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            preferences = ProjectPreferences(map_folders={
+                "/project/world.uworld": {"map.forest.1": "Floresta"}})
+            save_preferences(preferences, path)
+
+            reopened = load_preferences(path)
+
+            self.assertEqual(
+                "Floresta",
+                reopened.map_folders["/project/world.uworld"]["map.forest.1"])
+
     def test_content_workspace_can_open_a_single_authored_json_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -255,6 +272,64 @@ class MapAuthoringTests(unittest.TestCase):
             self.assertIsNotNone(reopened)
             self.assertEqual(["map.a", "map.b"], [document.map_id for document in reopened.maps])  # type: ignore[union-attr]
 
+    def test_removing_entry_map_promotes_a_neighbor_and_preserves_active_map(self) -> None:
+        project = WorldProject.new("map.a", 2, 2)
+        project.add_map(MapDocument.new("map.b", 2, 2))
+        project.add_map(MapDocument.new("map.c", 2, 2))
+        project.select_map("map.c")
+
+        project.remove_map("map.a")
+
+        self.assertEqual(["map.b", "map.c"], [document.map_id for document in project.maps])
+        self.assertEqual("map.b", project.entry_map_id)
+        self.assertEqual("map.c", project.active_map.map_id)
+        self.assertTrue(project.dirty)
+
+    def test_removing_active_entry_map_selects_and_promotes_neighbor(self) -> None:
+        project = WorldProject.new("map.a", 2, 2)
+        project.add_map(MapDocument.new("map.b", 2, 2))
+        project.set_entry_map("map.b")
+
+        project.remove_map("map.b")
+
+        self.assertEqual(["map.a"], [document.map_id for document in project.maps])
+        self.assertEqual("map.a", project.entry_map_id)
+        self.assertEqual("map.a", project.active_map.map_id)
+
+    def test_world_project_does_not_remove_its_only_map(self) -> None:
+        project = WorldProject.new("map.only", 2, 2)
+        with self.assertRaisesRegex(ValueError, "at least one map"):
+            project.remove_map("map.only")
+
+    def test_map_properties_resize_grid_and_rename_cross_map_references(self) -> None:
+        edited = MapDocument.new("map.old", 3, 2, 16)
+        edited.set_tile(0, 1, 1, "tileset.test", 7)
+        edited.set_tile(0, 2, 1, "tileset.test", 8)
+        edited.set_collision([(1, 1), (2, 1)], True)
+        linked = MapDocument.new("map.linked", 2, 2, 16)
+        linked.add_link("link.to-old", 0, 0, 16, 16, "map.old", "spawn.start")
+        project = WorldProject([edited, linked], "map.old")
+
+        project.set_map_properties("map.old", "map.renamed", 2, 3, 24)
+
+        self.assertEqual("map.renamed", edited.map_id)
+        self.assertEqual((2, 3, 24), (edited.width, edited.height, edited.tile_size))
+        self.assertEqual(6, len(edited.layers[0]["cells"]))
+        self.assertIsNotNone(edited.layers[0]["cells"][3])
+        self.assertEqual(1, edited.data["collision"][3])
+        self.assertEqual("map.renamed", project.entry_map_id)
+        self.assertEqual("map.renamed", linked.data["links"][0]["targetMapId"])
+
+    def test_map_properties_reject_duplicate_id_before_editing(self) -> None:
+        first = MapDocument.new("map.a", 2, 2)
+        second = MapDocument.new("map.b", 2, 2)
+        project = WorldProject([first, second], "map.a")
+
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            project.set_map_properties("map.a", "map.b", 4, 4, 16)
+
+        self.assertEqual(("map.a", 2, 2), (first.map_id, first.width, first.height))
+
     def test_autosave_does_not_clear_dirty_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project = WorldProject.new("map.autosave", 2, 2)
@@ -323,15 +398,107 @@ class InteractionTests(unittest.TestCase):
         self.controller.move(frozenset({"left"}), (1, 0))
         self.controller.release("left", (1, 0))
         self.assertEqual([0, 0], self.document.layers[0]["cells"][:2])
+        self.controller.press("left", (2, 0), (32, 0))
+        self.controller.release("left", (2, 0))
+        self.assertIsNotNone(self.document.layers[0]["cells"][2])
         self.controller.press("right", (1, 0), (16, 0))
         self.assertIsNone(self.document.layers[0]["cells"][1])
         self.controller.press("left", (2, 1), (32, 16), frozenset({"shift"}))
         self.controller.release("left", (3, 2), frozenset({"shift"}))
-        self.assertEqual(5, sum(value is not None for value in self.document.layers[0]["cells"]))
+        self.assertEqual(6, sum(value is not None for value in self.document.layers[0]["cells"]))
         self.controller.press("left", (4, 3), (64, 48), frozenset({"ctrl"}))
         self.assertEqual(self.document.width * self.document.height, sum(value is not None for value in self.document.layers[0]["cells"]))
 
+    def test_tile_erase_tool_erases_selected_rectangle_in_one_operation(self) -> None:
+        self.controller.set_active_payload(StudioDragPayload.tile("tileset.test", 1))
+        for y in range(2):
+            for x in range(3):
+                self.controller.press("left", (x, y), (x * 16, y * 16))
+                self.controller.release("left", (x, y))
+        self.controller.set_tile_erase_mode(True)
+
+        pressed = self.controller.press("right", (0, 0), (0, 0))
+        moved = self.controller.move(frozenset({"right"}), (1, 1))
+        self.assertFalse(pressed.changed)
+        self.assertFalse(moved.changed)
+        self.assertIsNotNone(self.document.layers[0]["cells"][0])
+        self.assertEqual("erase_rectangle_preview", pressed.status)
+
+        released = self.controller.release("right", (1, 1))
+        self.assertTrue(released.changed)
+        self.assertIsNone(self.document.layers[0]["cells"][0])
+        self.assertIsNone(self.document.layers[0]["cells"][1])
+        self.assertIsNotNone(self.document.layers[0]["cells"][2])
+        self.assertIsNone(self.document.layers[0]["cells"][5])
+        self.assertIsNone(self.document.layers[0]["cells"][6])
+        self.assertIsNotNone(self.document.layers[0]["cells"][7])
+        self.assertTrue(self.document.undo())
+        self.assertIsNotNone(self.document.layers[0]["cells"][0])
+        self.assertIsNotNone(self.document.layers[0]["cells"][6])
+
+    def test_smart_terrain_rectangle_keeps_mode_when_release_has_no_shift(self) -> None:
+        class RecordingPainter:
+            def __init__(self) -> None:
+                self.cells: set[tuple[int, int]] = set()
+
+            def paint_terrain(self, cells, selection, erase=False):
+                del selection, erase
+                self.cells = set(cells)
+                return SimpleNamespace(changed=True, warnings=())
+
+        painter = RecordingPainter()
+        self.controller.set_terrain_painter(painter)  # type: ignore[arg-type]
+        self.controller.set_terrain_selection(TerrainSelection("terrain.test", "wall"))
+        self.controller.press("left", (1, 1), (16, 16))
+        self.controller.move(frozenset({"left"}), (3, 2), frozenset())
+        result = self.controller.release("left", (3, 2), frozenset())
+        self.assertTrue(result.changed)
+        self.assertEqual({(x, y) for y in range(1, 3) for x in range(1, 4)}, painter.cells)
+
+    def test_collision_is_bound_to_the_tile_layer_and_removed_with_the_tile(self) -> None:
+        self.document.add_layer("Wall")
+        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
+        self.editing.set_layer(1)
+        self.editing.set_collision([(2, 1)], True)
+        self.assertEqual(1, self.document.data["collision"][7])
+        self.assertEqual([{"layer": 1, "x": 2, "y": 1, "tilesetId": "tileset.wall", "sourceIndex": 7, "flags": 0}],
+                         self.document.data["collisionBindings"])
+
+        self.editing.erase_tiles([(2, 1)])
+        self.assertIsNone(self.document.layers[1]["cells"][7])
+        self.assertEqual(0, self.document.data["collision"][7])
+        self.assertEqual([], self.document.data["collisionBindings"])
+
+    def test_collision_binding_follows_layer_reorder_and_layer_removal(self) -> None:
+        self.document.add_layer("Wall")
+        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
+        self.editing.set_layer(1)
+        self.editing.set_collision([(2, 1)], True)
+
+        self.document.move_layer(1, 0)
+        self.assertEqual(0, self.document.data["collisionBindings"][0]["layer"])
+        self.document.remove_layer(0)
+
+        self.assertEqual(0, self.document.data["collision"][7])
+        self.assertEqual([], self.document.data["collisionBindings"])
+
+    def test_clearing_one_layer_keeps_collision_from_another_layer(self) -> None:
+        self.document.add_layer("Wall")
+        self.document.set_tile(0, 2, 1, "tileset.floor", 3)
+        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
+        self.editing.set_layer(0)
+        self.editing.set_collision([(2, 1)], True)
+        self.editing.set_layer(1)
+        self.editing.set_collision([(2, 1)], True)
+        self.editing.set_collision([(2, 1)], False)
+
+        self.assertEqual(1, self.document.data["collision"][7])
+        self.assertEqual(1, len(self.document.data["collisionBindings"]))
+        self.assertEqual(0, self.document.data["collisionBindings"][0]["layer"])
+
     def test_contextual_collision_left_right_rectangle_and_fill(self) -> None:
+        self.document.set_tiles(0, ((x, y) for y in range(self.document.height)
+                                    for x in range(self.document.width)), "tileset.test", 1)
         self.controller.set_collision_overlay(True)
         self.controller.press("left", (0, 0), (0, 0))
         self.assertEqual(1, self.document.data["collision"][0])
@@ -342,6 +509,11 @@ class InteractionTests(unittest.TestCase):
         self.assertEqual(4, sum(self.document.data["collision"]))
         self.controller.press("left", (0, 0), (0, 0), frozenset({"ctrl"}))
         self.assertEqual(self.document.width * self.document.height, sum(self.document.data["collision"]))
+
+    def test_collision_paint_on_a_blank_cell_does_not_create_an_orphan(self) -> None:
+        self.document.set_collision([(1, 1)], True, 0)
+        self.assertEqual(0, self.document.data["collision"][6])
+        self.assertEqual([], self.document.data["collisionBindings"])
 
     def test_content_drop_supports_enemy_npc_object_and_pickup(self) -> None:
         for index, category in enumerate(("enemies", "npcs", "objects", "pickups")):

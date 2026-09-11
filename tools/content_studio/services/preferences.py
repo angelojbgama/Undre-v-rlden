@@ -26,12 +26,20 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
         return ProjectPreferences()
     if not isinstance(data, dict):
         return ProjectPreferences()
+    folders = data.get("mapFolders", {})
+    if not isinstance(folders, dict):
+        folders = {}
+    normalized_folders = {
+        str(project): {str(map_id): str(folder) for map_id, folder in values.items() if str(folder).strip()}
+        for project, values in folders.items() if isinstance(values, dict)
+    }
     return ProjectPreferences(
         language=data.get("language", "pt-BR") if data.get("language") in {"pt-BR", "en-US"} else "pt-BR",
         asset_root=str(data.get("assetRoot", "")),
         last_project=str(data.get("lastProject", "")),
         left_panel_width=max(0, int(data.get("leftPanelWidth", 260))),
         right_panel_width=max(0, int(data.get("rightPanelWidth", 340))),
+        map_folders=normalized_folders,
     )
 
 
@@ -42,4 +50,5 @@ def save_preferences(preferences: ProjectPreferences, path: Path | None = None) 
         "lastProject": preferences.last_project,
         "leftPanelWidth": preferences.left_panel_width,
         "rightPanelWidth": preferences.right_panel_width,
+        "mapFolders": preferences.map_folders,
     })

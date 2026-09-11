@@ -52,6 +52,15 @@ definições inválidas visíveis para correção.
 
 `Save`, `Save As`, `Save All`, autosave, undo/redo, layers, tiles, collision,
 regions, links, rules, encounters e scenes escrevem apenas JSON authored.
+`New Map` abre uma única janela com Map ID, largura, altura, tamanho do tile e
+Player Spawn inicial. Ela também permite escolher ou digitar uma pasta de
+organização, formando grupos como `Floresta > mapa1, mapa2`. O clique direito
+no mapa visível (com a ferramenta Selecionar) ou em um mapa da árvore abre a mesma janela
+para edição; redimensionar preserva a interseção superior esquerda das layers e
+da colisão, e renomear atualiza `entryMapId` e links entre mapas. As pastas são
+metadados locais do Content Studio e não alteram UWORLD, DMAP ou os Map IDs.
+Ao excluir o mapa de entrada de um projeto multimapa, o mapa vizinho passa a ser
+a nova entrada automaticamente; o último mapa do projeto não pode ser removido.
 
 `Validate Workspace` executa `content_check`. `Export DMAP` executa o
 `world_compile` C++ para UWORLD ou `map_compile` no fluxo de mapa. `Playtest`
@@ -62,13 +71,21 @@ A interface usa ações contextuais: controles que exigem uma seleção ficam
 desabilitados quando não podem operar, e a toolbar de mapa aparece somente no
 modo MAP. Definições possuem Create/Duplicate/Rename/Delete; placements e
 elementos selecionados podem ser editados no inspetor e excluídos pelo botão
-visível ou pela tecla Delete. Entradas de arrays authored podem ser removidas
-individualmente e todas essas mutações continuam passando pelo undo/redo.
+visível ou pela tecla Delete. A ferramenta `Apagar`, ao lado de Playtest,
+permanece ativa: clique em um canto e arraste até o canto oposto para selecionar
+um retângulo de tiles. A área é apagada ao soltar o botão em uma única operação.
+Entradas de arrays authored podem ser removidas individualmente e todas essas
+mutações continuam passando pelo undo/redo.
+Com a ferramenta `Selecionar`, o `+` do Player Start pode ser clicado e arrastado;
+ele acompanha o cursor com o snap atual e a posição é gravada ao soltar em uma
+única operação de undo. `Selecionar` inicia realmente ativo ao abrir o Studio e
+funciona como alternância ON/OFF; desligado, o canvas permanece em modo neutro.
 
-Painéis principais e internos usam divisores redimensionáveis. O atlas pode
-refluir visualmente quando sua largura muda, mas cada tile conserva seu
-`sourceIndex` authored; redimensionar a interface nunca altera o mapa ou as
-regras de Smart Terrain.
+Painéis principais e internos usam divisores redimensionáveis. O atlas conserva
+exatamente as linhas e colunas da imagem importada e usa rolagem quando o painel
+não comporta toda a largura. Cada tile conserva seu `sourceIndex` authored;
+redimensionar a interface nunca altera a composição visual, o mapa ou as regras
+de Smart Terrain.
 
 ## Tilesets, semantics e Smart Terrain
 
@@ -107,20 +124,35 @@ um tile do atlas para associá-lo. A janela permite criar, listar, editar e
 excluir regras; a lista de regras é uma visão derivada das definições
 `tileSemantics`, não uma segunda base de dados. Cada slot também grava a
 vizinhança ortogonal correspondente usando os campos de borda já existentes,
-para que NW/NE/SW/SE não sejam confundidos durante a pintura.
+para que NW/NE/SW/SE não sejam confundidos durante a pintura. A configuração
+da família apresenta diretamente `Ativar colisão` ou `Desativar colisão`; os
+papéis internos `wall` e `floor` permanecem apenas por compatibilidade com o
+formato Content v5 e com o resolver.
 
 Quando o papel é `Floor`, os nove espaços funcionam como variações visuais.
 Cada uma possui peso relativo (`variantWeight`): piso liso com peso 8 e rachado
 com peso 2 resulta em aproximadamente 80%/20%. A janela mostra a porcentagem,
 permite remover uma variação individual e usa o seed para manter a pintura
-reproduzível.
+reproduzível. Os slots usam células compactas do mesmo tamanho visual dos tiles
+do atlas; peso, porcentagem e `sourceIndex` ficam disponíveis no tooltip. No
+Gerenciador de Smart Terrain, as configurações ficam à esquerda e o atlas do
+tileset permanece à direita em um divisor redimensionável.
 
 O atlas visual preserva a grade original da imagem: o índice continua sendo
 `sourceIndex = linha * colunas + coluna`. Redimensionar o painel não reordena
 os tiles nem altera a referência escolhida pela regra.
 
-O modo Raw Tiles continua pintando exatamente o tile escolhido. O modo Smart
-Terrain seleciona uma família e um papel:
+Um tile ou brush selecionado no atlas permanece ativo depois de pintar. Clique
+e arraste sobre o mapa para continuar pintando sem voltar ao atlas; o pincel só
+muda ao selecionar outro tile, brush ou ferramenta.
+
+O modo Raw Tiles continua pintando exatamente o tile escolhido. Na aba Smart
+Terrain, as famílias aparecem como cartões quadrados. Passar o mouse sobre um
+cartão abre a composição visual 3 × 3 e clicar mantém aquela família ativa para
+pintura. A colisão também não é escolhida durante a pintura: famílias somente
+`floor` pintam sem colisão, famílias somente `wall` pintam com colisão e famílias
+mistas usam `floor` na pintura comum. O papel continua no formato de conteúdo
+para compatibilidade com o resolver, mas não é mais uma decisão repetida:
 
 * Smart Floor escolhe deterministicamente entre os candidates `floor`, respeitando
   seus pesos relativos;
@@ -132,7 +164,8 @@ Terrain seleciona uma família e um papel:
   evitando alternância visual. Em áreas fechadas, as máscaras com o vizinho
   interno selecionam N/S/E/W e os quatro cantos individualmente;
 * Room / Area Brush pinta o perímetro como Wall e o interior como Floor usando
-  os mesmos serviços de floor/wall.
+  os mesmos serviços de floor/wall. A ocupação completa da sala orienta o
+  contorno, distinguindo corretamente os slots superiores dos inferiores.
 
 O `AutoTileResolver` não conhece Qt. `TerrainPaintingService` calcula somente
 as células tocadas e os vizinhos necessários, e cada gesto (incluindo updates
@@ -142,16 +175,17 @@ mesmo mapa não troca tiles aleatoriamente. A engine não assume que uma famíli
 pertence a um único tileset, o que permite floor em A, parede em B e corner em
 C sem alterar UMAP.
 
-Collision automática é uma policy opcional do `TerrainPaintingService`; sem
-policy, Smart Terrain não modifica a layer de collision. Isso permite que uma
-parede authored não seja universalmente tratada como sólida e deixa espaço para
-água, ponte, low wall e decoração com regras diferentes.
+A colisão derivada da família é salva na grade do UMAP no mesmo gesto. Quando uma
+célula sólida possui tile, o UMAP também registra `collisionBindings` com a camada
+e a referência authored daquele tile. Assim, substituir/apagar o tile ou excluir a
+camada remove automaticamente a colisão vinculada. Uma célula vazia não cria uma
+colisão órfã: primeiro deve existir um tile na camada ativa. No Room / Area Brush,
+o interior usa `floor` sem colisão e o contorno usa `wall` com colisão
+automaticamente, sem um controle adicional no painel.
 
-O painel Smart Terrain também oferece `Preservar colisão atual`, `Ativar
-colisão` e `Desativar colisão`. A escolha é aplicada às células pintadas pelo
-gesto e salva na grade de colisão do UMAP junto com a pintura. `Preservar` é o
-padrão; assim, paredes não se tornam sólidas automaticamente sem uma decisão
-explícita do autor.
+Smart Terrain funciona como seleção retangular inclusiva: clique pinta uma célula;
+arrastar do ponto inicial ao final pinta todo o quadrante, inclusive as bordas, e o
+resolver calcula cada tile usando a ocupação final e seus vizinhos.
 
 ## Build/testes
 

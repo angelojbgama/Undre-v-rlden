@@ -95,6 +95,41 @@ class MapDocument:
         self.path = target
         self.dirty = False
 
+    def set_properties(self, map_id: str, width: int, height: int, tile_size: int) -> None:
+        map_id = map_id.strip()
+        if not map_id or width <= 0 or height <= 0 or tile_size <= 0:
+            raise ValueError("map id, width, height and tile size must be positive")
+        old_width, old_height = self.width, self.height
+
+        def resized(values: object, default: JsonValue) -> list[JsonValue]:
+            source = values if isinstance(values, list) else []
+            target = [copy.deepcopy(default) for _ in range(width * height)]
+            for y in range(min(old_height, height)):
+                for x in range(min(old_width, width)):
+                    source_index = y * old_width + x
+                    if source_index < len(source):
+                        target[y * width + x] = copy.deepcopy(source[source_index])
+            return target
+
+        def operation() -> None:
+            for layer in self.layers:
+                if isinstance(layer, dict):
+                    layer["cells"] = resized(layer.get("cells"), None)
+            self.data["collision"] = resized(self.data.get("collision"), 0)
+            self.data["id"] = map_id
+            self.data["width"] = width
+            self.data["height"] = height
+            self.data["tileSize"] = tile_size
+            bindings = self.data.get("collisionBindings", [])
+            if isinstance(bindings, list):
+                bindings[:] = [binding for binding in bindings
+                                if isinstance(binding, dict)
+                                and 0 <= int(binding.get("layer", -1)) < len(self.layers)
+                                and 0 <= int(binding.get("x", -1)) < width
+                                and 0 <= int(binding.get("y", -1)) < height]
+
+        self.mutate("Edit Map Properties", operation)
+
     def tile_reference(self, tileset_id: str, source_index: int, flags: int = 0) -> int:
         references = self.data.setdefault("tileReferences", [])
         assert isinstance(references, list)
@@ -116,6 +151,176 @@ class MapDocument:
                 return index
         return None
 
+    def _remove_collision_binding(self, layer: int, x: int, y: int,
+                                  clear_collision: bool = True) -> bool:
+        bindings = self.data.get("collisionBindings", [])
+        if not isinstance(bindings, list):
+            return False
+        kept = [value for value in bindings
+                if not (isinstance(value, dict)
+                        and int(value.get("layer", -1)) == layer
+                        and int(value.get("x", -1)) == x
+                        and int(value.get("y", -1)) == y)]
+        removed = len(kept) != len(bindings)
+        if not removed:
+            return False
+        bindings[:] = kept
+        if clear_collision and not any(
+                isinstance(value, dict)
+                and int(value.get("x", -1)) == x
+                and int(value.get("y", -1)) == y
+                for value in bindings):
+            collision = self.data.get("collision", [])
+            if isinstance(collision, list):
+                collision[y * self.width + x] = 0
+        return True
+
+    def _set_collision_binding(self, layer: int, x: int, y: int,
+                               tile_reference: tuple[str, int, int] | None,
+                               solid: bool) -> None:
+        bindings = self.data.setdefault("collisionBindings", [])
+        assert isinstance(bindings, list)
+        self._remove_collision_binding(layer, x, y, clear_collision=False)
+        collision = self.data.setdefault("collision", [])
+        assert isinstance(collision, list)
+        if solid and tile_reference is not None:
+            tileset_id, source_index, flags = tile_reference
+            bindings.append({
+                "layer": layer, "x": x, "y": y,
+                "tilesetId": tileset_id, "sourceIndex": source_index,
+                "flags": flags,
+            })
+            collision[y * self.width + x] = 1
+        elif not any(
+                isinstance(value, dict)
+                and int(value.get("x", -1)) == x
+                and int(value.get("y", -1)) == y
+                for value in bindings):
+            collision[y * self.width + x] = 0
+
+    def _unlink_tile_collision(self, layer: int, x: int, y: int) -> None:
+        self._remove_collision_binding(layer, x, y, clear_collision=False)
+        bindings = self.data.get("collisionBindings", [])
+        if not isinstance(bindings, list) or not any(
+                isinstance(value, dict)
+                and int(value.get("x", -1)) == x
+                and int(value.get("y", -1)) == y
+                for value in bindings):
+            collision = self.data.get("collision", [])
+            if isinstance(collision, list):
+                collision[y * self.width + x] = 0
+
+    def remove_tile_references(self, references_to_remove: Iterable[tuple[str, int]],
+                               label: str = "Remove deleted terrain tiles") -> bool:
+        """Remove cells that point at deleted semantic tiles, atomically."""
+        targets = {(str(tileset_id), int(source_index))
+                   for tileset_id, source_index in references_to_remove}
+        if not targets:
+            return False
+        changed = False
+
+        def operation() -> None:
+            nonlocal changed
+            tile_references = self.data.get("tileReferences", [])
+            if not isinstance(tile_references, list):
+                return
+            removed_indices = {
+                index for index, reference in enumerate(tile_references)
+                if isinstance(reference, dict)
+                and (str(reference.get("tilesetId", "")), int(reference.get("sourceIndex", 0))) in targets
+            }
+            if not removed_indices:
+                return
+            removed_cells: set[int] = set()
+            bindings = self.data.get("collisionBindings", [])
+            removed_binding_cells: set[int] = set()
+            if isinstance(bindings, list):
+                kept_bindings = []
+                for binding in bindings:
+                    if (isinstance(binding, dict)
+                            and (str(binding.get("tilesetId", "")), int(binding.get("sourceIndex", 0)))
+                            in targets):
+                        try:
+                            removed_binding_cells.add(int(binding.get("y", -1)) * self.width + int(binding.get("x", -1)))
+                        except (TypeError, ValueError):
+                            pass
+                        changed = True
+                    else:
+                        kept_bindings.append(binding)
+                bindings[:] = kept_bindings
+            for layer_index, layer in enumerate(self.layers):
+                if not isinstance(layer, dict):
+                    continue
+                cells = layer.get("cells", [])
+                if not isinstance(cells, list):
+                    continue
+                for index, value in enumerate(cells):
+                    if value in removed_indices:
+                        cells[index] = None
+                        removed_cells.add(index)
+                        self._unlink_tile_collision(layer_index, index % self.width, index // self.width)
+                        changed = True
+            collision = self.data.get("collision", [])
+            if isinstance(collision, list):
+                for index in removed_cells:
+                    x, y = index % self.width, index // self.width
+                    if index < len(collision) and not any(
+                            isinstance(value, dict)
+                            and int(value.get("x", -1)) == x
+                            and int(value.get("y", -1)) == y
+                            for value in (bindings if isinstance(bindings, list) else [])):
+                        if collision[index]:
+                            changed = True
+                        collision[index] = 0
+                for index in removed_binding_cells:
+                    x, y = index % self.width, index // self.width
+                    remaining_bindings = bindings if isinstance(bindings, list) else []
+                    if 0 <= x < self.width and 0 <= y < self.height and not any(
+                            isinstance(value, dict)
+                            and int(value.get("x", -1)) == x
+                            and int(value.get("y", -1)) == y
+                            for value in remaining_bindings):
+                        if collision[index]:
+                            changed = True
+                        collision[index] = 0
+                # Older authoring revisions could erase the visual cell but
+                # leave its collision bit behind.  Once no tile is used in
+                # the map, those bits cannot belong to a remaining tile and
+                # are safe to remove with the deleted terrain reference.
+                has_used_tile = any(
+                    isinstance(layer, dict)
+                    and isinstance(layer.get("cells", []), list)
+                    and any(isinstance(value, int) and value >= 0 for value in layer["cells"])
+                    for layer in self.layers
+                )
+                if not removed_cells and not has_used_tile:
+                    for index, value in enumerate(collision):
+                        if value:
+                            collision[index] = 0
+                            changed = True
+            used = {value for layer in self.layers
+                    for value in (layer.get("cells", []) if isinstance(layer, dict) else [])
+                    if isinstance(value, int) and value >= 0}
+            remap: dict[int, int] = {}
+            compacted: list[JsonValue] = []
+            for index, reference in enumerate(tile_references):
+                if index in removed_indices or index not in used:
+                    continue
+                remap[index] = len(compacted)
+                compacted.append(reference)
+            for layer in self.layers:
+                cells = layer.get("cells", []) if isinstance(layer, dict) else []
+                if isinstance(cells, list):
+                    for index, value in enumerate(cells):
+                        if isinstance(value, int):
+                            cells[index] = remap.get(value)
+            if compacted != tile_references:
+                changed = True
+            self.data["tileReferences"] = compacted
+
+        self.mutate(label, operation)
+        return changed
+
     def set_tile(self, layer: int, x: int, y: int, tileset_id: str | None, source_index: int = 0, flags: int = 0) -> None:
         self._check_tile(x, y)
         if layer < 0 or layer >= len(self.layers):
@@ -124,7 +329,11 @@ class MapDocument:
         def operation() -> None:
             cells = self.layers[layer].setdefault("cells", [])
             assert isinstance(cells, list)
-            cells[y * self.width + x] = None if tileset_id is None else self.tile_reference(tileset_id, source_index, flags)
+            value = None if tileset_id is None else self.tile_reference(tileset_id, source_index, flags)
+            index = y * self.width + x
+            if cells[index] != value:
+                self._unlink_tile_collision(layer, x, y)
+            cells[index] = value
 
         self.mutate("Erase Tile" if tileset_id is None else "Paint Tile", operation)
 
@@ -140,7 +349,10 @@ class MapDocument:
             target = self.layers[layer].setdefault("cells", [])
             assert isinstance(target, list)
             for x, y in coordinates:
-                target[y * self.width + x] = reference
+                index = y * self.width + x
+                if target[index] != reference:
+                    self._unlink_tile_collision(layer, x, y)
+                target[index] = reference
 
         self.mutate("Erase Tiles" if tileset_id is None else "Paint Tiles", operation)
 
@@ -163,7 +375,11 @@ class MapDocument:
             for dx, dy, tileset, source, flags in entries:
                 x, y = origin_x + dx, origin_y + dy
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    target[y * self.width + x] = self.tile_reference(tileset, source, flags)
+                    index = y * self.width + x
+                    value = self.tile_reference(tileset, source, flags)
+                    if target[index] != value:
+                        self._unlink_tile_collision(layer, x, y)
+                    target[index] = value
 
         self.mutate("Paint Brush", operation)
 
@@ -181,18 +397,71 @@ class MapDocument:
             for dx, dy, tileset, source, flags in entries:
                 x, y = origin_x + int(dx), origin_y + int(dy)
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    target[y * self.width + x] = self.tile_reference(str(tileset), int(source), int(flags))
+                    index = y * self.width + x
+                    value = self.tile_reference(str(tileset), int(source), int(flags))
+                    if target[index] != value:
+                        self._unlink_tile_collision(layer, x, y)
+                    target[index] = value
 
         self.mutate(label, operation)
 
-    def set_collision(self, cells: Iterable[tuple[int, int]], solid: bool) -> None:
+    def set_collision(self, cells: Iterable[tuple[int, int]], solid: bool,
+                      layer: int | None = None) -> None:
         coordinates = [(x, y) for x, y in cells if 0 <= x < self.width and 0 <= y < self.height]
+        if layer is not None and (layer < 0 or layer >= len(self.layers)):
+            raise IndexError("layer index out of range")
 
         def operation() -> None:
             collision = self.data.setdefault("collision", [])
             assert isinstance(collision, list)
             for x, y in coordinates:
-                collision[y * self.width + x] = 1 if solid else 0
+                if not solid:
+                    bindings = self.data.get("collisionBindings", [])
+                    if isinstance(bindings, list):
+                        bindings[:] = [value for value in bindings
+                                       if not (isinstance(value, dict)
+                                               and int(value.get("x", -1)) == x
+                                               and int(value.get("y", -1)) == y
+                                               and (layer is None or
+                                                    int(value.get("layer", -1)) == layer))]
+                    collision[y * self.width + x] = 1 if isinstance(bindings, list) and any(
+                        isinstance(value, dict)
+                        and int(value.get("x", -1)) == x
+                        and int(value.get("y", -1)) == y
+                        for value in bindings) else 0
+                    continue
+                reference: tuple[str, int, int] | None = None
+                binding_layer = layer
+                candidate_layers = (range(len(self.layers)) if layer is None else (layer,))
+                references = self.data.get("tileReferences", [])
+                index = y * self.width + x
+                for candidate in candidate_layers:
+                    cells_in_layer = self.layers[candidate].get("cells", [])
+                    if (not isinstance(cells_in_layer, list) or not isinstance(references, list)
+                            or index >= len(cells_in_layer)):
+                        continue
+                    tile_index = cells_in_layer[index]
+                    if (isinstance(tile_index, int) and 0 <= tile_index < len(references)
+                            and isinstance(references[tile_index], dict)):
+                        tile = references[tile_index]
+                        reference = (str(tile.get("tilesetId", "")),
+                                     int(tile.get("sourceIndex", 0)),
+                                     int(tile.get("flags", 0)))
+                        binding_layer = candidate
+                        break
+                if reference is None:
+                    # Collision authoring is tile-backed.  A blank layer cell
+                    # cannot become a new orphaned collision source; an
+                    # existing binding on another layer remains authoritative.
+                    bindings = self.data.get("collisionBindings", [])
+                    if not isinstance(bindings, list) or not any(
+                            isinstance(value, dict)
+                            and int(value.get("x", -1)) == x
+                            and int(value.get("y", -1)) == y
+                            for value in bindings):
+                        collision[y * self.width + x] = 0
+                elif binding_layer is not None:
+                    self._set_collision_binding(binding_layer, x, y, reference, True)
 
         self.mutate("Set Collision" if solid else "Clear Collision", operation)
 
@@ -224,13 +493,61 @@ class MapDocument:
         def operation() -> None:
             layer = self.layers.pop(source)
             self.layers.insert(target, layer)
+            bindings = self.data.get("collisionBindings", [])
+            if isinstance(bindings, list) and source != target:
+                for binding in bindings:
+                    if not isinstance(binding, dict):
+                        continue
+                    binding_layer = int(binding.get("layer", -1))
+                    if binding_layer == source:
+                        binding["layer"] = target
+                    elif source < target and source < binding_layer <= target:
+                        binding["layer"] = binding_layer - 1
+                    elif target < source and target <= binding_layer < source:
+                        binding["layer"] = binding_layer + 1
 
         self.mutate("Move Layer", operation)
 
     def remove_layer(self, index: int) -> None:
         if len(self.layers) <= 1:
             raise ValueError("a map must keep at least one layer")
-        self.mutate("Remove Layer", lambda: self.layers.pop(index))
+        if index < 0 or index >= len(self.layers):
+            raise IndexError("layer index out of range")
+
+        def operation() -> None:
+            bindings = self.data.get("collisionBindings", [])
+            removed_cells: set[int] = set()
+            removed_layer = self.layers[index].get("cells", [])
+            if isinstance(removed_layer, list):
+                removed_cells.update(cell for cell, value in enumerate(removed_layer)
+                                     if isinstance(value, int))
+            kept_bindings: list[JsonValue] = []
+            if isinstance(bindings, list):
+                for binding in bindings:
+                    if not isinstance(binding, dict):
+                        kept_bindings.append(binding)
+                        continue
+                    binding_layer = int(binding.get("layer", -1))
+                    if binding_layer == index:
+                        removed_cells.add(int(binding.get("y", -1)) * self.width +
+                                          int(binding.get("x", -1)))
+                    else:
+                        if binding_layer > index:
+                            binding["layer"] = binding_layer - 1
+                        kept_bindings.append(binding)
+                bindings[:] = kept_bindings
+            self.layers.pop(index)
+            collision = self.data.get("collision", [])
+            if isinstance(collision, list):
+                for cell in removed_cells:
+                    if 0 <= cell < len(collision) and not any(
+                            isinstance(binding, dict)
+                            and int(binding.get("x", -1)) == cell % self.width
+                            and int(binding.get("y", -1)) == cell // self.width
+                            for binding in kept_bindings):
+                        collision[cell] = 0
+
+        self.mutate("Remove Layer", operation)
 
     def copy_tile_rect(self, layer: int, start: tuple[int, int], end: tuple[int, int]) -> dict[str, JsonValue]:
         if layer < 0 or layer >= len(self.layers):
@@ -257,7 +574,10 @@ class MapDocument:
             for index, value in enumerate(cells):
                 x = origin[0] + index % width; y = origin[1] + index // width
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    target[y * self.width + x] = value
+                    target_index = y * self.width + x
+                    if target[target_index] != value:
+                        self._unlink_tile_collision(layer, x, y)
+                    target[target_index] = value
 
         self.mutate("Paste Tiles", operation)
 

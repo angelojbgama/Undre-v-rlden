@@ -7,9 +7,12 @@ from pathlib import Path
 
 try:
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QImage
     from PySide6.QtWidgets import QApplication, QLineEdit, QSizePolicy
 except ImportError:  # pragma: no cover - exercised on minimal CI images
     QApplication = None  # type: ignore[assignment]
+    QColor = None  # type: ignore[assignment,misc]
+    QImage = None  # type: ignore[assignment,misc]
     QLineEdit = None  # type: ignore[assignment,misc]
     QSizePolicy = None  # type: ignore[assignment,misc]
     Qt = None  # type: ignore[assignment,misc]
@@ -33,16 +36,94 @@ class QtSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             content = {"format": "dungeon-underworld-content", "version": 5}
             content.update({category: [] for category in CONTENT_CATEGORIES})
+            content["tilesets"] = [{
+                "id": "tileset.startup", "displayName": "Startup",
+                "relativeAssetPath": "startup.png", "tileSize": 16,
+                "columns": 1, "rows": 1,
+            }]
             root = Path(directory)
             (root / "content.json").write_text(encode_json(content), encoding="utf-8")
             window = MainWindow(WorldProject.new(), ContentWorkspace.open(root))
             self.addCleanup(window.close)
             self.assertIsNone(window.selected_definition)
             self.assertEqual("", window.map_canvas.selected_definition_id)
+            self.assertTrue(window.actions["select"].isChecked())
+            self.assertEqual("select", window.map_canvas.tool)
+            window.actions["select"].trigger()
+            self.assertFalse(window.actions["select"].isChecked())
+            self.assertEqual("none", window.map_canvas.tool)
+            window.actions["select"].trigger()
+            self.assertTrue(window.actions["select"].isChecked())
+            self.assertEqual("select", window.map_canvas.tool)
             editor = QLineEdit("map.untitled")
             editor.setCursorPosition(4)
             editor.insert(".edited")
             self.assertEqual("map..editeduntitled", editor.text())
+
+    def test_map_properties_dialog_is_shared_and_map_browser_has_context_edit(self) -> None:
+        from tools.content_studio.model.map_document import MapDocument
+        from tools.content_studio.services.localization import Translator
+        from tools.content_studio.ui.map_properties_dialog import MapPropertiesDialog
+        from tools.content_studio.ui.widgets import MapBrowser
+
+        create_dialog = MapPropertiesDialog(
+            Translator("pt-BR"), suggested_id="map.new", folders=["Floresta", "Deserto"])
+        self.addCleanup(create_dialog.close)
+        self.assertEqual(("map.new", 32, 24, 16), (
+            create_dialog.properties().map_id, create_dialog.properties().width,
+            create_dialog.properties().height, create_dialog.properties().tile_size))
+        self.assertTrue(create_dialog.player_spawn.isVisibleTo(create_dialog))
+        create_dialog.folder.setCurrentText("Floresta")
+        self.assertEqual("Floresta", create_dialog.properties().folder)
+
+        document = MapDocument.new("map.edit", 8, 6, 24)
+        edit_dialog = MapPropertiesDialog(Translator("pt-BR"), document=document)
+        self.addCleanup(edit_dialog.close)
+        self.assertEqual(("map.edit", 8, 6, 24), (
+            edit_dialog.properties().map_id, edit_dialog.properties().width,
+            edit_dialog.properties().height, edit_dialog.properties().tile_size))
+        self.assertFalse(edit_dialog.player_spawn.isVisibleTo(edit_dialog))
+
+        browser = MapBrowser()
+        self.addCleanup(browser.close)
+        browser.refresh(
+            ["map.forest.1", "map.forest.2", "map.desert.1"], "map.forest.2",
+            {"map.forest.1": "Floresta", "map.forest.2": "Floresta", "map.desert.1": "Deserto"})
+        self.assertEqual(Qt.ContextMenuPolicy.CustomContextMenu, browser.list.contextMenuPolicy())
+        self.assertEqual(2, browser.list.topLevelItemCount())
+        self.assertEqual("Floresta", browser.list.topLevelItem(0).text(0))
+        self.assertEqual(2, browser.list.topLevelItem(0).childCount())
+        self.assertEqual("map.forest.2", browser._current_map_id())
+
+    def test_select_tool_hits_and_moves_player_start_with_drag_preview(self) -> None:
+        from tools.content_studio.model.map_document import MapDocument
+        from tools.content_studio.ui.map_canvas import MapCanvas
+
+        document = MapDocument.new("map.spawn-move", 8, 8)
+        document.add_player_spawn("player.start", 16, 16)
+        canvas = MapCanvas()
+        self.addCleanup(canvas.close)
+        canvas.set_context(document, None, None)
+        canvas.set_tool("select")
+        messages: list[str] = []
+        canvas.status_changed.connect(messages.append)
+
+        selection = canvas._hit_selection((16, 16))
+        self.assertIsNotNone(selection)
+        self.assertEqual(("playerSpawns", "player.start"), selection.as_tuple())  # type: ignore[union-attr]
+        canvas._moving = selection
+        canvas.renderer.moving_selection = selection.as_tuple()  # type: ignore[union-attr]
+        canvas.renderer.moving_world = (48, 32)
+        self.assertEqual((48, 32), canvas.renderer.moving_world)
+
+        canvas._move_selection((48, 32))
+
+        self.assertEqual(
+            {"x": 48, "y": 32}, document.data["playerSpawns"][0]["position"])
+        self.assertEqual("Player Start movido", messages[-1])
+        self.assertTrue(document.undo())
+        self.assertEqual(
+            {"x": 16, "y": 16}, document.data["playerSpawns"][0]["position"])
 
     def test_repository_root_bootstraps_persistent_content_workspace(self) -> None:
         from tools.content_studio.ui.main_window import _open_repository_workspace
@@ -89,7 +170,15 @@ class QtSmokeTests(unittest.TestCase):
             window = MainWindow(WorldProject.new(), ContentWorkspace.open(root))
             self.addCleanup(window.close)
             visible_actions = [action.text() for action in window._toolbar.actions() if not action.isSeparator()]
-            self.assertLessEqual(len(visible_actions), 5)
+            self.assertLessEqual(len(visible_actions), 6)
+            self.assertEqual(["Playtest", "Apagar"], visible_actions[-2:])
+            self.assertTrue(window.actions["erase_tiles"].isCheckable())
+            window.actions["erase_tiles"].trigger()
+            self.assertTrue(window.actions["erase_tiles"].isChecked())
+            self.assertEqual("erase", window.map_canvas.tool)
+            window.actions["erase_tiles"].trigger()
+            self.assertFalse(window.actions["erase_tiles"].isChecked())
+            self.assertEqual("none", window.map_canvas.tool)
             self.assertTrue(window.map_canvas.acceptDrops())
             self.assertTrue(MapElementsPalette().elements.dragEnabled())
             payload = StudioDragPayload.content("enemies", "enemy.test")
@@ -125,8 +214,10 @@ class QtSmokeTests(unittest.TestCase):
             spawn_id = window.project.active_map.add_player_spawn("spawn.test", 16, 16)
             window.map_canvas.selection_controller.select("playerSpawns", spawn_id)
             self.assertTrue(window.delete_map_selection_button.isEnabled())
-            self.assertTrue(window.map_canvas.delete_selection())
+            window.delete_map_selection_button.click()
             self.assertEqual([], window.project.active_map.data["playerSpawns"])
+            self.assertFalse(window.delete_map_selection_button.isEnabled())
+            self.assertEqual("Seleção excluída", window.statusBar().currentMessage())
             window.project.active_map.dirty = False
 
             for splitter in (window._map_split, window._content_split):
@@ -171,7 +262,37 @@ class QtSmokeTests(unittest.TestCase):
             content = {"format": "dungeon-underworld-content", "version": 5}
             content.update({category: [] for category in CONTENT_CATEGORIES})
             content["tilesets"] = [{"id": "tileset.test", "displayName": "Test", "relativeAssetPath": "test.png", "tileSize": 16, "columns": 2, "rows": 2}]
+            content["tileSemantics"] = [
+                {
+                    "id": f"semantic.rule.terrain_test.floor.tileset_test.interior.{slot}.{index}",
+                    "tilesetId": "tileset.test", "sourceIndex": index % 4,
+                    "family": "terrain.test", "role": "floor", "topology": "interior",
+                    "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown",
+                    "preferredLayer": "", "flipXAllowed": False, "variantWeight": 1,
+                }
+                for index, slot in enumerate((
+                    "north_west", "north", "north_east", "west", "center",
+                    "east", "south_west", "south", "south_east",
+                ))
+            ]
+            content["tileSemantics"].extend([
+                {
+                    "id": "semantic.test.wall", "tilesetId": "tileset.test", "sourceIndex": 0,
+                    "family": "terrain.test", "role": "wall", "topology": "interior",
+                    "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown",
+                    "preferredLayer": "", "flipXAllowed": False, "variantWeight": 1,
+                },
+                {
+                    "id": "semantic.solid.wall", "tilesetId": "tileset.test", "sourceIndex": 1,
+                    "family": "terrain.zz_solid", "role": "wall", "topology": "interior",
+                    "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown",
+                    "preferredLayer": "", "flipXAllowed": False, "variantWeight": 1,
+                },
+            ])
             (root / "content.json").write_text(encode_json(content), encoding="utf-8")
+            image = QImage(32, 32, QImage.Format.Format_RGBA8888)
+            image.fill(QColor("#7aa2c8"))
+            self.assertTrue(image.save(str(root / "test.png")))
             workspace = ContentWorkspace.open(root)
             library = TilesetLibrary(workspace)
             widget = TilesetLibraryWidget(workspace, WorldProject.new(), None)
@@ -182,10 +303,60 @@ class QtSmokeTests(unittest.TestCase):
             for value in (widget, palette, editor, rule_dialog, dialog):
                 self.addCleanup(value.deleteLater)
             self.assertTrue(widget.acceptDrops())
+            self.assertFalse(palette.room.isEnabled())
+            self.assertFalse(hasattr(palette, "role"))
+            self.assertFalse(hasattr(palette, "family"))
+            self.assertFalse(hasattr(palette, "collision"))
+            palette.set_asset_root(root)
+            palette.set_workspace(workspace)
+            self.assertIsNone(palette.selection())
+            self.assertEqual({"terrain.test", "terrain.zz_solid"}, set(palette.family_cards))
+            self.assertTrue(all(card.size().width() == card.size().height() == 96
+                                for card in palette.family_cards.values()))
+            palette.select_family("terrain.test")
             self.assertTrue(palette.room.isEnabled())
+            self.assertEqual(("floor", False), (palette.selection().role, palette.selection().collision))
+            self.assertIn("bordas com colisão", palette.family_cards["terrain.test"].statusTip())
+            preview_tiles = palette.preview_tiles("terrain.test")
+            self.assertEqual(9, len(preview_tiles))
+            self.assertTrue(all(tile is not None and not tile.isNull() for tile in preview_tiles))
+            palette._show_preview("terrain.test", palette.family_cards["terrain.test"])
+            self.assertEqual(9, len(palette.preview.cells))
+            self.assertIn("terrain.test", palette.preview.title.text())
+            palette.preview.hide()
+            palette.select_family("terrain.zz_solid")
+            self.assertEqual(("wall", True), (palette.selection().role, palette.selection().collision))
+            palette.select_family("terrain.test")
+            room_profile = palette.profile()
+            self.assertEqual((False, True), (room_profile.floor.collision, room_profile.boundary.collision))
             self.assertEqual(9, len(rule_dialog.slots))
-            self.assertTrue(palette.collision.isEnabled())
+            self.assertTrue(all(button.minimumWidth() == 42 and button.maximumWidth() == 42
+                                and button.minimumHeight() == 42 and button.maximumHeight() == 42
+                                for button in rule_dialog.slots.values()))
+            self.assertEqual(QSizePolicy.Policy.Fixed, rule_dialog.slot_panel.sizePolicy().horizontalPolicy())
+            self.assertEqual(Qt.Orientation.Horizontal, rule_dialog.content_splitter.orientation())
+            self.assertEqual(0, rule_dialog.content_splitter.indexOf(rule_dialog.controls_panel))
+            self.assertEqual(1, rule_dialog.content_splitter.indexOf(rule_dialog.atlas))
+            rule_dialog._atlas_selected("tileset.test", 0, 0)
+            self.assertEqual("", rule_dialog.slots["center"].text())
+            self.assertIn("#0", rule_dialog.slots["center"].toolTip())
             self.assertGreater(widget.atlas.tiles.maximumWidth(), 100_000)
+            atlas = widget.atlas.tiles
+            atlas.resize(80, 120)
+            self.application.processEvents()
+            self.assertEqual((0, 0), (atlas.row(atlas.item(0)), atlas.column(atlas.item(0))))
+            self.assertEqual((0, 1), (atlas.row(atlas.item(1)), atlas.column(atlas.item(1))))
+            self.assertEqual((1, 0), (atlas.row(atlas.item(2)), atlas.column(atlas.item(2))))
+            atlas.resize(500, 120)
+            self.application.processEvents()
+            self.assertEqual((1, 0), (atlas.row(atlas.item(2)), atlas.column(atlas.item(2))))
+            widget.set_map_tile_size(16)
+            atlas.setCurrentRow(3)
+            self.assertEqual(3, atlas.currentItem().data(Qt.ItemDataRole.UserRole))
+            widget.set_map_tile_size(16)
+            self.assertEqual(3, atlas.currentItem().data(Qt.ItemDataRole.UserRole))
+            widget.refresh()
+            self.assertEqual(3, atlas.currentItem().data(Qt.ItemDataRole.UserRole))
             self.assertEqual(Qt.ContextMenuPolicy.CustomContextMenu, widget.tilesets.contextMenuPolicy())
             self.assertEqual(Qt.ContextMenuPolicy.CustomContextMenu, widget.atlas.tiles.contextMenuPolicy())
             menu = widget._tileset_context_menu("tileset.test")

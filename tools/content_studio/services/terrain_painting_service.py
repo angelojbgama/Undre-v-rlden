@@ -124,7 +124,10 @@ class TerrainPaintingService:
         collision: dict[tuple[int, int], bool] = {}
         warnings: list[str] = []
         for position in sorted(boundary, key=lambda value: (value[1], value[0])):
-            resolved = self._resolve(profile.boundary, position, boundary, document, warnings)
+            # Boundary visuals need the complete room occupancy.  Passing only
+            # the outline makes top and bottom centers both look like an E/W
+            # stroke, so the resolver cannot distinguish their inward side.
+            resolved = self._resolve(profile.boundary, position, rect, document, warnings)
             if resolved is not None:
                 assignments[position] = (resolved.tileset_id, resolved.source_index, resolved.flags)
                 self._set_collision(collision, position, profile.boundary.role, True, profile.boundary.collision)

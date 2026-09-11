@@ -10,11 +10,15 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ..formats.content_json import CONTENT_VERSION
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import JsonValue
 from .autotile_resolver import EAST, NORTH, SOUTH, WEST
+
+if TYPE_CHECKING:
+    from ..model.world_project import WorldProject
 
 
 RULE_SLOTS = (
@@ -293,9 +297,11 @@ class TerrainRuleService:
 
         workspace.mutate(label, operation)
 
-    def delete_rule(self, workspace: ContentWorkspace, tileset_id: str, family: str, role: str) -> bool:
+    def delete_rule(self, workspace: ContentWorkspace, tileset_id: str, family: str, role: str,
+                    project: "WorldProject | None" = None) -> bool:
         prefix = f"semantic.rule.{_slug(family)}.{_slug(role)}.{_slug(tileset_id)}."
         removed = False
+        removed_references: set[tuple[str, int]] = set()
 
         def operation() -> None:
             nonlocal removed
@@ -308,10 +314,24 @@ class TerrainRuleService:
             kept = [value for value in values
                     if not (isinstance(value, dict) and isinstance(value.get("id"), str)
                             and value["id"].startswith(prefix))]
+            for value in values:
+                if (isinstance(value, dict) and isinstance(value.get("id"), str)
+                        and value["id"].startswith(prefix)):
+                    try:
+                        removed_references.add((str(value.get("tilesetId", tileset_id)), int(value.get("sourceIndex", 0))))
+                    except (TypeError, ValueError):
+                        continue
             removed = len(kept) != len(values)
             if removed:
                 values[:] = kept
                 content_file.dirty = True
 
         workspace.mutate("Delete Smart Terrain Rule", operation)
+        if removed and project is not None:
+            remaining = {(str(value.data.get("tilesetId", "")), int(value.data.get("sourceIndex", 0)))
+                         for value in workspace.definitions("tileSemantics")
+                         if value.data.get("tilesetId")}
+            stale = removed_references - remaining
+            for document in project.maps:
+                document.remove_tile_references(stale)
         return removed

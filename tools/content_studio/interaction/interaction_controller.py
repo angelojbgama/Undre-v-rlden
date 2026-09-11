@@ -41,12 +41,17 @@ class InteractionController:
         self.active_terrain: TerrainSelection | None = None
         self.active_room: TerrainProfile | None = None
         self._terrain_cells: set[tuple[int, int]] = set()
+        self._terrain_rectangle_mode = False
+        self._tile_erase_mode = False
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
         self.active_payload = payload
+
+    def set_tile_erase_mode(self, enabled: bool) -> None:
+        self._tile_erase_mode = enabled
 
     def set_terrain_painter(self, painter: TerrainPaintingService | None) -> None:
         self.terrain_painter = painter
@@ -80,9 +85,14 @@ class InteractionController:
                 self._last_cell = None
                 return self._terrain_result(result)
             self._terrain_cells = {tile}
-            if "shift" in modifiers:
-                return InteractionResult(status=self.message("terrain_rectangle_preview"))
-            return InteractionResult()
+            # Smart Terrain is an area authoring tool: a drag describes the
+            # inclusive rectangle, while a click naturally remains one cell.
+            # Keeping this latched from press to release also avoids relying
+            # on Qt sending modifiers with the release event.
+            self._terrain_rectangle_mode = True
+            return InteractionResult(status=self.message("terrain_rectangle_preview"))
+        if self._tile_erase_mode and button in {"left", "right"}:
+            return InteractionResult(status=self.message("erase_rectangle_preview"))
         payload = self.active_payload
         if self.collision_overlay:
             if button == "left" and "ctrl" in modifiers:
@@ -121,8 +131,10 @@ class InteractionController:
         if self.active_room and self.terrain_painter and "left" in buttons:
             return InteractionResult(status=self.message("room_preview"))
         if self.active_terrain and self.terrain_painter and ("left" in buttons or "right" in buttons):
-            if "shift" not in modifiers:
+            if not self._terrain_rectangle_mode and "shift" not in modifiers:
                 self._terrain_cells.add(tile)
+            return InteractionResult()
+        if self._tile_erase_mode and ("left" in buttons or "right" in buttons):
             return InteractionResult()
         if self.collision_overlay and ("left" in buttons or "right" in buttons):
             if "shift" not in modifiers:
@@ -151,11 +163,15 @@ class InteractionController:
             return self._terrain_result(result)
         if self.active_terrain and self.terrain_painter and button in {"left", "right"}:
             cells = set(self._terrain_cells)
-            if "shift" in modifiers:
+            if self._terrain_rectangle_mode or "shift" in modifiers:
                 cells = set(self.editing.rectangle_cells(origin, tile))
             self._terrain_cells.clear()
+            self._terrain_rectangle_mode = False
             result = self.terrain_painter.paint_terrain(cells, self.active_terrain, erase=button == "right")
             return self._terrain_result(result)
+        if self._tile_erase_mode and button in {"left", "right"}:
+            self.editing.erase_tiles(self.editing.rectangle_cells(origin, tile))
+            return InteractionResult(True)
         if self.collision_overlay and button in {"left", "right"} and "shift" in modifiers:
             self.editing.set_collision(self.editing.rectangle_cells(origin, tile), button == "left")
             return InteractionResult(True)

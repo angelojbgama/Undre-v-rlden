@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSizePolicy, QSpinBox,
+    QSplitter, QVBoxLayout, QWidget,
 )
 
 from ...model.content_workspace import ContentWorkspace
+from ...model.world_project import WorldProject
 from ...services.localization import Translator
 from ...services.terrain_rule_service import (
     RULE_SLOT_LABELS, TerrainRuleService,
 )
-from ..tilesets.tile_atlas_widget import TileAtlasWidget
+from ..tilesets.tile_atlas_widget import TileAtlasListWidget, TileAtlasWidget
 
 
 class TerrainRuleDialog(QDialog):
@@ -26,11 +29,13 @@ class TerrainRuleDialog(QDialog):
 
     def __init__(self, workspace: ContentWorkspace, asset_root: Path | None,
                  tileset_id: str, translator: Translator | None = None,
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None,
+                 project: WorldProject | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.asset_root = asset_root
         self.tileset_id = tileset_id
+        self.project = project
         self.translate = translator or Translator()
         self.service = TerrainRuleService()
         self._loading = False
@@ -52,8 +57,10 @@ class TerrainRuleDialog(QDialog):
 
         self.family = QLineEdit()
         self.role = QComboBox()
-        self.role.addItem(self.translate("floor"), "floor")
-        self.role.addItem(self.translate("wall"), "wall")
+        # Keep the established Content v5 roles internally, but present the
+        # authored gameplay decision directly: whether this rule adds collision.
+        self.role.addItem(self.translate("collision_off"), "floor")
+        self.role.addItem(self.translate("collision_on"), "wall")
         # Floor variants are the most common Smart Terrain use case.  Wall
         # topology remains available explicitly in the same compact dialog.
         self.role.setCurrentIndex(0)
@@ -76,6 +83,9 @@ class TerrainRuleDialog(QDialog):
         self.slot_group = QButtonGroup(self)
         self.slot_group.setExclusive(True)
         grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(4)
         for row, slot_row in enumerate((
             ("north_west", "north", "north_east"),
             ("west", "center", "east"),
@@ -84,11 +94,20 @@ class TerrainRuleDialog(QDialog):
             for column, slot in enumerate(slot_row):
                 button = QPushButton()
                 button.setCheckable(True)
-                button.setMinimumSize(64, 52)
+                button.setFixedSize(TileAtlasListWidget.CELL_SIZE, TileAtlasListWidget.CELL_SIZE)
+                button.setIconSize(QSize(32, 32))
+                button.setStyleSheet(
+                    "QPushButton { border: 1px solid palette(mid); border-radius: 4px; padding: 3px; }"
+                    "QPushButton:hover { border-color: palette(highlight); background: palette(alternate-base); }"
+                    "QPushButton:checked { border: 2px solid palette(highlight); background: palette(alternate-base); }"
+                )
                 button.clicked.connect(lambda checked=False, value=slot: self._select_slot(value))
                 self.slot_group.addButton(button)
                 self.slots[slot] = button
                 grid.addWidget(button, row, column)
+        self.slot_panel = QWidget()
+        self.slot_panel.setLayout(grid)
+        self.slot_panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         self.atlas.set_context(workspace, asset_root)
         self.atlas.set_tileset(tileset_id)
@@ -101,7 +120,7 @@ class TerrainRuleDialog(QDialog):
         rule_buttons.addWidget(self.delete_button)
         form.addRow("", rule_buttons)
         form.addRow(self.translate("terrain_rule_family"), self.family)
-        form.addRow(self.translate("terrain_rule_role"), self.role)
+        form.addRow(self.translate("terrain_rule_collision"), self.role)
         variation_controls = QHBoxLayout()
         variation_controls.addWidget(self.variant_weight)
         variation_controls.addWidget(self.clear_slot_button)
@@ -111,18 +130,32 @@ class TerrainRuleDialog(QDialog):
         self.save_button.clicked.connect(self._save)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         buttons.rejected.connect(self.reject)
+
+        self.controls_panel = QWidget()
+        controls_layout = QVBoxLayout(self.controls_panel)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.addLayout(form)
+        controls_layout.addWidget(self.help)
+        self.slot_title = QLabel(self.translate("terrain_rule_slots"))
+        controls_layout.addWidget(self.slot_title)
+        controls_layout.addWidget(self.slot_panel, 0, Qt.AlignmentFlag.AlignLeft)
+        controls_layout.addStretch(1)
+
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.addWidget(self.controls_panel)
+        self.content_splitter.addWidget(self.atlas)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 1)
+        self.content_splitter.setSizes([340, 420])
+
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"{self.translate('terrain_rule_editor')} — {display_name}"))
-        layout.addLayout(form)
-        layout.addWidget(self.help)
-        self.slot_title = QLabel(self.translate("terrain_rule_slots"))
-        layout.addWidget(self.slot_title)
-        layout.addLayout(grid)
-        layout.addWidget(self.atlas, 1)
+        layout.addWidget(self.content_splitter, 1)
         layout.addWidget(self.save_button)
         layout.addWidget(buttons)
         self.setWindowTitle(self.translate("terrain_rule_editor"))
-        self.resize(760, 600)
+        self.resize(800, 560)
 
         self._populate_rules()
 
@@ -132,7 +165,8 @@ class TerrainRuleDialog(QDialog):
         self.rule_selector.clear()
         self.rule_selector.addItem(self.translate("terrain_rule_none"), None)
         for rule in rules:
-            self.rule_selector.addItem(f"{rule.family} / {rule.role} ({rule.assigned_slots}/9)",
+            collision = self.translate("collision_on" if rule.role == "wall" else "collision_off")
+            self.rule_selector.addItem(f"{rule.family} / {collision} ({rule.assigned_slots}/9)",
                                        (rule.family, rule.role))
         index = 0
         if selected is not None:
@@ -190,13 +224,15 @@ class TerrainRuleDialog(QDialog):
         family, role = self._original_rule
         answer = QMessageBox.question(
             self, self.translate("terrain_rule_delete"),
-            self.translate("terrain_rule_delete_confirm", family=family, role=role),
+            self.translate(
+                "terrain_rule_delete_confirm", family=family,
+                role=self.translate("collision_on" if role == "wall" else "collision_off")),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            deleted = self.service.delete_rule(self.workspace, self.tileset_id, family, role)
+            deleted = self.service.delete_rule(self.workspace, self.tileset_id, family, role, self.project)
         except ValueError as error:
             QMessageBox.warning(self, self.translate("terrain_rule_editor"), str(error))
             return
@@ -267,20 +303,21 @@ class TerrainRuleDialog(QDialog):
             if source_index is not None and is_floor:
                 weight = self.weights.get(slot, 1)
                 percent = round(weight * 100 / total_weight)
-                button.setText(f"{RULE_SLOT_LABELS[slot]}\n#{source_index}  {weight} ({percent}%)")
+                button.setText("")
                 button.setToolTip(self.translate("terrain_rule_variant_tooltip", index=source_index,
                                                  weight=weight, percent=percent))
+            elif is_floor:
+                button.setText("+")
+                button.setToolTip(self.translate("terrain_rule_click_atlas"))
             else:
-                button.setText(f"{RULE_SLOT_LABELS[slot]}\n{source_index if source_index is not None else '—'}")
+                button.setText(RULE_SLOT_LABELS[slot] if source_index is None else "")
                 button.setToolTip(self.translate("terrain_rule_click_atlas"))
             if source_index is not None and 0 <= source_index < self.atlas.tiles.count():
                 item = self.atlas.tiles.item(source_index)
                 icon: QIcon = item.icon() if item is not None else QIcon()
                 button.setIcon(icon)
-                button.setIconSize(button.sizeHint())
             else:
                 button.setIcon(QIcon())
-            button.setStyleSheet("QPushButton:checked { border: 2px solid #f0c674; }")
 
     def _save(self) -> None:
         family = self.family.text().strip()

@@ -19,6 +19,17 @@ struct AuthoredMapGeometry final {
     std::vector<MapTileReference> tileReferences;
     std::vector<MapTileLayer> layers;
     std::vector<std::uint8_t> collision;
+    // Editor provenance for collision cells.  Runtime compilation still uses
+    // the collision array; this metadata keeps the authored tile relationship
+    // intact when a UMAP is opened and saved again.
+    struct CollisionBinding final {
+        std::uint32_t layer{};
+        std::uint32_t x{};
+        std::uint32_t y{};
+        MapTileReference tile;
+        [[nodiscard]] bool operator==(const CollisionBinding&) const noexcept = default;
+    };
+    std::vector<CollisionBinding> collisionBindings;
     std::vector<PlayerSpawn> playerSpawns;
     std::vector<EnemyPlacement> enemies;
     std::vector<NpcPlacement> npcs;
