@@ -15,7 +15,9 @@ from ..model.types import ContentDefinition
 from ..services.localization import Translator
 from ..services.player_authoring_service import (
     FrameSequenceSpec, PlayerAuthoringRequest, PlayerAuthoringService,
+    PlayerCollisionMaskSpec,
 )
+from .shape_mask_editor import ShapeMaskEditorDialog
 
 
 STATE_LABELS = {
@@ -333,14 +335,17 @@ class FrameSequenceDialog(QDialog):
 
 class PlayerDefinitionDialog(QDialog):
     def __init__(self, workspace: ContentWorkspace, asset_root: Path | None,
+                 translator: Translator,
                  definition: ContentDefinition | None = None,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.asset_root = asset_root
+        self.translate = translator
         self.definition = definition
         self.service = PlayerAuthoringService()
         self.sequences: dict[str, dict[str, FrameSequenceSpec]] = {}
+        self.movement_collision: dict[str, PlayerCollisionMaskSpec] = {}
 
         self.name = QLineEdit()
         self.player_id = QLineEdit("player.hero")
@@ -402,6 +407,35 @@ class PlayerDefinitionDialog(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setWidget(states)
 
+        self.collision_enabled = QCheckBox(
+            "Ativar Movement Collision autorável")
+        self.collision_enabled.toggled.connect(self._collision_toggled)
+        self.collision_buttons: dict[str, QPushButton] = {}
+        self.collision_summaries: dict[str, QLabel] = {}
+        collision_group = QGroupBox("Movement Collision")
+        collision_layout = QGridLayout(collision_group)
+        collision_layout.addWidget(self.collision_enabled, 0, 0, 1, 3)
+        for column, direction in enumerate(self.service.DIRECTIONS):
+            button = QPushButton(
+                f"Editar {DIRECTION_LABELS[direction]}...")
+            summary = QLabel("—")
+            summary.setStyleSheet("color:#aeb8c4;")
+            button.clicked.connect(
+                lambda unused=False, d=direction:
+                self._edit_collision(d))
+            collision_layout.addWidget(button, 1, column)
+            collision_layout.addWidget(summary, 2, column)
+            self.collision_buttons[direction] = button
+            self.collision_summaries[direction] = summary
+        collision_hint = QLabel(
+            "A máscara de movimento é estável por direção e independente "
+            "dos frames de animação. O botão Gerar pelo Alpha dentro do "
+            "editor serve como ponto de partida; ajuste a área para o corpo "
+            "que realmente deve bloquear o cenário.")
+        collision_hint.setWordWrap(True)
+        collision_hint.setStyleSheet("color:#aeb8c4;")
+        collision_layout.addWidget(collision_hint, 3, 0, 1, 3)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel |
             QDialogButtonBox.StandardButton.Ok)
@@ -412,6 +446,7 @@ class PlayerDefinitionDialog(QDialog):
         layout.addWidget(identity)
         layout.addWidget(help_label)
         layout.addWidget(scroll, 1)
+        layout.addWidget(collision_group)
         layout.addWidget(buttons)
         self.resize(1220, 820)
         self.setWindowTitle(
@@ -419,6 +454,8 @@ class PlayerDefinitionDialog(QDialog):
 
         if definition is not None:
             self._load_definition(definition)
+        else:
+            self._collision_toggled(False)
 
     def _load_definition(self, definition: ContentDefinition) -> None:
         request = self.service.request_for(
@@ -435,7 +472,13 @@ class PlayerDefinitionDialog(QDialog):
             state: dict(directions)
             for state, directions in request.sequences.items()
         }
+        self.movement_collision = dict(request.movement_collision)
+        self.collision_enabled.setChecked(
+            request.movement_collision_enabled)
         self._refresh_summaries()
+        self._refresh_collision_summaries()
+        self._collision_toggled(
+            request.movement_collision_enabled)
 
     def _refresh_summaries(self) -> None:
         for label in self.summary_labels.values():
@@ -469,6 +512,111 @@ class PlayerDefinitionDialog(QDialog):
             direction] = dialog.result_spec
         self._refresh_summaries()
 
+    def _collision_toggled(self, checked: bool) -> None:
+        for button in self.collision_buttons.values():
+            button.setEnabled(checked)
+        if not checked:
+            return
+        self._refresh_collision_summaries()
+
+    def _refresh_collision_summaries(self) -> None:
+        for direction, label in self.collision_summaries.items():
+            spec = self.movement_collision.get(direction)
+            if spec is None:
+                label.setText("não definida")
+                continue
+            active = sum(1 for cell in spec.cells if cell)
+            label.setText(
+                f"{spec.width}x{spec.height} • {active} pixel(s) ativos")
+
+    def _collision_frame_image(self, direction: str) -> QImage | None:
+        spec = self.sequences.get("idle", {}).get(direction)
+        if spec is None or not spec.frame_indices or spec.columns <= 0:
+            return None
+        image_definition = self.workspace.find(
+            "visualImages", spec.image_id)
+        if image_definition is None:
+            return None
+        root = (
+            self.asset_root
+            if image_definition.data.get("root") == "gameAssets"
+            else self.workspace.root)
+        relative = image_definition.data.get("relativePath")
+        if root is None or not isinstance(relative, str):
+            return None
+        image = QImage(str(root / relative))
+        if image.isNull():
+            return None
+        index = spec.frame_indices[0]
+        row, column = divmod(index, spec.columns)
+        x = spec.origin_x + column * (spec.frame_width + spec.spacing)
+        y = spec.origin_y + row * (spec.frame_height + spec.spacing)
+        frame = image.copy(
+            x, y, spec.frame_width, spec.frame_height)
+        if frame.isNull():
+            return None
+        return (
+            frame.mirrored(True, False)
+            if spec.flip_x else frame)
+
+    def _default_collision_mask(
+            self, direction: str) -> PlayerCollisionMaskSpec | None:
+        spec = self.sequences.get("idle", {}).get(direction)
+        if spec is None:
+            return None
+        width = spec.frame_width
+        height = spec.frame_height
+        return PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=-(width // 2),
+            origin_y=-(height - 1),
+            cells=(0,) * (width * height),
+        )
+
+    def _edit_collision(self, direction: str) -> None:
+        if not self.collision_enabled.isChecked():
+            return
+        image = self._collision_frame_image(direction)
+        if image is None:
+            QMessageBox.information(
+                self, self.windowTitle(),
+                "Configure primeiro o Idle dessa direção. "
+                "A máscara usa o primeiro frame Idle como referência visual.")
+            return
+        current = self.movement_collision.get(direction)
+        if current is None:
+            current = self._default_collision_mask(direction)
+        if current is None:
+            return
+        mask = {
+            "width": current.width,
+            "height": current.height,
+            "origin": {
+                "x": current.origin_x,
+                "y": current.origin_y,
+            },
+            "cells": list(current.cells),
+        }
+        dialog = ShapeMaskEditorDialog(
+            image, mask, self.translate, self,
+            title_key="mask_editor_title")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        result = dialog.result_mask()
+        origin = result.get("origin", {})
+        cells = result.get("cells", [])
+        if not isinstance(origin, dict) or not isinstance(cells, list):
+            return
+        self.movement_collision[direction] = PlayerCollisionMaskSpec(
+            width=int(result.get("width", image.width())),
+            height=int(result.get("height", image.height())),
+            origin_x=int(origin.get("x", 0)),
+            origin_y=int(origin.get("y", 0)),
+            cells=tuple(int(cell) for cell in cells),
+        )
+        self._refresh_collision_summaries()
+
     def _save(self) -> None:
         progression_id = str(
             self.progression.currentData()
@@ -478,6 +626,9 @@ class PlayerDefinitionDialog(QDialog):
             display_name=self.name.text().strip(),
             progression_id=progression_id,
             sequences=self.sequences,
+            movement_collision_enabled=(
+                self.collision_enabled.isChecked()),
+            movement_collision=dict(self.movement_collision),
         )
         try:
             self.service.save(
@@ -580,7 +731,7 @@ class PlayerLibraryWidget(QWidget):
         if self.workspace is None:
             return
         dialog = PlayerDefinitionDialog(
-            self.workspace, self.asset_root, parent=self)
+            self.workspace, self.asset_root, self.translate, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.refresh()
             self.changed.emit()
@@ -592,7 +743,7 @@ class PlayerLibraryWidget(QWidget):
             return
         try:
             dialog = PlayerDefinitionDialog(
-                self.workspace, self.asset_root,
+                self.workspace, self.asset_root, self.translate,
                 definition=definition, parent=self)
         except ValueError as error:
             QMessageBox.warning(

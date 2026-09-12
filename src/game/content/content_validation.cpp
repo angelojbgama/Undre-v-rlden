@@ -253,6 +253,48 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
              value.progressionId != gameplay::rpg::defaultPlayerProgressionId()))
             error(report, ContentKind::player, value.id, "unknown_reference",
                   "player progression does not exist", "progressionId");
+        if (value.movementCollision) {
+            const auto validateMask = [&](const AuthoredPixelMask& mask,
+                                          std::string_view direction) {
+                const auto expectedCells =
+                    mask.width > 0 &&
+                    mask.height <= std::numeric_limits<std::size_t>::max() /
+                                       mask.width
+                    ? static_cast<std::size_t>(mask.width) * mask.height
+                    : 0;
+                if (mask.width == 0 || mask.height == 0 ||
+                    expectedCells == 0 ||
+                    mask.cells.size() != expectedCells) {
+                    error(report, ContentKind::player, value.id,
+                          "invalid_player_movement_collision",
+                          "player movement collision dimensions do not match "
+                          "its cell mask",
+                          std::string("movementCollision.") +
+                              std::string(direction));
+                    return;
+                }
+                if (visualCoordinateOutOfBounds(mask.origin.x) ||
+                    visualCoordinateOutOfBounds(mask.origin.y)) {
+                    error(report, ContentKind::player, value.id,
+                          "invalid_player_movement_collision_origin",
+                          "player movement collision origin is outside bounds",
+                          std::string("movementCollision.") +
+                              std::string(direction) + ".origin");
+                }
+                if (!std::any_of(mask.cells.begin(), mask.cells.end(),
+                                 [](std::uint8_t cell) { return cell != 0; })) {
+                    error(report, ContentKind::player, value.id,
+                          "empty_player_movement_collision",
+                          "player movement collision must contain at least "
+                          "one active cell",
+                          std::string("movementCollision.") +
+                              std::string(direction));
+                }
+            };
+            validateMask(value.movementCollision->down, "down");
+            validateMask(value.movementCollision->up, "up");
+            validateMask(value.movementCollision->side, "side");
+        }
     }
     for (const auto& value : pack.playerVisuals) {
         validateDirectional(value.idle, animations, report, ContentKind::playerVisual, value.id, "idle");

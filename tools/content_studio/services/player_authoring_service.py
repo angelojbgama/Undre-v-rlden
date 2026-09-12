@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 
@@ -25,11 +25,23 @@ class FrameSequenceSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class PlayerCollisionMaskSpec:
+    width: int
+    height: int
+    origin_x: int
+    origin_y: int
+    cells: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PlayerAuthoringRequest:
     player_id: str
     display_name: str
     progression_id: str
     sequences: dict[str, dict[str, FrameSequenceSpec]]
+    movement_collision_enabled: bool = False
+    movement_collision: dict[str, PlayerCollisionMaskSpec] = field(
+        default_factory=dict)
 
 
 class PlayerAuthoringService:
@@ -84,6 +96,87 @@ class PlayerAuthoringService:
             })
         return frames
 
+    @staticmethod
+    def _collision_data(spec: PlayerCollisionMaskSpec) -> dict[str, JsonValue]:
+        return {
+            "width": spec.width,
+            "height": spec.height,
+            "origin": {
+                "x": spec.origin_x,
+                "y": spec.origin_y,
+            },
+            "cells": list(spec.cells),
+        }
+
+    @classmethod
+    def _validate_movement_collision(
+            cls, request: PlayerAuthoringRequest) -> None:
+        if not request.movement_collision_enabled:
+            return
+        missing = [
+            direction for direction in cls.DIRECTIONS
+            if direction not in request.movement_collision
+        ]
+        if missing:
+            raise ValueError(
+                "Movement Collision: defina Down, Up e Side antes de salvar.")
+
+        idle = request.sequences.get("idle", {})
+        for direction in cls.DIRECTIONS:
+            mask = request.movement_collision[direction]
+            if mask.width <= 0 or mask.height <= 0:
+                raise ValueError(
+                    f"Movement Collision {direction}: dimensões inválidas.")
+            expected = mask.width * mask.height
+            if len(mask.cells) != expected:
+                raise ValueError(
+                    f"Movement Collision {direction}: a máscara não combina "
+                    "com suas dimensões.")
+            if any(cell not in (0, 1) for cell in mask.cells):
+                raise ValueError(
+                    f"Movement Collision {direction}: células devem ser 0 ou 1.")
+            if not any(mask.cells):
+                raise ValueError(
+                    f"Movement Collision {direction}: a máscara está vazia.")
+            idle_spec = idle.get(direction)
+            if idle_spec is None:
+                raise ValueError(
+                    f"Movement Collision {direction}: configure Idle primeiro.")
+            if (
+                mask.width != idle_spec.frame_width or
+                mask.height != idle_spec.frame_height
+            ):
+                raise ValueError(
+                    f"Movement Collision {direction}: a máscara deve usar "
+                    "o mesmo tamanho do frame Idle dessa direção.")
+
+    @staticmethod
+    def _collision_spec(value: object, direction: str) -> PlayerCollisionMaskSpec:
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"Movement Collision {direction}: definição inválida.")
+        origin = value.get("origin")
+        cells = value.get("cells")
+        if not isinstance(origin, dict) or not isinstance(cells, list):
+            raise ValueError(
+                f"Movement Collision {direction}: origin/cells inválidos.")
+        width = int(value.get("width", 0))
+        height = int(value.get("height", 0))
+        parsed = PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=int(origin.get("x", 0)),
+            origin_y=int(origin.get("y", 0)),
+            cells=tuple(int(cell) for cell in cells),
+        )
+        if width <= 0 or height <= 0 or len(parsed.cells) != width * height:
+            raise ValueError(
+                f"Movement Collision {direction}: dimensões/células inválidas.")
+        if any(cell not in (0, 1) for cell in parsed.cells):
+            raise ValueError(
+                f"Movement Collision {direction}: células devem ser 0 ou 1.")
+        return parsed
+
     def save(self, workspace: ContentWorkspace,
              request: PlayerAuthoringRequest,
              editing: bool = False) -> ContentDefinition:
@@ -102,6 +195,8 @@ class PlayerAuthoringService:
             if missing:
                 raise ValueError(
                     f"{state}: defina Down, Up e Side antes de salvar.")
+
+        self._validate_movement_collision(request)
 
         existing = workspace.find("players", player_id)
         if editing and existing is None:
@@ -150,6 +245,18 @@ class PlayerAuthoringService:
                 "clips": self._directional(state_refs[state]),
             })
 
+        player_data: dict[str, JsonValue] = {
+            "id": player_id,
+            "visualSetId": visual_id,
+            "progressionId": progression_id,
+        }
+        if request.movement_collision_enabled:
+            player_data["movementCollision"] = {
+                direction: self._collision_data(
+                    request.movement_collision[direction])
+                for direction in self.DIRECTIONS
+            }
+
         entries = animation_entries + [
             ("playerVisuals", visual_id, {
                 "id": visual_id,
@@ -158,11 +265,7 @@ class PlayerAuthoringService:
                 "hurt": hurt,
                 "actions": actions,
             }),
-            ("players", player_id, {
-                "id": player_id,
-                "visualSetId": visual_id,
-                "progressionId": progression_id,
-            }),
+            ("players", player_id, player_data),
             ("authoringDescriptors", player_id, {
                 "definitionId": player_id,
                 "displayName": display_name,
@@ -228,11 +331,26 @@ class PlayerAuthoringService:
                     self._sequence_from_animation(
                         workspace, animation, asset_root))
 
+        movement_value = definition.data.get("movementCollision")
+        movement_collision_enabled = isinstance(movement_value, dict)
+        movement_collision: dict[str, PlayerCollisionMaskSpec] = {}
+        if movement_collision_enabled:
+            assert isinstance(movement_value, dict)
+            for direction in self.DIRECTIONS:
+                if direction not in movement_value:
+                    raise ValueError(
+                        "Movement Collision salvo está incompleto: "
+                        f"falta {direction}.")
+                movement_collision[direction] = self._collision_spec(
+                    movement_value[direction], direction)
+
         return PlayerAuthoringRequest(
             player_id=definition.definition_id,
             display_name=display_name,
             progression_id=progression_id,
             sequences=sequences,
+            movement_collision_enabled=movement_collision_enabled,
+            movement_collision=movement_collision,
         )
 
     @classmethod

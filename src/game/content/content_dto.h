@@ -39,6 +39,7 @@ struct AuthoredEquipmentModifiers final { int maximumHealthBonus{}; int playerAt
 struct AuthoredEquipment final { AuthoredEquipmentSlot slot{AuthoredEquipmentSlot::armor}; AuthoredEquipmentModifiers modifiers{}; };
 struct AuthoredItem final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::ItemCategory category{gameplay::ItemCategory::misc}; std::uint32_t stackLimit{}; std::optional<gameplay::ItemUseDefinition> use{}; std::optional<AuthoredEquipment> equipment{}; };
 struct AuthoredObjectCollision final { std::uint32_t width{}; std::uint32_t height{}; core::PointI origin{}; std::vector<std::uint8_t> cells; };
+using AuthoredPixelMask = AuthoredObjectCollision;
 struct AuthoredObjectBankAccess final {};
 struct AuthoredWorldObject final { simulation::DefinitionId id{}; simulation::DefinitionId visualSetId{}; std::optional<gameplay::ObjectInteractionDefinition> interactable{}; std::optional<gameplay::ObjectContainerDefinition> container{}; std::optional<gameplay::ObjectDestructibleDefinition> destructible{}; std::optional<AuthoredObjectBankAccess> bankAccess{}; std::optional<gameplay::ObjectDoorDefinition> door{}; std::optional<gameplay::ObjectActivationDefinition> activation{}; std::optional<AuthoredObjectCollision> collision{}; core::PointI depthAnchor{}; std::optional<gameplay::ObjectOcclusionDefinition> occlusion{}; };
 struct AuthoredHealthPickup final { int amount{}; };
@@ -64,10 +65,16 @@ struct AuthoredDialogueNode final { simulation::DefinitionId id{}; std::string s
 struct AuthoredDialogue final { simulation::DefinitionId id{}; simulation::DefinitionId entryNodeId{}; std::vector<AuthoredDialogueNode> nodes; };
 struct AuthoredQuestObjective final { simulation::DefinitionId id{}; gameplay::quests::QuestObjectiveKind kind{}; simulation::DefinitionId targetId{}; std::uint32_t requiredCount{1}; std::string description; };
 struct AuthoredQuest final { simulation::DefinitionId id{}; std::string title; std::vector<AuthoredQuestObjective> objectives; std::vector<std::string> tags; std::optional<simulation::DefinitionId> rewardGrantId{}; };
+struct AuthoredPlayerMovementCollision final {
+    AuthoredPixelMask down;
+    AuthoredPixelMask up;
+    AuthoredPixelMask side;
+};
 struct AuthoredPlayer final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualSetId{};
     simulation::DefinitionId progressionId{};
+    std::optional<AuthoredPlayerMovementCollision> movementCollision{};
 };
 struct AuthoredPlayerActionVisual final {
     std::string actionId;

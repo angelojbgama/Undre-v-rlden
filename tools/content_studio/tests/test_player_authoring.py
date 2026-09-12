@@ -12,6 +12,7 @@ from tools.content_studio.services.player_authoring_service import (
     FrameSequenceSpec,
     PlayerAuthoringRequest,
     PlayerAuthoringService,
+    PlayerCollisionMaskSpec,
 )
 
 
@@ -29,6 +30,26 @@ def fake_png(path: Path, width: int, height: int) -> None:
         b"\x89PNG\r\n\x1a\n"
         + b"\0" * 8
         + struct.pack(">II", width, height)
+    )
+
+
+def movement_mask(
+    *,
+    width: int = 32,
+    height: int = 32,
+) -> PlayerCollisionMaskSpec:
+    cells = [0] * (width * height)
+    # Stable ground footprint: only the bottom part of the sprite blocks.
+    for y in range(max(0, height - 8), height):
+        for x in range(max(0, width // 2 - 8),
+                       min(width, width // 2 + 8)):
+            cells[y * width + x] = 1
+    return PlayerCollisionMaskSpec(
+        width=width,
+        height=height,
+        origin_x=-(width // 2),
+        origin_y=-(height - 1),
+        cells=tuple(cells),
     )
 
 
@@ -90,6 +111,12 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                     "side": sequence((8, 9, 10, 11), flip_x=True),
                 },
             },
+            movement_collision_enabled=True,
+            movement_collision={
+                "down": movement_mask(),
+                "up": movement_mask(),
+                "side": movement_mask(),
+            },
         )
 
     def test_saved_player_reopens_with_same_frame_sequences(self) -> None:
@@ -117,6 +144,15 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
             4, reopened.sequences["walk"]["side"].columns)
         self.assertEqual(
             32, reopened.sequences["walk"]["side"].frame_width)
+        self.assertTrue(reopened.movement_collision_enabled)
+        self.assertEqual(
+            movement_mask(),
+            reopened.movement_collision["down"],
+        )
+        self.assertEqual(
+            movement_mask(),
+            reopened.movement_collision["side"],
+        )
 
     def test_editing_reopened_player_updates_existing_content(self) -> None:
         temporary, workspace = self.make_workspace()
@@ -139,6 +175,9 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 display_name="Hero editado",
                 progression_id=reopened.progression_id,
                 sequences=edited_sequences,
+                movement_collision_enabled=(
+                    reopened.movement_collision_enabled),
+                movement_collision=dict(reopened.movement_collision),
             ),
             editing=True,
         )
@@ -162,6 +201,34 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 value for value in workspace.definitions("players")
                 if value.definition_id == "player.hero"
             ]),
+        )
+
+
+    def test_disabling_movement_collision_removes_optional_field(self) -> None:
+        temporary, workspace = self.make_workspace()
+        self.addCleanup(temporary.cleanup)
+        service = PlayerAuthoringService()
+
+        created = service.save(workspace, self.make_request())
+        reopened = service.request_for(workspace, created)
+        service.save(
+            workspace,
+            PlayerAuthoringRequest(
+                player_id=reopened.player_id,
+                display_name=reopened.display_name,
+                progression_id=reopened.progression_id,
+                sequences=reopened.sequences,
+                movement_collision_enabled=False,
+                movement_collision={},
+            ),
+            editing=True,
+        )
+
+        player = workspace.find("players", "player.hero")
+        self.assertIsNotNone(player)
+        self.assertNotIn(
+            "movementCollision",
+            player.data,  # type: ignore[union-attr]
         )
 
 
