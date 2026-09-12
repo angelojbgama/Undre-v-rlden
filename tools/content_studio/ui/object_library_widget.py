@@ -187,6 +187,17 @@ class ObjectDefinitionDialog(QDialog):
         collision_hint = QLabel(self.translate("object_collision_help"))
         collision_hint.setWordWrap(True); collision_hint.setStyleSheet("color: #aeb8c4;")
         collision_layout.addWidget(collision_hint)
+        self.occlusion_enabled = QCheckBox(self.translate("object_occlusion_enabled"))
+        self.edit_depth_occlusion = QPushButton(self.translate("edit_depth_occlusion"))
+        self._occlusion_mask: dict[str, object] | None = None
+        self._depth_anchor: dict[str, int] = {"x": 0, "y": 0}
+        self.depth_group = QGroupBox(self.translate("object_depth_group"))
+        depth_layout = QVBoxLayout(self.depth_group)
+        depth_layout.addWidget(self.occlusion_enabled)
+        depth_layout.addWidget(self.edit_depth_occlusion)
+        depth_hint = QLabel(self.translate("object_depth_help"))
+        depth_hint.setWordWrap(True); depth_hint.setStyleSheet("color: #aeb8c4;")
+        depth_layout.addWidget(depth_hint)
         hint = QLabel(self.translate("object_creation_help")); hint.setWordWrap(True)
         hint.setStyleSheet("color: #aeb8c4;")
         buttons = QDialogButtonBox(
@@ -198,6 +209,7 @@ class ObjectDefinitionDialog(QDialog):
         left_layout.addWidget(self.destructible_group)
         left_layout.addWidget(self.chest_group)
         left_layout.addWidget(self.collision_group)
+        left_layout.addWidget(self.depth_group)
         left_layout.addWidget(hint); left_layout.addStretch(1)
         right = QWidget(); right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -233,8 +245,11 @@ class ObjectDefinitionDialog(QDialog):
         self.opening_end.valueChanged.connect(self._reset_example)
         self.collision_enabled.toggled.connect(self._collision_toggled)
         self.edit_collision.clicked.connect(self._edit_collision)
+        self.occlusion_enabled.toggled.connect(self._occlusion_toggled)
+        self.edit_depth_occlusion.clicked.connect(self._edit_depth_occlusion)
         self._animation_changed(); self._type_changed()
         self._collision_toggled(self.collision_enabled.isChecked())
+        self._occlusion_toggled(self.occlusion_enabled.isChecked())
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -288,6 +303,24 @@ class ObjectDefinitionDialog(QDialog):
         else:
             self._collision_mask = None
             self.collision_enabled.setChecked(False)
+        self._depth_anchor = {
+            "x": request.depth_anchor_x,
+            "y": request.depth_anchor_y,
+        }
+        if request.occlusion_enabled:
+            self._occlusion_mask = {
+                "width": request.occlusion_width,
+                "height": request.occlusion_height,
+                "origin": {
+                    "x": request.occlusion_origin_x,
+                    "y": request.occlusion_origin_y,
+                },
+                "cells": list(request.occlusion_cells),
+            }
+            self.occlusion_enabled.setChecked(True)
+        else:
+            self._occlusion_mask = None
+            self.occlusion_enabled.setChecked(False)
 
     def _animation_changed(self, unused: object = None) -> None:
         user_change = unused is not None
@@ -318,6 +351,10 @@ class ObjectDefinitionDialog(QDialog):
             self.opening_end.setValue(maximum)
         if user_change and self.collision_enabled.isChecked():
             self._collision_mask = self._default_collision_mask()
+        if user_change:
+            self._depth_anchor = {"x": 0, "y": 0}
+            if self.occlusion_enabled.isChecked():
+                self._occlusion_mask = self._default_occlusion_mask()
         self._reset_example()
 
     def _type_changed(self, unused: object = None) -> None:
@@ -403,6 +440,80 @@ class ObjectDefinitionDialog(QDialog):
             self._collision_mask = dialog.result_mask()
             self.collision_enabled.setChecked(True)
             self.edit_collision.setEnabled(True)
+
+    def _default_occlusion_mask(self) -> dict[str, object] | None:
+        selected = self._collision_frame()
+        if selected is None:
+            return None
+        animation, frame = selected
+        source = frame.get("source", {})
+        anchor = frame.get("anchor", {})
+        offset = frame.get("drawOffset", {})
+        source = source if isinstance(source, dict) else {}
+        anchor = anchor if isinstance(anchor, dict) else {}
+        offset = offset if isinstance(offset, dict) else {}
+        width = max(1, int(source.get("width", 1)))
+        height = max(1, int(source.get("height", 1)))
+        cells = [1] * (width * height)
+        source_image = self._source_image(animation)
+        if not source_image.isNull():
+            sprite = source_image.copy(QRect(
+                int(source.get("x", 0)), int(source.get("y", 0)), width, height))
+            if not sprite.isNull():
+                converted = sprite.convertToFormat(QImage.Format.Format_ARGB32)
+                cells = [
+                    1 if converted.pixelColor(x, y).alpha() > 16 else 0
+                    for y in range(height) for x in range(width)
+                ]
+                if not any(cells):
+                    cells = [1] * (width * height)
+        return {
+            "width": width,
+            "height": height,
+            "origin": {
+                "x": -int(anchor.get("x", 0)) + int(offset.get("x", 0)),
+                "y": -int(anchor.get("y", 0)) + int(offset.get("y", 0)),
+            },
+            "cells": cells,
+        }
+
+    def _occlusion_toggled(self, checked: bool) -> None:
+        if checked and self._occlusion_mask is None:
+            self._occlusion_mask = self._default_occlusion_mask()
+
+    def _edit_depth_occlusion(self) -> None:
+        selected = self._collision_frame()
+        if selected is None:
+            return
+        animation, frame = selected
+        source = frame.get("source", {})
+        if not isinstance(source, dict):
+            return
+        source_image = self._source_image(animation)
+        if source_image.isNull():
+            QMessageBox.warning(self, self.windowTitle(),
+                                self.translate("image_unavailable"))
+            return
+        width = max(1, int(source.get("width", 1)))
+        height = max(1, int(source.get("height", 1)))
+        current = self._occlusion_mask or self._default_occlusion_mask()
+        if current is None:
+            return
+        if (int(current.get("width", 0)) != width or
+                int(current.get("height", 0)) != height):
+            current = self._default_occlusion_mask()
+            if current is None:
+                return
+        sprite = source_image.copy(QRect(
+            int(source.get("x", 0)), int(source.get("y", 0)), width, height))
+        dialog = ShapeMaskEditorDialog(
+            sprite, current, self.translate, self,
+            depth_anchor=self._depth_anchor,
+            allow_depth_tool=True,
+            title_key="occlusion_editor_title")
+        if dialog.exec():
+            self._occlusion_mask = dialog.result_mask()
+            self._depth_anchor = dialog.result_depth_anchor()
 
     def _source_animation(self) -> ContentDefinition | None:
         return self.workspace.find(
@@ -579,6 +690,13 @@ class ObjectDefinitionDialog(QDialog):
                 collision = self._default_collision_mask()
             origin = collision.get("origin", {}) if isinstance(collision, dict) else {}
             cells = collision.get("cells", []) if isinstance(collision, dict) else []
+            occlusion = self._occlusion_mask if self.occlusion_enabled.isChecked() else None
+            if self.occlusion_enabled.isChecked() and occlusion is None:
+                occlusion = self._default_occlusion_mask()
+            occlusion_origin = (
+                occlusion.get("origin", {}) if isinstance(occlusion, dict) else {})
+            occlusion_cells = (
+                occlusion.get("cells", []) if isinstance(occlusion, dict) else [])
             request = ObjectAuthoringRequest(
                 object_id=self.object_id.text(),
                 display_name=self.name.text(),
@@ -604,6 +722,19 @@ class ObjectDefinitionDialog(QDialog):
                 collision_origin_x=int(origin.get("x", 0)) if isinstance(origin, dict) else 0,
                 collision_origin_y=int(origin.get("y", 0)) if isinstance(origin, dict) else 0,
                 collision_cells=tuple(int(value) for value in cells) if isinstance(cells, list) else (),
+                depth_anchor_x=int(self._depth_anchor.get("x", 0)),
+                depth_anchor_y=int(self._depth_anchor.get("y", 0)),
+                occlusion_enabled=isinstance(occlusion, dict),
+                occlusion_width=int(occlusion.get("width", 0))
+                    if isinstance(occlusion, dict) else 0,
+                occlusion_height=int(occlusion.get("height", 0))
+                    if isinstance(occlusion, dict) else 0,
+                occlusion_origin_x=int(occlusion_origin.get("x", 0))
+                    if isinstance(occlusion_origin, dict) else 0,
+                occlusion_origin_y=int(occlusion_origin.get("y", 0))
+                    if isinstance(occlusion_origin, dict) else 0,
+                occlusion_cells=tuple(int(value) for value in occlusion_cells)
+                    if isinstance(occlusion_cells, list) else (),
             )
             created = (self.service.update(self.workspace, request) if self.definition
                        else self.service.create(self.workspace, request))

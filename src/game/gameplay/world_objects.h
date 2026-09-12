@@ -20,6 +20,12 @@ struct ObjectContainerDefinition final { std::size_t capacity{}; };
 // Runtime representation of an authored pixel mask. The content compiler turns
 // mask pixels into deterministic compact AABBs, so movement never samples image pixels.
 struct ObjectCollisionDefinition final { std::vector<world::AabbI> regions; };
+struct ObjectOcclusionDefinition final {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    core::PointI origin{};
+    std::vector<std::uint8_t> cells;
+};
 struct ObjectDestructibleDefinition final {
     int maximumHealth{};
     world::AabbI hurtbox{};
@@ -59,6 +65,10 @@ struct WorldObjectDefinition final {
     std::optional<ObjectDoorDefinition> door{};
     std::optional<ObjectActivationDefinition> activation{};
     std::optional<ObjectCollisionDefinition> collision{};
+    // Presentation metadata kept separate from collision. The anchor is relative
+    // to the object's world position; only Y participates in depth sorting.
+    core::PointI depthAnchor{};
+    std::optional<ObjectOcclusionDefinition> occlusion{};
 };
 
 class WorldObjectCatalog final {

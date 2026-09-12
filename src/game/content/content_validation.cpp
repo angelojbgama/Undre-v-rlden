@@ -434,6 +434,33 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         }
         if (value.interactable && (value.interactable->bounds.width <= 0 || value.interactable->bounds.height <= 0)) error(report, ContentKind::object, value.id, "invalid_value", "interaction bounds are invalid", "interactable");
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
+        if (visualCoordinateOutOfBounds(value.depthAnchor.x) ||
+            visualCoordinateOutOfBounds(value.depthAnchor.y))
+            error(report, ContentKind::object, value.id, "invalid_depth_anchor",
+                  "object depth anchor is outside bounds", "depthAnchor");
+        if (value.occlusion) {
+            const auto& mask = *value.occlusion;
+            const auto expected = mask.width > 0 &&
+                mask.height <= std::numeric_limits<std::size_t>::max() / mask.width
+                ? static_cast<std::size_t>(mask.width) * mask.height : 0;
+            if (mask.width == 0 || mask.height == 0 || mask.width > 4096 ||
+                mask.height > 4096 || expected == 0 || mask.cells.size() != expected)
+                error(report, ContentKind::object, value.id, "invalid_occlusion_mask",
+                      "occlusion mask dimensions do not match its cells", "occlusion");
+            if (visualCoordinateOutOfBounds(mask.origin.x) ||
+                visualCoordinateOutOfBounds(mask.origin.y))
+                error(report, ContentKind::object, value.id, "invalid_occlusion_origin",
+                      "occlusion mask origin is outside bounds", "occlusion.origin");
+            if (std::any_of(mask.cells.begin(), mask.cells.end(),
+                            [](std::uint8_t cell) { return cell > 1; }))
+                error(report, ContentKind::object, value.id, "invalid_occlusion_cell",
+                      "occlusion mask cells must be 0 or 1", "occlusion.cells");
+            if (!mask.cells.empty() &&
+                std::none_of(mask.cells.begin(), mask.cells.end(),
+                             [](std::uint8_t cell) { return cell != 0; }))
+                error(report, ContentKind::object, value.id, "empty_occlusion_mask",
+                      "occlusion mask must contain at least one painted pixel", "occlusion.cells");
+        }
         if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0 || value.destructible->damageDurationTicks == 0))
             error(report, ContentKind::object, value.id, "invalid_value", "destructible values are invalid", "destructible");
         if (value.destructible && value.destructible->rewardProfileId &&

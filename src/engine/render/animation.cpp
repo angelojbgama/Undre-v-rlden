@@ -108,4 +108,11 @@ void drawAnimator(Renderer2D& renderer, const Animator& animator,
                logicalPosition, additionalFlipX);
 }
 
+void drawAnimatorMasked(Renderer2D& renderer, const Animator& animator,
+                        core::PointI logicalPosition, PixelMaskView mask,
+                        bool drawMaskedPixels, bool additionalFlipX) {
+    drawSpriteMasked(renderer, animator.clip().sheet(), animator.currentFrame().sprite,
+                     logicalPosition, mask, drawMaskedPixels, additionalFlipX);
+}
+
 } // namespace underworld::render

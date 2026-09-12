@@ -174,3 +174,29 @@ class Translator:
     def __call__(self, key: str, **values: object) -> str:
         text = TRANSLATIONS[self.language].get(key, key)
         return text.format(**values) if values else text
+
+# depth-occlusion-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "object_depth_group": "Profundidade / Oclusão",
+    "object_occlusion_enabled": "Possui máscara de oclusão",
+    "edit_depth_occlusion": "Editar profundidade / oclusão...",
+    "object_depth_help": (
+        "O ponto de profundidade decide a ordem por Y. A máscara pintada indica os pixels "
+        "que podem ficar sobre o player no limite de profundidade. Ela não altera colisão."
+    ),
+    "occlusion_editor_title": "Editor de Profundidade / Oclusão",
+    "mask_tool_depth": "Ponto de profundidade",
+})
+for _english_key in ("en-US", "en"):
+    if _english_key in TRANSLATIONS:
+        TRANSLATIONS[_english_key].update({
+            "object_depth_group": "Depth / Occlusion",
+            "object_occlusion_enabled": "Has occlusion mask",
+            "edit_depth_occlusion": "Edit depth / occlusion...",
+            "object_depth_help": (
+                "The depth point controls Y sorting. Painted mask pixels can cover the "
+                "player at the depth boundary. This never changes collision."
+            ),
+            "occlusion_editor_title": "Depth / Occlusion Editor",
+            "mask_tool_depth": "Depth point",
+        })

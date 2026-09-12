@@ -7,12 +7,16 @@ namespace underworld::game {
 struct ActorRenderKey final {
     int feetY{};
     simulation::EntityHandle handle{};
+    int priority{};
 };
 
 [[nodiscard]] constexpr bool actorRendersBefore(ActorRenderKey left,
                                                 ActorRenderKey right) noexcept {
     if (left.feetY != right.feetY) {
         return left.feetY < right.feetY;
+    }
+    if (left.priority != right.priority) {
+        return left.priority < right.priority;
     }
     if (left.handle.index != right.handle.index) {
         return left.handle.index < right.handle.index;

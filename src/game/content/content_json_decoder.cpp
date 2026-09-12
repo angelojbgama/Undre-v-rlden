@@ -150,7 +150,7 @@ bool enemy(const JsonValue&v,std::string_view p,Context&c,AuthoredEnemy&out){con
 bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWorldObject& out) {
     const JsonObject* o = nullptr;
     if (!object(v, p, c, o)) return false;
-    allowed(*o, {"id", "visualSetId", "collision", "interactable", "container", "destructible", "bankAccess", "door", "activation"}, p, c);
+    allowed(*o, {"id", "visualSetId", "collision", "depthAnchor", "occlusion", "interactable", "container", "destructible", "bankAccess", "door", "activation"}, p, c);
     AuthoredWorldObject d{};
     bool ok = idField(v, *o, "id", p, c, d.id);
     ok = idField(v, *o, "visualSetId", p, c, d.visualSetId) && ok;
@@ -190,6 +190,54 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
                 }
             }
             if (ok) d.collision = std::move(decoded);
+        }
+    }
+    if (const auto* x = findField(*o, "depthAnchor"); x && !isNull(x)) {
+        const JsonObject* q = nullptr;
+        const auto depthPath = pathOf(p, "depthAnchor");
+        if (!object(*x, depthPath, c, q)) ok = false;
+        else {
+            allowed(*q, {"x", "y"}, depthPath, c);
+            ok = signedField(*x, *q, "x", depthPath, c, d.depthAnchor.x) && ok;
+            ok = signedField(*x, *q, "y", depthPath, c, d.depthAnchor.y) && ok;
+        }
+    }
+    if (const auto* x = findField(*o, "occlusion"); x && !isNull(x)) {
+        const JsonObject* q = nullptr;
+        const auto occlusionPath = pathOf(p, "occlusion");
+        if (!object(*x, occlusionPath, c, q)) ok = false;
+        else {
+            allowed(*q, {"width", "height", "origin", "cells"}, occlusionPath, c);
+            gameplay::ObjectOcclusionDefinition decoded{};
+            ok = unsignedField(*x, *q, "width", occlusionPath, c, decoded.width) && ok;
+            ok = unsignedField(*x, *q, "height", occlusionPath, c, decoded.height) && ok;
+            const auto* origin = required(*x, *q, "origin", occlusionPath, c);
+            const JsonObject* originObject = nullptr;
+            const auto originPath = pathOf(occlusionPath, "origin");
+            if (!origin || !object(*origin, originPath, c, originObject)) ok = false;
+            else {
+                allowed(*originObject, {"x", "y"}, originPath, c);
+                ok = signedField(*origin, *originObject, "x", originPath, c, decoded.origin.x) && ok;
+                ok = signedField(*origin, *originObject, "y", originPath, c, decoded.origin.y) && ok;
+            }
+            const auto* cells = required(*x, *q, "cells", occlusionPath, c);
+            const JsonArray* cellArray = nullptr;
+            if (!cells || !array(*cells, pathOf(occlusionPath, "cells"), c, cellArray)) ok = false;
+            else {
+                decoded.cells.reserve(cellArray->size());
+                for (std::size_t index = 0; index < cellArray->size(); ++index) {
+                    std::uint64_t number{};
+                    const auto cellPath = pathOf(occlusionPath, "cells") +
+                                          "[" + std::to_string(index) + "]";
+                    if (!u64((*cellArray)[index], cellPath, c, number)) ok = false;
+                    else if (number > 1) {
+                        c.error((*cellArray)[index], cellPath,
+                                "object occlusion mask cells must be 0 or 1");
+                        ok = false;
+                    } else decoded.cells.push_back(static_cast<std::uint8_t>(number));
+                }
+            }
+            if (ok) d.occlusion = std::move(decoded);
         }
     }
     if (const auto* x = findField(*o, "interactable"); x && !std::holds_alternative<std::nullptr_t>(x->value)) {

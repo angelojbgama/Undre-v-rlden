@@ -15,7 +15,8 @@ class ShapeMaskCanvas(QWidget):
 
     def __init__(self, image: QImage, width: int, height: int,
                  cells: list[int], origin_x: int, origin_y: int,
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None,
+                 depth_anchor: dict[str, int] | None = None) -> None:
         super().__init__(parent)
         self.image = image
         self.mask_width = max(1, width)
@@ -25,6 +26,10 @@ class ShapeMaskCanvas(QWidget):
         self.cells = [1 if value else 0 for value in self.cells]
         self.origin_x = origin_x
         self.origin_y = origin_y
+        self.depth_anchor_x = (
+            int(depth_anchor.get("x", 0)) if isinstance(depth_anchor, dict) else None)
+        self.depth_anchor_y = (
+            int(depth_anchor.get("y", 0)) if isinstance(depth_anchor, dict) else None)
         self.zoom = 12
         self.tool = "brush"
         self.show_sprite = True
@@ -70,6 +75,12 @@ class ShapeMaskCanvas(QWidget):
         if cell is None:
             return
         x, y = cell
+        if self.tool == "depth":
+            self.depth_anchor_x = self.origin_x + x
+            self.depth_anchor_y = self.origin_y + y
+            self.changed.emit()
+            self.update()
+            return
         self._set_cell(x, y, 0 if self.tool == "erase" else 1)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
@@ -167,6 +178,15 @@ class ShapeMaskCanvas(QWidget):
                 painter.setPen(QPen(QColor(80, 210, 255), 2))
                 painter.drawLine(max(0, px - 12), py, min(self.width(), px + 12), py)
                 painter.drawLine(px, max(0, py - 12), px, min(self.height(), py + 12))
+            if self.depth_anchor_x is not None and self.depth_anchor_y is not None:
+                local_x = self.depth_anchor_x - self.origin_x
+                local_y = self.depth_anchor_y - self.origin_y
+                if 0 <= local_x < self.mask_width and 0 <= local_y < self.mask_height:
+                    px = local_x * self.zoom + self.zoom // 2
+                    py = local_y * self.zoom + self.zoom // 2
+                    painter.setPen(QPen(QColor(255, 220, 70), 2))
+                    painter.drawLine(max(0, px - 14), py, min(self.width(), px + 14), py)
+                    painter.drawLine(px, max(0, py - 14), px, min(self.height(), py + 14))
         painter.end()
 
     def generate_from_alpha(self) -> None:
@@ -195,7 +215,10 @@ class ShapeMaskEditorDialog(QDialog):
     """Reusable pixel-mask authoring dialog; runtime consumes compact AABBs."""
 
     def __init__(self, image: QImage, mask: dict[str, object],
-                 translator: Translator, parent: QWidget | None = None) -> None:
+                 translator: Translator, parent: QWidget | None = None, *,
+                 depth_anchor: dict[str, int] | None = None,
+                 allow_depth_tool: bool = False,
+                 title_key: str = "mask_editor_title") -> None:
         super().__init__(parent)
         self.translate = translator
         width = max(1, int(mask.get("width", image.width() or 1)))
@@ -206,12 +229,15 @@ class ShapeMaskEditorDialog(QDialog):
         cells = [int(value) for value in cells] if isinstance(cells, (list, tuple)) else []
         self.canvas = ShapeMaskCanvas(
             image, width, height, cells,
-            int(origin.get("x", 0)), int(origin.get("y", 0)), self)
+            int(origin.get("x", 0)), int(origin.get("y", 0)), self,
+            depth_anchor=depth_anchor)
 
         self.tool = QComboBox()
         self.tool.addItem(self.translate("mask_tool_brush"), "brush")
         self.tool.addItem(self.translate("mask_tool_erase"), "erase")
         self.tool.addItem(self.translate("mask_tool_rectangle"), "rectangle")
+        if allow_depth_tool:
+            self.tool.addItem(self.translate("mask_tool_depth"), "depth")
         self.tool.currentIndexChanged.connect(
             lambda: self.canvas.set_tool(str(self.tool.currentData())))
         self.zoom = QSpinBox(); self.zoom.setRange(2, 32); self.zoom.setValue(12)
@@ -247,7 +273,7 @@ class ShapeMaskEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(toolbar); layout.addLayout(viewbar); layout.addWidget(scroll, 1)
         layout.addWidget(buttons)
-        self.setWindowTitle(self.translate("mask_editor_title"))
+        self.setWindowTitle(self.translate(title_key))
         self.resize(980, 820)
 
     def _view_changed(self) -> None:
@@ -262,4 +288,10 @@ class ShapeMaskEditorDialog(QDialog):
             "height": self.canvas.mask_height,
             "origin": {"x": self.canvas.origin_x, "y": self.canvas.origin_y},
             "cells": list(self.canvas.cells),
+        }
+
+    def result_depth_anchor(self) -> dict[str, int]:
+        return {
+            "x": int(self.canvas.depth_anchor_x or 0),
+            "y": int(self.canvas.depth_anchor_y or 0),
         }

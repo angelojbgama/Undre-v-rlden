@@ -142,8 +142,22 @@ void GamePresentation::renderLayer(render::Renderer2D& renderer, const world::Ru
 void GamePresentation::renderActors(render::Renderer2D& renderer,
                                     const GamePresentationFrame& frame,
                                     core::WorldPointI cameraPosition) const {
-    enum class ActorKind { player, enemy, npc, object, objectResidue, pickup };
-    struct Actor { int sortY; simulation::EntityHandle handle; ActorKind kind; std::size_t index{}; };
+    enum class ActorKind {
+        player, enemy, npc, objectBase, objectOcclusion, objectResidue, pickup
+    };
+    struct Actor {
+        int sortY;
+        simulation::EntityHandle handle;
+        ActorKind kind;
+        std::size_t index{};
+        int priority{};
+    };
+
+    constexpr int pickupPriority = 0;
+    constexpr int objectBasePriority = 10;
+    constexpr int livingActorPriority = 20;
+    constexpr int objectOcclusionPriority = 30;
+
     const auto& world = frame.world;
     const auto& enemies = world.enemies();
     const auto& npcs = world.npcs();
@@ -151,30 +165,39 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
     const auto& objectResidues = frame.objectResidueVisuals;
     const auto& pickups = world.pickups();
     std::vector<Actor> actors;
-    actors.reserve(enemies.size() + npcs.size() + objects.size() + objectResidues.size() + pickups.size() + 1);
-    actors.push_back({frame.player.feetPosition().y, frame.player.entityHandle(), ActorKind::player});
-    for (std::size_t i = 0; i < enemies.size(); ++i) {
-        actors.push_back({enemies[i].instance.feetPosition().y, enemies[i].instance.handle(), ActorKind::enemy, i});
-    }
-    for (std::size_t i = 0; i < npcs.size(); ++i) {
-        actors.push_back({npcs[i].instance.position().y, npcs[i].instance.handle(), ActorKind::npc, i});
-    }
+    actors.reserve(enemies.size() + npcs.size() + objects.size() * 2 +
+                   objectResidues.size() + pickups.size() + 1);
+
+    actors.push_back({frame.player.feetPosition().y, frame.player.entityHandle(),
+                      ActorKind::player, 0, livingActorPriority});
+    for (std::size_t i = 0; i < enemies.size(); ++i)
+        actors.push_back({enemies[i].instance.feetPosition().y, enemies[i].instance.handle(),
+                          ActorKind::enemy, i, livingActorPriority});
+    for (std::size_t i = 0; i < npcs.size(); ++i)
+        actors.push_back({npcs[i].instance.position().y, npcs[i].instance.handle(),
+                          ActorKind::npc, i, livingActorPriority});
     for (std::size_t i = 0; i < objects.size(); ++i) {
-        actors.push_back({objects[i].instance.position().y, objects[i].instance.handle(), ActorKind::object, i});
+        const auto& object = objects[i].instance;
+        const int sortY = object.position().y + object.definition().depthAnchor.y;
+        actors.push_back({sortY, object.handle(), ActorKind::objectBase, i,
+                          objectBasePriority});
+        if (object.definition().occlusion)
+            actors.push_back({sortY, object.handle(), ActorKind::objectOcclusion, i,
+                              objectOcclusionPriority});
     }
-    for (std::size_t i = 0; i < objectResidues.size(); ++i) {
-        // Residues have no runtime handle by design. Their persistent ID only
-        // supplies a deterministic tie-breaker for Y-sorting.
+    for (std::size_t i = 0; i < objectResidues.size(); ++i)
         actors.push_back({objectResidues[i].position().y,
                           {static_cast<std::uint32_t>(objectResidues[i].persistentId().value), 0},
-                          ActorKind::objectResidue, i});
-    }
-    for (std::size_t i = 0; i < pickups.size(); ++i) {
-        actors.push_back({pickups[i].instance.position().y, pickups[i].instance.handle(), ActorKind::pickup, i});
-    }
+                          ActorKind::objectResidue, i, objectBasePriority});
+    for (std::size_t i = 0; i < pickups.size(); ++i)
+        actors.push_back({pickups[i].instance.position().y, pickups[i].instance.handle(),
+                          ActorKind::pickup, i, pickupPriority});
+
     std::sort(actors.begin(), actors.end(), [](const Actor& a, const Actor& b) {
-        return actorRendersBefore({a.sortY, a.handle}, {b.sortY, b.handle});
+        return actorRendersBefore({a.sortY, a.handle, a.priority},
+                                  {b.sortY, b.handle, b.priority});
     });
+
     for (const Actor& actor : actors) {
         if (actor.kind == ActorKind::player) {
             const auto* scene = sceneActorPresentation(frame.scenePresentation,
@@ -183,47 +206,66 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
             render::drawAnimator(renderer, frame.playerVisual.animator(),
                                  {logical.x, logical.y + (scene ? scene->offsetY : 0)},
                                  frame.playerVisual.flipX());
-            if (scene && scene->emote) {
-                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
-                                 logical.y - 34 + scene->offsetY);
-            }
+            if (scene && scene->emote)
+                render::drawText(renderer, frame.font, emoteText(*scene->emote),
+                                 logical.x - 2, logical.y - 34 + scene->offsetY);
         } else if (actor.kind == ActorKind::enemy) {
             const auto& enemy = enemies[actor.index].instance;
             const auto* scene = sceneActorPresentation(frame.scenePresentation,
-                gameplay::scenes::SceneActorKind::enemy, world.enemies()[actor.index].persistentId);
+                gameplay::scenes::SceneActorKind::enemy,
+                world.enemies()[actor.index].persistentId);
             const auto logical = toLogical(enemy.feetPosition(), cameraPosition);
             render::drawAnimator(renderer, frame.enemyVisuals[actor.index].animator(),
                                  {logical.x, logical.y + (scene ? scene->offsetY : 0)},
                                  frame.enemyVisuals[actor.index].flipX());
-            if (scene && scene->emote) {
-                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
-                                 logical.y - 34 + scene->offsetY);
-            }
+            if (scene && scene->emote)
+                render::drawText(renderer, frame.font, emoteText(*scene->emote),
+                                 logical.x - 2, logical.y - 34 + scene->offsetY);
         } else if (actor.kind == ActorKind::npc) {
             const auto& npc = npcs[actor.index].instance;
             const auto* scene = sceneActorPresentation(frame.scenePresentation,
-                gameplay::scenes::SceneActorKind::npc, world.npcs()[actor.index].persistentId);
+                gameplay::scenes::SceneActorKind::npc,
+                world.npcs()[actor.index].persistentId);
             const auto logical = toLogical(npc.position(), cameraPosition);
             const auto& visualSet = frame.npcVisualCatalog.require(npc.definition().visualSetId);
-            if (actor.index < frame.npcVisuals.size() &&
-                frame.npcVisuals[actor.index].hasSprite()) {
+            if (actor.index < frame.npcVisuals.size() && frame.npcVisuals[actor.index].hasSprite())
                 render::drawAnimator(renderer, frame.npcVisuals[actor.index].animator(),
                                      {logical.x, logical.y + (scene ? scene->offsetY : 0)},
                                      frame.npcVisuals[actor.index].flipX());
-            } else {
-                renderer.fillRect({logical.x - 6, logical.y - 20 + (scene ? scene->offsetY : 0),
+            else
+                renderer.fillRect({logical.x - 6,
+                                   logical.y - 20 + (scene ? scene->offsetY : 0),
                                    12, 20}, visualSet.markerColor);
+            if (scene && scene->emote)
+                render::drawText(renderer, frame.font, emoteText(*scene->emote),
+                                 logical.x - 2, logical.y - 34 + scene->offsetY);
+        } else if (actor.kind == ActorKind::objectBase) {
+            const auto& object = objects[actor.index].instance;
+            const auto& visual = frame.objectVisuals[actor.index];
+            if (!visual.visible()) continue;
+            const auto logical = toLogical(object.position(), cameraPosition);
+            if (const auto& mask = object.definition().occlusion) {
+                render::drawAnimatorMasked(
+                    renderer, visual.animator(), {logical.x, logical.y},
+                    {static_cast<int>(mask->width), static_cast<int>(mask->height),
+                     mask->origin,
+                     std::span<const std::uint8_t>{mask->cells.data(), mask->cells.size()}},
+                    false);
+            } else {
+                render::drawAnimator(renderer, visual.animator(), {logical.x, logical.y});
             }
-            if (scene && scene->emote) {
-                render::drawText(renderer, frame.font, emoteText(*scene->emote), logical.x - 2,
-                                 logical.y - 34 + scene->offsetY);
-            }
-        } else if (actor.kind == ActorKind::object) {
-            const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);
-            if (frame.objectVisuals[actor.index].visible()) {
-                render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
-                                     {logical.x, logical.y});
-            }
+        } else if (actor.kind == ActorKind::objectOcclusion) {
+            const auto& object = objects[actor.index].instance;
+            const auto& visual = frame.objectVisuals[actor.index];
+            const auto& mask = object.definition().occlusion;
+            if (!visual.visible() || !mask) continue;
+            const auto logical = toLogical(object.position(), cameraPosition);
+            render::drawAnimatorMasked(
+                renderer, visual.animator(), {logical.x, logical.y},
+                {static_cast<int>(mask->width), static_cast<int>(mask->height),
+                 mask->origin,
+                 std::span<const std::uint8_t>{mask->cells.data(), mask->cells.size()}},
+                true);
         } else if (actor.kind == ActorKind::objectResidue) {
             const auto logical = toLogical(objectResidues[actor.index].position(), cameraPosition);
             render::drawAnimator(renderer, objectResidues[actor.index].animator(),
@@ -237,6 +279,7 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
         }
     }
 }
+
 
 void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
                                          const GamePresentationFrame& frame,

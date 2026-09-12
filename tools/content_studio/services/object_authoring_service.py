@@ -33,6 +33,14 @@ class ObjectAuthoringRequest:
     collision_origin_x: int = 0
     collision_origin_y: int = 0
     collision_cells: tuple[int, ...] = ()
+    depth_anchor_x: int = 0
+    depth_anchor_y: int = 0
+    occlusion_enabled: bool = False
+    occlusion_width: int = 0
+    occlusion_height: int = 0
+    occlusion_origin_x: int = 0
+    occlusion_origin_y: int = 0
+    occlusion_cells: tuple[int, ...] = ()
 
 
 class ObjectAuthoringService:
@@ -102,6 +110,8 @@ class ObjectAuthoringService:
         width, height = self._frame_size(animation)
         if request.collision_enabled:
             self._validate_collision_request(request)
+        if request.occlusion_enabled:
+            self._validate_occlusion_request(request)
         existing_visual = workspace.find("objectVisuals", visual_id)
         visual_data: dict[str, JsonValue] = (
             copy.deepcopy(existing_visual.data) if editing and existing_visual else {})
@@ -170,6 +180,20 @@ class ObjectAuthoringService:
                     "y": request.collision_origin_y,
                 },
                 "cells": list(request.collision_cells),
+            }
+        object_data["depthAnchor"] = {
+            "x": request.depth_anchor_x,
+            "y": request.depth_anchor_y,
+        }
+        if request.occlusion_enabled:
+            object_data["occlusion"] = {
+                "width": request.occlusion_width,
+                "height": request.occlusion_height,
+                "origin": {
+                    "x": request.occlusion_origin_x,
+                    "y": request.occlusion_origin_y,
+                },
+                "cells": list(request.occlusion_cells),
             }
         existing_descriptor = workspace.find("authoringDescriptors", object_id)
         old_tags = existing_descriptor.data.get("tags", []) if existing_descriptor else []
@@ -275,6 +299,12 @@ class ObjectAuthoringService:
                     collision_enabled = True
         collision_origin = collision.get("origin", {}) if collision_enabled else {}
         collision_cells = collision.get("cells", []) if collision_enabled else []
+        depth_anchor = definition.data.get("depthAnchor", {})
+        depth_anchor = depth_anchor if isinstance(depth_anchor, dict) else {}
+        occlusion = definition.data.get("occlusion")
+        occlusion_enabled = isinstance(occlusion, dict)
+        occlusion_origin = occlusion.get("origin", {}) if occlusion_enabled else {}
+        occlusion_cells = occlusion.get("cells", []) if occlusion_enabled else []
         return ObjectAuthoringRequest(
             object_id=definition.definition_id,
             display_name=definition.display_name,
@@ -309,6 +339,20 @@ class ObjectAuthoringService:
             collision_cells=tuple(
                 1 if int(value) else 0 for value in collision_cells
             ) if isinstance(collision_cells, list) else (),
+            depth_anchor_x=int(depth_anchor.get("x", 0)),
+            depth_anchor_y=int(depth_anchor.get("y", 0)),
+            occlusion_enabled=occlusion_enabled,
+            occlusion_width=max(0, int(occlusion.get("width", 0)))
+                if occlusion_enabled else 0,
+            occlusion_height=max(0, int(occlusion.get("height", 0)))
+                if occlusion_enabled else 0,
+            occlusion_origin_x=int(occlusion_origin.get("x", 0))
+                if isinstance(occlusion_origin, dict) else 0,
+            occlusion_origin_y=int(occlusion_origin.get("y", 0))
+                if isinstance(occlusion_origin, dict) else 0,
+            occlusion_cells=tuple(
+                1 if int(value) else 0 for value in occlusion_cells
+            ) if isinstance(occlusion_cells, list) else (),
         )
 
     @staticmethod
@@ -322,6 +366,18 @@ class ObjectAuthoringService:
             raise ValueError("collision mask cells must be 0 or 1")
         if not any(request.collision_cells):
             raise ValueError("collision mask must contain at least one solid pixel")
+
+    @staticmethod
+    def _validate_occlusion_request(request: ObjectAuthoringRequest) -> None:
+        if request.occlusion_width < 1 or request.occlusion_height < 1:
+            raise ValueError("occlusion mask dimensions must be positive")
+        expected = request.occlusion_width * request.occlusion_height
+        if len(request.occlusion_cells) != expected:
+            raise ValueError("occlusion mask size does not match its dimensions")
+        if any(value not in (0, 1) for value in request.occlusion_cells):
+            raise ValueError("occlusion mask cells must be 0 or 1")
+        if not any(request.occlusion_cells):
+            raise ValueError("occlusion mask must contain at least one painted pixel")
 
     @staticmethod
     def _validate_container_request(request: ObjectAuthoringRequest,

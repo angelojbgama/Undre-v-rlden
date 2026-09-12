@@ -66,5 +66,8 @@ private:
 
 void drawAnimator(Renderer2D& renderer, const Animator& animator,
                   core::PointI logicalPosition, bool additionalFlipX = false);
+void drawAnimatorMasked(Renderer2D& renderer, const Animator& animator,
+                        core::PointI logicalPosition, PixelMaskView mask,
+                        bool drawMaskedPixels, bool additionalFlipX = false);
 
 } // namespace underworld::render
