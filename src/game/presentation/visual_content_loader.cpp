@@ -149,7 +149,7 @@ std::shared_ptr<const render::AnimationClip> makeClip(
                        definition.id, {}, "animation frame source rectangle is outside decoded image");
             valid = false;
         }
-        frames.push_back({{authored.source, authored.anchor, authored.drawOffset, false},
+        frames.push_back({{authored.source, authored.anchor, authored.drawOffset, authored.flipX},
                           authored.durationTicks, authored.markers});
     }
     if (!valid) return {};

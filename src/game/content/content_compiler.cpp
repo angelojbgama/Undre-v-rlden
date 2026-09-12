@@ -74,7 +74,7 @@ presentation::VisualImageDefinition compileVisualImage(const AuthoredVisualImage
 presentation::StaticSpriteDefinition compileStaticSprite(const AuthoredStaticSprite& v) { return {v.id, v.imageId, v.source, v.anchor}; }
 presentation::AnimationDefinition compileAnimation(const AuthoredAnimation& v) {
     presentation::AnimationDefinition result{v.id, v.imageId, {}, v.loop};
-    for (const auto& frame : v.frames) result.frames.push_back({frame.source, frame.anchor, frame.drawOffset, frame.durationTicks, frame.markers});
+    for (const auto& frame : v.frames) result.frames.push_back({frame.source, frame.anchor, frame.drawOffset, frame.durationTicks, frame.markers, frame.flipX});
     return result;
 }
 presentation::EnemyVisualDefinition compileEnemyVisual(const AuthoredEnemyVisual& v) {

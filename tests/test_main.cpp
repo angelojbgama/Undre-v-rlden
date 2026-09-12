@@ -1027,9 +1027,18 @@ void testPlayerMovementAndFacing() {
     expect(std::abs(diagonalDistance - static_cast<double>(cardinalDelta)) < 512.0,
            "600-tick diagonal distance matches cardinal distance within two pixels");
 
-    const auto body = gameplay::Player({0}, {0, 1}, {100, 80}, 5).collisionBody();
-    expect(body == underworld::world::AabbI{95, 72, 10, 8},
-           "Player collision body is 10x8 and offset -5,-8 from the feet");
+    gameplay::Player footprintPlayer({0}, {0, 1}, {100, 80}, 5);
+    expect(footprintPlayer.collisionBody() ==
+               underworld::world::AabbI{92, 72, 16, 8},
+           "Player DOWN movement footprint is 16x8 and centered at the feet");
+    footprintPlayer.relocate({100, 80}, gameplay::FacingDirection::left);
+    expect(footprintPlayer.collisionBody() ==
+               underworld::world::AabbI{90, 72, 18, 8},
+           "Player LEFT movement footprint extends toward the facing side");
+    footprintPlayer.relocate({100, 80}, gameplay::FacingDirection::right);
+    expect(footprintPlayer.collisionBody() ==
+               underworld::world::AabbI{92, 72, 18, 8},
+           "Player RIGHT movement footprint extends toward the facing side");
 
     bool wrongPlayerRejected = false;
     try {
@@ -1063,17 +1072,17 @@ void testPlayerCollision() {
     for (int y = 0; y < verticalWall.height(); ++y) {
         verticalWall.setSolid(3, y, true);
     }
-    gameplay::Player againstWall({0}, {0, 1}, {43, 40}, 5);
+    gameplay::Player againstWall({0}, {0, 1}, {38, 40}, 5);
     againstWall.update(movementCommand(1, 1, 0), verticalWall, 16);
-    expect(againstWall.feetPosition() == underworld::core::WorldPointI{43, 40} &&
+    expect(againstWall.feetPosition() == underworld::core::WorldPointI{38, 40} &&
                againstWall.lastMovement().blockedX,
-           "Player collision body stops exactly against a vertical wall");
+           "Player directional collision body stops exactly against a vertical wall");
 
-    gameplay::Player sliding({0}, {0, 1}, {43, 40}, 5);
+    gameplay::Player sliding({0}, {0, 1}, {40, 40}, 5);
     sliding.update(movementCommand(1, 1, 1), verticalWall, 16);
-    expect(sliding.feetPosition().x == 43 && sliding.feetPosition().y > 40 &&
+    expect(sliding.feetPosition().x == 40 && sliding.feetPosition().y > 40 &&
                sliding.lastMovement().blockedX && !sliding.lastMovement().blockedY,
-           "Player slides along a wall using separate-axis resolution");
+           "Player diagonal input still slides along a wall by separate-axis resolution");
 
     underworld::world::CollisionGrid horizontalWall(16, 16);
     for (int x = 0; x < horizontalWall.width(); ++x) {
@@ -1282,8 +1291,8 @@ void testActionCommandsAndPlayerAttackState() {
                player.subpixelPosition() == hurtPosition,
            "damaged Player enters hurt state and cannot move while hurt animation plays");
     expect(player.hurtbox().bounds == underworld::world::AabbI{94, 78, 14, 22} &&
-               player.collisionBody() == underworld::world::AabbI{96, 92, 10, 8},
-           "Player Hurtbox and CollisionBody have independent dimensions and offsets");
+               player.collisionBody() == underworld::world::AabbI{93, 92, 18, 8},
+           "Player Hurtbox and directional movement footprint remain independent");
     expect(player.interactionArea().bounds.width == 22 &&
                player.interactionArea().bounds != player.hurtbox().bounds,
            "InteractionArea is distinct from damage and physical boxes");
@@ -7071,15 +7080,11 @@ void testPhase13B1ContentWorkspace() {
                                                      runtimeIncompatible.attacks.end(),
         [](const auto& value) { return value.id.value() == "attack.player.sword"; }),
         runtimeIncompatible.attacks.end());
-    const auto incompatibleRoot = root / "runtime-incompatible";
-    std::filesystem::create_directories(incompatibleRoot);
-    write(incompatibleRoot / "incompatible.json", runtimeIncompatible);
-    const auto incompatibleSource = content::loadContentSource(
-        {content::ContentSourceKind::workspaceDirectory, incompatibleRoot});
-    expect(incompatibleSource && incompatibleSource.content &&
+    const auto incompatibleCompiled = content::compileContent(runtimeIncompatible);
+    expect(incompatibleCompiled.registry.has_value() &&
                !content::validateCurrentRuntimeContentRequirements(
-                    incompatibleSource.content->registry).empty(),
-           "runtime-incompatible external content is rejected by explicit bootstrap requirements");
+                    *incompatibleCompiled.registry).empty(),
+           "runtime-incompatible registry is rejected by explicit bootstrap requirements");
     const content::ContentWorkspaceDiagnostic formatterDiagnostic{
         content::ContentWorkspaceDiagnosticStage::validation, "content/enemies.json", {}, 14, 9,
         "enemies[2].behaviorProfileId", "unknown_reference", "enemies", {"enemy.test"},

@@ -36,6 +36,7 @@ struct AnimationFrameDefinition final {
     core::PointI drawOffset{};
     std::uint32_t durationTicks{};
     std::vector<std::string> markers;
+    bool flipX{};
     [[nodiscard]] bool operator==(const AnimationFrameDefinition&) const noexcept = default;
 };
 

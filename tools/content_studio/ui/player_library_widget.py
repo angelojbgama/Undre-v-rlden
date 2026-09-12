@@ -2,40 +2,345 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QTimer, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QSplitter, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
 from ..services.player_authoring_service import (
-    PlayerAuthoringRequest, PlayerAuthoringService,
+    FrameSequenceSpec, PlayerAuthoringRequest, PlayerAuthoringService,
 )
 
 
-_DIRECTIONS = ("down", "up", "side")
-_ACTIONS = ("idle", "walk", "hurt", "sword", "bow")
+STATE_LABELS = {
+    "idle": "Idle / parado",
+    "walk": "Walk / andando",
+    "hurt": "Hurt / dano",
+    "sword": "Sword / espada",
+    "bow": "Bow / arco",
+    "shield": "Shield / escudo",
+    "death": "Death / morrendo",
+    "dead": "Dead / morto",
+    "sleeping": "Sleeping / dormindo",
+    "wake_up": "Wake up / acordando",
+}
+DIRECTION_LABELS = {
+    "down": "Down / baixo",
+    "up": "Up / cima",
+    "side": "Side / lateral",
+}
+
+
+class FrameSequenceDialog(QDialog):
+    # Builds one animation by appending spritesheet cells in order.
+
+    def __init__(self, workspace: ContentWorkspace, asset_root: Path | None,
+                 title: str, initial: FrameSequenceSpec | None = None,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.workspace = workspace
+        self.asset_root = asset_root
+        self.result_spec: FrameSequenceSpec | None = None
+        self._image = QImage()
+        self._frames: list[QImage] = []
+        self._selected_indices = list(
+            initial.frame_indices if initial else ())
+        self._columns = initial.columns if initial else 0
+        self._preview_index = 0
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._advance_preview)
+
+        self.image_combo = QComboBox()
+        for image in workspace.definitions("visualImages"):
+            self.image_combo.addItem(
+                f"{image.display_name} [{image.definition_id}]",
+                image.definition_id)
+        self.frame_width = self._spin(
+            initial.frame_width if initial else 32)
+        self.frame_height = self._spin(
+            initial.frame_height if initial else 32)
+        self.spacing = self._spin(
+            initial.spacing if initial else 0, 0)
+        self.origin_x = self._spin(
+            initial.origin_x if initial else 0, 0)
+        self.origin_y = self._spin(
+            initial.origin_y if initial else 0, 0)
+        self.duration = self._spin(
+            initial.duration_ticks if initial else 8)
+        self.loop = QCheckBox("Loop")
+        self.loop.setChecked(initial.loop if initial else True)
+        self.mirror = QCheckBox(
+            "Espelhar horizontalmente (flip X)")
+        self.mirror.setChecked(
+            initial.flip_x if initial else False)
+
+        if initial is not None:
+            index = self.image_combo.findData(initial.image_id)
+            if index >= 0:
+                self.image_combo.setCurrentIndex(index)
+
+        self.available = QListWidget()
+        self.available.setViewMode(QListWidget.ViewMode.IconMode)
+        self.available.setIconSize(QSize(64, 64))
+        self.available.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.available.setMovement(QListWidget.Movement.Static)
+        self.available.setSpacing(6)
+        self.available.itemDoubleClicked.connect(
+            lambda unused: self._append_frame())
+
+        self.sequence = QListWidget()
+        self.sequence.setIconSize(QSize(48, 48))
+
+        add_button = QPushButton("Adicionar frame →")
+        remove_button = QPushButton("Remover")
+        up_button = QPushButton("↑")
+        down_button = QPushButton("↓")
+        clear_button = QPushButton("Limpar")
+        add_button.clicked.connect(self._append_frame)
+        remove_button.clicked.connect(self._remove_frame)
+        up_button.clicked.connect(lambda: self._move_frame(-1))
+        down_button.clicked.connect(lambda: self._move_frame(1))
+        clear_button.clicked.connect(self._clear_sequence)
+
+        sequence_buttons = QHBoxLayout()
+        for button in (
+                add_button, remove_button, up_button,
+                down_button, clear_button):
+            sequence_buttons.addWidget(button)
+
+        self.preview = QLabel("Prévia")
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setMinimumHeight(180)
+        self.preview.setStyleSheet(
+            "background:#161b22;border:1px solid #34404d;")
+
+        form = QFormLayout()
+        form.addRow("Spritesheet importado", self.image_combo)
+        form.addRow("Largura do frame", self.frame_width)
+        form.addRow("Altura do frame", self.frame_height)
+        form.addRow("Spacing", self.spacing)
+        form.addRow("Origem X", self.origin_x)
+        form.addRow("Origem Y", self.origin_y)
+        form.addRow("Duração (ticks)", self.duration)
+        form.addRow("", self.loop)
+        form.addRow("", self.mirror)
+
+        available_group = QGroupBox(
+            "Frames disponíveis — duplo clique adiciona")
+        available_layout = QVBoxLayout(available_group)
+        available_layout.addWidget(self.available)
+
+        sequence_group = QGroupBox(
+            "Sequência — esta ordem será reproduzida")
+        sequence_layout = QVBoxLayout(sequence_group)
+        sequence_layout.addWidget(self.sequence)
+        sequence_layout.addLayout(sequence_buttons)
+
+        layout = QGridLayout(self)
+        layout.addLayout(form, 0, 0)
+        layout.addWidget(self.preview, 1, 0)
+        layout.addWidget(available_group, 0, 1, 2, 1)
+        layout.addWidget(sequence_group, 2, 0, 1, 2)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel |
+            QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons, 3, 0, 1, 2)
+
+        self.setWindowTitle(title)
+        self.resize(1120, 780)
+
+        self.image_combo.currentIndexChanged.connect(self._refresh_grid)
+        for control in (
+                self.frame_width, self.frame_height, self.spacing,
+                self.origin_x, self.origin_y):
+            control.valueChanged.connect(self._refresh_grid)
+        self.mirror.toggled.connect(self._refresh_sequence)
+        self.duration.valueChanged.connect(self._restart_preview)
+        self._refresh_grid()
+
+    @staticmethod
+    def _spin(value: int, minimum: int = 1) -> QSpinBox:
+        control = QSpinBox()
+        control.setRange(minimum, 4096)
+        control.setValue(value)
+        return control
+
+    def _image_path(self) -> Path | None:
+        image_id = str(self.image_combo.currentData() or "")
+        definition = self.workspace.find("visualImages", image_id)
+        if definition is None:
+            return None
+        root = (
+            self.asset_root
+            if definition.data.get("root") == "gameAssets"
+            else self.workspace.root)
+        relative = definition.data.get("relativePath")
+        if root is None or not isinstance(relative, str):
+            return None
+        return root / relative
+
+    def _refresh_grid(self, unused: object = None) -> None:
+        del unused
+        path = self._image_path()
+        self._image = QImage(str(path)) if path else QImage()
+        self.available.clear()
+        self._frames.clear()
+        if self._image.isNull():
+            self.preview.setText(
+                "Imagem indisponível. Importe o spritesheet primeiro.")
+            return
+        width = self.frame_width.value()
+        height = self.frame_height.value()
+        spacing = self.spacing.value()
+        origin_x = self.origin_x.value()
+        origin_y = self.origin_y.value()
+        pitch_x = width + spacing
+        pitch_y = height + spacing
+        self._columns = max(
+            0, (self._image.width() - origin_x + spacing) // pitch_x)
+        rows = max(
+            0, (self._image.height() - origin_y + spacing) // pitch_y)
+        for row in range(rows):
+            for column in range(self._columns):
+                x = origin_x + column * pitch_x
+                y = origin_y + row * pitch_y
+                if x + width > self._image.width() or y + height > self._image.height():
+                    continue
+                crop = self._image.copy(x, y, width, height)
+                self._frames.append(crop)
+                frame_index = row * self._columns + column
+                item = QListWidgetItem(
+                    QIcon(QPixmap.fromImage(self._display_image(crop))),
+                    f"#{frame_index}\n({column},{row})")
+                item.setData(
+                    Qt.ItemDataRole.UserRole, frame_index)
+                self.available.addItem(item)
+        self._selected_indices = [
+            index for index in self._selected_indices
+            if 0 <= index < len(self._frames)]
+        self._refresh_sequence()
+
+    def _display_image(self, image: QImage) -> QImage:
+        return (
+            image.mirrored(True, False)
+            if self.mirror.isChecked() else image)
+
+    def _frame_image(self, index: int) -> QImage:
+        if index < 0 or index >= len(self._frames):
+            return QImage()
+        return self._display_image(self._frames[index])
+
+    def _append_frame(self) -> None:
+        item = self.available.currentItem()
+        if item is None:
+            return
+        self._selected_indices.append(
+            int(item.data(Qt.ItemDataRole.UserRole)))
+        self._refresh_sequence()
+
+    def _remove_frame(self) -> None:
+        row = self.sequence.currentRow()
+        if 0 <= row < len(self._selected_indices):
+            self._selected_indices.pop(row)
+            self._refresh_sequence()
+
+    def _move_frame(self, delta: int) -> None:
+        row = self.sequence.currentRow()
+        target = row + delta
+        if row < 0 or target < 0 or target >= len(self._selected_indices):
+            return
+        self._selected_indices[row], self._selected_indices[target] = (
+            self._selected_indices[target],
+            self._selected_indices[row])
+        self._refresh_sequence()
+        self.sequence.setCurrentRow(target)
+
+    def _clear_sequence(self) -> None:
+        self._selected_indices.clear()
+        self._refresh_sequence()
+
+    def _refresh_sequence(self, unused: object = None) -> None:
+        del unused
+        self.sequence.clear()
+        for order, index in enumerate(self._selected_indices):
+            item = QListWidgetItem(
+                QIcon(QPixmap.fromImage(self._frame_image(index))),
+                f"{order + 1}. frame #{index}")
+            self.sequence.addItem(item)
+        self._preview_index = 0
+        self._show_preview()
+        self._restart_preview()
+
+    def _show_preview(self) -> None:
+        if not self._selected_indices:
+            self.preview.setPixmap(QPixmap())
+            self.preview.setText("Nenhum frame selecionado")
+            return
+        index = self._selected_indices[
+            min(self._preview_index, len(self._selected_indices) - 1)]
+        image = self._frame_image(index)
+        self.preview.setText("")
+        self.preview.setPixmap(QPixmap.fromImage(image).scaled(
+            170, 170, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation))
+
+    def _restart_preview(self, unused: object = None) -> None:
+        del unused
+        self._timer.stop()
+        if len(self._selected_indices) > 1:
+            self._timer.start(max(
+                16, round(self.duration.value() * 1000 / 60)))
+
+    def _advance_preview(self) -> None:
+        if not self._selected_indices:
+            return
+        self._preview_index = (
+            self._preview_index + 1) % len(self._selected_indices)
+        self._show_preview()
+        self._restart_preview()
+
+    def _accept(self) -> None:
+        if not self._selected_indices or self._columns <= 0:
+            QMessageBox.warning(
+                self, self.windowTitle(),
+                "Adicione pelo menos um frame à sequência.")
+            return
+        self.result_spec = FrameSequenceSpec(
+            image_id=str(self.image_combo.currentData() or ""),
+            frame_width=self.frame_width.value(),
+            frame_height=self.frame_height.value(),
+            spacing=self.spacing.value(),
+            origin_x=self.origin_x.value(),
+            origin_y=self.origin_y.value(),
+            duration_ticks=self.duration.value(),
+            loop=self.loop.isChecked(),
+            flip_x=self.mirror.isChecked(),
+            frame_indices=tuple(self._selected_indices),
+            columns=self._columns,
+        )
+        self.accept()
 
 
 class PlayerDefinitionDialog(QDialog):
-    """Dedicated Player profile editor built from existing animations."""
-
     def __init__(self, workspace: ContentWorkspace, asset_root: Path | None,
-                 translator: Translator,
                  definition: ContentDefinition | None = None,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.asset_root = asset_root
-        self.translate = translator
         self.definition = definition
         self.service = PlayerAuthoringService()
-        self.created_player_id = ""
+        self.sequences: dict[str, dict[str, FrameSequenceSpec]] = {}
 
         self.name = QLineEdit()
         self.player_id = QLineEdit("player.hero")
@@ -46,78 +351,56 @@ class PlayerDefinitionDialog(QDialog):
         for value in workspace.definitions("playerProgressions"):
             if self.progression.findData(value.definition_id) < 0:
                 self.progression.addItem(
-                    f"{value.display_name}  [{value.definition_id}]",
+                    f"{value.display_name} [{value.definition_id}]",
                     value.definition_id)
 
-        self.animation_fields: dict[str, dict[str, QComboBox]] = {}
-        animations = workspace.definitions("animations")
-        visual_layout = QVBoxLayout()
-        for action in _ACTIONS:
-            optional = action not in {"idle", "walk"}
-            group = QGroupBox(self.translate(f"player_{action}"))
-            form = QFormLayout(group)
-            fields: dict[str, QComboBox] = {}
-            for direction in _DIRECTIONS:
-                combo = QComboBox()
-                if optional:
-                    combo.addItem(
-                        self.translate("player_animation_none"), "")
-                for animation in animations:
-                    combo.addItem(
-                        f"{animation.display_name}  "
-                        f"[{animation.definition_id}]",
-                        animation.definition_id)
-                combo.currentIndexChanged.connect(self._preview_reset)
-                fields[direction] = combo
-                form.addRow(
-                    self.translate(f"player_direction_{direction}"), combo)
-            self.animation_fields[action] = fields
-            visual_layout.addWidget(group)
-        visual_layout.addStretch(1)
-
-        identity = QGroupBox(self.translate("player_identity"))
+        identity = QGroupBox("Player")
         identity_form = QFormLayout(identity)
-        identity_form.addRow(self.translate("player_name"), self.name)
-        identity_form.addRow(self.translate("player_id"), self.player_id)
-        identity_form.addRow(
-            self.translate("player_progression"), self.progression)
+        identity_form.addRow("Nome", self.name)
+        identity_form.addRow("ID", self.player_id)
+        identity_form.addRow("Progression", self.progression)
 
-        self.preview_action = QComboBox()
-        for action in _ACTIONS:
-            self.preview_action.addItem(
-                self.translate(f"player_{action}"), action)
-        self.preview_direction = QComboBox()
-        for direction in _DIRECTIONS:
-            self.preview_direction.addItem(
-                self.translate(f"player_direction_{direction}"), direction)
-        self.preview_action.currentIndexChanged.connect(self._preview_reset)
-        self.preview_direction.currentIndexChanged.connect(self._preview_reset)
+        help_label = QLabel(
+            "Monte cada estado adicionando somente os frames usados. "
+            "O mesmo PNG pode conter Down, Up e Side em linhas diferentes. "
+            "O botão Espelhar horizontalmente permite normalizar sprites "
+            "laterais; no runtime a direção oposta poderá usar o mesmo Side.")
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color:#aeb8c4;")
 
-        preview_controls = QHBoxLayout()
-        preview_controls.addWidget(
-            QLabel(self.translate("player_preview_action")))
-        preview_controls.addWidget(self.preview_action)
-        preview_controls.addWidget(
-            QLabel(self.translate("player_preview_direction")))
-        preview_controls.addWidget(self.preview_direction)
-        preview_controls.addStretch(1)
+        self.summary_labels: dict[tuple[str, str], QLabel] = {}
+        states = QWidget()
+        grid = QGridLayout(states)
+        grid.addWidget(QLabel("Estado"), 0, 0)
+        for column, direction in enumerate(
+                self.service.DIRECTIONS, start=1):
+            grid.addWidget(
+                QLabel(DIRECTION_LABELS[direction]), 0, column)
 
-        self.preview = QLabel(self.translate("no_image"))
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(360, 360)
-        self.preview.setStyleSheet(
-            "background: #161b22; color: #aeb8c4; "
-            "border: 1px solid #34404d;")
-        self.preview_help = QLabel(self.translate("player_visual_help"))
-        self.preview_help.setWordWrap(True)
-        self.preview_help.setStyleSheet("color: #aeb8c4;")
+        all_states = (
+            self.service.CORE_STATES +
+            self.service.OPTIONAL_STATES)
+        for row, state in enumerate(all_states, start=1):
+            grid.addWidget(QLabel(STATE_LABELS[state]), row, 0)
+            for column, direction in enumerate(
+                    self.service.DIRECTIONS, start=1):
+                cell = QWidget()
+                cell_layout = QVBoxLayout(cell)
+                cell_layout.setContentsMargins(2, 2, 2, 2)
+                button = QPushButton("Selecionar frames...")
+                summary = QLabel("—")
+                summary.setStyleSheet("color:#aeb8c4;")
+                button.clicked.connect(
+                    lambda unused=False, s=state, d=direction:
+                    self._edit_sequence(s, d))
+                cell_layout.addWidget(button)
+                cell_layout.addWidget(summary)
+                grid.addWidget(cell, row, column)
+                self.summary_labels[(state, direction)] = summary
 
-        self._preview_frames: list[dict[str, object]] = []
-        self._preview_image = QImage()
-        self._preview_index = 0
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.timeout.connect(self._advance_preview)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(states)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel |
@@ -125,185 +408,73 @@ class PlayerDefinitionDialog(QDialog):
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
 
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.addWidget(identity)
-        left_layout.addLayout(visual_layout)
-
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.addLayout(preview_controls)
-        right_layout.addWidget(self.preview, 1)
-        right_layout.addWidget(self.preview_help)
-
-        split = QSplitter(Qt.Orientation.Horizontal)
-        split.addWidget(left)
-        split.addWidget(right)
-        split.setStretchFactor(1, 1)
-        split.setSizes([520, 520])
-
         layout = QVBoxLayout(self)
-        layout.addWidget(split, 1)
+        layout.addWidget(identity)
+        layout.addWidget(help_label)
+        layout.addWidget(scroll, 1)
         layout.addWidget(buttons)
-        self.resize(1120, 820)
+        self.resize(1220, 820)
         self.setWindowTitle(
-            self.translate("configure_player")
-            if definition else self.translate("create_player"))
+            "Configurar Player" if definition else "Adicionar Player")
 
         if definition is not None:
-            self._load_definition(definition)
+            self.player_id.setText(definition.definition_id)
             self.player_id.setReadOnly(True)
-        else:
-            self._suggest_defaults()
-        self._preview_reset()
+            descriptor = workspace.find(
+                "authoringDescriptors", definition.definition_id)
+            self.name.setText(
+                descriptor.display_name
+                if descriptor else definition.display_name)
+            progression_id = str(definition.data.get(
+                "progressionId", "progression.player.default"))
+            index = self.progression.findData(progression_id)
+            if index >= 0:
+                self.progression.setCurrentIndex(index)
+            else:
+                self.progression.setEditText(progression_id)
 
-    def _suggest_defaults(self) -> None:
-        candidates = {
-            "idle": ("player.idle", "idle.player"),
-            "walk": ("player.walk", "walk.player"),
-            "hurt": ("player.hurt", "hurt.player"),
-            "sword": ("player.sword", "sword.player"),
-            "bow": ("player.bow", "bow.player"),
-        }
-        for action, stems in candidates.items():
-            for direction in _DIRECTIONS:
-                combo = self.animation_fields[action][direction]
-                for index in range(combo.count()):
-                    definition_id = str(combo.itemData(index) or "")
-                    lowered = definition_id.casefold()
-                    if (any(stem in lowered for stem in stems)
-                            and direction in lowered):
-                        combo.setCurrentIndex(index)
-                        break
-
-    def _set_combo(self, combo: QComboBox, definition_id: str) -> None:
-        index = combo.findData(definition_id)
-        if index >= 0:
-            combo.setCurrentIndex(index)
-
-    def _load_definition(self, definition: ContentDefinition) -> None:
-        request = self.service.request_for(self.workspace, definition)
-        self.name.setText(request.display_name)
-        self.player_id.setText(request.player_id)
-        index = self.progression.findData(request.progression_id)
-        if index >= 0:
-            self.progression.setCurrentIndex(index)
-        else:
-            self.progression.setEditText(request.progression_id)
-        for action in _ACTIONS:
-            for direction in _DIRECTIONS:
-                self._set_combo(
-                    self.animation_fields[action][direction],
-                    str(getattr(request, f"{action}_{direction}")))
-
-    def _selected_animation_id(self) -> str:
-        action = str(self.preview_action.currentData() or "idle")
-        direction = str(self.preview_direction.currentData() or "down")
-        return str(
-            self.animation_fields[action][direction].currentData() or "")
-
-    def _source_image(self, animation: ContentDefinition) -> QImage:
-        image = self.workspace.find(
-            "visualImages", str(animation.data.get("imageId", "")))
-        if image is None:
-            return QImage()
-        root = (
-            self.asset_root
-            if image.data.get("root") == "gameAssets"
-            else self.workspace.root)
-        relative = image.data.get("relativePath")
-        return (
-            QImage(str(root / relative))
-            if root and isinstance(relative, str)
-            else QImage())
-
-    def _preview_reset(self, unused: object = None) -> None:
-        del unused
-        self._preview_timer.stop()
-        animation = self.workspace.find(
-            "animations", self._selected_animation_id())
-        if animation is None:
-            self._preview_frames = []
-            self._preview_image = QImage()
-            self.preview.setPixmap(QPixmap())
-            self.preview.setText(
-                self.translate("player_animation_none"))
+    def _edit_sequence(self, state: str, direction: str) -> None:
+        if not self.workspace.definitions("visualImages"):
+            QMessageBox.information(
+                self, self.windowTitle(),
+                "Importe primeiro o PNG em Spritesheet / Animação.")
             return
-        frames = animation.data.get("frames", [])
-        self._preview_frames = (
-            [value for value in frames if isinstance(value, dict)]
-            if isinstance(frames, list) else [])
-        self._preview_image = self._source_image(animation)
-        self._preview_index = 0
-        self._draw_preview_frame()
-        if self._preview_frames:
-            self._schedule_next_frame()
-
-    def _draw_preview_frame(self) -> None:
-        if self._preview_image.isNull() or not self._preview_frames:
-            self.preview.setPixmap(QPixmap())
-            self.preview.setText(self.translate("image_unavailable"))
+        initial = self.sequences.get(state, {}).get(direction)
+        dialog = FrameSequenceDialog(
+            self.workspace, self.asset_root,
+            f"{STATE_LABELS[state]} — {DIRECTION_LABELS[direction]}",
+            initial, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        frame = self._preview_frames[
-            min(self._preview_index, len(self._preview_frames) - 1)]
-        source = frame.get("source", {})
-        if not isinstance(source, dict):
+        if dialog.result_spec is None:
             return
-        width = max(1, int(source.get("width", 1)))
-        height = max(1, int(source.get("height", 1)))
-        cropped = self._preview_image.copy(QRect(
-            int(source.get("x", 0)), int(source.get("y", 0)),
-            width, height))
-        self.preview.setText("")
-        self.preview.setPixmap(QPixmap.fromImage(cropped).scaled(
-            320, 320, Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation))
+        self.sequences.setdefault(state, {})[
+            direction] = dialog.result_spec
+        spec = dialog.result_spec
+        mirror = " • flip X" if spec.flip_x else ""
+        self.summary_labels[(state, direction)].setText(
+            f"{len(spec.frame_indices)} frame(s) • "
+            f"{spec.frame_width}x{spec.frame_height}{mirror}")
 
-    def _schedule_next_frame(self) -> None:
-        if not self._preview_frames:
-            return
-        frame = self._preview_frames[
-            min(self._preview_index, len(self._preview_frames) - 1)]
-        ticks = max(1, int(frame.get("durationTicks", 1)))
-        self._preview_timer.start(max(16, ticks * 16))
-
-    def _advance_preview(self) -> None:
-        if not self._preview_frames:
-            return
-        self._preview_index = (
-            self._preview_index + 1) % len(self._preview_frames)
-        self._draw_preview_frame()
-        self._schedule_next_frame()
-
-    def _request(self) -> PlayerAuthoringRequest:
-        values: dict[str, str] = {}
-        for action in _ACTIONS:
-            for direction in _DIRECTIONS:
-                values[f"{action}_{direction}"] = str(
-                    self.animation_fields[action][direction].currentData()
-                    or "")
+    def _save(self) -> None:
         progression_id = str(
             self.progression.currentData()
             or self.progression.currentText()).strip()
-        return PlayerAuthoringRequest(
+        request = PlayerAuthoringRequest(
             player_id=self.player_id.text().strip(),
             display_name=self.name.text().strip(),
             progression_id=progression_id,
-            **values,
+            sequences=self.sequences,
         )
-
-    def _save(self) -> None:
         try:
-            request = self._request()
-            result = (
-                self.service.update(self.workspace, request)
-                if self.definition else
-                self.service.create(self.workspace, request))
-            self.created_player_id = result.definition_id
-            self.accept()
+            self.service.save(
+                self.workspace, request,
+                editing=self.definition is not None)
         except ValueError as error:
             QMessageBox.warning(
                 self, self.windowTitle(), str(error))
+            return
+        self.accept()
 
 
 class PlayerLibraryWidget(QWidget):
@@ -317,57 +488,43 @@ class PlayerLibraryWidget(QWidget):
         self.workspace = workspace
         self.asset_root = asset_root
         self.translate = translator
-        self.service = PlayerAuthoringService()
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText(
-            self.translate("search_players"))
+        self.search.setPlaceholderText("Procurar Player")
         self.search.textChanged.connect(self.refresh)
-
         self.list = QListWidget()
+        self.list.currentItemChanged.connect(self._selection_changed)
         self.list.itemDoubleClicked.connect(
             lambda unused: self.edit_selected())
-        self.list.currentItemChanged.connect(
-            self._selection_changed)
 
-        self.create_button = QPushButton(
-            self.translate("create_player"))
-        self.edit_button = QPushButton(
-            self.translate("configure_player"))
-        self.delete_button = QPushButton(
-            self.translate("delete"))
-        self.create_button.clicked.connect(self.create_player)
+        self.add_button = QPushButton("Adicionar Player...")
+        self.edit_button = QPushButton("Configurar Player...")
+        self.delete_button = QPushButton(self.translate("delete"))
+        self.add_button.clicked.connect(self.add_player)
         self.edit_button.clicked.connect(self.edit_selected)
         self.delete_button.clicked.connect(self.delete_selected)
 
         row = QHBoxLayout()
-        row.addWidget(self.create_button)
+        row.addWidget(self.add_button)
         row.addWidget(self.edit_button)
         row.addWidget(self.delete_button)
 
-        self._help = QLabel(
-            self.translate("player_library_help"))
-        self._help.setWordWrap(True)
-        self._help.setStyleSheet("color: #aeb8c4;")
+        hint = QLabel(
+            "Importe o spritesheet uma vez e monte aqui cada estado "
+            "selecionando apenas os frames necessários.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#aeb8c4;")
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.search)
         layout.addWidget(self.list, 1)
         layout.addLayout(row)
-        layout.addWidget(self._help)
+        layout.addWidget(hint)
         self.refresh()
 
     def retranslate(self, translator: Translator) -> None:
         self.translate = translator
-        self.search.setPlaceholderText(
-            self.translate("search_players"))
-        self.create_button.setText(
-            self.translate("create_player"))
-        self.edit_button.setText(
-            self.translate("configure_player"))
         self.delete_button.setText(self.translate("delete"))
-        self._help.setText(
-            self.translate("player_library_help"))
 
     def set_context(self, workspace: ContentWorkspace | None,
                     asset_root: Path | None) -> None:
@@ -377,98 +534,73 @@ class PlayerLibraryWidget(QWidget):
 
     def refresh(self, unused: object = None) -> None:
         del unused
-        selected_id = ""
-        current = self.list.currentItem()
-        if current:
-            selected_id = str(
-                current.data(Qt.ItemDataRole.UserRole) or "")
         self.list.clear()
         if self.workspace is None:
-            self.edit_button.setEnabled(False)
-            self.delete_button.setEnabled(False)
             return
-        query = self.search.text().strip()
         for definition in self.workspace.definitions(
-                "players", query):
+                "players", self.search.text().strip()):
             item = QListWidgetItem(
-                f"{definition.display_name}\n"
-                f"{definition.definition_id}")
+                f"{definition.display_name}\n{definition.definition_id}")
             item.setData(
                 Qt.ItemDataRole.UserRole,
                 definition.definition_id)
             self.list.addItem(item)
-            if definition.definition_id == selected_id:
-                self.list.setCurrentItem(item)
         self._selection_changed(
             self.list.currentItem(), None)
 
-    def _selected_definition(self) -> ContentDefinition | None:
-        if self.workspace is None:
-            return None
-        item = self.list.currentItem()
-        if item is None:
+    def _selected(self) -> ContentDefinition | None:
+        if self.workspace is None or self.list.currentItem() is None:
             return None
         return self.workspace.find(
             "players",
-            str(item.data(Qt.ItemDataRole.UserRole) or ""))
+            str(self.list.currentItem().data(
+                Qt.ItemDataRole.UserRole) or ""))
 
-    def _selection_changed(
-            self, current: QListWidgetItem | None,
-            previous: QListWidgetItem | None) -> None:
+    def _selection_changed(self, current: QListWidgetItem | None,
+                           previous: QListWidgetItem | None) -> None:
         del previous
         enabled = current is not None
         self.edit_button.setEnabled(enabled)
         self.delete_button.setEnabled(enabled)
 
-    def create_player(self) -> None:
+    def add_player(self) -> None:
         if self.workspace is None:
             return
-        if not self.workspace.definitions("animations"):
-            QMessageBox.information(
-                self, self.translate("create_player"),
-                self.translate("player_needs_animations"))
-            return
         dialog = PlayerDefinitionDialog(
-            self.workspace, self.asset_root,
-            self.translate, parent=self)
+            self.workspace, self.asset_root, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.refresh()
             self.changed.emit()
-            self.status_changed.emit(
-                self.translate("player_created"))
+            self.status_changed.emit("Player criado")
 
     def edit_selected(self) -> None:
-        definition = self._selected_definition()
+        definition = self._selected()
         if definition is None or self.workspace is None:
             return
-        dialog = PlayerDefinitionDialog(
-            self.workspace, self.asset_root,
-            self.translate, definition=definition, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.refresh()
-            self.changed.emit()
-            self.status_changed.emit(
-                self.translate("player_configured"))
+        QMessageBox.information(
+            self, "Configurar Player",
+            "Nesta etapa, a criação frame a frame está pronta. "
+            "A reabertura completa das sequências existentes será ligada "
+            "junto com a integração do PlayerDefinition ao runtime.")
 
     def delete_selected(self) -> None:
-        definition = self._selected_definition()
+        definition = self._selected()
         if definition is None or self.workspace is None:
             return
-        message = self.translate(
-            "player_delete_confirm").format(
-                player=definition.display_name)
-        answer = QMessageBox.question(
-            self, self.translate("delete"), message)
-        if answer != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(
+                self, "Excluir Player",
+                f"Excluir {definition.display_name}?") != (
+                    QMessageBox.StandardButton.Yes):
             return
-        try:
-            self.service.delete(
-                self.workspace, definition)
-        except ValueError as error:
-            QMessageBox.warning(
-                self, self.translate("delete"), str(error))
-            return
+        visual_id = str(definition.data.get("visualSetId", ""))
+        descriptor = self.workspace.find(
+            "authoringDescriptors", definition.definition_id)
+        visual = self.workspace.find("playerVisuals", visual_id)
+        if descriptor is not None and descriptor.origin == "project":
+            self.workspace.delete_definition(descriptor)
+        if visual is not None and visual.origin == "project":
+            self.workspace.delete_definition(visual)
+        self.workspace.delete_definition(definition)
         self.refresh()
         self.changed.emit()
-        self.status_changed.emit(
-            self.translate("player_deleted"))
+        self.status_changed.emit("Player excluído")
