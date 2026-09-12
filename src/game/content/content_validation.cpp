@@ -173,6 +173,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                                    [](const auto& value) { return value.id; });
     const auto stamps = ids(pack.stamps, report, ContentKind::stamp,
                             [](const auto& value) { return value.id; });
+    const auto players = ids(pack.players, report, ContentKind::player,
+                             [](const auto& value) { return value.id; });
     const auto progressions = ids(pack.playerProgressions, report, ContentKind::playerProgression,
                                   [](const auto& value) { return value.id; });
     const auto rewards = ids(pack.rewardProfiles, report, ContentKind::rewardProfile,
@@ -193,8 +195,11 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                                   [](const auto& value) { return value.id; });
     const auto objectVisuals = ids(pack.objectVisuals, report, ContentKind::objectVisual,
                                    [](const auto& value) { return value.id; });
+    const auto playerVisuals = ids(pack.playerVisuals, report, ContentKind::playerVisual,
+                                   [](const auto& value) { return value.id; });
     const bool hasVisualSchema = !pack.visualImages.empty() || !pack.staticSprites.empty() ||
-        !pack.animations.empty() || !pack.enemyVisuals.empty() || !pack.objectVisuals.empty();
+        !pack.animations.empty() || !pack.enemyVisuals.empty() || !pack.objectVisuals.empty() ||
+        !pack.playerVisuals.empty();
 
     for (const auto& value : pack.visualImages) {
         if (value.root != presentation::VisualAssetRoot::gameAssets &&
@@ -237,6 +242,30 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (frame.markers.size() > 32)
                 error(report, ContentKind::animation, value.id, "invalid_marker_count",
                       "animation frame has too many markers", "frames.markers");
+        }
+    }
+    for (const auto& value : pack.players) {
+        if (value.visualSetId.empty() || !contains(playerVisuals, value.visualSetId))
+            error(report, ContentKind::player, value.id, "unknown_reference",
+                  "player visual definition does not exist", "visualSetId");
+        if (value.progressionId.empty() ||
+            (!contains(progressions, value.progressionId) &&
+             value.progressionId != gameplay::rpg::defaultPlayerProgressionId()))
+            error(report, ContentKind::player, value.id, "unknown_reference",
+                  "player progression does not exist", "progressionId");
+    }
+    for (const auto& value : pack.playerVisuals) {
+        validateDirectional(value.idle, animations, report, ContentKind::playerVisual, value.id, "idle");
+        validateDirectional(value.walk, animations, report, ContentKind::playerVisual, value.id, "walk");
+        if (value.hurt)
+            validateDirectional(*value.hurt, animations, report, ContentKind::playerVisual, value.id, "hurt");
+        std::unordered_set<std::string> actionIds;
+        for (const auto& action : value.actions) {
+            if (action.actionId.empty() || !actionIds.emplace(action.actionId).second)
+                error(report, ContentKind::playerVisual, value.id, "duplicate_player_action",
+                      "player visual action IDs must be unique and non-empty", "actions");
+            validateDirectional(action.clips, animations, report, ContentKind::playerVisual,
+                                value.id, "actions.clips");
         }
     }
     for (const auto& value : pack.enemyVisuals) {
@@ -566,7 +595,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::player && contains(players, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

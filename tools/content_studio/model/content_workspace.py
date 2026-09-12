@@ -389,6 +389,7 @@ class ContentWorkspace:
             required_fields = {
                 "enemies": ("visualSetId", "behaviorProfileId", "faction", "maximumHealth", "movementSpeedSubpixelsPerTick", "collisionBody", "hurtbox", "attackIds", "rewardProfileId"),
                 "npcs": ("visualSetId", "interaction", "defaultDialogueId", "tags"),
+                "players": ("visualSetId", "progressionId"),
                 "objects": ("visualSetId",),
                 "pickups": ("visualId", "collectionBounds", "payload"),
             }.get(category, ())
@@ -404,6 +405,11 @@ class ContentWorkspace:
             elif category == "npcs":
                 require("npcVisuals", data.get("visualSetId"), f"{prefix}.visualSetId")
                 require("dialogues", data.get("defaultDialogueId"), f"{prefix}.defaultDialogueId")
+            elif category == "players":
+                require("playerVisuals", data.get("visualSetId"), f"{prefix}.visualSetId")
+                progression_id = data.get("progressionId")
+                if progression_id != "progression.player.default":
+                    require("playerProgressions", progression_id, f"{prefix}.progressionId")
             elif category == "objects":
                 require("objectVisuals", data.get("visualSetId"), f"{prefix}.visualSetId")
                 _require_object_capabilities(data, prefix, require)
@@ -426,7 +432,7 @@ class ContentWorkspace:
                 require("visualImages", data.get("imageId"), f"{prefix}.imageId")
             elif category == "staticSprites":
                 require("visualImages", data.get("imageId"), f"{prefix}.imageId")
-            elif category == "enemyVisuals":
+            elif category in {"enemyVisuals", "playerVisuals"}:
                 for key, value in _directional_values(data):
                     require("animations", value, f"{prefix}.{key}")
             elif category == "objectVisuals":
@@ -582,6 +588,7 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "npcs": {"id": definition_id, "visualSetId": "", "interaction": {"bounds": empty_box, "enabled": True}, "defaultDialogueId": "", "tags": []},
         "dialogues": {"id": definition_id, "entryNodeId": "", "nodes": []},
         "quests": {"id": definition_id, "title": definition_id, "objectives": [], "tags": [], "rewardGrantId": None},
+        "players": {"id": definition_id, "visualSetId": "", "progressionId": "progression.player.default"},
         "playerProgressions": {"id": definition_id, "baseStats": {"maximumHealth": 3}, "cumulativeExperienceThresholds": []},
         "rewardProfiles": {"id": definition_id, "experience": 0, "loot": []},
         "rewardGrants": {"id": definition_id, "experience": 0, "gold": 0, "items": []},
@@ -595,5 +602,6 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "animations": {"id": definition_id, "imageId": "", "loop": True, "frames": []},
         "enemyVisuals": {"id": definition_id, "idle": {}, "actions": []},
         "objectVisuals": {"id": definition_id, "idleAnimationId": "", "openedAnimationId": None, "damagedAnimationId": None, "destroyingAnimationId": None, "activationInactiveAnimationId": None, "activationActiveAnimationId": None, "doorLockedAnimationId": None, "doorClosedAnimationId": None, "doorOpenAnimationId": None, "destroyedAnimationId": None},
+        "playerVisuals": {"id": definition_id, "idle": {}, "walk": {}, "hurt": None, "actions": []},
     }
     return copy.deepcopy(defaults[category])

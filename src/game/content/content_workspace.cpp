@@ -26,6 +26,7 @@ std::string_view categoryName(ContentKind kind) noexcept {
     case ContentKind::object: return "objects";
     case ContentKind::pickup: return "pickups";
     case ContentKind::npc: return "npcs";
+    case ContentKind::player: return "players";
     case ContentKind::npcVisual: return "npcVisuals";
     case ContentKind::dialogue: return "dialogues";
     case ContentKind::quest: return "quests";
@@ -42,6 +43,7 @@ std::string_view categoryName(ContentKind kind) noexcept {
     case ContentKind::animation: return "animations";
     case ContentKind::enemyVisual: return "enemyVisuals";
     case ContentKind::objectVisual: return "objectVisuals";
+    case ContentKind::playerVisual: return "playerVisuals";
     }
     return {};
 }
@@ -179,6 +181,7 @@ ContentWorkspaceLoadResult buildContentWorkspace(
         mergeCategory(file, "npcs", file.content.npcs, merged.npcs, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "dialogues", file.content.dialogues, merged.dialogues, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "quests", file.content.quests, merged.quests, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "players", file.content.players, merged.players, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "playerProgressions", file.content.playerProgressions, merged.playerProgressions, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "rewardProfiles", file.content.rewardProfiles, merged.rewardProfiles, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "rewardGrants", file.content.rewardGrants, merged.rewardGrants, sources, result, [](const auto& v) { return v.id; });
@@ -192,6 +195,7 @@ ContentWorkspaceLoadResult buildContentWorkspace(
         mergeCategory(file, "animations", file.content.animations, merged.animations, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "enemyVisuals", file.content.enemyVisuals, merged.enemyVisuals, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "objectVisuals", file.content.objectVisuals, merged.objectVisuals, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "playerVisuals", file.content.playerVisuals, merged.playerVisuals, sources, result, [](const auto& v) { return v.id; });
     }
     result.mergedAuthored = merged;
     result.sources = sources;

@@ -65,10 +65,13 @@ def _visual_image_id(definition: ContentDefinition, workspace: ContentWorkspace)
     if category == "objects":
         owner = workspace.find("objectVisuals", str(data.get("visualSetId", "")))
         return _visual_image_id(owner, workspace) if owner else ""
+    if category == "players":
+        owner = workspace.find("playerVisuals", str(data.get("visualSetId", "")))
+        return _visual_image_id(owner, workspace) if owner else ""
     if category == "npcs":
         owner = workspace.find("npcVisuals", str(data.get("visualSetId", "")))
         return _visual_image_id(owner, workspace) if owner else ""
-    if category in {"enemyVisuals", "npcVisuals"}:
+    if category in {"enemyVisuals", "npcVisuals", "playerVisuals"}:
         for value in _walk(data):
             if isinstance(value, str):
                 animation = workspace.find("animations", value)

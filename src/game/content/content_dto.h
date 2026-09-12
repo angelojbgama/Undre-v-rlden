@@ -25,7 +25,7 @@
 
 namespace underworld::game::content {
 
-enum class AuthoringCategory { enemy, object, pickup, npc, item, rewardProfile, rewardGrant, shop };
+enum class AuthoringCategory { enemy, object, pickup, npc, player, item, rewardProfile, rewardGrant, shop };
 
 struct AuthoredTileset final { simulation::DefinitionId id{}; std::string displayName; std::string relativeAssetPath; std::uint16_t tileSize{}; std::uint32_t columns{}; std::uint32_t rows{}; };
 struct AuthoredProjectile final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::FacingDirection canonicalFacing{gameplay::FacingDirection::up}; int speedPixelsPerTick{}; std::uint32_t lifetimeTicks{}; int hitboxWidth{}; int hitboxHeight{}; gameplay::DirectionalOffsets spawnOffsets{}; };
@@ -64,6 +64,22 @@ struct AuthoredDialogueNode final { simulation::DefinitionId id{}; std::string s
 struct AuthoredDialogue final { simulation::DefinitionId id{}; simulation::DefinitionId entryNodeId{}; std::vector<AuthoredDialogueNode> nodes; };
 struct AuthoredQuestObjective final { simulation::DefinitionId id{}; gameplay::quests::QuestObjectiveKind kind{}; simulation::DefinitionId targetId{}; std::uint32_t requiredCount{1}; std::string description; };
 struct AuthoredQuest final { simulation::DefinitionId id{}; std::string title; std::vector<AuthoredQuestObjective> objectives; std::vector<std::string> tags; std::optional<simulation::DefinitionId> rewardGrantId{}; };
+struct AuthoredPlayer final {
+    simulation::DefinitionId id{};
+    simulation::DefinitionId visualSetId{};
+    simulation::DefinitionId progressionId{};
+};
+struct AuthoredPlayerActionVisual final {
+    std::string actionId;
+    presentation::DirectionalAnimationRef clips;
+};
+struct AuthoredPlayerVisual final {
+    simulation::DefinitionId id{};
+    presentation::DirectionalAnimationRef idle;
+    presentation::DirectionalAnimationRef walk;
+    std::optional<presentation::DirectionalAnimationRef> hurt;
+    std::vector<AuthoredPlayerActionVisual> actions;
+};
 struct AuthoredPlayerBaseStats final { int maximumHealth{}; };
 struct AuthoredPlayerProgression final { simulation::DefinitionId id{}; AuthoredPlayerBaseStats baseStats{}; std::vector<std::uint64_t> cumulativeExperienceThresholds; };
 struct AuthoredLootEntry final { simulation::DefinitionId pickupDefinitionId{}; std::uint32_t chanceBasisPoints{}; std::uint32_t minimumCount{1}; std::uint32_t maximumCount{1}; };
@@ -96,13 +112,14 @@ struct AuthoredContentPack final {
     std::vector<AuthoredWorldObject> objects; std::vector<AuthoredPickup> pickups; std::vector<AuthoredNpc> npcs;
     std::vector<AuthoredNpcVisualSet> npcVisuals; std::vector<AuthoredDialogue> dialogues; std::vector<AuthoredQuest> quests;
     std::vector<AuthoringDescriptor> authoringDescriptors; std::vector<AuthoredTileSemantic> tileSemantics; std::vector<AuthoredStamp> stamps;
-    std::vector<AuthoredPlayerProgression> playerProgressions; std::vector<AuthoredRewardProfile> rewardProfiles; std::vector<AuthoredRewardGrant> rewardGrants; std::vector<AuthoredShop> shops;
+    std::vector<AuthoredPlayer> players; std::vector<AuthoredPlayerProgression> playerProgressions; std::vector<AuthoredRewardProfile> rewardProfiles; std::vector<AuthoredRewardGrant> rewardGrants; std::vector<AuthoredShop> shops;
     std::vector<AuthoredPresentationEffect> presentationEffects;
     std::vector<AuthoredVisualImage> visualImages;
     std::vector<AuthoredStaticSprite> staticSprites;
     std::vector<AuthoredAnimation> animations;
     std::vector<AuthoredEnemyVisual> enemyVisuals;
     std::vector<AuthoredWorldObjectVisual> objectVisuals;
+    std::vector<AuthoredPlayerVisual> playerVisuals;
 };
 
 } // namespace underworld::game::content

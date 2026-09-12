@@ -52,6 +52,7 @@ AuthoredContentPack overlayBuiltinContent(const AuthoredContentPack& authored) {
     OVERLAY_CATEGORY(authoringDescriptors, definitionId);
     OVERLAY_CATEGORY(tileSemantics, id);
     OVERLAY_CATEGORY(stamps, id);
+    OVERLAY_CATEGORY(players, id);
     OVERLAY_CATEGORY(playerProgressions, id);
     OVERLAY_CATEGORY(rewardProfiles, id);
     OVERLAY_CATEGORY(rewardGrants, id);
@@ -62,6 +63,7 @@ AuthoredContentPack overlayBuiltinContent(const AuthoredContentPack& authored) {
     OVERLAY_CATEGORY(animations, id);
     OVERLAY_CATEGORY(enemyVisuals, id);
     OVERLAY_CATEGORY(objectVisuals, id);
+    OVERLAY_CATEGORY(playerVisuals, id);
 #undef OVERLAY_CATEGORY
     return result;
 }

@@ -633,8 +633,7 @@
           0,
           0,
           0,
-          1,
-          1,
+          0,
           1,
           1,
           1,
@@ -649,8 +648,8 @@
           0,
           0,
           0,
-          1,
-          1,
+          0,
+          0,
           1,
           1,
           1,
@@ -665,8 +664,8 @@
           0,
           0,
           0,
-          1,
-          1,
+          0,
+          0,
           1,
           1,
           1,
@@ -681,8 +680,8 @@
           0,
           0,
           0,
-          1,
-          1,
+          0,
+          0,
           1,
           1,
           1,
@@ -697,6 +696,8 @@
           0,
           0,
           0,
+          0,
+          0,
           1,
           1,
           1,
@@ -707,8 +708,7 @@
           1,
           1,
           1,
-          1,
-          1,
+          0,
           0,
           0,
           0,
@@ -1094,7 +1094,8 @@
           "height": 32
         },
         "destructionDurationTicks": 48,
-        "damageDurationTicks": 8
+        "damageDurationTicks": 8,
+        "leaveDestroyedResidue": false
       },
       "collision": {
         "width": 32,
@@ -1403,18 +1404,6 @@
           0,
           0,
           0,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           0,
           0,
           0,
@@ -1434,20 +1423,6 @@
           0,
           0,
           0,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           0,
           0,
           0,
@@ -1466,20 +1441,6 @@
           0,
           0,
           0,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           0,
           0,
           0,
@@ -1498,20 +1459,6 @@
           0,
           0,
           0,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           0,
           0,
           0,
@@ -1530,20 +1477,66 @@
           0,
           0,
           0,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0,
           0,
           0,
@@ -1562,6 +1555,14 @@
           0,
           0,
           0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           1,
           1,
           1,
@@ -2023,6 +2024,1044 @@
           1,
           1,
           1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "depthAnchor": {
+        "x": 0,
+        "y": 0
+      },
+      "occlusion": {
+        "width": 32,
+        "height": 32,
+        "origin": {
+          "x": -17,
+          "y": -34
+        },
+        "cells": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0,
           0,
           0,
@@ -3461,6 +4500,51 @@
       "id": "image.iron_door",
       "root": "gameAssets",
       "relativePath": "Tileset/iron_door.png"
+    },
+    {
+      "id": "image.player_walking",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/walking/player_walking.png"
+    },
+    {
+      "id": "image.player_wake_up",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/wake_up/player_wake_up.png"
+    },
+    {
+      "id": "image.player_sleeping",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/slepping/player_sleeping.png"
+    },
+    {
+      "id": "image.player_sheld",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/sheld/player_sheld.png"
+    },
+    {
+      "id": "image.player_idle",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/idle/player_idle.png"
+    },
+    {
+      "id": "image.player_dead",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/death/player_dead.png"
+    },
+    {
+      "id": "image.player_death",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/death/player_death.png"
+    },
+    {
+      "id": "image.player_attacking",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/attacking/player_attacking.png"
+    },
+    {
+      "id": "image.player_attacking_bow",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/attacking/player_attacking_bow.png"
     }
   ],
   "staticSprites": [],
@@ -4928,6 +6012,1113 @@
           "source": {
             "x": 192,
             "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_walking",
+      "imageId": "image.player_walking",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_wake_up",
+      "imageId": "image.player_wake_up",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_sleeping",
+      "imageId": "image.player_sleeping",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_sheld",
+      "imageId": "image.player_sheld",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_idle",
+      "imageId": "image.player_idle",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_dead",
+      "imageId": "image.player_dead",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_death",
+      "imageId": "image.player_death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_attacking",
+      "imageId": "image.player_attacking",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_attacking_bow",
+      "imageId": "image.player_attacking_bow",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
             "width": 32,
             "height": 32
           },

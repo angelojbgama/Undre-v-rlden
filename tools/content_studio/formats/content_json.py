@@ -11,9 +11,9 @@ CONTENT_FORMAT = "dungeon-underworld-content"
 CONTENT_VERSION = 5
 CONTENT_CATEGORIES: tuple[str, ...] = (
     "tilesets", "projectiles", "attacks", "behaviors", "enemies", "items", "objects", "pickups",
-    "npcVisuals", "npcs", "dialogues", "quests", "playerProgressions", "rewardProfiles",
+    "npcVisuals", "npcs", "dialogues", "quests", "players", "playerProgressions", "rewardProfiles",
     "rewardGrants", "shops", "authoringDescriptors", "tileSemantics", "stamps", "presentationEffects",
-    "visualImages", "staticSprites", "animations", "enemyVisuals", "objectVisuals",
+    "visualImages", "staticSprites", "animations", "enemyVisuals", "objectVisuals", "playerVisuals",
 )
 ID_FIELDS = {category: ("definitionId" if category == "authoringDescriptors" else "id") for category in CONTENT_CATEGORIES}
 

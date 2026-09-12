@@ -31,6 +31,7 @@ from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel,
 from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .object_library_widget import ObjectLibraryWidget
+from .player_library_widget import PlayerLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
 from .terrain.tile_semantic_editor import TileSemanticEditor
 from ..services.tile_semantic_catalog import TileSemanticCatalog
@@ -155,6 +156,10 @@ class MainWindow(QMainWindow):
         self.object_library.place_requested.connect(self._place_definition)
         self.object_library.changed.connect(self._content_changed)
         self.object_library.status_changed.connect(self.set_status)
+        self.player_library = PlayerLibraryWidget(
+            self.workspace, self.asset_root, self.translator)
+        self.player_library.changed.connect(self._content_changed)
+        self.player_library.status_changed.connect(self.set_status)
         # Compatibility alias for integrations that used the old palette name.
         self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette()
@@ -197,6 +202,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.tile_palette)
         self._map_panels.addWidget(self.spritesheet_library)
         self._map_panels.addWidget(self.object_library)
+        self._map_panels.addWidget(self.player_library)
         self._map_panels.addWidget(self.smart_terrain)
         self._map_panels.addWidget(self.semantic_editor)
         self._map_panels.addWidget(self.semantic_palette)
@@ -285,7 +291,7 @@ class MainWindow(QMainWindow):
         if mode_index == 0:
             return tuple(self.translator(key) for key in (
                 "maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-                "smart_terrain", "semantic_editor",
+                "players_tab", "smart_terrain", "semantic_editor",
                 "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
             ))
         return (self.translator("definitions"), self.translator("assets"))
@@ -336,6 +342,7 @@ class MainWindow(QMainWindow):
         self.tileset_library.retranslate(self.translator)
         self.spritesheet_library.retranslate(self.translator)
         self.object_library.retranslate(self.translator)
+        self.player_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
         self.map_browser.set_translator(self.translator)
@@ -365,6 +372,7 @@ class MainWindow(QMainWindow):
         self.tileset_library.set_map_tile_size(self.project.active_map.tile_size)
         self.spritesheet_library.set_context(self.workspace, self.asset_root)
         self.object_library.set_context(self.workspace, self.asset_root)
+        self.player_library.set_context(self.workspace, self.asset_root)
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_editor.set_workspace(self.workspace)
         self.smart_terrain.set_workspace(self.workspace)
