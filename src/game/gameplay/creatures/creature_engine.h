@@ -4,6 +4,7 @@
 #include "engine/simulation/definition_id.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/world/collision.h"
+#include "game/gameplay/actor_footprint.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/facing_direction.h"
@@ -18,17 +19,8 @@ namespace underworld::world { class CollisionGrid; }
 
 namespace underworld::game::gameplay::creatures {
 
-struct ActorBoxDefinition final {
-    int offsetX{};
-    int offsetY{};
-    int width{};
-    int height{};
-
-    [[nodiscard]] world::AabbI at(core::WorldPointI feet) const noexcept {
-        return {feet.x + offsetX, feet.y + offsetY, width, height};
-    }
-    [[nodiscard]] bool valid() const noexcept { return width > 0 && height > 0; }
-};
+// Backward-compatible authored name for enemy collision/hurt boxes.
+using ActorBoxDefinition = gameplay::ActorFootprintDefinition;
 
 enum class BehaviorState { idle, wander, chase, attack, dead };
 

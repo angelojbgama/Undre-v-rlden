@@ -1115,6 +1115,26 @@
           },
           "initialContents": [],
           "persistence": "persistent"
+        },
+        {
+          "id": 4,
+          "definitionId": "object.breaking_vase",
+          "position": {
+            "x": 96,
+            "y": 160
+          },
+          "initialContents": [],
+          "persistence": "persistent"
+        },
+        {
+          "id": 5,
+          "definitionId": "object.breaking_vase",
+          "position": {
+            "x": 128,
+            "y": 208
+          },
+          "initialContents": [],
+          "persistence": "persistent"
         }
       ],
       "pickups": [],

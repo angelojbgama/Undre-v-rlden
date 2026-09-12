@@ -324,9 +324,29 @@ void GamePresentation::renderDebug(render::Renderer2D& renderer,
         }
     }
     if (frame.combatDebug.collisionBody) {
-        outline(renderer, frame.player.collisionBody(), cameraPosition, {32, 255, 96, 255});
+        constexpr core::ColorRGBA8 actorFootprintColor{32, 255, 96, 255};
+        constexpr core::ColorRGBA8 objectCollisionColor{255, 144, 32, 255};
+        constexpr core::ColorRGBA8 depthAnchorColor{255, 220, 48, 255};
+
+        outline(renderer, frame.player.collisionBody(), cameraPosition, actorFootprintColor);
         for (const auto& enemy : frame.world.enemies()) {
-            outline(renderer, enemy.instance.collisionBody(), cameraPosition, {32, 255, 96, 255});
+            outline(renderer, enemy.instance.collisionBody(), cameraPosition,
+                    actorFootprintColor);
+        }
+
+        for (const auto& bounds : frame.world.objectCollisionBounds()) {
+            outline(renderer, bounds, cameraPosition, objectCollisionColor);
+        }
+
+        // Depth Anchor is presentation metadata, not collision. Drawing it beside
+        // the physical AABBs makes depth/collision mismatches immediately visible.
+        for (const auto& object : frame.world.objects()) {
+            const auto& instance = object.instance;
+            const auto& anchor = instance.definition().depthAnchor;
+            const int x = instance.position().x + anchor.x - cameraPosition.x;
+            const int y = instance.position().y + anchor.y - cameraPosition.y;
+            renderer.fillRect({x - 3, y, 7, 1}, depthAnchorColor);
+            renderer.fillRect({x, y - 3, 1, 7}, depthAnchorColor);
         }
     }
     if (frame.combatDebug.hurtbox) {

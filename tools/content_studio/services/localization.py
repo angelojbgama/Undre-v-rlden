@@ -181,8 +181,9 @@ TRANSLATIONS["pt-BR"].update({
     "object_occlusion_enabled": "Possui máscara de oclusão",
     "edit_depth_occlusion": "Editar profundidade / oclusão...",
     "object_depth_help": (
-        "O ponto de profundidade decide a ordem por Y. A máscara pintada indica os pixels "
-        "que podem ficar sobre o player no limite de profundidade. Ela não altera colisão."
+        "O ponto de profundidade decide a ordem por Y e funciona mesmo sem máscara. "
+        "A máscara de oclusão começa vazia: pinte somente os pixels que devem cobrir o player. "
+        "Gerar pelo Alpha é apenas uma ferramenta opcional e não altera a colisão."
     ),
     "occlusion_editor_title": "Editor de Profundidade / Oclusão",
     "mask_tool_depth": "Ponto de profundidade",
@@ -194,8 +195,9 @@ for _english_key in ("en-US", "en"):
             "object_occlusion_enabled": "Has occlusion mask",
             "edit_depth_occlusion": "Edit depth / occlusion...",
             "object_depth_help": (
-                "The depth point controls Y sorting. Painted mask pixels can cover the "
-                "player at the depth boundary. This never changes collision."
+                "The depth point controls Y sorting even without a mask. The occlusion "
+                "mask starts empty: paint only pixels that should cover the player. "
+                "Generate from Alpha is optional and never changes collision."
             ),
             "occlusion_editor_title": "Depth / Occlusion Editor",
             "mask_tool_depth": "Depth point",

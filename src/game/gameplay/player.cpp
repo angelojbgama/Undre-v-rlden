@@ -46,8 +46,8 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
     if (!entity) {
         throw std::invalid_argument("player requires a valid runtime entity handle");
     }
-    if (config_.bodyWidth <= 0 || config_.bodyHeight <= 0) {
-        throw std::invalid_argument("player collision body dimensions must be positive");
+    if (!config_.footprints.valid()) {
+        throw std::invalid_argument("player movement footprints must be positive");
     }
 }
 
@@ -56,9 +56,7 @@ core::WorldPointI Player::feetPosition() const {
 }
 
 world::AabbI Player::collisionBody() const {
-    const auto feet = feetPosition();
-    return {feet.x + config_.bodyOffsetX, feet.y + config_.bodyOffsetY,
-            config_.bodyWidth, config_.bodyHeight};
+    return config_.footprints.forFacing(facing_).at(feetPosition());
 }
 
 void Player::update(const simulation::PlayerCommand& command,
@@ -145,9 +143,10 @@ void Player::update(const simulation::PlayerCommand& command,
         collision, body, targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y,
         tileSize, staticObstacles);
 
+    const auto& footprint = config_.footprints.forFacing(facing_);
     const core::WorldPointI resolvedFeet{
-        body.x - config_.bodyOffsetX,
-        body.y - config_.bodyOffsetY};
+        body.x - footprint.offsetX,
+        body.y - footprint.offsetY};
     position_.x = lastMovement_.blockedX
                       ? checkedSubpixelCoordinate(resolvedFeet.x)
                       : target.x;
@@ -172,8 +171,10 @@ void Player::applyKnockback(int deltaX, int deltaY,
     world::AabbI body = collisionBody();
     [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidWorld(
         collision, body, deltaX, deltaY, tileSize, staticObstacles);
+    const auto& footprint = config_.footprints.forFacing(facing_);
     const core::WorldPointI resolvedFeet{
-        body.x - config_.bodyOffsetX, body.y - config_.bodyOffsetY};
+        body.x - footprint.offsetX,
+        body.y - footprint.offsetY};
     position_.x = checkedSubpixelCoordinate(resolvedFeet.x);
     position_.y = checkedSubpixelCoordinate(resolvedFeet.y);
 }

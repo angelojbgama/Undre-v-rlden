@@ -3,6 +3,7 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/player_command.h"
 #include "engine/world/collision.h"
+#include "game/gameplay/actor_footprint.h"
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/facing_direction.h"
 
@@ -31,10 +32,15 @@ struct PlayerMovementConfig final {
     static constexpr std::int64_t diagonalScaleNumerator = 181;
     static constexpr std::int64_t diagonalScaleDenominator = 256;
 
-    int bodyWidth{10};
-    int bodyHeight{8};
-    int bodyOffsetX{-5};
-    int bodyOffsetY{-8};
+    // Stable per-facing movement footprints at the player's feet.
+    // Side views extend 2 px toward the facing direction to account for the
+    // hand/body silhouette without making up/down movement artificially wide.
+    DirectionalActorFootprints footprints{{
+        ActorFootprintDefinition{-8, -8, 16, 8},  // down
+        ActorFootprintDefinition{-8, -8, 16, 8},  // up
+        ActorFootprintDefinition{-10, -8, 18, 8}, // left
+        ActorFootprintDefinition{-8, -8, 18, 8},  // right
+    }};
 };
 
 struct SubpixelPosition final {

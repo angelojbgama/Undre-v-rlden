@@ -445,7 +445,8 @@ class ObjectDefinitionDialog(QDialog):
         selected = self._collision_frame()
         if selected is None:
             return None
-        animation, frame = selected
+        unused_animation, frame = selected
+        del unused_animation
         source = frame.get("source", {})
         anchor = frame.get("anchor", {})
         offset = frame.get("drawOffset", {})
@@ -454,19 +455,6 @@ class ObjectDefinitionDialog(QDialog):
         offset = offset if isinstance(offset, dict) else {}
         width = max(1, int(source.get("width", 1)))
         height = max(1, int(source.get("height", 1)))
-        cells = [1] * (width * height)
-        source_image = self._source_image(animation)
-        if not source_image.isNull():
-            sprite = source_image.copy(QRect(
-                int(source.get("x", 0)), int(source.get("y", 0)), width, height))
-            if not sprite.isNull():
-                converted = sprite.convertToFormat(QImage.Format.Format_ARGB32)
-                cells = [
-                    1 if converted.pixelColor(x, y).alpha() > 16 else 0
-                    for y in range(height) for x in range(width)
-                ]
-                if not any(cells):
-                    cells = [1] * (width * height)
         return {
             "width": width,
             "height": height,
@@ -474,7 +462,9 @@ class ObjectDefinitionDialog(QDialog):
                 "x": -int(anchor.get("x", 0)) + int(offset.get("x", 0)),
                 "y": -int(anchor.get("y", 0)) + int(offset.get("y", 0)),
             },
-            "cells": cells,
+            # Occlusion is opt-in. Alpha generation remains an explicit button
+            # instead of becoming gameplay semantics automatically.
+            "cells": [0] * (width * height),
         }
 
     def _occlusion_toggled(self, checked: bool) -> None:
@@ -514,6 +504,13 @@ class ObjectDefinitionDialog(QDialog):
         if dialog.exec():
             self._occlusion_mask = dialog.result_mask()
             self._depth_anchor = dialog.result_depth_anchor()
+            cells = self._occlusion_mask.get("cells", [])
+            has_occlusion = (
+                isinstance(cells, list) and any(int(value) != 0 for value in cells)
+            )
+            # Depth Anchor is independent. Occlusion is persisted only when the
+            # author explicitly painted at least one pixel.
+            self.occlusion_enabled.setChecked(has_occlusion)
 
     def _source_animation(self) -> ContentDefinition | None:
         return self.workspace.find(
