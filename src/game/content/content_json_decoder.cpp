@@ -217,7 +217,7 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
         const auto destructiblePath = pathOf(p, "destructible");
         if (!object(*x, destructiblePath, c, q)) ok = false;
         else {
-            allowed(*q, {"maximumHealth", "hurtbox", "destructionDurationTicks", "damageDurationTicks"}, destructiblePath, c);
+            allowed(*q, {"maximumHealth", "hurtbox", "destructionDurationTicks", "damageDurationTicks", "rewardProfileId", "leaveDestroyedResidue"}, destructiblePath, c);
             gameplay::ObjectDestructibleDefinition decoded{};
             ok = signedField(*x, *q, "maximumHealth", destructiblePath, c, decoded.maximumHealth) && ok;
             const auto* hurtbox = required(*x, *q, "hurtbox", destructiblePath, c);
@@ -225,6 +225,18 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
             ok = unsignedField(*x, *q, "destructionDurationTicks", destructiblePath, c, decoded.destructionDurationTicks) && ok;
             if (findField(*q, "damageDurationTicks"))
                 ok = unsignedField(*x, *q, "damageDurationTicks", destructiblePath, c, decoded.damageDurationTicks) && ok;
+            if (const auto* reward = findField(*q, "rewardProfileId"); reward && !isNull(reward)) {
+                simulation::DefinitionId rewardId{};
+                if (idField(*x, *q, "rewardProfileId", destructiblePath, c, rewardId))
+                    decoded.rewardProfileId = std::move(rewardId);
+                else ok = false;
+            }
+            if (const auto* residue = findField(*q, "leaveDestroyedResidue"); residue && !isNull(residue)) {
+                bool value{};
+                if (boolValue(*residue, pathOf(destructiblePath, "leaveDestroyedResidue"), c, value))
+                    decoded.leaveDestroyedResidue = value;
+                else ok = false;
+            }
             if (ok) d.destructible = decoded;
         }
     }

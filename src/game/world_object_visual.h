@@ -50,6 +50,7 @@ public:
     }
     [[nodiscard]] const render::Animator& animator() const noexcept { return animator_; }
     [[nodiscard]] bool finished() const noexcept { return animator_.finished(); }
+    [[nodiscard]] bool visible() const noexcept;
 
 private:
     simulation::EntityHandle handle_{};
@@ -59,6 +60,8 @@ private:
     std::optional<bool> activation_;
     render::Animator animator_{};
     bool initialized_{};
+    std::uint64_t stateTicks_{};
+    std::uint64_t destructionDurationTicks_{};
 };
 
 // A destroyed prop no longer owns a live gameplay entity. This presentation

@@ -129,6 +129,7 @@ private:
     void updateEnemies();
     void removeDefeatedEnemies();
     void resolveDefeatRewards();
+    void resolveObjectDestructionReward(const maps::PersistentObject& object);
     void collectNearbyPickups();
     void updateObjects();
     void interactWithWorld();

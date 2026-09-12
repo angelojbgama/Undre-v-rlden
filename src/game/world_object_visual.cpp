@@ -39,7 +39,9 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
     const auto state = object.state();
     const auto doorState = object.isDoor() ? std::optional{object.doorState()} : std::nullopt;
     const auto activation = object.hasActivation() ? std::optional{object.activationActive()} : std::nullopt;
-    if (!initialized_ || state != state_ || doorState != doorState_ || activation != activation_) {
+    const bool stateChanged = !initialized_ || state != state_ || doorState != doorState_ ||
+                              activation != activation_;
+    if (stateChanged) {
         const auto* clip = &set_->idle;
         if (state == gameplay::WorldObjectState::damaged && set_->damaged) {
             clip = &set_->damaged;
@@ -62,8 +64,28 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
         state_ = state;
         doorState_ = doorState;
         activation_ = activation;
+        stateTicks_ = 0;
+        destructionDurationTicks_ =
+            state == gameplay::WorldObjectState::destroying && object.definition().destructible
+                ? object.definition().destructible->destructionDurationTicks
+                : 0;
+    } else {
+        stateTicks_ += ticks;
     }
     animator_.updateTicks(ticks);
+}
+
+bool WorldObjectVisualInstance::visible() const noexcept {
+    if (!initialized_ || state_ != gameplay::WorldObjectState::destroying ||
+        destructionDurationTicks_ == 0) {
+        return true;
+    }
+    constexpr std::uint64_t blinkWindowTicks = 12;
+    constexpr std::uint64_t blinkHalfPeriodTicks = 2;
+    const auto blinkStart = destructionDurationTicks_ > blinkWindowTicks
+        ? destructionDurationTicks_ - blinkWindowTicks : 0;
+    if (stateTicks_ < blinkStart) return true;
+    return ((stateTicks_ - blinkStart) / blinkHalfPeriodTicks) % 2 == 0;
 }
 
 WorldObjectResidueVisualInstance::WorldObjectResidueVisualInstance(

@@ -34,7 +34,7 @@ struct RewardResolution final {
 
 struct RewardRollContext final {
     simulation::MapId mapId{};
-    simulation::PersistentInstanceId defeatedInstanceId{};
+    simulation::PersistentInstanceId sourceInstanceId{};
 };
 
 class RewardProfileCatalog final {

@@ -189,11 +189,11 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.items.push_back({{"item.power_charm"}, {"visual.item.power_charm"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::accessory, {0, 1}}});
     pack.objects = {
         {{"object.chest"}, {"visual.object.chest"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, gameplay::ObjectContainerDefinition{5}, std::nullopt},
-        {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28}},
-        {{"object.vase"}, {"visual.object.vase"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{1, {-8, -24, 16, 24}, 24}},
-        {{"object.stone_block"}, {"visual.object.stone_block"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}},
-        {{"object.stone_block_2"}, {"visual.object.stone_block_2"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}},
-        {{"object.fire_block"}, {"visual.object.fire_block"}, gameplay::ObjectInteractionDefinition{{-8, -14, 16, 14}}, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1}, std::nullopt, std::nullopt, gameplay::ObjectActivationDefinition{gameplay::ObjectActivationMode::interactToggle, false, std::nullopt}},
+        {{"object.crate"}, {"visual.object.crate"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 28, 8, std::nullopt, false}},
+        {{"object.vase"}, {"visual.object.vase"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{1, {-8, -24, 16, 24}, 24, 8, std::nullopt, false}},
+        {{"object.stone_block"}, {"visual.object.stone_block"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1, 8, std::nullopt, true}},
+        {{"object.stone_block_2"}, {"visual.object.stone_block_2"}, std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1, 8, std::nullopt, true}},
+        {{"object.fire_block"}, {"visual.object.fire_block"}, gameplay::ObjectInteractionDefinition{{-8, -14, 16, 14}}, std::nullopt, gameplay::ObjectDestructibleDefinition{2, {-8, -24, 16, 24}, 1, 8, std::nullopt, true}, std::nullopt, std::nullopt, gameplay::ObjectActivationDefinition{gameplay::ObjectActivationMode::interactToggle, false, std::nullopt}},
         {{"object.bank_access"}, {"visual.object.bank_access"}, gameplay::ObjectInteractionDefinition{{-14, -18, 28, 22}}, std::nullopt, std::nullopt, AuthoredObjectBankAccess{}}};
     pack.pickups = {
         {{"pickup.heart"}, {"visual.pickup.heart"}, {-5, -5, 10, 10}, AuthoredHealthPickup{2}},

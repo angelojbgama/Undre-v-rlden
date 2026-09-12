@@ -92,8 +92,12 @@ std::vector<ContentDefinitionKey> dependencyClosure(
         }
         case ContentDefinitionKind::object: {
             const auto* value = document.object(current.id);
-            if (value) addDependency(pending, ContentDefinitionKind::objectVisual,
-                                     value->visualSetId);
+            if (value) {
+                addDependency(pending, ContentDefinitionKind::objectVisual, value->visualSetId);
+                if (value->destructible)
+                    addOptionalDependency(pending, ContentDefinitionKind::rewardProfile,
+                                          value->destructible->rewardProfileId);
+            }
             break;
         }
         case ContentDefinitionKind::objectVisual: {

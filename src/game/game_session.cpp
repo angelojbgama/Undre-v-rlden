@@ -550,6 +550,37 @@ void GameSession::collectNearbyPickups() {
     if (changed) { captureWorldState(); }
 }
 
+void GameSession::resolveObjectDestructionReward(const maps::PersistentObject& persistent) {
+    if (rewardCatalog_ == nullptr || pickupDefinitions_ == nullptr ||
+        mapSession_ == nullptr || mapSession_->world() == nullptr) {
+        return;
+    }
+    const auto& destructible = persistent.instance.definition().destructible;
+    if (!destructible || !destructible->rewardProfileId) return;
+    const auto* profile = rewardCatalog_->find(*destructible->rewardProfileId);
+    if (profile == nullptr) return;
+
+    const auto resolution = rewardResolver_.resolve(
+        *profile, {mapSession_->world()->id(), persistent.persistentId});
+    const auto gain = progression_.grantExperience(resolution.experience);
+    if (gain.granted != 0) {
+        events_.emit(simulation::ExperienceGranted{
+            player_.entityHandle(), persistent.instance.definition().id, gain.granted,
+            progression_.totalExperience(), gain.previousLevel, gain.newLevel});
+    }
+    for (const auto& drop : resolution.loot) {
+        const auto definition = std::find_if(
+            pickupDefinitions_->begin(), pickupDefinitions_->end(),
+            [&](const auto& value) { return value.id == drop.pickupDefinitionId; });
+        if (definition == pickupDefinitions_->end()) continue;
+        for (std::uint32_t count = 0; count < drop.count; ++count) {
+            mapSession_->world()->pickups().push_back({
+                {}, true, gameplay::WorldPickup{
+                    handles_.create(), *definition, persistent.instance.position()}});
+        }
+    }
+}
+
 void GameSession::updateObjects() {
     auto& objects = mapSession_->world()->objects();
     bool changed = false;
@@ -557,14 +588,19 @@ void GameSession::updateObjects() {
         auto& object = objects[index].instance;
         object.advanceDamageTick();
         static_cast<void>(object.syncDamageState());
-        static_cast<void>(object.syncDestructionState());
+        const bool beganDestruction = object.syncDestructionState();
+        if (beganDestruction) resolveObjectDestructionReward(objects[index]);
         if (auto* combatant = object.combatant()) {
             gameplay::tickInvulnerability(*combatant);
         }
         object.advanceDestructionTick();
         if (object.destructionComplete()) {
-            mapSession_->world()->addDestroyedObjectResidue(
-                objects[index].persistentId, object.definition().visualSetId, object.position());
+            if (object.definition().destructible &&
+                object.definition().destructible->leaveDestroyedResidue) {
+                mapSession_->world()->addDestroyedObjectResidue(
+                    objects[index].persistentId, object.definition().visualSetId,
+                    object.position());
+            }
             static_cast<void>(object.completeDestruction(handles_));
             objects.erase(objects.begin() + static_cast<std::ptrdiff_t>(index));
             changed = true;

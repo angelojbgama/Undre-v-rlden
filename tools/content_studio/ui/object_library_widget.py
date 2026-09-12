@@ -92,6 +92,14 @@ class ObjectDefinitionDialog(QDialog):
         self.scenery_loop = QCheckBox(self.translate("scenery_loop"))
         self.maximum_health = QSpinBox(); self.maximum_health.setRange(1, 9999)
         self.maximum_health.setValue(1)
+        self.reward_profile = QComboBox()
+        self.reward_profile.addItem(self.translate("destructible_reward_none"), "")
+        for reward in workspace.definitions("rewardProfiles"):
+            self.reward_profile.addItem(
+                f"{reward.display_name}  [{reward.definition_id}]", reward.definition_id)
+        self.leave_destroyed_residue = QCheckBox(
+            self.translate("leave_destroyed_residue"))
+        self.leave_destroyed_residue.setChecked(False)
         self.damage_frame = QSpinBox()
         self.damage_duration = QSpinBox(); self.damage_duration.setRange(1, 3600)
         self.damage_duration.setValue(8)
@@ -137,6 +145,12 @@ class ObjectDefinitionDialog(QDialog):
         self.destructible_group = QGroupBox(self.translate("destructible_configuration"))
         destructible_form = QFormLayout(self.destructible_group)
         destructible_form.addRow(self.translate("maximum_health"), self.maximum_health)
+        destructible_form.addRow(
+            self.translate("destructible_reward_profile"), self.reward_profile)
+        destructible_form.addRow(self.leave_destroyed_residue)
+        reward_hint = QLabel(self.translate("destructible_reward_help"))
+        reward_hint.setWordWrap(True); reward_hint.setStyleSheet("color: #aeb8c4;")
+        destructible_form.addRow(reward_hint)
         destructible_form.addRow(
             self.translate("destructible_idle_frame"), self.destructible_idle_frame)
         destructible_form.addRow(
@@ -248,6 +262,9 @@ class ObjectDefinitionDialog(QDialog):
         self.capacity.setValue(request.container_capacity)
         self.scenery_loop.setChecked(request.scenery_loop)
         self.maximum_health.setValue(request.maximum_health)
+        reward_index = self.reward_profile.findData(request.reward_profile_id)
+        self.reward_profile.setCurrentIndex(max(0, reward_index))
+        self.leave_destroyed_residue.setChecked(request.leave_destroyed_residue)
         self.damage_frame.setValue(request.damage_frame)
         self.damage_duration.setValue(request.damage_duration_ticks)
         self.destruction_frame_duration.setValue(request.destruction_frame_ticks)
@@ -309,6 +326,13 @@ class ObjectDefinitionDialog(QDialog):
         self.scenery_group.setVisible(preset == "scenery")
         self.destructible_group.setVisible(preset == "destructible")
         self.chest_group.setVisible(preset == "container")
+        # Destructibles are solid by default, but collision remains the generic
+        # optional component and can still be edited with the same mask tool.
+        if preset == "destructible" and not self.collision_enabled.isChecked():
+            default_collision = self._default_collision_mask()
+            if default_collision is not None:
+                self._collision_mask = default_collision
+                self.collision_enabled.setChecked(True)
         self._reset_example()
 
     def _collision_frame(self) -> tuple[ContentDefinition, dict[str, object]] | None:
@@ -563,6 +587,8 @@ class ObjectDefinitionDialog(QDialog):
                 scenery_loop=self.scenery_loop.isChecked(),
                 container_capacity=self.capacity.value(),
                 maximum_health=self.maximum_health.value(),
+                reward_profile_id=str(self.reward_profile.currentData() or ""),
+                leave_destroyed_residue=self.leave_destroyed_residue.isChecked(),
                 damage_frame=self.damage_frame.value(),
                 damage_duration_ticks=self.damage_duration.value(),
                 destruction_frame_ticks=self.destruction_frame_duration.value(),

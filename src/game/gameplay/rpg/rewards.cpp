@@ -63,7 +63,7 @@ RewardResolution RewardResolver::resolve(const RewardProfileDefinition& profile,
     RewardResolution result{profile.experience, {}};
     std::uint64_t seed = stableHash(profile.id.value());
     seed = mix(seed, stableHash(context.mapId.value()));
-    seed = mix(seed, context.defeatedInstanceId.value);
+    seed = mix(seed, context.sourceInstanceId.value);
     for (std::size_t index = 0; index < profile.loot.size(); ++index) {
         const auto& entry = profile.loot[index];
         auto entrySeed = mix(seed, static_cast<std::uint64_t>(index));

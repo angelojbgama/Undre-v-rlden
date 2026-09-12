@@ -27,6 +27,11 @@ struct ObjectDestructibleDefinition final {
     // while remaining authoritative logical gameplay data.
     std::uint32_t destructionDurationTicks{28};
     std::uint32_t damageDurationTicks{8};
+    // Reuses the RPG reward resolver used by enemies. Missing profile means no drop.
+    std::optional<simulation::DefinitionId> rewardProfileId{};
+    // Zelda-like props disappear after their break sequence by default. Set true
+    // only for authored rubble/remains that should persist visually.
+    bool leaveDestroyedResidue{false};
 };
 struct ObjectBankAccessDefinition final {};
 enum class DoorState { locked, closed, open };

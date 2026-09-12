@@ -220,8 +220,10 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
             }
         } else if (actor.kind == ActorKind::object) {
             const auto logical = toLogical(objects[actor.index].instance.position(), cameraPosition);
-            render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
-                                 {logical.x, logical.y});
+            if (frame.objectVisuals[actor.index].visible()) {
+                render::drawAnimator(renderer, frame.objectVisuals[actor.index].animator(),
+                                     {logical.x, logical.y});
+            }
         } else if (actor.kind == ActorKind::objectResidue) {
             const auto logical = toLogical(objectResidues[actor.index].position(), cameraPosition);
             render::drawAnimator(renderer, objectResidues[actor.index].animator(),

@@ -16,6 +16,8 @@ class ObjectAuthoringRequest:
     scenery_loop: bool = False
     container_capacity: int = 5
     maximum_health: int = 1
+    reward_profile_id: str = ""
+    leave_destroyed_residue: bool = False
     damage_frame: int = 1
     damage_duration_ticks: int = 8
     destruction_frame_ticks: int = 8
@@ -93,6 +95,10 @@ class ObjectAuthoringService:
             raise ValueError("the selected animation has no frames")
         if request.preset == "destructible":
             self._validate_destructible_request(request, len(frames))
+            if request.reward_profile_id and workspace.find(
+                    "rewardProfiles", request.reward_profile_id) is None:
+                raise ValueError(
+                    f"reward profile does not exist: {request.reward_profile_id}")
         width, height = self._frame_size(animation)
         if request.collision_enabled:
             self._validate_collision_request(request)
@@ -151,6 +157,7 @@ class ObjectAuthoringService:
         object_data = self._object_data(
             object_id, visual_id, request.preset, width, height,
             request.container_capacity, request.maximum_health,
+            request.reward_profile_id, request.leave_destroyed_residue,
             request.damage_duration_ticks,
             ((request.destruction_end_frame - request.destruction_start_frame + 1)
              * request.destruction_frame_ticks))
@@ -232,6 +239,9 @@ class ObjectAuthoringService:
         capacity = int(container.get("capacity", 5)) if isinstance(container, dict) else 5
         destructible = definition.data.get("destructible")
         maximum_health = int(destructible.get("maximumHealth", 1)) if isinstance(destructible, dict) else 1
+        reward_profile_id = str(destructible.get("rewardProfileId", "")) if isinstance(destructible, dict) else ""
+        leave_destroyed_residue = bool(
+            destructible.get("leaveDestroyedResidue", False)) if isinstance(destructible, dict) else False
         damage_duration = int(destructible.get("damageDurationTicks", 8)) if isinstance(destructible, dict) else 8
         destruction_duration = int(destructible.get("destructionDurationTicks", 1)) if isinstance(destructible, dict) else 1
         destruction_start = self._tag_int(
@@ -275,6 +285,8 @@ class ObjectAuthoringService:
                 bool(animation.data.get("loop", False)) if animation else False),
             container_capacity=max(1, capacity),
             maximum_health=max(1, maximum_health),
+            reward_profile_id=reward_profile_id,
+            leave_destroyed_residue=leave_destroyed_residue,
             damage_frame=self._tag_int(
                 string_tags, self._DAMAGE_FRAME_TAG, min(1, frame_count - 1)),
             damage_duration_ticks=max(1, self._tag_int(
@@ -369,6 +381,7 @@ class ObjectAuthoringService:
     def _object_data(object_id: str, visual_id: str, preset: str,
                      width: int, height: int,
                      container_capacity: int, maximum_health: int,
+                     reward_profile_id: str, leave_destroyed_residue: bool,
                      damage_duration_ticks: int,
                      destruction_duration_ticks: int) -> dict[str, JsonValue]:
         bounds: dict[str, JsonValue] = {
@@ -389,7 +402,10 @@ class ObjectAuthoringService:
                 "hurtbox": dict(bounds),
                 "destructionDurationTicks": max(1, destruction_duration_ticks),
                 "damageDurationTicks": max(1, damage_duration_ticks),
+                "leaveDestroyedResidue": bool(leave_destroyed_residue),
             }
+            if reward_profile_id:
+                data["destructible"]["rewardProfileId"] = reward_profile_id
         elif preset == "door":
             # New Studio doors use the generic optional collision component.
             # Omitting legacy blockingBounds allows a real no-collision door.

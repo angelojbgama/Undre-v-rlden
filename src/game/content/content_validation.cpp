@@ -436,6 +436,10 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
         if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0 || value.destructible->damageDurationTicks == 0))
             error(report, ContentKind::object, value.id, "invalid_value", "destructible values are invalid", "destructible");
+        if (value.destructible && value.destructible->rewardProfileId &&
+            !contains(rewards, *value.destructible->rewardProfileId))
+            error(report, ContentKind::object, value.id, "unknown_reference",
+                  "destructible reward profile does not exist", "destructible.rewardProfileId");
         if (value.door && value.door->hasBlockingBounds &&
             (value.door->blockingBounds.width <= 0 || value.door->blockingBounds.height <= 0))
             error(report, ContentKind::object, value.id, "invalid_value", "door blocking bounds must be positive", "door.blockingBounds");
