@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace underworld::world {
 
@@ -220,6 +221,168 @@ MovementResult moveAgainstSolidWorldWithCornerSlide(
             ? moveAgainstSolidWorld(grid, body, 0, correction, tileSize, staticObstacles)
             : moveAgainstSolidWorld(grid, body, correction, 0, tileSize, staticObstacles);
 
+    result.movedX += slide.movedX;
+    result.movedY += slide.movedY;
+    result.blockedX = result.blockedX || slide.blockedX;
+    result.blockedY = result.blockedY || slide.blockedY;
+    return result;
+}
+
+
+CollisionQueryResult querySolidWorld(
+    const CollisionGrid& grid, std::span<const AabbI> bodies, int tileSize,
+    std::span<const AabbI> staticObstacles) {
+    if (bodies.empty()) {
+        throw std::invalid_argument("compound collision requires at least one region");
+    }
+    CollisionQueryResult result{};
+    for (const auto body : bodies) {
+        validateBody(body, tileSize);
+        const auto region = querySolidWorld(grid, body, tileSize, staticObstacles);
+        result.cellsTested += region.cellsTested;
+        if (region.collides) {
+            result.collides = true;
+            return result;
+        }
+    }
+    return result;
+}
+
+MovementResult moveAgainstSolidWorld(
+    const CollisionGrid& grid, std::span<AabbI> bodies,
+    int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles) {
+    if (bodies.empty()) {
+        throw std::invalid_argument("compound movement requires at least one region");
+    }
+    for (const auto body : bodies) validateBody(body, tileSize);
+
+    const auto canTranslate = [&](int stepX, int stepY) {
+        for (const auto body : bodies) {
+            if (addWouldOverflow(body.x, stepX) ||
+                addWouldOverflow(body.y, stepY)) {
+                return false;
+            }
+            AabbI candidate = body;
+            candidate.x += stepX;
+            candidate.y += stepY;
+            if (querySolidWorld(grid, candidate, tileSize, staticObstacles).collides) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto translate = [&](int stepX, int stepY) {
+        for (auto& body : bodies) {
+            body.x += stepX;
+            body.y += stepY;
+        }
+    };
+
+    MovementResult result{};
+    const auto moveAxis = [&](int requested, bool horizontal) {
+        int remaining = requested;
+        while (remaining != 0) {
+            const int step = remaining > 0 ? 1 : -1;
+            const int stepX = horizontal ? step : 0;
+            const int stepY = horizontal ? 0 : step;
+            if (!canTranslate(stepX, stepY)) {
+                if (horizontal) result.blockedX = true;
+                else result.blockedY = true;
+                return;
+            }
+            translate(stepX, stepY);
+            if (horizontal) result.movedX += step;
+            else result.movedY += step;
+            remaining -= step;
+        }
+    };
+
+    moveAxis(deltaX, true);
+    moveAxis(deltaY, false);
+    return result;
+}
+
+MovementResult moveAgainstSolidWorldWithCornerSlide(
+    const CollisionGrid& grid, std::span<AabbI> bodies,
+    int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles, CornerSlideConfig config) {
+    if (config.maxProbeDistance < 0) {
+        throw std::invalid_argument("corner slide probe distance cannot be negative");
+    }
+    if (config.maxProbeDistance > 0 && config.correctionStep <= 0) {
+        throw std::invalid_argument("corner slide correction step must be positive");
+    }
+    if (bodies.empty()) {
+        throw std::invalid_argument("compound corner slide requires at least one region");
+    }
+
+    MovementResult result = moveAgainstSolidWorld(
+        grid, bodies, deltaX, deltaY, tileSize, staticObstacles);
+    if (config.maxProbeDistance == 0) return result;
+
+    const bool horizontalAssist =
+        deltaX != 0 && deltaY == 0 && result.blockedX;
+    const bool verticalAssist =
+        deltaY != 0 && deltaX == 0 && result.blockedY;
+    if (!horizontalAssist && !verticalAssist) return result;
+
+    const bool primaryHorizontal = horizontalAssist;
+    const int primaryStep =
+        primaryHorizontal ? (deltaX > 0 ? 1 : -1)
+                          : (deltaY > 0 ? 1 : -1);
+
+    const auto canEscapeAt = [&](int perpendicularOffset) {
+        std::vector<AabbI> shifted(bodies.begin(), bodies.end());
+        const auto perpendicular = primaryHorizontal
+            ? moveAgainstSolidWorld(
+                  grid, std::span<AabbI>{shifted}, 0, perpendicularOffset,
+                  tileSize, staticObstacles)
+            : moveAgainstSolidWorld(
+                  grid, std::span<AabbI>{shifted}, perpendicularOffset, 0,
+                  tileSize, staticObstacles);
+        const int movedPerpendicular =
+            primaryHorizontal ? perpendicular.movedY : perpendicular.movedX;
+        if (movedPerpendicular != perpendicularOffset) return false;
+
+        for (auto& body : shifted) {
+            if (primaryHorizontal) {
+                if (addWouldOverflow(body.x, primaryStep)) return false;
+                body.x += primaryStep;
+            } else {
+                if (addWouldOverflow(body.y, primaryStep)) return false;
+                body.y += primaryStep;
+            }
+        }
+        return !querySolidWorld(
+                    grid, std::span<const AabbI>{shifted},
+                    tileSize, staticObstacles).collides;
+    };
+
+    int chosenOffset = 0;
+    for (int distance = 1; distance <= config.maxProbeDistance; ++distance) {
+        const bool negativeFree = canEscapeAt(-distance);
+        const bool positiveFree = canEscapeAt(distance);
+        if (!negativeFree && !positiveFree) continue;
+        chosenOffset = negativeFree ? -distance : distance;
+        break;
+    }
+    if (chosenOffset == 0) return result;
+
+    const int direction = chosenOffset < 0 ? -1 : 1;
+    const int absoluteDistance =
+        chosenOffset < 0 ? -chosenOffset : chosenOffset;
+    const int correctionMagnitude =
+        config.correctionStep < absoluteDistance
+            ? config.correctionStep
+            : absoluteDistance;
+    const int correction = direction * correctionMagnitude;
+
+    const auto slide = primaryHorizontal
+        ? moveAgainstSolidWorld(
+              grid, bodies, 0, correction, tileSize, staticObstacles)
+        : moveAgainstSolidWorld(
+              grid, bodies, correction, 0, tileSize, staticObstacles);
     result.movedX += slide.movedX;
     result.movedY += slide.movedY;
     result.blockedX = result.blockedX || slide.blockedX;

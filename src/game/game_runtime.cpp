@@ -65,6 +65,31 @@ namespace {
 
 constexpr simulation::PlayerId localPlayerId{0};
 
+
+const gameplay::PlayerDefinition* selectedPlayerDefinition(
+    const GameContentRegistry& content) noexcept {
+    return content.players().find(gameplay::defaultPlayerDefinitionId());
+}
+
+const gameplay::rpg::PlayerProgressionDefinition& selectedPlayerProgression(
+    const GameContentRegistry& content) {
+    if (const auto* definition = selectedPlayerDefinition(content)) {
+        return content.progressions().require(definition->progressionId);
+    }
+    return content.progressions().require(
+        gameplay::rpg::defaultPlayerProgressionId());
+}
+
+gameplay::PlayerMovementConfig selectedPlayerMovementConfig(
+    const GameContentRegistry& content) {
+    gameplay::PlayerMovementConfig config;
+    if (const auto* definition = selectedPlayerDefinition(content);
+        definition && definition->movementCollision) {
+        config.collisionShapes = definition->movementCollision;
+    }
+    return config;
+}
+
 std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
     std::string id, std::shared_ptr<const render::SpriteSheet> sheet, int row,
     int frameSize, int frameCount, std::uint32_t durationTicks, core::PointI anchor,
@@ -156,8 +181,8 @@ struct GameRuntime::State final {
           executableDirectory(std::move(executableDirectory)),
           content(std::move(contentDefinitions)),
           runtimeVisualContent(std::move(runtimeVisualContent)),
-          session(localPlayerId, content.progressions().require(
-                                      gameplay::rpg::defaultPlayerProgressionId()), {}) {
+          session(localPlayerId, selectedPlayerProgression(content), {},
+                  selectedPlayerMovementConfig(content)) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,

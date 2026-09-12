@@ -1127,6 +1127,46 @@ void testPlayerCollision() {
            "outside-map solid policy keeps the Player inside world bounds");
 }
 
+
+void testPlayerAuthoredMovementCollision() {
+    namespace gameplay = underworld::game::gameplay;
+
+    gameplay::DirectionalActorCollisionShapes shapes;
+    gameplay::ActorCollisionShapeDefinition split;
+    split.regions = {
+        {-4, -4, 2, 4},
+        {2, -4, 2, 4},
+    };
+    shapes.values = {split, split, split, split};
+
+    gameplay::PlayerMovementConfig config;
+    config.collisionShapes = shapes;
+    config.cornerSlideMaxProbePixels = 0;
+
+    underworld::world::CollisionGrid openGrid(16, 16);
+    gameplay::Player player({0}, {0, 1}, {40, 40}, 5, config);
+    const auto regions = player.collisionRegions();
+    const std::array<underworld::world::AabbI, 1> gapObstacle{{
+        {39, 35, 2, 4},
+    }};
+
+    expect(regions.size() == 2,
+           "authored Player movement collision keeps compact regions");
+    expect(!underworld::world::querySolidWorld(
+                openGrid,
+                std::span<const underworld::world::AabbI>{
+                    regions.data(), regions.size()},
+                16, gapObstacle).collides,
+           "compound Player collision preserves holes between authored regions");
+    expect(underworld::world::querySolidWorld(
+                openGrid, player.collisionBody(), 16, gapObstacle).collides,
+           "Player collisionBody remains a broad debug envelope");
+
+    player.update(movementCommand(1, 0, -1), openGrid, 16, gapObstacle);
+    expect(player.feetPosition().y < 40 && !player.lastMovement().blockedY,
+           "Player movement resolves against exact compound authored regions");
+}
+
 void testPlayerVisualAndCameraFollow() {
     namespace gameplay = underworld::game::gameplay;
     underworld::game::PlayerVisual::DirectionalClips idle{
@@ -10139,6 +10179,7 @@ int main() {
         testPlayerMovementAndFacing();
         testGameSessionCommandBoundary();
         testPlayerCollision();
+        testPlayerAuthoredMovementCollision();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();
         testAttackTimeline();

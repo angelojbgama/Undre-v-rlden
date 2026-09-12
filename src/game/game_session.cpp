@@ -12,8 +12,10 @@ namespace underworld::game {
 
 GameSession::GameSession(simulation::PlayerId playerId,
                          const gameplay::rpg::PlayerProgressionDefinition& progression,
-                         core::WorldPointI initialPosition)
-    : player_(playerId, handles_.create(), initialPosition, progression.baseStats.maximumHealth),
+                         core::WorldPointI initialPosition,
+                         gameplay::PlayerMovementConfig movementConfig)
+    : player_(playerId, handles_.create(), initialPosition,
+              progression.baseStats.maximumHealth, std::move(movementConfig)),
       progression_(progression) {}
 
 void GameSession::relocatePlayer(core::WorldPointI position,

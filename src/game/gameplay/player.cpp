@@ -49,6 +49,10 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
     if (!config_.footprints.valid()) {
         throw std::invalid_argument("player movement footprints must be positive");
     }
+    if (config_.collisionShapes && !config_.collisionShapes->valid()) {
+        throw std::invalid_argument(
+            "player authored movement collision must contain positive regions");
+    }
     if (config_.cornerSlideMaxProbePixels < 0 ||
         (config_.cornerSlideMaxProbePixels > 0 &&
          config_.cornerSlideCorrectionPixels <= 0)) {
@@ -60,8 +64,33 @@ core::WorldPointI Player::feetPosition() const {
     return {checkedPixelCoordinate(position_.x), checkedPixelCoordinate(position_.y)};
 }
 
+std::vector<world::AabbI> Player::collisionRegions() const {
+    const auto feet = feetPosition();
+    if (config_.collisionShapes) {
+        return config_.collisionShapes->forFacing(facing_).at(feet);
+    }
+    return {config_.footprints.forFacing(facing_).at(feet)};
+}
+
 world::AabbI Player::collisionBody() const {
-    return config_.footprints.forFacing(facing_).at(feetPosition());
+    const auto regions = collisionRegions();
+    world::AabbI bounds = regions.front();
+    int right = bounds.x + bounds.width;
+    int bottom = bounds.y + bounds.height;
+    for (std::size_t index = 1; index < regions.size(); ++index) {
+        const auto& region = regions[index];
+        const int regionRight = region.x + region.width;
+        const int regionBottom = region.y + region.height;
+        const int left = std::min(bounds.x, region.x);
+        const int top = std::min(bounds.y, region.y);
+        right = std::max(right, regionRight);
+        bottom = std::max(bottom, regionBottom);
+        bounds.x = left;
+        bounds.y = top;
+    }
+    bounds.width = right - bounds.x;
+    bounds.height = bottom - bounds.y;
+    return bounds;
 }
 
 void Player::update(const simulation::PlayerCommand& command,
@@ -143,16 +172,16 @@ void Player::update(const simulation::PlayerCommand& command,
     const auto oldFeet = feetPosition();
     const core::WorldPointI targetFeet{
         checkedPixelCoordinate(target.x), checkedPixelCoordinate(target.y)};
-    world::AabbI body = collisionBody();
+    auto bodies = collisionRegions();
     lastMovement_ = world::moveAgainstSolidWorldWithCornerSlide(
-        collision, body, targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y,
+        collision, std::span<world::AabbI>{bodies},
+        targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y,
         tileSize, staticObstacles,
         {config_.cornerSlideMaxProbePixels, config_.cornerSlideCorrectionPixels});
 
-    const auto& footprint = config_.footprints.forFacing(facing_);
     const core::WorldPointI resolvedFeet{
-        body.x - footprint.offsetX,
-        body.y - footprint.offsetY};
+        oldFeet.x + lastMovement_.movedX,
+        oldFeet.y + lastMovement_.movedY};
 
     position_.x = resolvedFeet.x == targetFeet.x
                       ? target.x
@@ -175,13 +204,14 @@ CombatTargetRef Player::combatTarget() noexcept {
 void Player::applyKnockback(int deltaX, int deltaY,
                             const world::CollisionGrid& collision, int tileSize,
                             std::span<const world::AabbI> staticObstacles) {
-    world::AabbI body = collisionBody();
-    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidWorld(
-        collision, body, deltaX, deltaY, tileSize, staticObstacles);
-    const auto& footprint = config_.footprints.forFacing(facing_);
+    const auto oldFeet = feetPosition();
+    auto bodies = collisionRegions();
+    const world::MovementResult movement = world::moveAgainstSolidWorld(
+        collision, std::span<world::AabbI>{bodies},
+        deltaX, deltaY, tileSize, staticObstacles);
     const core::WorldPointI resolvedFeet{
-        body.x - footprint.offsetX,
-        body.y - footprint.offsetY};
+        oldFeet.x + movement.movedX,
+        oldFeet.y + movement.movedY};
     position_.x = checkedSubpixelCoordinate(resolvedFeet.x);
     position_.y = checkedSubpixelCoordinate(resolvedFeet.y);
 }

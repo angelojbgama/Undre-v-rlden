@@ -6,6 +6,7 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/quests/quest_model.h"
+#include "game/gameplay/player_definition.h"
 #include "game/gameplay/world_objects.h"
 #include "game/gameplay/world_pickups.h"
 #include "game/tilesets.h"
@@ -57,6 +58,9 @@ public:
     [[nodiscard]] const gameplay::quests::QuestCatalog& quests() const noexcept {
         return quests_;
     }
+    [[nodiscard]] const gameplay::PlayerDefinitionCatalog& players() const noexcept {
+        return players_;
+    }
     [[nodiscard]] const TilesetCatalog& tilesets() const noexcept { return tilesets_; }
     [[nodiscard]] const authoring::AuthoringSemanticRegistry& authoringSemantics() const noexcept {
         return authoringSemantics_;
@@ -96,6 +100,7 @@ private:
     gameplay::npcs::NpcVisualCatalog npcVisuals_;
     gameplay::dialogue::DialogueCatalog dialogues_;
     gameplay::quests::QuestCatalog quests_;
+    gameplay::PlayerDefinitionCatalog players_;
     TilesetCatalog tilesets_;
     authoring::AuthoringSemanticRegistry authoringSemantics_;
     gameplay::rpg::PlayerProgressionCatalog progressions_;

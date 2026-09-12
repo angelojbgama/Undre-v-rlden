@@ -39,7 +39,8 @@ class GameSession final {
 public:
     GameSession(simulation::PlayerId playerId,
                 const gameplay::rpg::PlayerProgressionDefinition& progression,
-                core::WorldPointI initialPosition = {});
+                core::WorldPointI initialPosition = {},
+                gameplay::PlayerMovementConfig movementConfig = {});
 
     [[nodiscard]] bool initializeMap(const maps::MapCatalog& maps,
                                       const maps::MapValidationCatalogs& catalogs,

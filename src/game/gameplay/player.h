@@ -8,7 +8,9 @@
 #include "game/gameplay/facing_direction.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <vector>
 
 namespace underworld::world { class CollisionGrid; }
 
@@ -41,6 +43,7 @@ struct PlayerMovementConfig final {
         ActorFootprintDefinition{-10, -8, 18, 8}, // left
         ActorFootprintDefinition{-8, -8, 18, 8},  // right
     }};
+    std::optional<DirectionalActorCollisionShapes> collisionShapes{};
 
     int cornerSlideMaxProbePixels{4};
     int cornerSlideCorrectionPixels{1};
@@ -77,6 +80,7 @@ public:
     [[nodiscard]] SubpixelPosition subpixelPosition() const noexcept { return position_; }
     [[nodiscard]] core::WorldPointI feetPosition() const;
     [[nodiscard]] world::AabbI collisionBody() const;
+    [[nodiscard]] std::vector<world::AabbI> collisionRegions() const;
     [[nodiscard]] FacingDirection facing() const noexcept { return facing_; }
     [[nodiscard]] PlayerMotionState motionState() const noexcept { return motionState_; }
     [[nodiscard]] const PlayerMovementConfig& movementConfig() const noexcept { return config_; }

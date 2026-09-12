@@ -118,6 +118,36 @@ gameplay::quests::QuestDefinition compileQuest(const AuthoredQuest& v) {
     for (const auto& objective : v.objectives) result.objectives.push_back({objective.id, objective.kind, objective.targetId, objective.requiredCount, objective.description});
     return result;
 }
+
+gameplay::ActorCollisionShapeDefinition compilePlayerMask(
+    const AuthoredPixelMask& mask, bool mirrorX) {
+    gameplay::ActorCollisionShapeDefinition result;
+    const auto boxes = gameplay::compileAttackShapeMask(
+        mask.width, mask.height, mask.cells, mask.origin.x, mask.origin.y);
+    result.regions.reserve(boxes.size());
+    for (const auto& box : boxes) {
+        const int offsetX =
+            mirrorX ? -(box.offsetX + box.width) : box.offsetX;
+        result.regions.push_back(
+            {offsetX, box.offsetY, box.width, box.height});
+    }
+    return result;
+}
+
+gameplay::PlayerDefinition compilePlayer(const AuthoredPlayer& v) {
+    std::optional<gameplay::DirectionalActorCollisionShapes> movement;
+    if (v.movementCollision) {
+        gameplay::DirectionalActorCollisionShapes shapes;
+        shapes.values[0] = compilePlayerMask(v.movementCollision->down, false);
+        shapes.values[1] = compilePlayerMask(v.movementCollision->up, false);
+        // Side authoring is canonical LEFT. RIGHT mirrors around the feet.
+        shapes.values[2] = compilePlayerMask(v.movementCollision->side, false);
+        shapes.values[3] = compilePlayerMask(v.movementCollision->side, true);
+        movement = std::move(shapes);
+    }
+    return {v.id, v.visualSetId, v.progressionId, std::move(movement)};
+}
+
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
 gameplay::rpg::RewardProfileDefinition compileReward(const AuthoredRewardProfile& v) { gameplay::rpg::RewardProfileDefinition result{v.id, v.experience, {}}; for (const auto& entry : v.loot) result.loot.push_back({entry.pickupDefinitionId, entry.chanceBasisPoints, entry.minimumCount, entry.maximumCount}); return result; }
 gameplay::rpg::RewardGrantDefinition compileGrant(const AuthoredRewardGrant& v) { gameplay::rpg::RewardGrantDefinition result{v.id, v.experience, v.gold, {}}; for (const auto& item : v.items) result.items.push_back({item.itemId, item.quantity}); return result; }
@@ -154,6 +184,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.npcVisuals) registry.npcVisuals_.add(compileNpcVisual(value));
         for (const auto& value : authored.dialogues) registry.dialogues_.add(compileDialogue(value));
         for (const auto& value : authored.quests) registry.quests_.add(compileQuest(value));
+        for (const auto& value : authored.players) registry.players_.add(compilePlayer(value));
         for (const auto& value : authored.playerProgressions) registry.progressions_.add(compileProgression(value));
         for (const auto& value : authored.pickups) registry.pickups_.push_back(compilePickup(value));
         registry.authoringDescriptors_ = authored.authoringDescriptors;

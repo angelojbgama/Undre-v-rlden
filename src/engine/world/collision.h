@@ -38,14 +38,24 @@ struct CornerSlideConfig final {
 [[nodiscard]] CollisionQueryResult querySolidWorld(
     const CollisionGrid& grid, AabbI body, int tileSize,
     std::span<const AabbI> staticObstacles);
+[[nodiscard]] CollisionQueryResult querySolidWorld(
+    const CollisionGrid& grid, std::span<const AabbI> bodies, int tileSize,
+    std::span<const AabbI> staticObstacles);
 [[nodiscard]] MovementResult moveAgainstSolidTiles(const CollisionGrid& grid,
                                                    AabbI& body, int deltaX, int deltaY,
                                                    int tileSize);
 [[nodiscard]] MovementResult moveAgainstSolidWorld(
     const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
     std::span<const AabbI> staticObstacles);
+[[nodiscard]] MovementResult moveAgainstSolidWorld(
+    const CollisionGrid& grid, std::span<AabbI> bodies, int deltaX, int deltaY,
+    int tileSize, std::span<const AabbI> staticObstacles);
 [[nodiscard]] MovementResult moveAgainstSolidWorldWithCornerSlide(
     const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles, CornerSlideConfig config = {});
+[[nodiscard]] MovementResult moveAgainstSolidWorldWithCornerSlide(
+    const CollisionGrid& grid, std::span<AabbI> bodies,
+    int deltaX, int deltaY, int tileSize,
     std::span<const AabbI> staticObstacles, CornerSlideConfig config = {});
 
 } // namespace underworld::world
