@@ -1095,6 +1095,26 @@
           },
           "initialContents": [],
           "persistence": "persistent"
+        },
+        {
+          "id": 2,
+          "definitionId": "object.fire_block_with_fire",
+          "position": {
+            "x": 128,
+            "y": 128
+          },
+          "initialContents": [],
+          "persistence": "persistent"
+        },
+        {
+          "id": 3,
+          "definitionId": "object.fire_block_with_fire",
+          "position": {
+            "x": 48,
+            "y": 128
+          },
+          "initialContents": [],
+          "persistence": "persistent"
         }
       ],
       "pickups": [],

@@ -50,9 +50,21 @@ gameplay::ItemDefinition compileItem(const AuthoredItem& v) {
     return {v.id, v.visualId, v.category, v.stackLimit, v.use, equipment};
 }
 gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) {
+    std::optional<gameplay::ObjectCollisionDefinition> collision;
+    if (v.collision) {
+        gameplay::ObjectCollisionDefinition compiled;
+        const auto boxes = gameplay::compileAttackShapeMask(
+            v.collision->width, v.collision->height, v.collision->cells,
+            v.collision->origin.x, v.collision->origin.y);
+        compiled.regions.reserve(boxes.size());
+        for (const auto& box : boxes) {
+            compiled.regions.push_back({box.offsetX, box.offsetY, box.width, box.height});
+        }
+        collision = std::move(compiled);
+    }
     return {v.id, v.visualSetId, v.interactable, v.container, v.destructible,
             v.bankAccess ? std::optional<gameplay::ObjectBankAccessDefinition>{gameplay::ObjectBankAccessDefinition{}}
-                         : std::nullopt, v.door, v.activation};
+                         : std::nullopt, v.door, v.activation, std::move(collision)};
 }
 gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor, v.idle}; }
 gameplay::npcs::NpcDefinition compileNpc(const AuthoredNpc& v) { return {v.id, v.visualSetId, v.interaction, v.defaultDialogueId, v.tags}; }

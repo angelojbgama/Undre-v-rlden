@@ -22,6 +22,17 @@ bool addWouldOverflow(int value, int delta) noexcept {
            (delta < 0 && value < std::numeric_limits<int>::min() - delta);
 }
 
+bool overlaps(AabbI left, AabbI right) noexcept {
+    const auto leftRight = static_cast<std::int64_t>(left.x) + left.width;
+    const auto leftBottom = static_cast<std::int64_t>(left.y) + left.height;
+    const auto rightRight = static_cast<std::int64_t>(right.x) + right.width;
+    const auto rightBottom = static_cast<std::int64_t>(right.y) + right.height;
+    return static_cast<std::int64_t>(left.x) < rightRight &&
+           leftRight > static_cast<std::int64_t>(right.x) &&
+           static_cast<std::int64_t>(left.y) < rightBottom &&
+           leftBottom > static_cast<std::int64_t>(right.y);
+}
+
 } // namespace
 
 CollisionQueryResult querySolidTiles(const CollisionGrid& grid, AabbI body, int tileSize) {
@@ -46,6 +57,20 @@ CollisionQueryResult querySolidTiles(const CollisionGrid& grid, AabbI body, int 
                 result.collides = true;
                 return result;
             }
+        }
+    }
+    return result;
+}
+
+CollisionQueryResult querySolidWorld(const CollisionGrid& grid, AabbI body, int tileSize,
+                                          std::span<const AabbI> staticObstacles) {
+    CollisionQueryResult result = querySolidTiles(grid, body, tileSize);
+    if (result.collides) return result;
+    for (const auto& obstacle : staticObstacles) {
+        ++result.cellsTested;
+        if (overlaps(body, obstacle)) {
+            result.collides = true;
+            return result;
         }
     }
     return result;
@@ -89,6 +114,39 @@ MovementResult moveAgainstSolidTiles(const CollisionGrid& grid, AabbI& body,
         }
     };
 
+    moveAxis(deltaX, true);
+    moveAxis(deltaY, false);
+    return result;
+}
+
+MovementResult moveAgainstSolidWorld(const CollisionGrid& grid, AabbI& body,
+                                     int deltaX, int deltaY, int tileSize,
+                                     std::span<const AabbI> staticObstacles) {
+    validateBody(body, tileSize);
+    MovementResult result{};
+    auto moveAxis = [&](int requested, bool horizontal) {
+        int remaining = requested;
+        while (remaining != 0) {
+            const int step = remaining > 0 ? 1 : -1;
+            int& coordinate = horizontal ? body.x : body.y;
+            if (addWouldOverflow(coordinate, step)) {
+                if (horizontal) result.blockedX = true;
+                else result.blockedY = true;
+                return;
+            }
+            AabbI candidate = body;
+            (horizontal ? candidate.x : candidate.y) += step;
+            if (querySolidWorld(grid, candidate, tileSize, staticObstacles).collides) {
+                if (horizontal) result.blockedX = true;
+                else result.blockedY = true;
+                return;
+            }
+            coordinate += step;
+            if (horizontal) result.movedX += step;
+            else result.movedY += step;
+            remaining -= step;
+        }
+    };
     moveAxis(deltaX, true);
     moveAxis(deltaY, false);
     return result;

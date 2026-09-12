@@ -165,7 +165,8 @@ const AttackCooldown* EnemyInstance::cooldownFor(
 }
 
 void EnemyInstance::move(int intentX, int intentY,
-                         const world::CollisionGrid& collision, int tileSize) {
+                         const world::CollisionGrid& collision, int tileSize,
+                         std::span<const world::AabbI> staticObstacles) {
     if (state_ == BehaviorState::attack || state_ == BehaviorState::dead) { return; }
     intentX = std::clamp(intentX, -1, 1);
     intentY = std::clamp(intentY, -1, 1);
@@ -180,8 +181,9 @@ void EnemyInstance::move(int intentX, int intentY,
     const core::WorldPointI oldFeet = feetPosition();
     const core::WorldPointI desired{pixelCoordinate(targetX), pixelCoordinate(targetY)};
     world::AabbI body = collisionBody();
-    const world::MovementResult movement = world::moveAgainstSolidTiles(
-        collision, body, desired.x - oldFeet.x, desired.y - oldFeet.y, tileSize);
+    const world::MovementResult movement = world::moveAgainstSolidWorld(
+        collision, body, desired.x - oldFeet.x, desired.y - oldFeet.y,
+        tileSize, staticObstacles);
     const core::WorldPointI resolved{
         body.x - definition_->collisionBody.offsetX,
         body.y - definition_->collisionBody.offsetY};
@@ -190,10 +192,11 @@ void EnemyInstance::move(int intentX, int intentY,
 }
 
 void EnemyInstance::applyKnockback(int deltaX, int deltaY,
-                                   const world::CollisionGrid& collision, int tileSize) {
+                                   const world::CollisionGrid& collision, int tileSize,
+                                   std::span<const world::AabbI> staticObstacles) {
     world::AabbI body = collisionBody();
-    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidTiles(
-        collision, body, deltaX, deltaY, tileSize);
+    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidWorld(
+        collision, body, deltaX, deltaY, tileSize, staticObstacles);
     positionX_ = subpixelCoordinate(body.x - definition_->collisionBody.offsetX);
     positionY_ = subpixelCoordinate(body.y - definition_->collisionBody.offsetY);
 }
@@ -284,7 +287,7 @@ BehaviorUpdate EnemyBehaviorSystem::update(
     EnemyInstance& enemy, simulation::EntityHandle playerHandle,
     core::WorldPointI playerFeet, bool playerAlive, const BehaviorProfile& profile,
     const AttackCatalog& attacks, const world::CollisionGrid& collision,
-    int tileSize) const {
+    int tileSize, std::span<const world::AabbI> staticObstacles) const {
     BehaviorUpdate result{};
     tickInvulnerability(enemy.combatant_);
     for (AttackCooldown& cooldown : enemy.cooldowns_) {
@@ -329,7 +332,7 @@ BehaviorUpdate EnemyBehaviorSystem::update(
                 (enemy.handle().index + enemy.wanderCycle_) % 4U;
             constexpr int dx[4]{0, 1, 0, -1};
             constexpr int dy[4]{-1, 0, 1, 0};
-            enemy.move(dx[direction], dy[direction], collision, tileSize);
+            enemy.move(dx[direction], dy[direction], collision, tileSize, staticObstacles);
             if (enemy.stateTimer_ > 1) {
                 --enemy.stateTimer_;
             } else {
@@ -355,7 +358,7 @@ BehaviorUpdate EnemyBehaviorSystem::update(
             const auto feet = enemy.feetPosition();
             const int dx = (playerFeet.x > feet.x ? 1 : 0) - (playerFeet.x < feet.x ? 1 : 0);
             const int dy = (playerFeet.y > feet.y ? 1 : 0) - (playerFeet.y < feet.y ? 1 : 0);
-            enemy.move(dx, dy, collision, tileSize);
+            enemy.move(dx, dy, collision, tileSize, staticObstacles);
         }
     }
     return result;

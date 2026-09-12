@@ -42,7 +42,8 @@ public:
     void update(const world::CollisionGrid& collision, int tileSize,
                 std::span<CombatTargetRef> targets, CombatSystem& combat,
                 simulation::EventBuffer& events,
-                std::vector<CombatResolution>& resolutions);
+                std::vector<CombatResolution>& resolutions,
+                std::span<const world::AabbI> staticObstacles = {});
     void clear(CombatSystem& combat) noexcept;
 
     [[nodiscard]] const std::vector<Projectile>& projectiles() const noexcept {

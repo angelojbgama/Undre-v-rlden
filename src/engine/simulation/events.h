@@ -29,7 +29,7 @@ struct EntityDefeated final {
     DefinitionId defeatedDefinitionId{};
 };
 
-enum class ProjectileImpactKind { tile, target, expired };
+enum class ProjectileImpactKind { tile, target, expired, worldObject };
 
 struct ProjectileImpact final {
     EntityHandle projectile{};

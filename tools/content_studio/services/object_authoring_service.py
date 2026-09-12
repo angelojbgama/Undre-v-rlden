@@ -25,6 +25,12 @@ class ObjectAuthoringRequest:
     closed_frame: int = 0
     opening_start_frame: int = 1
     opening_end_frame: int = 1
+    collision_enabled: bool = False
+    collision_width: int = 0
+    collision_height: int = 0
+    collision_origin_x: int = 0
+    collision_origin_y: int = 0
+    collision_cells: tuple[int, ...] = ()
 
 
 class ObjectAuthoringService:
@@ -88,6 +94,8 @@ class ObjectAuthoringService:
         if request.preset == "destructible":
             self._validate_destructible_request(request, len(frames))
         width, height = self._frame_size(animation)
+        if request.collision_enabled:
+            self._validate_collision_request(request)
         existing_visual = workspace.find("objectVisuals", visual_id)
         visual_data: dict[str, JsonValue] = (
             copy.deepcopy(existing_visual.data) if editing and existing_visual else {})
@@ -146,6 +154,16 @@ class ObjectAuthoringService:
             request.damage_duration_ticks,
             ((request.destruction_end_frame - request.destruction_start_frame + 1)
              * request.destruction_frame_ticks))
+        if request.collision_enabled:
+            object_data["collision"] = {
+                "width": request.collision_width,
+                "height": request.collision_height,
+                "origin": {
+                    "x": request.collision_origin_x,
+                    "y": request.collision_origin_y,
+                },
+                "cells": list(request.collision_cells),
+            }
         existing_descriptor = workspace.find("authoringDescriptors", object_id)
         old_tags = existing_descriptor.data.get("tags", []) if existing_descriptor else []
         internal_prefixes = (
@@ -224,6 +242,29 @@ class ObjectAuthoringService:
             max(0, frame_count - 1))
         destruction_frame_count = max(
             1, destruction_end - destruction_start + 1)
+        collision = definition.data.get("collision")
+        collision_enabled = isinstance(collision, dict)
+        # Migrate legacy door blockingBounds losslessly when an old door is opened
+        # in the new Studio: a filled rectangular mask represents the same AABB.
+        if not collision_enabled and preset == "door":
+            door = definition.data.get("door")
+            blocking = door.get("blockingBounds") if isinstance(door, dict) else None
+            if isinstance(blocking, dict):
+                legacy_width = max(0, int(blocking.get("width", 0)))
+                legacy_height = max(0, int(blocking.get("height", 0)))
+                if legacy_width and legacy_height:
+                    collision = {
+                        "width": legacy_width,
+                        "height": legacy_height,
+                        "origin": {
+                            "x": int(blocking.get("x", 0)),
+                            "y": int(blocking.get("y", 0)),
+                        },
+                        "cells": [1] * (legacy_width * legacy_height),
+                    }
+                    collision_enabled = True
+        collision_origin = collision.get("origin", {}) if collision_enabled else {}
+        collision_cells = collision.get("cells", []) if collision_enabled else []
         return ObjectAuthoringRequest(
             object_id=definition.definition_id,
             display_name=definition.display_name,
@@ -248,7 +289,27 @@ class ObjectAuthoringService:
             closed_frame=self._tag_int(string_tags, self._CLOSED_TAG, 0),
             opening_start_frame=self._tag_int(string_tags, self._OPENING_START_TAG, min(1, frame_count - 1)),
             opening_end_frame=self._tag_int(string_tags, self._OPENING_END_TAG, max(0, frame_count - 1)),
+            collision_enabled=collision_enabled,
+            collision_width=max(0, int(collision.get("width", 0))) if collision_enabled else 0,
+            collision_height=max(0, int(collision.get("height", 0))) if collision_enabled else 0,
+            collision_origin_x=int(collision_origin.get("x", 0)) if isinstance(collision_origin, dict) else 0,
+            collision_origin_y=int(collision_origin.get("y", 0)) if isinstance(collision_origin, dict) else 0,
+            collision_cells=tuple(
+                1 if int(value) else 0 for value in collision_cells
+            ) if isinstance(collision_cells, list) else (),
         )
+
+    @staticmethod
+    def _validate_collision_request(request: ObjectAuthoringRequest) -> None:
+        if request.collision_width < 1 or request.collision_height < 1:
+            raise ValueError("collision mask dimensions must be positive")
+        expected = request.collision_width * request.collision_height
+        if len(request.collision_cells) != expected:
+            raise ValueError("collision mask size does not match its dimensions")
+        if any(value not in (0, 1) for value in request.collision_cells):
+            raise ValueError("collision mask cells must be 0 or 1")
+        if not any(request.collision_cells):
+            raise ValueError("collision mask must contain at least one solid pixel")
 
     @staticmethod
     def _validate_container_request(request: ObjectAuthoringRequest,
@@ -330,10 +391,9 @@ class ObjectAuthoringService:
                 "damageDurationTicks": max(1, damage_duration_ticks),
             }
         elif preset == "door":
-            data["door"] = {
-                "initialState": "closed",
-                "blockingBounds": dict(bounds),
-            }
+            # New Studio doors use the generic optional collision component.
+            # Omitting legacy blockingBounds allows a real no-collision door.
+            data["door"] = {"initialState": "closed"}
         return data
 
     @staticmethod

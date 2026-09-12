@@ -408,11 +408,36 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         // same map/runtime path as interactive objects.
         if (value.id.empty() || value.visualSetId.empty())
             error(report, ContentKind::object, value.id, "invalid_value", "object must have a valid id and visual", "definition");
+        if (value.collision) {
+            const auto expectedCells = value.collision->width > 0 &&
+                value.collision->height <= std::numeric_limits<std::size_t>::max() / value.collision->width
+                ? static_cast<std::size_t>(value.collision->width) * value.collision->height : 0;
+            const auto collisionRight = static_cast<std::int64_t>(value.collision->origin.x) +
+                                        value.collision->width;
+            const auto collisionBottom = static_cast<std::int64_t>(value.collision->origin.y) +
+                                         value.collision->height;
+            const bool coordinatesFit =
+                value.collision->width <= static_cast<std::uint32_t>(std::numeric_limits<int>::max()) &&
+                value.collision->height <= static_cast<std::uint32_t>(std::numeric_limits<int>::max()) &&
+                collisionRight <= std::numeric_limits<int>::max() &&
+                collisionBottom <= std::numeric_limits<int>::max();
+            if (value.collision->width == 0 || value.collision->height == 0 || expectedCells == 0 ||
+                !coordinatesFit || value.collision->cells.size() != expectedCells ||
+                std::any_of(value.collision->cells.begin(), value.collision->cells.end(),
+                            [](std::uint8_t cell) { return cell > 1; }) ||
+                std::none_of(value.collision->cells.begin(), value.collision->cells.end(),
+                             [](std::uint8_t cell) { return cell != 0; })) {
+                error(report, ContentKind::object, value.id, "invalid_object_collision",
+                      "object collision must be a bounded non-empty 0/1 mask with matching dimensions",
+                      "collision");
+            }
+        }
         if (value.interactable && (value.interactable->bounds.width <= 0 || value.interactable->bounds.height <= 0)) error(report, ContentKind::object, value.id, "invalid_value", "interaction bounds are invalid", "interactable");
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
         if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0 || value.destructible->damageDurationTicks == 0))
             error(report, ContentKind::object, value.id, "invalid_value", "destructible values are invalid", "destructible");
-        if (value.door && (value.door->blockingBounds.width <= 0 || value.door->blockingBounds.height <= 0))
+        if (value.door && value.door->hasBlockingBounds &&
+            (value.door->blockingBounds.width <= 0 || value.door->blockingBounds.height <= 0))
             error(report, ContentKind::object, value.id, "invalid_value", "door blocking bounds must be positive", "door.blockingBounds");
         if (value.bankAccess && (!value.interactable || value.container || value.destructible))
             error(report, ContentKind::object, value.id, "invalid_bank_access", "bank access requires interaction and cannot be a container or destructible", "bankAccess");

@@ -160,6 +160,19 @@ MapValidationResult validateMapData(const MapData& data,
                 return failure("pressure activation bounds are outside the map");
             }
         }
+        if (definition && definition->collision) {
+            const auto mapWidthPixels = static_cast<std::int64_t>(data.width) * data.tileSize;
+            const auto mapHeightPixels = static_cast<std::int64_t>(data.height) * data.tileSize;
+            for (const auto& region : definition->collision->regions) {
+                const auto left = static_cast<std::int64_t>(object.position.x) + region.x;
+                const auto top = static_cast<std::int64_t>(object.position.y) + region.y;
+                const auto right = left + region.width;
+                const auto bottom = top + region.height;
+                if (left < 0 || top < 0 || right > mapWidthPixels || bottom > mapHeightPixels) {
+                    return failure("object collision bounds are outside the map");
+                }
+            }
+        }
         for (const auto& stack : object.initialContents) {
             if (stack.itemId.empty() || stack.quantity == 0) {
                 return failure("object placement contains an invalid item stack");
@@ -514,7 +527,8 @@ MapValidationResult validateMapData(const MapData& data,
         const int tileSize = static_cast<int>(data.tileSize);
         for (const auto& placement : data.objects) {
             const auto* definition = catalogs->objects->find(placement.definitionId);
-            if (definition == nullptr || !definition->door) continue;
+            if (definition == nullptr || !definition->door || definition->collision ||
+                !definition->door->hasBlockingBounds) continue;
             const auto bounds = definition->door->blockingBounds;
             const auto firstX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x,
                                                 tileSize);

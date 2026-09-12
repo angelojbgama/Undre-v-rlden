@@ -32,7 +32,8 @@ simulation::EntityHandle ProjectileSystem::spawn(
 void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSize,
                               std::span<CombatTargetRef> targets, CombatSystem& combat,
                               simulation::EventBuffer& events,
-                              std::vector<CombatResolution>& resolutions) {
+                              std::vector<CombatResolution>& resolutions,
+                              std::span<const world::AabbI> staticObstacles) {
     for (Projectile& projectile : projectiles_) {
         bool destroyed = false;
         const core::WorldPointI direction = directionVector(projectile.direction);
@@ -68,6 +69,15 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     destroyed = true;
                     break;
                 }
+            }
+            // Resolve damageable targets before treating an object's solid mask as a wall.
+            // This lets arrows damage destructible colliding objects such as crates.
+            if (!destroyed && world::querySolidWorld(
+                    collision, projectile.hitbox(), tileSize, staticObstacles).collides) {
+                events.emit(simulation::ProjectileImpact{
+                    projectile.handle, projectile.position,
+                    simulation::ProjectileImpactKind::worldObject});
+                destroyed = true;
             }
         }
         if (!destroyed && projectile.remainingTicks > 0) {

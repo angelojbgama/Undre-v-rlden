@@ -20,6 +20,12 @@ void validate(const WorldObjectDefinition& definition) {
                                     definition.interactable->bounds.height <= 0)) {
         throw std::invalid_argument("object interaction area must be positive");
     }
+    if (definition.collision &&
+        (definition.collision->regions.empty() ||
+         std::any_of(definition.collision->regions.begin(), definition.collision->regions.end(),
+                     [](const world::AabbI& region) { return region.width <= 0 || region.height <= 0; }))) {
+        throw std::invalid_argument("object collision requires at least one positive region");
+    }
     if (definition.container && definition.container->capacity == 0) {
         throw std::invalid_argument("object container capacity must be positive");
     }
@@ -34,8 +40,9 @@ void validate(const WorldObjectDefinition& definition) {
     if (definition.bankAccess && (!definition.interactable || definition.container || definition.destructible)) {
         throw std::invalid_argument("bank access requires an interactable non-container object");
     }
-    if (definition.door && (definition.door->blockingBounds.width <= 0 ||
-                            definition.door->blockingBounds.height <= 0)) {
+    if (definition.door && definition.door->hasBlockingBounds &&
+        (definition.door->blockingBounds.width <= 0 ||
+         definition.door->blockingBounds.height <= 0)) {
         throw std::invalid_argument("door blocking bounds must be positive");
     }
     if (definition.activation) {

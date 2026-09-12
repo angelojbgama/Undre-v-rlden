@@ -150,10 +150,48 @@ bool enemy(const JsonValue&v,std::string_view p,Context&c,AuthoredEnemy&out){con
 bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWorldObject& out) {
     const JsonObject* o = nullptr;
     if (!object(v, p, c, o)) return false;
-    allowed(*o, {"id", "visualSetId", "interactable", "container", "destructible", "bankAccess", "door", "activation"}, p, c);
+    allowed(*o, {"id", "visualSetId", "collision", "interactable", "container", "destructible", "bankAccess", "door", "activation"}, p, c);
     AuthoredWorldObject d{};
     bool ok = idField(v, *o, "id", p, c, d.id);
     ok = idField(v, *o, "visualSetId", p, c, d.visualSetId) && ok;
+    if (const auto* x = findField(*o, "collision"); x && !isNull(x)) {
+        const JsonObject* q = nullptr;
+        const auto collisionPath = pathOf(p, "collision");
+        if (!object(*x, collisionPath, c, q)) ok = false;
+        else {
+            allowed(*q, {"width", "height", "origin", "cells"}, collisionPath, c);
+            AuthoredObjectCollision decoded{};
+            ok = unsignedField(*x, *q, "width", collisionPath, c, decoded.width) && ok;
+            ok = unsignedField(*x, *q, "height", collisionPath, c, decoded.height) && ok;
+            const auto* origin = required(*x, *q, "origin", collisionPath, c);
+            const JsonObject* originObject = nullptr;
+            const auto originPath = pathOf(collisionPath, "origin");
+            if (!origin || !object(*origin, originPath, c, originObject)) ok = false;
+            else {
+                allowed(*originObject, {"x", "y"}, originPath, c);
+                ok = signedField(*origin, *originObject, "x", originPath, c, decoded.origin.x) && ok;
+                ok = signedField(*origin, *originObject, "y", originPath, c, decoded.origin.y) && ok;
+            }
+            const auto* cells = required(*x, *q, "cells", collisionPath, c);
+            const JsonArray* cellArray = nullptr;
+            if (!cells || !array(*cells, pathOf(collisionPath, "cells"), c, cellArray)) ok = false;
+            else {
+                decoded.cells.reserve(cellArray->size());
+                for (std::size_t index = 0; index < cellArray->size(); ++index) {
+                    std::uint64_t number{};
+                    const auto cellPath = pathOf(collisionPath, "cells") +
+                                          "[" + std::to_string(index) + "]";
+                    if (!u64((*cellArray)[index], cellPath, c, number)) ok = false;
+                    else if (number > 1) {
+                        c.error((*cellArray)[index], cellPath,
+                                "object collision mask cells must be 0 or 1");
+                        ok = false;
+                    } else decoded.cells.push_back(static_cast<std::uint8_t>(number));
+                }
+            }
+            if (ok) d.collision = std::move(decoded);
+        }
+    }
     if (const auto* x = findField(*o, "interactable"); x && !std::holds_alternative<std::nullptr_t>(x->value)) {
         world::AabbI bounds{};
         if (aabb(*x, pathOf(p, "interactable"), c, bounds)) d.interactable = gameplay::ObjectInteractionDefinition{bounds};
@@ -207,12 +245,15 @@ bool worldObject(const JsonValue& v, std::string_view p, Context& c, AuthoredWor
         else {
             allowed(*q, {"initialState", "blockingBounds"}, doorPath, c);
             gameplay::ObjectDoorDefinition decoded{};
+            decoded.hasBlockingBounds = false;
             const auto* state = required(*x, *q, "initialState", doorPath, c);
-            const auto* bounds = required(*x, *q, "blockingBounds", doorPath, c);
             ok = state && doorState(*state, pathOf(doorPath, "initialState"), c,
                                     decoded.initialState) && ok;
-            ok = bounds && aabb(*bounds, pathOf(doorPath, "blockingBounds"), c,
-                                decoded.blockingBounds) && ok;
+            if (const auto* bounds = findField(*q, "blockingBounds"); bounds && !isNull(bounds)) {
+                ok = aabb(*bounds, pathOf(doorPath, "blockingBounds"), c,
+                          decoded.blockingBounds) && ok;
+                decoded.hasBlockingBounds = true;
+            }
             if (ok) d.door = decoded;
         }
     }

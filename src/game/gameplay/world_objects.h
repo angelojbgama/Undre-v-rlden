@@ -17,6 +17,9 @@ namespace underworld::game::gameplay {
 
 struct ObjectInteractionDefinition final { world::AabbI bounds{}; };
 struct ObjectContainerDefinition final { std::size_t capacity{}; };
+// Runtime representation of an authored pixel mask. The content compiler turns
+// mask pixels into deterministic compact AABBs, so movement never samples image pixels.
+struct ObjectCollisionDefinition final { std::vector<world::AabbI> regions; };
 struct ObjectDestructibleDefinition final {
     int maximumHealth{};
     world::AabbI hurtbox{};
@@ -30,6 +33,8 @@ enum class DoorState { locked, closed, open };
 struct ObjectDoorDefinition final {
     DoorState initialState{DoorState::closed};
     world::AabbI blockingBounds{};
+    // Compatibility for old authored doors. New Studio doors use the generic collision component.
+    bool hasBlockingBounds{true};
 };
 enum class ObjectActivationMode { interactToggle, playerPressure };
 struct ObjectActivationDefinition final {
@@ -48,6 +53,7 @@ struct WorldObjectDefinition final {
     std::optional<ObjectBankAccessDefinition> bankAccess{};
     std::optional<ObjectDoorDefinition> door{};
     std::optional<ObjectActivationDefinition> activation{};
+    std::optional<ObjectCollisionDefinition> collision{};
 };
 
 class WorldObjectCatalog final {

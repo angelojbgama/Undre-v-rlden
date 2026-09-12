@@ -7,6 +7,7 @@
 #include "game/gameplay/facing_direction.h"
 
 #include <cstdint>
+#include <span>
 
 namespace underworld::world { class CollisionGrid; }
 
@@ -57,7 +58,8 @@ public:
            PlayerMovementConfig config = {});
 
     void update(const simulation::PlayerCommand& command,
-                const world::CollisionGrid& collision, int tileSize);
+                const world::CollisionGrid& collision, int tileSize,
+                std::span<const world::AabbI> staticObstacles = {});
 
     [[nodiscard]] simulation::PlayerId id() const noexcept { return id_; }
     [[nodiscard]] simulation::EntityHandle entityHandle() const noexcept {
@@ -82,7 +84,7 @@ public:
     [[nodiscard]] Hurtbox hurtbox() const noexcept;
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
-                        int tileSize);
+                        int tileSize, std::span<const world::AabbI> staticObstacles = {});
     // All damage sources use this entry point so the Player's hit reaction
     // remains consistent even when an attack definition requests another
     // knockback distance.

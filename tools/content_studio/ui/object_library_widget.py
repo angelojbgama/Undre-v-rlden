@@ -17,6 +17,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
 from ..services.object_authoring_service import ObjectAuthoringRequest, ObjectAuthoringService
+from .shape_mask_editor import ShapeMaskEditorDialog
 from .widgets import PayloadListWidget
 
 
@@ -162,6 +163,16 @@ class ObjectDefinitionDialog(QDialog):
         chest_hint = QLabel(self.translate("chest_animation_help"))
         chest_hint.setWordWrap(True); chest_hint.setStyleSheet("color: #aeb8c4;")
         chest_form.addRow(chest_hint)
+        self.collision_enabled = QCheckBox(self.translate("object_collision_enabled"))
+        self.edit_collision = QPushButton(self.translate("edit_collision_mask"))
+        self._collision_mask: dict[str, object] | None = None
+        self.collision_group = QGroupBox(self.translate("object_collision_group"))
+        collision_layout = QVBoxLayout(self.collision_group)
+        collision_layout.addWidget(self.collision_enabled)
+        collision_layout.addWidget(self.edit_collision)
+        collision_hint = QLabel(self.translate("object_collision_help"))
+        collision_hint.setWordWrap(True); collision_hint.setStyleSheet("color: #aeb8c4;")
+        collision_layout.addWidget(collision_hint)
         hint = QLabel(self.translate("object_creation_help")); hint.setWordWrap(True)
         hint.setStyleSheet("color: #aeb8c4;")
         buttons = QDialogButtonBox(
@@ -172,6 +183,7 @@ class ObjectDefinitionDialog(QDialog):
         left_layout.addLayout(form); left_layout.addWidget(self.scenery_group)
         left_layout.addWidget(self.destructible_group)
         left_layout.addWidget(self.chest_group)
+        left_layout.addWidget(self.collision_group)
         left_layout.addWidget(hint); left_layout.addStretch(1)
         right = QWidget(); right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -205,7 +217,10 @@ class ObjectDefinitionDialog(QDialog):
         self.closed_frame.valueChanged.connect(self._reset_example)
         self.opening_start.valueChanged.connect(self._reset_example)
         self.opening_end.valueChanged.connect(self._reset_example)
+        self.collision_enabled.toggled.connect(self._collision_toggled)
+        self.edit_collision.clicked.connect(self._edit_collision)
         self._animation_changed(); self._type_changed()
+        self._collision_toggled(self.collision_enabled.isChecked())
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -242,6 +257,20 @@ class ObjectDefinitionDialog(QDialog):
         self.closed_frame.setValue(request.closed_frame)
         self.opening_start.setValue(request.opening_start_frame)
         self.opening_end.setValue(request.opening_end_frame)
+        if request.collision_enabled:
+            self._collision_mask = {
+                "width": request.collision_width,
+                "height": request.collision_height,
+                "origin": {
+                    "x": request.collision_origin_x,
+                    "y": request.collision_origin_y,
+                },
+                "cells": list(request.collision_cells),
+            }
+            self.collision_enabled.setChecked(True)
+        else:
+            self._collision_mask = None
+            self.collision_enabled.setChecked(False)
 
     def _animation_changed(self, unused: object = None) -> None:
         user_change = unused is not None
@@ -270,6 +299,8 @@ class ObjectDefinitionDialog(QDialog):
             self.closed_frame.setValue(0)
             self.opening_start.setValue(min(1, maximum))
             self.opening_end.setValue(maximum)
+        if user_change and self.collision_enabled.isChecked():
+            self._collision_mask = self._default_collision_mask()
         self._reset_example()
 
     def _type_changed(self, unused: object = None) -> None:
@@ -279,6 +310,75 @@ class ObjectDefinitionDialog(QDialog):
         self.destructible_group.setVisible(preset == "destructible")
         self.chest_group.setVisible(preset == "container")
         self._reset_example()
+
+    def _collision_frame(self) -> tuple[ContentDefinition, dict[str, object]] | None:
+        animation = self._source_animation()
+        frames = animation.data.get("frames", []) if animation else []
+        available = [frame for frame in frames if isinstance(frame, dict)] if isinstance(frames, list) else []
+        if animation is None or not available:
+            return None
+        preset = str(self.preset.currentData() or "scenery")
+        index = (self.closed_frame.value() if preset == "container" else
+                 self.destructible_idle_frame.value() if preset == "destructible" else 0)
+        return animation, available[min(index, len(available) - 1)]
+
+    def _default_collision_mask(self) -> dict[str, object] | None:
+        selected = self._collision_frame()
+        if selected is None:
+            return None
+        unused_animation, frame = selected
+        del unused_animation
+        source = frame.get("source", {})
+        anchor = frame.get("anchor", {})
+        offset = frame.get("drawOffset", {})
+        source = source if isinstance(source, dict) else {}
+        anchor = anchor if isinstance(anchor, dict) else {}
+        offset = offset if isinstance(offset, dict) else {}
+        width = max(1, int(source.get("width", 1)))
+        height = max(1, int(source.get("height", 1)))
+        return {
+            "width": width,
+            "height": height,
+            "origin": {
+                "x": -int(anchor.get("x", 0)) + int(offset.get("x", 0)),
+                "y": -int(anchor.get("y", 0)) + int(offset.get("y", 0)),
+            },
+            "cells": [1] * (width * height),
+        }
+
+    def _collision_toggled(self, checked: bool) -> None:
+        if checked and self._collision_mask is None:
+            self._collision_mask = self._default_collision_mask()
+        self.edit_collision.setEnabled(checked and self._collision_mask is not None)
+
+    def _edit_collision(self) -> None:
+        selected = self._collision_frame()
+        if selected is None:
+            return
+        animation, frame = selected
+        source = frame.get("source", {})
+        if not isinstance(source, dict):
+            return
+        source_image = self._source_image(animation)
+        if source_image.isNull():
+            QMessageBox.warning(self, self.windowTitle(), self.translate("image_unavailable"))
+            return
+        width = max(1, int(source.get("width", 1)))
+        height = max(1, int(source.get("height", 1)))
+        current = self._collision_mask or self._default_collision_mask()
+        if current is None:
+            return
+        if int(current.get("width", 0)) != width or int(current.get("height", 0)) != height:
+            current = self._default_collision_mask()
+            if current is None:
+                return
+        sprite = source_image.copy(QRect(
+            int(source.get("x", 0)), int(source.get("y", 0)), width, height))
+        dialog = ShapeMaskEditorDialog(sprite, current, self.translate, self)
+        if dialog.exec():
+            self._collision_mask = dialog.result_mask()
+            self.collision_enabled.setChecked(True)
+            self.edit_collision.setEnabled(True)
 
     def _source_animation(self) -> ContentDefinition | None:
         return self.workspace.find(
@@ -450,6 +550,11 @@ class ObjectDefinitionDialog(QDialog):
 
     def _create(self) -> None:
         try:
+            collision = self._collision_mask if self.collision_enabled.isChecked() else None
+            if self.collision_enabled.isChecked() and collision is None:
+                collision = self._default_collision_mask()
+            origin = collision.get("origin", {}) if isinstance(collision, dict) else {}
+            cells = collision.get("cells", []) if isinstance(collision, dict) else []
             request = ObjectAuthoringRequest(
                 object_id=self.object_id.text(),
                 display_name=self.name.text(),
@@ -467,6 +572,12 @@ class ObjectDefinitionDialog(QDialog):
                 closed_frame=self.closed_frame.value(),
                 opening_start_frame=self.opening_start.value(),
                 opening_end_frame=self.opening_end.value(),
+                collision_enabled=isinstance(collision, dict),
+                collision_width=int(collision.get("width", 0)) if isinstance(collision, dict) else 0,
+                collision_height=int(collision.get("height", 0)) if isinstance(collision, dict) else 0,
+                collision_origin_x=int(origin.get("x", 0)) if isinstance(origin, dict) else 0,
+                collision_origin_y=int(origin.get("y", 0)) if isinstance(origin, dict) else 0,
+                collision_cells=tuple(int(value) for value in cells) if isinstance(cells, list) else (),
             )
             created = (self.service.update(self.workspace, request) if self.definition
                        else self.service.create(self.workspace, request))

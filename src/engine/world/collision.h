@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <span>
 
 namespace underworld::world {
 
@@ -29,8 +30,14 @@ struct MovementResult final {
 
 [[nodiscard]] CollisionQueryResult querySolidTiles(const CollisionGrid& grid,
                                                    AabbI body, int tileSize);
+[[nodiscard]] CollisionQueryResult querySolidWorld(
+    const CollisionGrid& grid, AabbI body, int tileSize,
+    std::span<const AabbI> staticObstacles);
 [[nodiscard]] MovementResult moveAgainstSolidTiles(const CollisionGrid& grid,
                                                    AabbI& body, int deltaX, int deltaY,
                                                    int tileSize);
+[[nodiscard]] MovementResult moveAgainstSolidWorld(
+    const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles);
 
 } // namespace underworld::world

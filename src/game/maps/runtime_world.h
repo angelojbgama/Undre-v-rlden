@@ -92,6 +92,7 @@ public:
     [[nodiscard]] bool toggleObjectActivation(simulation::PersistentInstanceId id) noexcept;
     void updatePressureActivations(core::WorldPointI playerFeet,
                                    simulation::EventBuffer& events) noexcept;
+    [[nodiscard]] std::vector<world::AabbI> objectCollisionBounds() const;
     [[nodiscard]] const std::vector<RuntimeDoor>& doors() const noexcept { return doors_; }
 
 private:

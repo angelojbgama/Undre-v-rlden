@@ -118,9 +118,10 @@ public:
     [[nodiscard]] const AttackCooldown* cooldownFor(
         const simulation::DefinitionId& attackId) const noexcept;
 
-    void move(int intentX, int intentY, const world::CollisionGrid& collision, int tileSize);
+    void move(int intentX, int intentY, const world::CollisionGrid& collision, int tileSize,
+              std::span<const world::AabbI> staticObstacles = {});
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
-                        int tileSize);
+                        int tileSize, std::span<const world::AabbI> staticObstacles = {});
     void sceneRelocate(core::WorldPointI feet) noexcept;
     void sceneSetFacing(FacingDirection facing) noexcept { facing_ = facing; }
 
@@ -191,7 +192,8 @@ public:
                                         const BehaviorProfile& profile,
                                         const AttackCatalog& attacks,
                                         const world::CollisionGrid& collision,
-                                        int tileSize) const;
+                                        int tileSize,
+                                        std::span<const world::AabbI> staticObstacles = {}) const;
     void finishAttack(EnemyInstance& enemy, const BehaviorProfile& profile) const;
 
     [[nodiscard]] const AttackDefinition* selectAttack(

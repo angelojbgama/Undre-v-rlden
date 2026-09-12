@@ -401,10 +401,11 @@ void GameSession::applyResolution(const gameplay::CombatResolution& resolution) 
     }
     for (auto& enemy : mapSession_->world()->enemies()) {
         if (enemy.instance.handle() != resolution.target) { continue; }
+        const auto objectCollisions = mapSession_->world()->objectCollisionBounds();
         enemy.instance.applyKnockback(resolution.requestedKnockbackX,
                                       resolution.requestedKnockbackY,
                                       mapSession_->world()->map().collision(),
-                                      mapSession_->world()->map().tileSize());
+                                      mapSession_->world()->map().tileSize(), objectCollisions);
         break;
     }
 }
@@ -428,6 +429,7 @@ void GameSession::resolveEnemyContacts() {
     constexpr int contactKnockback = gameplay::Player::damageKnockbackPixels;
     auto playerBody = player_.collisionBody();
     const auto& map = mapSession_->world()->map();
+    const auto objectCollisions = mapSession_->world()->objectCollisionBounds();
     for (auto& persistentEnemy : mapSession_->world()->enemies()) {
         auto& enemy = persistentEnemy.instance;
         if (enemy.state() == gameplay::creatures::BehaviorState::dead) { continue; }
@@ -460,7 +462,7 @@ void GameSession::resolveEnemyContacts() {
         const auto resolution = combat_.resolve(contact, player_.combatTarget(), events_);
         combat_.finishAttack(contact.attack);
         player_.applyDamageKnockback(knockbackX, knockbackY, map.collision(), map.tileSize());
-        enemy.applyKnockback(-knockbackX, -knockbackY, map.collision(), map.tileSize());
+        enemy.applyKnockback(-knockbackX, -knockbackY, map.collision(), map.tileSize(), objectCollisions);
         playerBody = player_.collisionBody();
         if (resolution.damaged) {
             player_.beginHurt();
@@ -473,6 +475,7 @@ void GameSession::resolveEnemyContacts() {
 void GameSession::updateEnemies() {
     auto& enemies = mapSession_->world()->enemies();
     const auto& map = mapSession_->world()->map();
+    const auto objectCollisions = mapSession_->world()->objectCollisionBounds();
     for (auto& persistent : enemies) {
         auto& enemy = persistent.instance;
         const auto& profile = behaviorCatalog_->require(enemy.definition().behaviorProfileId);
@@ -481,7 +484,7 @@ void GameSession::updateEnemies() {
         static_cast<void>(enemyBehavior_.update(
             enemy, player_.entityHandle(), player_.feetPosition(),
             !player_.health().depleted(), profile, *attackCatalog_,
-            map.collision(), map.tileSize()));
+            map.collision(), map.tileSize(), objectCollisions));
         if (previousAttack && !enemy.activeAttack()) { combat_.finishAttack(*previousAttack); }
         if (!enemy.activeAttack()) { continue; }
         auto& active = *enemy.activeAttack();
@@ -826,8 +829,9 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             player_.health()));
     }
     const auto& map = mapSession_->world()->map();
+    const auto objectCollisions = mapSession_->world()->objectCollisionBounds();
     const auto previousAction = player_.actionState();
-    player_.update(command, map.collision(), map.tileSize());
+    player_.update(command, map.collision(), map.tileSize(), objectCollisions);
     regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                           player_.feetPosition(), events_);
     mapSession_->world()->updatePressureActivations(player_.feetPosition(), events_);
@@ -846,7 +850,8 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         resolveEnemyContacts();
         auto targets = combatTargets();
         std::vector<gameplay::CombatResolution> resolutions;
-        projectiles_->update(map.collision(), map.tileSize(), targets, combat_, events_, resolutions);
+        projectiles_->update(map.collision(), map.tileSize(), targets, combat_, events_, resolutions,
+                             objectCollisions);
         for (const auto& resolution : resolutions) { applyResolution(resolution); }
         resolveDefeatRewards();
         removeDefeatedEnemies();

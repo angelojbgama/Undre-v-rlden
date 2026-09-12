@@ -62,7 +62,8 @@ world::AabbI Player::collisionBody() const {
 }
 
 void Player::update(const simulation::PlayerCommand& command,
-                    const world::CollisionGrid& collision, int tileSize) {
+                    const world::CollisionGrid& collision, int tileSize,
+                    std::span<const world::AabbI> staticObstacles) {
     if (command.playerId != id_) {
         throw std::invalid_argument("player command targets a different player id");
     }
@@ -89,7 +90,7 @@ void Player::update(const simulation::PlayerCommand& command,
         };
         const int stepX = step(damageKnockbackRemainingX_);
         const int stepY = step(damageKnockbackRemainingY_);
-        applyKnockback(stepX, stepY, collision, tileSize);
+        applyKnockback(stepX, stepY, collision, tileSize, staticObstacles);
         damageKnockbackRemainingX_ -= stepX;
         damageKnockbackRemainingY_ -= stepY;
         if (actionState_ == PlayerActionState::hurt &&
@@ -140,8 +141,9 @@ void Player::update(const simulation::PlayerCommand& command,
     const core::WorldPointI targetFeet{
         checkedPixelCoordinate(target.x), checkedPixelCoordinate(target.y)};
     world::AabbI body = collisionBody();
-    lastMovement_ = world::moveAgainstSolidTiles(
-        collision, body, targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y, tileSize);
+    lastMovement_ = world::moveAgainstSolidWorld(
+        collision, body, targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y,
+        tileSize, staticObstacles);
 
     const core::WorldPointI resolvedFeet{
         body.x - config_.bodyOffsetX,
@@ -165,10 +167,11 @@ CombatTargetRef Player::combatTarget() noexcept {
 }
 
 void Player::applyKnockback(int deltaX, int deltaY,
-                            const world::CollisionGrid& collision, int tileSize) {
+                            const world::CollisionGrid& collision, int tileSize,
+                            std::span<const world::AabbI> staticObstacles) {
     world::AabbI body = collisionBody();
-    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidTiles(
-        collision, body, deltaX, deltaY, tileSize);
+    [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidWorld(
+        collision, body, deltaX, deltaY, tileSize, staticObstacles);
     const core::WorldPointI resolvedFeet{
         body.x - config_.bodyOffsetX, body.y - config_.bodyOffsetY};
     position_.x = checkedSubpixelCoordinate(resolvedFeet.x);

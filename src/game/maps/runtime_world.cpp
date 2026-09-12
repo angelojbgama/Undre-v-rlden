@@ -7,6 +7,24 @@
 
 namespace underworld::game::maps {
 
+std::vector<world::AabbI> RuntimeWorld::objectCollisionBounds() const {
+    std::vector<world::AabbI> result;
+    for (const auto& object : objects_) {
+        const auto& definition = object.instance.definition();
+        if (!definition.collision) continue;
+        if (object.instance.isDoor() && object.instance.doorState() == gameplay::DoorState::open) {
+            continue;
+        }
+        result.reserve(result.size() + definition.collision->regions.size());
+        for (const auto& region : definition.collision->regions) {
+            result.push_back({object.instance.position().x + region.x,
+                              object.instance.position().y + region.y,
+                              region.width, region.height});
+        }
+    }
+    return result;
+}
+
 void RuntimeWorld::addDestroyedObjectResidue(
     simulation::PersistentInstanceId persistentId, simulation::DefinitionId visualSetId,
     core::WorldPointI position) {
@@ -154,6 +172,12 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
         for (const auto& placement : data.objects) {
             const auto* definition = catalogs_.objects ? catalogs_.objects->find(placement.definitionId) : nullptr;
             if (!definition || !definition->door) continue;
+            // New authored collision masks supersede the legacy tile-cell door blocker.
+            // Old content without a collision component keeps the previous behaviour.
+            if (definition->collision || !definition->door->hasBlockingBounds) {
+                result->doors_.push_back({placement.id, definition->door->initialState, {}});
+                continue;
+            }
             const auto bounds = definition->door->blockingBounds;
             const int tileSize = static_cast<int>(data.tileSize);
             const auto firstX = core::floorDiv(static_cast<std::int64_t>(placement.position.x) + bounds.x,
