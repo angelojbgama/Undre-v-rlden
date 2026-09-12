@@ -41,7 +41,9 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
     const auto activation = object.hasActivation() ? std::optional{object.activationActive()} : std::nullopt;
     if (!initialized_ || state != state_ || doorState != doorState_ || activation != activation_) {
         const auto* clip = &set_->idle;
-        if (state == gameplay::WorldObjectState::destroying && set_->destroying) {
+        if (state == gameplay::WorldObjectState::damaged && set_->damaged) {
+            clip = &set_->damaged;
+        } else if (state == gameplay::WorldObjectState::destroying && set_->destroying) {
             clip = &set_->destroying;
         } else if (state == gameplay::WorldObjectState::destroyed && set_->destroyed) {
             clip = &set_->destroyed;

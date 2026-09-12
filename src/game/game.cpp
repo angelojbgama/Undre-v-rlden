@@ -9,10 +9,14 @@
 #include "game/content/content_source.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace underworld::game {
@@ -24,6 +28,22 @@ constexpr core::FixedStepConfig fixedStepConfig{
     0.25, // Never accept more than 250 ms from one rendered frame.
     5,    // At most 83.3 ms of simulation work is recovered per frame.
 };
+
+std::optional<std::filesystem::path> findProjectContentRoot(
+    const std::filesystem::path& executableDirectory) {
+    const std::array starts{std::filesystem::current_path(), executableDirectory};
+    for (auto start : starts) {
+        for (int depth = 0; depth < 8 && !start.empty(); ++depth) {
+            const auto candidate = start / "content" / "definitions";
+            std::error_code error;
+            if (std::filesystem::is_directory(candidate, error)) return candidate;
+            const auto parent = start.parent_path();
+            if (parent == start) break;
+            start = parent;
+        }
+    }
+    return std::nullopt;
+}
 
 class ManualAuditObserver final {
 public:
@@ -230,6 +250,9 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
     if (options.contentRoot) {
         selection.kind = content::ContentSourceKind::workspaceDirectory;
         selection.workspaceRoot = *options.contentRoot;
+    } else if (const auto projectContent = findProjectContentRoot(executableDirectory)) {
+        selection.kind = content::ContentSourceKind::workspaceDirectory;
+        selection.workspaceRoot = *projectContent;
     }
     const auto source = content::loadContentSource(selection);
     if (!source) {

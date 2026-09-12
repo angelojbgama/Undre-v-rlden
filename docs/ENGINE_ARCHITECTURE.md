@@ -2042,7 +2042,7 @@ Authored Content JSON + UMAP
              ↓
       validation / compiler
              ↓
-    GameContentRegistry + DMAP
+    authored content + Python DMAP writer
              ↓
            runtime
 ```

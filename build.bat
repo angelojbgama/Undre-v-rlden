@@ -1,14 +1,25 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 pushd "%~dp0"
 
 where cl.exe >nul 2>nul
 if errorlevel 1 (
-    echo ERROR: cl.exe was not found.
-    echo Run this script from an "x64 Native Tools Command Prompt for VS" or
-    echo a Visual Studio Developer Command Prompt configured for x64.
-    popd
-    exit /b 1
+    set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    if exist "!VSWHERE!" (
+        for /f "usebackq tokens=*" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%I"
+    )
+    if defined VS_INSTALL if exist "!VS_INSTALL!\Common7\Tools\VsDevCmd.bat" (
+        echo Initializing the Visual Studio x64 build environment...
+        call "!VS_INSTALL!\Common7\Tools\VsDevCmd.bat" -no_logo -arch=x64 -host_arch=x64
+    )
+    where cl.exe >nul 2>nul
+    if errorlevel 1 (
+        echo ERROR: cl.exe was not found.
+        echo Install the Visual Studio Desktop development with C++ workload or
+        echo run this script from an x64 Native Tools Command Prompt for VS.
+        popd
+        exit /b 1
+    )
 )
 
 if defined VSCMD_ARG_TGT_ARCH (

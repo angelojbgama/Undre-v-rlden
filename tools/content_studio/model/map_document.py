@@ -773,6 +773,7 @@ def _path_parts(path: str) -> list[str | int]:
 
 def _default_map_collection_value(leaf: str | int) -> JsonValue:
     name = str(leaf)
+    if name == "initialContents": return {"itemId": "", "quantity": 1}
     if name == "participants": return 1
     if name == "conditions": return {"kind": "flagSet", "target": "flag.new"}
     if name == "actions": return {"kind": "setFlag", "target": "flag.new"}

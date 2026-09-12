@@ -259,6 +259,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                   "idle animation does not exist", "idleAnimationId");
         const std::pair<const std::optional<simulation::DefinitionId>*, const char*> optionalAnimations[] = {
             {&value.openedAnimationId, "openedAnimationId"},
+            {&value.damagedAnimationId, "damagedAnimationId"},
             {&value.destroyingAnimationId, "destroyingAnimationId"},
             {&value.activationInactiveAnimationId, "activationInactiveAnimationId"},
             {&value.activationActiveAnimationId, "activationActiveAnimationId"},
@@ -402,12 +403,14 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::item, value.id, "unknown_reference", "item static sprite does not exist", "visualId");
     }
     for (const auto& value : pack.objects) {
-        if (value.id.empty() || value.visualSetId.empty() ||
-            (!value.interactable && !value.container && !value.destructible && !value.door && !value.activation))
-            error(report, ContentKind::object, value.id, "invalid_value", "object must have valid visual and capability data", "definition");
+        // Scenery objects intentionally have no gameplay capability. Their visual is
+        // still authored as an ObjectVisual so they can be placed and animated by the
+        // same map/runtime path as interactive objects.
+        if (value.id.empty() || value.visualSetId.empty())
+            error(report, ContentKind::object, value.id, "invalid_value", "object must have a valid id and visual", "definition");
         if (value.interactable && (value.interactable->bounds.width <= 0 || value.interactable->bounds.height <= 0)) error(report, ContentKind::object, value.id, "invalid_value", "interaction bounds are invalid", "interactable");
         if (value.container && value.container->capacity == 0) error(report, ContentKind::object, value.id, "invalid_value", "container capacity must be positive", "container");
-        if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0))
+        if (value.destructible && (value.destructible->maximumHealth <= 0 || value.destructible->hurtbox.width <= 0 || value.destructible->hurtbox.height <= 0 || value.destructible->destructionDurationTicks == 0 || value.destructible->damageDurationTicks == 0))
             error(report, ContentKind::object, value.id, "invalid_value", "destructible values are invalid", "destructible");
         if (value.door && (value.door->blockingBounds.width <= 0 || value.door->blockingBounds.height <= 0))
             error(report, ContentKind::object, value.id, "invalid_value", "door blocking bounds must be positive", "door.blockingBounds");

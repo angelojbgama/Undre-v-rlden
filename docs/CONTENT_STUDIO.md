@@ -62,9 +62,9 @@ metadados locais do Content Studio e não alteram UWORLD, DMAP ou os Map IDs.
 Ao excluir o mapa de entrada de um projeto multimapa, o mapa vizinho passa a ser
 a nova entrada automaticamente; o último mapa do projeto não pode ser removido.
 
-`Validate Workspace` executa `content_check`. `Export DMAP` executa o
-`world_compile` C++ para UWORLD ou `map_compile` no fluxo de mapa. `Playtest`
-cria cópias temporárias do estado atual, compila com C++ e inicia o runtime;
+`Validate Workspace` executa `content_check`. `Export DMAP` usa o writer DMAP 1.5
+Python do próprio Studio para o projeto UWORLD. `Playtest` usa o mesmo writer para
+criar cópias temporárias do estado atual e inicia o runtime;
 conteúdo inválido ou mapa sem Player Spawn é recusado antes de iniciar.
 
 A interface usa ações contextuais: controles que exigem uma seleção ficam

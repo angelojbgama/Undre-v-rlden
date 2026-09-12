@@ -6,6 +6,7 @@
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/rpg/player_progression.h"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -21,18 +22,72 @@ void addCompileDiagnostics(ContentSourceLoadResult& result,
     }
 }
 
+template<class T, class IdFn>
+void overlayCategory(std::vector<T>& base, const std::vector<T>& authored, IdFn idOf) {
+    for (const auto& value : authored) {
+        const auto existing = std::find_if(base.begin(), base.end(), [&](const auto& candidate) {
+            return idOf(candidate) == idOf(value);
+        });
+        if (existing == base.end()) base.push_back(value);
+        else *existing = value;
+    }
+}
+
+AuthoredContentPack overlayBuiltinContent(const AuthoredContentPack& authored) {
+    auto result = makeBuiltinAuthoredContent();
+#define OVERLAY_CATEGORY(member, idMember) \
+    overlayCategory(result.member, authored.member, [](const auto& value) { return value.idMember; })
+    OVERLAY_CATEGORY(tilesets, id);
+    OVERLAY_CATEGORY(projectiles, id);
+    OVERLAY_CATEGORY(attacks, id);
+    OVERLAY_CATEGORY(behaviors, id);
+    OVERLAY_CATEGORY(enemies, id);
+    OVERLAY_CATEGORY(items, id);
+    OVERLAY_CATEGORY(objects, id);
+    OVERLAY_CATEGORY(pickups, id);
+    OVERLAY_CATEGORY(npcs, id);
+    OVERLAY_CATEGORY(npcVisuals, id);
+    OVERLAY_CATEGORY(dialogues, id);
+    OVERLAY_CATEGORY(quests, id);
+    OVERLAY_CATEGORY(authoringDescriptors, definitionId);
+    OVERLAY_CATEGORY(tileSemantics, id);
+    OVERLAY_CATEGORY(stamps, id);
+    OVERLAY_CATEGORY(playerProgressions, id);
+    OVERLAY_CATEGORY(rewardProfiles, id);
+    OVERLAY_CATEGORY(rewardGrants, id);
+    OVERLAY_CATEGORY(shops, id);
+    OVERLAY_CATEGORY(presentationEffects, id);
+    OVERLAY_CATEGORY(visualImages, id);
+    OVERLAY_CATEGORY(staticSprites, id);
+    OVERLAY_CATEGORY(animations, id);
+    OVERLAY_CATEGORY(enemyVisuals, id);
+    OVERLAY_CATEGORY(objectVisuals, id);
+#undef OVERLAY_CATEGORY
+    return result;
+}
+
 } // namespace
 
 ContentSourceLoadResult loadContentSource(const ContentSourceSelection& selection) {
     if (selection.kind == ContentSourceKind::workspaceDirectory) {
-        const auto loaded = loadContentWorkspaceDirectory(selection.workspaceRoot);
-        if (!loaded.workspace) return {std::nullopt, loaded.diagnostics};
+        const auto discovered = discoverContentWorkspaceFiles(selection.workspaceRoot);
+        if (!discovered.files) return {std::nullopt, discovered.diagnostics};
+        const auto loaded = loadContentWorkspaceFiles(*discovered.files);
+        if (!loaded.mergedAuthored) return {std::nullopt, loaded.diagnostics};
+
+        auto authored = overlayBuiltinContent(*loaded.mergedAuthored);
+        auto compiled = compileContent(authored);
+        if (!compiled.registry) {
+            ContentSourceLoadResult result;
+            addCompileDiagnostics(result, compiled.report);
+            return result;
+        }
         return {LoadedContentBundle{ContentSourceKind::workspaceDirectory,
                                     selection.workspaceRoot.lexically_normal(),
-                                    loaded.sourceFileCount,
-                                    std::move(loaded.workspace->authored),
-                                    std::move(loaded.workspace->registry),
-                                    std::move(loaded.workspace->sources)},
+                                    discovered.files->size(),
+                                    std::move(authored),
+                                    std::move(*compiled.registry),
+                                    loaded.sources},
                 {}};
     }
 

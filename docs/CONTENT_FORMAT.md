@@ -84,13 +84,20 @@ compatible with schema v5 because it is optional and omitted by older authored
 files. It binds a generic destroyed visual state and does not change runtime or
 save format versions.
 
+An object with an ID and an `objectVisual` but no gameplay capability is valid
+scenery. `interactable`, `container`, `destructible`, `bankAccess`, `door` and
+`activation` remain optional capabilities added only when the authored object needs
+the corresponding gameplay behavior.
+
 `ContentJsonEncoder`/`ContentJsonDecoder` are shared by the builtin-equivalence
 tests, workspace loader, Game, Map Maker and `content_check`. The builtin C++ pack
-remains the transitional default source; an explicit workspace replaces it without
-an overlay. Presentation effects, object activation and visual definitions are
-data-driven capabilities, not authoritative gameplay state. Player visuals, HUD/font
-assets, tileset loading and generic impact VFX remain fixed presentation concerns in
-this phase. Content Studio 18A provides the typed workspace-document shell and 18B
+supplies the playable baseline. At game startup, an authored workspace overlays that
+baseline by category and stable ID: a matching authored ID replaces the baseline
+definition and a new ID extends it. Presentation effects, object activation and visual
+definitions are data-driven capabilities, not authoritative gameplay state. Player
+visuals, HUD/font assets, tileset loading and generic impact VFX remain fixed
+presentation concerns in this phase. Content Studio 18A provides the typed
+workspace-document shell and 18B
 adds editor-only spritesheet selection, grid/pan/zoom and AnimationClip/Animator
 playback through the same secure asset resolver used by runtime. 18C adds typed
 gameplay inspectors and 18D completes typed authoring paths for tilesets, authoring

@@ -5,9 +5,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from ..formats.dmap import safe_dmap_filename
 from ..formats.json_io import encode_json
-from ..formats.uworld import write_world
 from ..model.types import Diagnostic, ToolResult
+from .world_export_service import WorldExportService
 
 
 class ToolchainError(RuntimeError):
@@ -18,13 +19,12 @@ class CppToolchain:
     """Runs the authoritative C++ validation/compiler/runtime tools."""
 
     def __init__(self, repository_root: Path | None = None, *, content_check: Path | None = None,
-                 map_compile: Path | None = None, world_compile: Path | None = None,
+                 map_compile: Path | None = None,
                  game: Path | None = None, asset_root: Path | None = None) -> None:
         self.repository_root = (repository_root or Path(__file__).resolve().parents[3]).resolve()
         self.asset_root = asset_root
         self.content_check = content_check or self._find("content_check")
         self.map_compile = map_compile or self._find("map_compile")
-        self.world_compile = world_compile or self._find("world_compile")
         self.game = game or self._find("game")
 
     def _find(self, name: str) -> Path | None:
@@ -71,14 +71,6 @@ class CppToolchain:
         if content_root is not None:
             command.extend(["--content", str(content_root)])
         command.extend([str(source), str(output)])
-        result = self._run(command, self.repository_root)
-        return result, self.diagnostics(result, source)
-
-    def compile_world(self, source: Path, output_directory: Path, content_root: Path | None = None) -> tuple[ToolResult, list[Diagnostic]]:
-        command = [str(self.world_compile)] if self.world_compile else ["world_compile"]
-        if content_root is not None:
-            command.extend(["--content", str(content_root)])
-        command.extend([str(source), str(output_directory)])
         result = self._run(command, self.repository_root)
         return result, self.diagnostics(result, source)
 
@@ -136,18 +128,15 @@ class PlaytestService:
             destination = content_copy / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(encode_json(content_file.data), encoding="utf-8")
-        world_path = temporary / "playtest.uworld"
-        write_world(world_path, project.authored_data())
         output = temporary / "maps"
-        result, diagnostics = self.toolchain.compile_world(world_path, output, content_copy)
+        result, diagnostics = WorldExportService().export(
+            project, output, content_workspace)
         if not result.ok:
             self.stop()
             return False, diagnostics
         # The world is still compiled in full so cross-map transitions work,
         # but iteration must launch from the map currently being authored.
-        entry = active_map.map_id
-        safe_entry = "".join(character if character.isalnum() or character in ".-_" else f"%{ord(character):02X}" for character in entry) or "map"
-        map_path = output / f"{safe_entry}.dmap"
+        map_path = output / safe_dmap_filename(active_map.map_id)
         if not map_path.is_file():
             candidates = list(output.glob("*.dmap"))
             map_path = candidates[0] if candidates else map_path

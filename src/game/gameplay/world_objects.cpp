@@ -11,9 +11,9 @@ namespace underworld::game::gameplay {
 namespace {
 
 void validate(const WorldObjectDefinition& definition) {
-    if (definition.id.empty() || definition.visualSetId.empty() ||
-        (!definition.interactable && !definition.container && !definition.destructible &&
-         !definition.door && !definition.activation)) {
+    // A definition with only a visual is a valid scenery object. Optional gameplay
+    // capabilities add interaction, collision or state without being mandatory.
+    if (definition.id.empty() || definition.visualSetId.empty()) {
         throw std::invalid_argument("world object definition is incomplete");
     }
     if (definition.interactable && (definition.interactable->bounds.width <= 0 ||
@@ -27,7 +27,8 @@ void validate(const WorldObjectDefinition& definition) {
         (definition.destructible->maximumHealth <= 0 ||
          definition.destructible->hurtbox.width <= 0 ||
          definition.destructible->hurtbox.height <= 0 ||
-         definition.destructible->destructionDurationTicks == 0)) {
+         definition.destructible->destructionDurationTicks == 0 ||
+         definition.destructible->damageDurationTicks == 0)) {
         throw std::invalid_argument("object destructible capability is invalid");
     }
     if (definition.bankAccess && (!definition.interactable || definition.container || definition.destructible)) {
@@ -107,6 +108,7 @@ WorldObjectInstance::WorldObjectInstance(
         combatant_.emplace(CombatantState{
             handle, Faction::environment, Health{definition.destructible->maximumHealth}, 0,
             false, definition.id});
+        observedHealth_ = combatant_->health.current;
     }
     if (definition.door) { doorState_ = definition.door->initialState; }
     if (definition.activation && definition.activation->mode == ObjectActivationMode::interactToggle) {
@@ -165,7 +167,8 @@ Hurtbox WorldObjectInstance::hurtbox() const noexcept {
     if (!definition_->destructible || !combatant_) { return {{}, false}; }
     const auto bounds = definition_->destructible->hurtbox;
     return {{position_.x + bounds.x, position_.y + bounds.y, bounds.width, bounds.height},
-            state_ == WorldObjectState::idle && !combatant_->health.depleted()};
+            (state_ == WorldObjectState::idle || state_ == WorldObjectState::damaged) &&
+                !combatant_->health.depleted()};
 }
 CombatTargetRef WorldObjectInstance::combatTarget() {
     if (!combatant_) { throw std::logic_error("object is not destructible"); }
@@ -176,9 +179,27 @@ bool WorldObjectInstance::open() noexcept {
     state_ = WorldObjectState::opened;
     return true;
 }
+bool WorldObjectInstance::syncDamageState() noexcept {
+    if (!combatant_ || combatant_->health.current >= observedHealth_) { return false; }
+    observedHealth_ = combatant_->health.current;
+    if (combatant_->health.depleted() ||
+        (state_ != WorldObjectState::idle && state_ != WorldObjectState::damaged)) {
+        return false;
+    }
+    state_ = WorldObjectState::damaged;
+    damageTicksRemaining_ = definition_->destructible->damageDurationTicks;
+    return true;
+}
+void WorldObjectInstance::advanceDamageTick() noexcept {
+    if (state_ != WorldObjectState::damaged) { return; }
+    if (damageTicksRemaining_ > 0) { --damageTicksRemaining_; }
+    if (damageTicksRemaining_ == 0) { state_ = WorldObjectState::idle; }
+}
 bool WorldObjectInstance::syncDestructionState() noexcept {
-    if (combatant_ && combatant_->health.depleted() && state_ == WorldObjectState::idle) {
+    if (combatant_ && combatant_->health.depleted() &&
+        (state_ == WorldObjectState::idle || state_ == WorldObjectState::damaged)) {
         state_ = WorldObjectState::destroying;
+        damageTicksRemaining_ = 0;
         destructionTicksRemaining_ = definition_->destructible->destructionDurationTicks;
         return true;
     }

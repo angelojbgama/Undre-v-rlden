@@ -552,6 +552,8 @@ void GameSession::updateObjects() {
     bool changed = false;
     for (std::size_t index = 0; index < objects.size();) {
         auto& object = objects[index].instance;
+        object.advanceDamageTick();
+        static_cast<void>(object.syncDamageState());
         static_cast<void>(object.syncDestructionState());
         if (auto* combatant = object.combatant()) {
             gameplay::tickInvulnerability(*combatant);

@@ -73,7 +73,7 @@ presentation::WorldObjectVisualDefinition compileObjectVisual(const AuthoredWorl
     return {v.id, v.idleAnimationId, v.openedAnimationId, v.destroyingAnimationId,
             v.activationInactiveAnimationId, v.activationActiveAnimationId,
             v.doorLockedAnimationId, v.doorClosedAnimationId, v.doorOpenAnimationId,
-            v.destroyedAnimationId};
+            v.destroyedAnimationId, v.damagedAnimationId};
 }
 
 gameplay::PickupPayload compilePayload(const AuthoredPickupPayload& payload) {

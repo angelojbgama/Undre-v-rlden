@@ -86,11 +86,15 @@ class SpritesheetImportService:
                         else {}
                     )
                     previous_offset = previous.get("drawOffset", {})
-                    draw_offset = (
-                        copy.deepcopy(previous_offset)
-                        if isinstance(previous_offset, dict)
-                        else {"x": 0, "y": 0}
-                    )
+                    # Older Studio builds could persist an empty drawOffset.
+                    # Always emit the complete point contract expected by the
+                    # authoritative C++ content decoder.
+                    draw_offset = {
+                        "x": int(previous_offset.get("x", 0))
+                        if isinstance(previous_offset, dict) else 0,
+                        "y": int(previous_offset.get("y", 0))
+                        if isinstance(previous_offset, dict) else 0,
+                    }
                     previous_markers = previous.get("markers", [])
                     frames.append({
                         "source": {

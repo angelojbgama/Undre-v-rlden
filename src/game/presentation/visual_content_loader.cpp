@@ -481,6 +481,7 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
             set.id = entry->first;
             set.idle = runtime.animations.require(entry->second.idleAnimationId);
             if (entry->second.openedAnimationId) set.opened = runtime.animations.require(*entry->second.openedAnimationId);
+            if (entry->second.damagedAnimationId) set.damaged = runtime.animations.require(*entry->second.damagedAnimationId);
             if (entry->second.destroyingAnimationId) set.destroying = runtime.animations.require(*entry->second.destroyingAnimationId);
             if (entry->second.activationInactiveAnimationId) set.activationInactive = runtime.animations.require(*entry->second.activationInactiveAnimationId);
             if (entry->second.activationActiveAnimationId) set.activationActive = runtime.animations.require(*entry->second.activationActiveAnimationId);

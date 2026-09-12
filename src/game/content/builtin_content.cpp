@@ -82,11 +82,12 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     };
     const auto objectAnimation = [&](const char* id, const char* imageId, int width, int height,
                                      int count, std::uint32_t duration, core::PointI anchor,
-                                     bool loop) {
+                                     bool loop, int startColumn = 0) {
         AuthoredAnimation value;
         value.id = {id}; value.imageId = {imageId}; value.loop = loop;
         for (int column = 0; column < count; ++column)
-            value.frames.push_back({{column * width, 0, width, height}, anchor, {}, duration, {}});
+            value.frames.push_back({{(startColumn + column) * width, 0, width, height},
+                                    anchor, {}, duration, {}});
         pack.animations.push_back(std::move(value));
     };
 
@@ -143,8 +144,10 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
 
     objectAnimation("anim.object.chest.idle", "image.object.chest", 16, 32, 1, 1, {8, 31}, true);
     objectAnimation("anim.object.chest.opened", "image.object.chest", 16, 32, 5, 4, {8, 31}, false);
-    objectAnimation("anim.object.crate.idle", "image.object.crate", 16, 32, 1, 1, {8, 31}, true);
-    objectAnimation("anim.object.crate.destroying", "image.object.breaking_crate", 32, 32, 7, 4, {16, 31}, false);
+    objectAnimation("anim.object.crate.idle", "image.object.breaking_crate", 32, 32, 1, 1,
+                    {16, 31}, true);
+    objectAnimation("anim.object.crate.destroying", "image.object.breaking_crate", 32, 32,
+                    7, 4, {16, 31}, false, 1);
     objectAnimation("anim.object.vase.idle", "image.object.vase", 16, 32, 1, 1, {8, 31}, true);
     objectAnimation("anim.object.vase.destroying", "image.object.breaking_vase", 32, 32, 6, 4, {16, 31}, false);
     objectAnimation("anim.object.stone_block.idle", "image.object.stone_block", 16, 32, 1, 1, {8, 31}, true);

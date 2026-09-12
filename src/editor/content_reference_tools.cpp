@@ -103,6 +103,8 @@ std::vector<ContentDefinitionKey> dependencyClosure(
             addOptionalDependency(pending, ContentDefinitionKind::animation,
                                   value->openedAnimationId);
             addOptionalDependency(pending, ContentDefinitionKind::animation,
+                                  value->damagedAnimationId);
+            addOptionalDependency(pending, ContentDefinitionKind::animation,
                                   value->destroyingAnimationId);
             addOptionalDependency(pending, ContentDefinitionKind::animation,
                                   value->destroyedAnimationId);
@@ -298,6 +300,7 @@ std::string contentDefinitionSummary(const ContentWorkspaceDocument& document,
         if (const auto* value = document.objectVisual(key.id)) {
             std::size_t stateCount = 1;
             stateCount += value->openedAnimationId.has_value();
+            stateCount += value->damagedAnimationId.has_value();
             stateCount += value->destroyingAnimationId.has_value();
             stateCount += value->destroyedAnimationId.has_value();
             stateCount += value->activationInactiveAnimationId.has_value();

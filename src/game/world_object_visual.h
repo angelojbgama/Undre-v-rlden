@@ -23,6 +23,7 @@ struct WorldObjectVisualSet final {
     std::shared_ptr<const render::AnimationClip> doorClosed{};
     std::shared_ptr<const render::AnimationClip> doorOpen{};
     std::shared_ptr<const render::AnimationClip> destroyed{};
+    std::shared_ptr<const render::AnimationClip> damaged{};
 };
 
 class WorldObjectVisualCatalog final {

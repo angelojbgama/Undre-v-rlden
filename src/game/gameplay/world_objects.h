@@ -23,6 +23,7 @@ struct ObjectDestructibleDefinition final {
     // Matches the current crate.break presentation clip (7 frames x 4 ticks),
     // while remaining authoritative logical gameplay data.
     std::uint32_t destructionDurationTicks{28};
+    std::uint32_t damageDurationTicks{8};
 };
 struct ObjectBankAccessDefinition final {};
 enum class DoorState { locked, closed, open };
@@ -66,7 +67,7 @@ private:
                        simulation::DefinitionIdHash> definitions_;
 };
 
-enum class WorldObjectState { idle, opened, destroying, destroyed };
+enum class WorldObjectState { idle, damaged, opened, destroying, destroyed };
 
 class WorldObjectInstance final {
 public:
@@ -97,6 +98,8 @@ public:
     [[nodiscard]] Hurtbox hurtbox() const noexcept;
     [[nodiscard]] CombatTargetRef combatTarget();
     [[nodiscard]] bool open() noexcept;
+    [[nodiscard]] bool syncDamageState() noexcept;
+    void advanceDamageTick() noexcept;
     [[nodiscard]] bool syncDestructionState() noexcept;
     void advanceDestructionTick() noexcept;
     [[nodiscard]] bool destructionComplete() const noexcept;
@@ -115,6 +118,8 @@ private:
     WorldObjectState state_{WorldObjectState::idle};
     std::optional<ItemContainer> contents_{};
     std::optional<CombatantState> combatant_{};
+    int observedHealth_{};
+    std::uint32_t damageTicksRemaining_{};
     std::uint32_t destructionTicksRemaining_{};
     DoorState doorState_{DoorState::closed};
     bool activationActive_{};

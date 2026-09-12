@@ -173,6 +173,17 @@ public:
         line.push_back('\n');
         OutputDebugStringA(line.c_str());
         std::clog << line;
+        if (level == LogLevel::error) {
+            loggedErrors_.append(message);
+            loggedErrors_.push_back('\n');
+        }
+    }
+
+    void showLoggedErrors() const {
+        if (!loggedErrors_.empty()) {
+            MessageBoxA(nullptr, loggedErrors_.c_str(), "Underworld startup error",
+                        MB_OK | MB_ICONERROR);
+        }
     }
 
     [[nodiscard]] ImageDecoder& imageDecoder() noexcept override { return imageDecoder_; }
@@ -487,6 +498,7 @@ private:
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};
     int dibHeight_{};
+    mutable std::string loggedErrors_;
 };
 
 } // namespace
@@ -510,7 +522,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         if (!platform.initialize()) {
             return 1;
         }
-        return underworld::game::run(platform, *options);
+        const int result = underworld::game::run(platform, *options);
+        if (result != 0) platform.showLoggedErrors();
+        return result;
     } catch (const std::exception& exception) {
         OutputDebugStringA(exception.what());
         MessageBoxA(nullptr, exception.what(), "Underworld fatal error", MB_OK | MB_ICONERROR);

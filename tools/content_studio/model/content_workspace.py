@@ -209,6 +209,95 @@ class ContentWorkspace:
             raise RuntimeError("created definition could not be indexed")
         return result
 
+    def create_definition_bundle(
+            self, label: str,
+            entries: list[tuple[str, str, dict[str, JsonValue]]],
+            file_path: Path | None = None) -> list[ContentDefinition]:
+        """Create related authored definitions as one undoable operation."""
+        seen: set[tuple[str, str]] = set()
+        for category, definition_id, unused in entries:
+            del unused
+            key = (category, definition_id)
+            if category not in CONTENT_CATEGORIES:
+                raise ValueError(f"unknown content category: {category}")
+            if not definition_id or key in seen or self.find(category, definition_id):
+                raise ValueError(f"definition already exists: {category}/{definition_id}")
+            seen.add(key)
+        target_path = file_path or (self.files[0].path if self.files else self.root / "content.json")
+
+        def operation() -> None:
+            content_file = next((value for value in self.files if value.path == target_path), None)
+            if content_file is None:
+                data: dict[str, JsonValue] = {
+                    "format": "dungeon-underworld-content", "version": CONTENT_VERSION}
+                data.update({name: [] for name in CONTENT_CATEGORIES})
+                content_file = ContentFile(target_path, data, True, True)
+                self.files.append(content_file)
+            for category, unused, definition_data in entries:
+                del unused
+                values = content_file.data.setdefault(category, [])
+                if not isinstance(values, list):
+                    raise ValueError(f"category {category} is not an array")
+                values.append(copy.deepcopy(definition_data))
+            content_file.dirty = True
+
+        self.mutate(label, operation)
+        results = [self.find(category, definition_id) for category, definition_id, unused in entries]
+        if any(value is None for value in results):
+            raise RuntimeError("created definition bundle could not be indexed")
+        return [value for value in results if value is not None]
+
+    def upsert_definition_bundle(
+            self, label: str,
+            entries: list[tuple[str, str, dict[str, JsonValue]]],
+            file_path: Path | None = None) -> list[ContentDefinition]:
+        """Create or replace related project definitions in one undo step."""
+        seen: set[tuple[str, str]] = set()
+        existing: dict[tuple[str, str], ContentDefinition] = {}
+        for category, definition_id, unused in entries:
+            del unused
+            key = (category, definition_id)
+            if category not in CONTENT_CATEGORIES:
+                raise ValueError(f"unknown content category: {category}")
+            if not definition_id or key in seen:
+                raise ValueError(f"duplicate bundle entry: {category}/{definition_id}")
+            seen.add(key)
+            found = self.find(category, definition_id)
+            if found is not None:
+                self._require_project_definition(found)
+                existing[key] = found
+        target_path = file_path or (
+            next(iter(existing.values())).source_path if existing
+            else (self.files[0].path if self.files else self.root / "content.json"))
+
+        def operation() -> None:
+            target_file = next((value for value in self.files if value.path == target_path), None)
+            if target_file is None:
+                data: dict[str, JsonValue] = {
+                    "format": "dungeon-underworld-content", "version": CONTENT_VERSION}
+                data.update({name: [] for name in CONTENT_CATEGORIES})
+                target_file = ContentFile(target_path, data, True, True)
+                self.files.append(target_file)
+            for category, definition_id, definition_data in entries:
+                found = existing.get((category, definition_id))
+                if found is not None:
+                    found.data.clear()
+                    found.data.update(copy.deepcopy(definition_data))
+                    self._mark_file_dirty(found.source_path)
+                    continue
+                values = target_file.data.setdefault(category, [])
+                if not isinstance(values, list):
+                    raise ValueError(f"category {category} is not an array")
+                values.append(copy.deepcopy(definition_data))
+                target_file.dirty = True
+
+        self.mutate(label, operation)
+        results = [self.find(category, definition_id)
+                   for category, definition_id, unused in entries]
+        if any(value is None for value in results):
+            raise RuntimeError("updated definition bundle could not be indexed")
+        return [value for value in results if value is not None]
+
     def delete_definition(self, definition: ContentDefinition) -> None:
         self._require_project_definition(definition)
         content_file = next((value for value in self.files if value.path == definition.source_path), None)
@@ -318,6 +407,14 @@ class ContentWorkspace:
             elif category == "objects":
                 require("objectVisuals", data.get("visualSetId"), f"{prefix}.visualSetId")
                 _require_object_capabilities(data, prefix, require)
+            elif category == "objectVisuals":
+                for field in (
+                        "idleAnimationId", "openedAnimationId", "damagedAnimationId",
+                        "destroyingAnimationId", "destroyedAnimationId",
+                        "activationInactiveAnimationId", "activationActiveAnimationId",
+                        "doorLockedAnimationId", "doorClosedAnimationId",
+                        "doorOpenAnimationId"):
+                    require("animations", data.get(field), f"{prefix}.{field}")
             elif category == "pickups":
                 require("staticSprites", data.get("visualId"), f"{prefix}.visualId")
                 payload = data.get("payload")
@@ -497,6 +594,6 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "staticSprites": {"id": definition_id, "imageId": "", "source": None, "anchor": {"x": 0, "y": 0}},
         "animations": {"id": definition_id, "imageId": "", "loop": True, "frames": []},
         "enemyVisuals": {"id": definition_id, "idle": {}, "actions": []},
-        "objectVisuals": {"id": definition_id, "idleAnimationId": "", "openedAnimationId": None, "destroyingAnimationId": None, "activationInactiveAnimationId": None, "activationActiveAnimationId": None, "doorLockedAnimationId": None, "doorClosedAnimationId": None, "doorOpenAnimationId": None, "destroyedAnimationId": None},
+        "objectVisuals": {"id": definition_id, "idleAnimationId": "", "openedAnimationId": None, "damagedAnimationId": None, "destroyingAnimationId": None, "activationInactiveAnimationId": None, "activationActiveAnimationId": None, "doorLockedAnimationId": None, "doorClosedAnimationId": None, "doorOpenAnimationId": None, "destroyedAnimationId": None},
     }
     return copy.deepcopy(defaults[category])

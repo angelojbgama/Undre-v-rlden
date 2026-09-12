@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
@@ -17,7 +15,6 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import MapDocument
 from ..model.types import ContentDefinition, Diagnostic
 from ..model.world_project import WorldProject
-from ..formats.uworld import write_world
 from ..interaction.command_coordinator import CommandCoordinator
 from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
@@ -25,6 +22,7 @@ from ..services.localization import Translator
 from ..services.autosave import autosave
 from ..services.preferences import load_preferences, save_preferences
 from ..services.toolchain import CppToolchain, PlaytestService
+from ..services.world_export_service import WorldExportService
 from .map_canvas import MapCanvas
 from .map_properties_dialog import MapPropertiesDialog
 from .preview import PreviewWidget
@@ -32,6 +30,7 @@ from .scene_editor import SceneEditorWidget
 from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, set_path
 from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
+from .object_library_widget import ObjectLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
 from .terrain.tile_semantic_editor import TileSemanticEditor
 from ..services.tile_semantic_catalog import TileSemanticCatalog
@@ -150,6 +149,12 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root, self.translator)
         self.spritesheet_library.changed.connect(self._content_changed)
         self.spritesheet_library.status_changed.connect(self.set_status)
+        self.object_library = ObjectLibraryWidget(
+            self.workspace, self.asset_root, self.translator)
+        self.object_library.selected.connect(self._entity_selected)
+        self.object_library.place_requested.connect(self._place_definition)
+        self.object_library.changed.connect(self._content_changed)
+        self.object_library.status_changed.connect(self.set_status)
         # Compatibility alias for integrations that used the old palette name.
         self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette()
@@ -177,6 +182,7 @@ class MainWindow(QMainWindow):
         self.entity_browser.definition_changed.connect(self._content_changed)
         self.map_inspector = StructuredInspector()
         self.map_inspector.changed.connect(self._edit_map_field)
+        self.map_inspector.collection_changed.connect(self._edit_map_collection)
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
         self.delete_map_selection_button.setEnabled(False)
         self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
@@ -190,6 +196,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.layers)
         self._map_panels.addWidget(self.tile_palette)
         self._map_panels.addWidget(self.spritesheet_library)
+        self._map_panels.addWidget(self.object_library)
         self._map_panels.addWidget(self.smart_terrain)
         self._map_panels.addWidget(self.semantic_editor)
         self._map_panels.addWidget(self.semantic_palette)
@@ -277,7 +284,8 @@ class MainWindow(QMainWindow):
     def _section_labels(self, mode_index: int) -> tuple[str, ...]:
         if mode_index == 0:
             return tuple(self.translator(key) for key in (
-                "maps", "layers", "tiles", "spritesheets_animations", "smart_terrain", "semantic_editor",
+                "maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
+                "smart_terrain", "semantic_editor",
                 "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
             ))
         return (self.translator("definitions"), self.translator("assets"))
@@ -327,6 +335,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setWindowTitle(self.translator("tools"))
         self.tileset_library.retranslate(self.translator)
         self.spritesheet_library.retranslate(self.translator)
+        self.object_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
         self.map_browser.set_translator(self.translator)
@@ -355,6 +364,7 @@ class MainWindow(QMainWindow):
         self.tileset_library.set_asset_root(self.asset_root)
         self.tileset_library.set_map_tile_size(self.project.active_map.tile_size)
         self.spritesheet_library.set_context(self.workspace, self.asset_root)
+        self.object_library.set_context(self.workspace, self.asset_root)
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_editor.set_workspace(self.workspace)
         self.smart_terrain.set_workspace(self.workspace)
@@ -513,6 +523,25 @@ class MainWindow(QMainWindow):
         self.command_coordinator.mark("map")
         self.project.active_map.mutate("Edit Placement", lambda: set_path(value_to_edit, path, value))
         self._refresh_map()
+
+    def _edit_map_collection(self, path: str, action: str) -> None:
+        selection = self.map_canvas.selected_entity
+        if not selection:
+            return
+        category, identifier = selection
+        values = self.project.active_map.all_collection(category)
+        entry_index = next((index for index, entry in enumerate(values)
+                            if isinstance(entry, dict) and entry.get("id") == identifier), -1)
+        if entry_index < 0:
+            return
+        try:
+            self.command_coordinator.mark("map")
+            self.project.active_map.mutate_collection_entry(
+                category, entry_index, path, action)
+            self.set_status(self.translator("object_contents_updated"))
+            self._refresh_map()
+        except (IndexError, KeyError, TypeError, ValueError) as error:
+            self.set_status(str(error))
 
     def _place_definition(self, category: str, definition_id: str) -> None:
         if self.workspace:
@@ -730,14 +759,10 @@ class MainWindow(QMainWindow):
             return
         directory = QFileDialog.getExistingDirectory(self, "Export DMAP directory")
         if not directory: return
-        temp = Path(tempfile.mkdtemp(prefix="underworld-studio-export-"))
-        try:
-            source = temp / "export.uworld"; write_world(source, self.project.authored_data())
-            result, issues = self.toolchain.compile_world(source, Path(directory), self.workspace.root)
-            self._refresh_diagnostics(issues)
-            self.set_status("DMAP export completed" if result.ok else "DMAP export failed")
-        finally:
-            shutil.rmtree(temp, ignore_errors=True)
+        result, issues = WorldExportService().export(
+            self.project, Path(directory), self.workspace)
+        self._refresh_diagnostics(issues)
+        self.set_status("DMAP export completed" if result.ok else "DMAP export failed")
 
     def toggle_playtest(self) -> None:
         if self.playtest.process and self.playtest.process.poll() is None:

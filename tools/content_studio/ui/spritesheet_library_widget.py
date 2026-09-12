@@ -142,11 +142,14 @@ class SpritesheetLibraryWidget(QWidget):
 
     def edit_frames(self) -> None:
         animation = self._current_animation()
-        image = self._animation_image(animation)
-        if animation is None or image.isNull() or self.workspace is None:
+        image_path = self._animation_image_path(animation)
+        image = QImage(str(image_path)) if image_path is not None else QImage()
+        if (animation is None or image_path is None or image.isNull() or
+                self.workspace is None):
             return
         dialog = AnimationFrameAlignmentDialog(
-            self.workspace, animation, image, self.translate, self)
+            self.workspace, animation, image, image_path, self.asset_root,
+            self.translate, self)
         if dialog.exec():
             self.refresh()
             self.changed.emit()

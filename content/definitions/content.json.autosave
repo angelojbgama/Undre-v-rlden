@@ -16,7 +16,40 @@
   "behaviors": [],
   "enemies": [],
   "items": [],
-  "objects": [],
+  "objects": [
+    {
+      "id": "object.chest",
+      "visualSetId": "visual.object.chest",
+      "interactable": {
+        "x": -8,
+        "y": -31,
+        "width": 16,
+        "height": 32
+      },
+      "container": {
+        "capacity": 5
+      }
+    },
+    {
+      "id": "object.fire_block_with_fire",
+      "visualSetId": "visual.object.fire_block_with_fire"
+    },
+    {
+      "id": "object.breaking_crate",
+      "visualSetId": "visual.object.breaking_crate",
+      "destructible": {
+        "maximumHealth": 1,
+        "hurtbox": {
+          "x": -16,
+          "y": -31,
+          "width": 32,
+          "height": 32
+        },
+        "destructionDurationTicks": 48,
+        "damageDurationTicks": 8
+      }
+    }
+  ],
   "pickups": [],
   "npcVisuals": [],
   "npcs": [],
@@ -26,7 +59,44 @@
   "rewardProfiles": [],
   "rewardGrants": [],
   "shops": [],
-  "authoringDescriptors": [],
+  "authoringDescriptors": [
+    {
+      "definitionId": "object.chest",
+      "displayName": "Chest",
+      "category": "object",
+      "tags": [
+        "container",
+        "object-source-animation:animation.chest",
+        "object-closed-frame:0",
+        "object-opening-start:1",
+        "object-opening-end:4"
+      ]
+    },
+    {
+      "definitionId": "object.fire_block_with_fire",
+      "displayName": "Fire Block With Fire",
+      "category": "object",
+      "tags": [
+        "scenery",
+        "object-source-animation:animation.fire_block_with_fire"
+      ]
+    },
+    {
+      "definitionId": "object.breaking_crate",
+      "displayName": "Breaking Crate",
+      "category": "object",
+      "tags": [
+        "destructible",
+        "object-source-animation:animation.breaking_crate",
+        "object-destructible-idle-frame:0",
+        "object-damage-frame:1",
+        "object-damage-frame-ticks:8",
+        "object-destruction-start:2",
+        "object-destruction-end:7",
+        "object-destruction-frame-ticks:8"
+      ]
+    }
+  ],
   "tileSemantics": [
     {
       "id": "semantic.rule.terrain.imported.wall.tileset.imported.outerCorner.north_west.40",
@@ -171,6 +241,24 @@
       "semanticConfidence": "probable",
       "gameplayConfidence": "unverified",
       "variantWeight": 1
+    },
+    {
+      "id": "semantic.rule.terrain.imported.2.floor.tileset.imported.interior.center.69",
+      "tilesetId": "tileset.imported",
+      "sourceIndex": 69,
+      "family": "terrain.imported.2",
+      "role": "floor",
+      "topology": "interior",
+      "north": "unknown",
+      "east": "unknown",
+      "south": "unknown",
+      "west": "unknown",
+      "preferredLayer": "Ground",
+      "flipXAllowed": false,
+      "visualConfidence": "confirmed",
+      "semanticConfidence": "probable",
+      "gameplayConfidence": "unverified",
+      "variantWeight": 1
     }
   ],
   "stamps": [],
@@ -205,6 +293,26 @@
       "id": "image.door_front",
       "root": "gameAssets",
       "relativePath": "Tileset/door_front.png"
+    },
+    {
+      "id": "image.tile_spickes",
+      "root": "gameAssets",
+      "relativePath": "Tileset/tile_spickes.png"
+    },
+    {
+      "id": "image.door_side",
+      "root": "gameAssets",
+      "relativePath": "Tileset/door_side.png"
+    },
+    {
+      "id": "image.gate",
+      "root": "gameAssets",
+      "relativePath": "Tileset/gate.png"
+    },
+    {
+      "id": "image.iron_door",
+      "root": "gameAssets",
+      "relativePath": "Tileset/iron_door.png"
     }
   ],
   "staticSprites": [],
@@ -402,8 +510,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -420,8 +528,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -438,8 +546,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -456,8 +564,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -474,8 +582,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -492,8 +600,8 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -510,8 +618,26 @@
             "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 224,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
           },
           "durationTicks": 8,
           "markers": []
@@ -732,7 +858,7 @@
             "x": 0,
             "y": 0
           },
-          "durationTicks": 8,
+          "durationTicks": 12,
           "markers": []
         },
         {
@@ -750,7 +876,7 @@
             "x": 1,
             "y": 0
           },
-          "durationTicks": 8,
+          "durationTicks": 12,
           "markers": []
         },
         {
@@ -768,7 +894,7 @@
             "x": 0,
             "y": 0
           },
-          "durationTicks": 8,
+          "durationTicks": 12,
           "markers": []
         },
         {
@@ -786,6 +912,616 @@
             "x": 0,
             "y": 0
           },
+          "durationTicks": 12,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.tile_spickes",
+      "imageId": "image.tile_spickes",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 11,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 11,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 11,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.door_side",
+      "imageId": "image.door_side",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.gate",
+      "imageId": "image.gate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 192,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 240,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 47
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.iron_door",
+      "imageId": "image.iron_door",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 16
+          },
+          "anchor": {
+            "x": 24,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.chest.closed",
+      "imageId": "image.chest",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.chest.opening",
+      "imageId": "image.chest",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 16,
+            "height": 32
+          },
+          "anchor": {
+            "x": 8,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 9,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.breaking_crate.idle",
+      "imageId": "image.breaking_crate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.breaking_crate.damaged",
+      "imageId": "image.breaking_crate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.breaking_crate.destroying",
+      "imageId": "image.breaking_crate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 128,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 160,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 192,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 224,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.object.breaking_crate.destroyed",
+      "imageId": "image.breaking_crate",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 224,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": -1,
+            "y": -3
+          },
           "durationTicks": 8,
           "markers": []
         }
@@ -793,5 +1529,22 @@
     }
   ],
   "enemyVisuals": [],
-  "objectVisuals": []
+  "objectVisuals": [
+    {
+      "id": "visual.object.chest",
+      "idleAnimationId": "animation.object.chest.closed",
+      "openedAnimationId": "animation.object.chest.opening"
+    },
+    {
+      "id": "visual.object.fire_block_with_fire",
+      "idleAnimationId": "animation.fire_block_with_fire"
+    },
+    {
+      "id": "visual.object.breaking_crate",
+      "idleAnimationId": "animation.object.breaking_crate.idle",
+      "damagedAnimationId": "animation.object.breaking_crate.damaged",
+      "destroyingAnimationId": "animation.object.breaking_crate.destroying",
+      "destroyedAnimationId": "animation.object.breaking_crate.destroyed"
+    }
+  ]
 }

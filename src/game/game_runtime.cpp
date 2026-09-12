@@ -86,6 +86,7 @@ std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
 const char* objectStateName(gameplay::WorldObjectState state) noexcept {
     switch (state) {
     case gameplay::WorldObjectState::idle: return "idle";
+    case gameplay::WorldObjectState::damaged: return "damaged";
     case gameplay::WorldObjectState::opened: return "opened";
     case gameplay::WorldObjectState::destroying: return "destroying";
     case gameplay::WorldObjectState::destroyed: return "destroyed";
@@ -618,6 +619,7 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
                        std::optional<std::filesystem::path> contentWorkspaceRoot) {
     const auto& dungeonDefinition = contentDefinitions.tilesets().require(
         simulation::DefinitionId{"tileset.dungeon"});
+    const auto dungeonTilesetId = dungeonDefinition.id;
     const auto tileset = assets_.loadImage("tileset.dungeon",
         assetRoot / dungeonDefinition.relativeAssetPath, decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
@@ -644,6 +646,16 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
     state_ = std::make_unique<State>(
         tileset, font, idle, walk, sword, bow, hurt, impact, std::move(*visualContent.content),
         hudHeart, hudMoney, std::move(contentDefinitions), executableDirectory, launchOptions);
+    for (const auto& definition : state_->content.tilesets().definitions()) {
+        if (definition.id == dungeonTilesetId) continue;
+        std::string error;
+        if (!state_->tilesetVisuals.load(
+                definition, state_->runtimeTilesets.requireRuntimeId(definition.id),
+                assets_, decoder, assetRoot, error)) {
+            throw std::runtime_error("could not load tileset '" +
+                                     std::string(definition.id.value()) + "': " + error);
+        }
+    }
     startupSummary_ = state_->startupSummary();
 }
 
@@ -664,17 +676,19 @@ std::filesystem::path findLicensedAssetRoot(const std::filesystem::path& executa
     std::array<std::filesystem::path, 2> starts{std::filesystem::current_path(), executableDirectory};
     for (std::filesystem::path start : starts) {
         for (int depth = 0; depth < 6 && !start.empty(); ++depth) {
-            const auto candidate = start / "Dungeon Underworld";
-            std::error_code error;
-            if (std::filesystem::is_directory(candidate, error)) { return candidate; }
+            for (const auto* directory : {"assets", "Dungeon Underworld"}) {
+                const auto candidate = start / directory;
+                std::error_code error;
+                if (std::filesystem::is_directory(candidate, error)) { return candidate; }
+            }
             const auto parent = start.parent_path();
             if (parent == start) { break; }
             start = parent;
         }
     }
     throw std::runtime_error(
-        "Licensed assets were not found. Keep the local 'Dungeon Underworld' directory "
-        "at the project root; it is intentionally excluded from Git.");
+        "Licensed assets were not found. Keep the local 'assets' directory at the project "
+        "root or pass --asset-root <directory>.");
 }
 
 } // namespace underworld::game

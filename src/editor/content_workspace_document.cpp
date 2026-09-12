@@ -1021,6 +1021,7 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
         if (referencedBy.empty()) for (const auto& value : pack->objectVisuals) {
             if (value.idleAnimationId == id ||
                 (value.openedAnimationId && *value.openedAnimationId == id) ||
+                (value.damagedAnimationId && *value.damagedAnimationId == id) ||
                 (value.destroyingAnimationId && *value.destroyingAnimationId == id) ||
                 (value.activationInactiveAnimationId && *value.activationInactiveAnimationId == id) ||
                 (value.activationActiveAnimationId && *value.activationActiveAnimationId == id) ||
