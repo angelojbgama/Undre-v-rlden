@@ -152,4 +152,79 @@ MovementResult moveAgainstSolidWorld(const CollisionGrid& grid, AabbI& body,
     return result;
 }
 
+MovementResult moveAgainstSolidWorldWithCornerSlide(
+    const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles, CornerSlideConfig config) {
+    if (config.maxProbeDistance < 0) {
+        throw std::invalid_argument("corner slide probe distance cannot be negative");
+    }
+    if (config.maxProbeDistance > 0 && config.correctionStep <= 0) {
+        throw std::invalid_argument("corner slide correction step must be positive");
+    }
+
+    MovementResult result =
+        moveAgainstSolidWorld(grid, body, deltaX, deltaY, tileSize, staticObstacles);
+
+    if (config.maxProbeDistance == 0) return result;
+
+    const bool horizontalAssist =
+        deltaX != 0 && deltaY == 0 && result.blockedX;
+    const bool verticalAssist =
+        deltaY != 0 && deltaX == 0 && result.blockedY;
+    if (!horizontalAssist && !verticalAssist) return result;
+
+    const bool primaryHorizontal = horizontalAssist;
+    const int primaryStep =
+        primaryHorizontal ? (deltaX > 0 ? 1 : -1) : (deltaY > 0 ? 1 : -1);
+
+    auto canEscapeAt = [&](int perpendicularOffset) {
+        AabbI shifted = body;
+        MovementResult perpendicularMove =
+            primaryHorizontal
+                ? moveAgainstSolidWorld(grid, shifted, 0, perpendicularOffset, tileSize,
+                                        staticObstacles)
+                : moveAgainstSolidWorld(grid, shifted, perpendicularOffset, 0, tileSize,
+                                        staticObstacles);
+
+        const int movedPerpendicular =
+            primaryHorizontal ? perpendicularMove.movedY : perpendicularMove.movedX;
+        if (movedPerpendicular != perpendicularOffset) return false;
+
+        AabbI forward = shifted;
+        if (primaryHorizontal) forward.x += primaryStep;
+        else forward.y += primaryStep;
+        return !querySolidWorld(grid, forward, tileSize, staticObstacles).collides;
+    };
+
+    int chosenOffset = 0;
+    for (int distance = 1; distance <= config.maxProbeDistance; ++distance) {
+        const bool negativeFree = canEscapeAt(-distance);
+        const bool positiveFree = canEscapeAt(distance);
+        if (!negativeFree && !positiveFree) continue;
+        chosenOffset = negativeFree ? -distance : distance;
+        break;
+    }
+
+    if (chosenOffset == 0) return result;
+
+    const int direction = chosenOffset < 0 ? -1 : 1;
+    const int absoluteDistance = chosenOffset < 0 ? -chosenOffset : chosenOffset;
+    const int correctionMagnitude =
+        config.correctionStep < absoluteDistance
+            ? config.correctionStep
+            : absoluteDistance;
+    const int correction = direction * correctionMagnitude;
+
+    const MovementResult slide =
+        primaryHorizontal
+            ? moveAgainstSolidWorld(grid, body, 0, correction, tileSize, staticObstacles)
+            : moveAgainstSolidWorld(grid, body, correction, 0, tileSize, staticObstacles);
+
+    result.movedX += slide.movedX;
+    result.movedY += slide.movedY;
+    result.blockedX = result.blockedX || slide.blockedX;
+    result.blockedY = result.blockedY || slide.blockedY;
+    return result;
+}
+
 } // namespace underworld::world

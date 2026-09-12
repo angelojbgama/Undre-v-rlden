@@ -49,6 +49,11 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
     if (!config_.footprints.valid()) {
         throw std::invalid_argument("player movement footprints must be positive");
     }
+    if (config_.cornerSlideMaxProbePixels < 0 ||
+        (config_.cornerSlideMaxProbePixels > 0 &&
+         config_.cornerSlideCorrectionPixels <= 0)) {
+        throw std::invalid_argument("player corner slide configuration is invalid");
+    }
 }
 
 core::WorldPointI Player::feetPosition() const {
@@ -139,20 +144,22 @@ void Player::update(const simulation::PlayerCommand& command,
     const core::WorldPointI targetFeet{
         checkedPixelCoordinate(target.x), checkedPixelCoordinate(target.y)};
     world::AabbI body = collisionBody();
-    lastMovement_ = world::moveAgainstSolidWorld(
+    lastMovement_ = world::moveAgainstSolidWorldWithCornerSlide(
         collision, body, targetFeet.x - oldFeet.x, targetFeet.y - oldFeet.y,
-        tileSize, staticObstacles);
+        tileSize, staticObstacles,
+        {config_.cornerSlideMaxProbePixels, config_.cornerSlideCorrectionPixels});
 
     const auto& footprint = config_.footprints.forFacing(facing_);
     const core::WorldPointI resolvedFeet{
         body.x - footprint.offsetX,
         body.y - footprint.offsetY};
-    position_.x = lastMovement_.blockedX
-                      ? checkedSubpixelCoordinate(resolvedFeet.x)
-                      : target.x;
-    position_.y = lastMovement_.blockedY
-                      ? checkedSubpixelCoordinate(resolvedFeet.y)
-                      : target.y;
+
+    position_.x = resolvedFeet.x == targetFeet.x
+                      ? target.x
+                      : checkedSubpixelCoordinate(resolvedFeet.x);
+    position_.y = resolvedFeet.y == targetFeet.y
+                      ? target.y
+                      : checkedSubpixelCoordinate(resolvedFeet.y);
 }
 
 Hurtbox Player::hurtbox() const noexcept {

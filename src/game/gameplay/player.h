@@ -41,6 +41,9 @@ struct PlayerMovementConfig final {
         ActorFootprintDefinition{-10, -8, 18, 8}, // left
         ActorFootprintDefinition{-8, -8, 18, 8},  // right
     }};
+
+    int cornerSlideMaxProbePixels{4};
+    int cornerSlideCorrectionPixels{1};
 };
 
 struct SubpixelPosition final {

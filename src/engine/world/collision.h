@@ -28,6 +28,11 @@ struct MovementResult final {
     bool blockedY{};
 };
 
+struct CornerSlideConfig final {
+    int maxProbeDistance{4};
+    int correctionStep{1};
+};
+
 [[nodiscard]] CollisionQueryResult querySolidTiles(const CollisionGrid& grid,
                                                    AabbI body, int tileSize);
 [[nodiscard]] CollisionQueryResult querySolidWorld(
@@ -39,5 +44,8 @@ struct MovementResult final {
 [[nodiscard]] MovementResult moveAgainstSolidWorld(
     const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
     std::span<const AabbI> staticObstacles);
+[[nodiscard]] MovementResult moveAgainstSolidWorldWithCornerSlide(
+    const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
+    std::span<const AabbI> staticObstacles, CornerSlideConfig config = {});
 
 } // namespace underworld::world
