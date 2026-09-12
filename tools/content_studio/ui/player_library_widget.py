@@ -418,20 +418,37 @@ class PlayerDefinitionDialog(QDialog):
             "Configurar Player" if definition else "Adicionar Player")
 
         if definition is not None:
-            self.player_id.setText(definition.definition_id)
-            self.player_id.setReadOnly(True)
-            descriptor = workspace.find(
-                "authoringDescriptors", definition.definition_id)
-            self.name.setText(
-                descriptor.display_name
-                if descriptor else definition.display_name)
-            progression_id = str(definition.data.get(
-                "progressionId", "progression.player.default"))
-            index = self.progression.findData(progression_id)
-            if index >= 0:
-                self.progression.setCurrentIndex(index)
-            else:
-                self.progression.setEditText(progression_id)
+            self._load_definition(definition)
+
+    def _load_definition(self, definition: ContentDefinition) -> None:
+        request = self.service.request_for(
+            self.workspace, definition, self.asset_root)
+        self.player_id.setText(request.player_id)
+        self.player_id.setReadOnly(True)
+        self.name.setText(request.display_name)
+        index = self.progression.findData(request.progression_id)
+        if index >= 0:
+            self.progression.setCurrentIndex(index)
+        else:
+            self.progression.setEditText(request.progression_id)
+        self.sequences = {
+            state: dict(directions)
+            for state, directions in request.sequences.items()
+        }
+        self._refresh_summaries()
+
+    def _refresh_summaries(self) -> None:
+        for label in self.summary_labels.values():
+            label.setText("—")
+        for state, directions in self.sequences.items():
+            for direction, spec in directions.items():
+                label = self.summary_labels.get((state, direction))
+                if label is None:
+                    continue
+                mirror = " • flip X" if spec.flip_x else ""
+                label.setText(
+                    f"{len(spec.frame_indices)} frame(s) • "
+                    f"{spec.frame_width}x{spec.frame_height}{mirror}")
 
     def _edit_sequence(self, state: str, direction: str) -> None:
         if not self.workspace.definitions("visualImages"):
@@ -450,11 +467,7 @@ class PlayerDefinitionDialog(QDialog):
             return
         self.sequences.setdefault(state, {})[
             direction] = dialog.result_spec
-        spec = dialog.result_spec
-        mirror = " • flip X" if spec.flip_x else ""
-        self.summary_labels[(state, direction)].setText(
-            f"{len(spec.frame_indices)} frame(s) • "
-            f"{spec.frame_width}x{spec.frame_height}{mirror}")
+        self._refresh_summaries()
 
     def _save(self) -> None:
         progression_id = str(
@@ -577,11 +590,18 @@ class PlayerLibraryWidget(QWidget):
         definition = self._selected()
         if definition is None or self.workspace is None:
             return
-        QMessageBox.information(
-            self, "Configurar Player",
-            "Nesta etapa, a criação frame a frame está pronta. "
-            "A reabertura completa das sequências existentes será ligada "
-            "junto com a integração do PlayerDefinition ao runtime.")
+        try:
+            dialog = PlayerDefinitionDialog(
+                self.workspace, self.asset_root,
+                definition=definition, parent=self)
+        except ValueError as error:
+            QMessageBox.warning(
+                self, "Configurar Player", str(error))
+            return
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.refresh()
+            self.changed.emit()
+            self.status_changed.emit("Player atualizado")
 
     def delete_selected(self) -> None:
         definition = self._selected()

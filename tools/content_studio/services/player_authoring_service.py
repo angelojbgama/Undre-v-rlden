@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import re
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition, JsonValue
+from .import_service import read_image_dimensions
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,12 +103,14 @@ class PlayerAuthoringService:
                 raise ValueError(
                     f"{state}: defina Down, Up e Side antes de salvar.")
 
-        visual_id = f"visual.{self._slug(player_id)}"
         existing = workspace.find("players", player_id)
         if editing and existing is None:
             raise ValueError("O Player selecionado não existe mais.")
         if not editing and existing is not None:
             raise ValueError(f"Player já existe: {player_id}")
+        visual_id = f"visual.{self._slug(player_id)}"
+        if editing and existing is not None:
+            visual_id = str(existing.data.get("visualSetId", "")) or visual_id
 
         animation_entries: list[tuple[str, str, dict[str, JsonValue]]] = []
         state_refs: dict[str, dict[str, str]] = {}
@@ -172,3 +176,237 @@ class PlayerAuthoringService:
             else workspace.create_definition_bundle("Create Player", entries)
         )
         return next(value for value in values if value.category == "players")
+
+    def request_for(self, workspace: ContentWorkspace,
+                    definition: ContentDefinition,
+                    asset_root: Path | None = None) -> PlayerAuthoringRequest:
+        """Rebuild the Player editor model from already-authored content."""
+        if definition.category != "players":
+            raise ValueError("A definição selecionada não é um Player.")
+
+        visual_id = str(definition.data.get("visualSetId", ""))
+        visual = workspace.find("playerVisuals", visual_id)
+        if visual is None:
+            raise ValueError(
+                f"PlayerVisual associado não existe: {visual_id or '<vazio>'}")
+
+        descriptor = workspace.find(
+            "authoringDescriptors", definition.definition_id)
+        display_name = (
+            descriptor.display_name if descriptor is not None
+            else definition.display_name)
+        progression_id = str(definition.data.get(
+            "progressionId", "progression.player.default"))
+
+        state_refs: dict[str, dict[str, str]] = {
+            "idle": self._refs(visual.data.get("idle")),
+            "walk": self._refs(visual.data.get("walk")),
+        }
+        hurt_refs = self._refs(visual.data.get("hurt"))
+        if hurt_refs:
+            state_refs["hurt"] = hurt_refs
+
+        actions = visual.data.get("actions", [])
+        if isinstance(actions, list):
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                state = str(action.get("actionId", ""))
+                if state in self.OPTIONAL_STATES and state != "hurt":
+                    refs = self._refs(action.get("clips"))
+                    if refs:
+                        state_refs[state] = refs
+
+        sequences: dict[str, dict[str, FrameSequenceSpec]] = {}
+        for state, refs in state_refs.items():
+            for direction, animation_id in refs.items():
+                animation = workspace.find("animations", animation_id)
+                if animation is None:
+                    raise ValueError(
+                        f"Animação referenciada não existe: {animation_id}")
+                sequences.setdefault(state, {})[direction] = (
+                    self._sequence_from_animation(
+                        workspace, animation, asset_root))
+
+        return PlayerAuthoringRequest(
+            player_id=definition.definition_id,
+            display_name=display_name,
+            progression_id=progression_id,
+            sequences=sequences,
+        )
+
+    @classmethod
+    def _sequence_from_animation(
+            cls, workspace: ContentWorkspace,
+            animation: ContentDefinition,
+            asset_root: Path | None) -> FrameSequenceSpec:
+        image_id = str(animation.data.get("imageId", ""))
+        image = workspace.find("visualImages", image_id)
+        if image is None:
+            raise ValueError(
+                f"Imagem da animação não existe: {image_id or '<vazio>'}")
+
+        raw_frames = animation.data.get("frames", [])
+        if not isinstance(raw_frames, list) or not raw_frames:
+            raise ValueError(
+                f"Animação sem frames: {animation.definition_id}")
+
+        sources: list[tuple[int, int, int, int]] = []
+        duration_ticks: int | None = None
+        flip_x: bool | None = None
+        frame_width: int | None = None
+        frame_height: int | None = None
+        for raw_frame in raw_frames:
+            if not isinstance(raw_frame, dict):
+                raise ValueError(
+                    f"Frame inválido em {animation.definition_id}")
+            source = raw_frame.get("source")
+            if not isinstance(source, dict):
+                raise ValueError(
+                    f"Frame sem source em {animation.definition_id}")
+            rect = (
+                int(source.get("x", 0)),
+                int(source.get("y", 0)),
+                int(source.get("width", 0)),
+                int(source.get("height", 0)),
+            )
+            if rect[0] < 0 or rect[1] < 0 or rect[2] <= 0 or rect[3] <= 0:
+                raise ValueError(
+                    f"Source inválido em {animation.definition_id}")
+            if frame_width is None:
+                frame_width, frame_height = rect[2], rect[3]
+            elif (rect[2], rect[3]) != (frame_width, frame_height):
+                raise ValueError(
+                    "Configurar Player exige frames de mesmo tamanho dentro "
+                    f"da animação {animation.definition_id}.")
+
+            current_duration = max(1, int(raw_frame.get("durationTicks", 1)))
+            current_flip = bool(raw_frame.get("flipX", False))
+            if duration_ticks is None:
+                duration_ticks = current_duration
+            elif current_duration != duration_ticks:
+                raise ValueError(
+                    "Configurar Player ainda exige duração uniforme dentro "
+                    f"da animação {animation.definition_id}.")
+            if flip_x is None:
+                flip_x = current_flip
+            elif current_flip != flip_x:
+                raise ValueError(
+                    "Configurar Player ainda exige flip X uniforme dentro "
+                    f"da animação {animation.definition_id}.")
+            sources.append(rect)
+
+        assert frame_width is not None and frame_height is not None
+        assert duration_ticks is not None and flip_x is not None
+        image_width, image_height = cls._image_dimensions(
+            workspace, image, asset_root, sources)
+        spacing, origin_x, origin_y, columns, frame_indices = cls._infer_grid(
+            sources, frame_width, frame_height,
+            image_width, image_height)
+
+        return FrameSequenceSpec(
+            image_id=image_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            spacing=spacing,
+            origin_x=origin_x,
+            origin_y=origin_y,
+            duration_ticks=duration_ticks,
+            loop=bool(animation.data.get("loop", True)),
+            flip_x=flip_x,
+            frame_indices=frame_indices,
+            columns=columns,
+        )
+
+    @staticmethod
+    def _refs(value: object) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        refs: dict[str, str] = {}
+        for direction in PlayerAuthoringService.DIRECTIONS:
+            animation_id = str(value.get(direction, ""))
+            if animation_id:
+                refs[direction] = animation_id
+        return refs
+
+    @staticmethod
+    def _image_dimensions(
+            workspace: ContentWorkspace,
+            image: ContentDefinition,
+            asset_root: Path | None,
+            sources: list[tuple[int, int, int, int]]) -> tuple[int, int]:
+        root = (
+            asset_root if image.data.get("root") == "gameAssets"
+            else workspace.root)
+        relative = image.data.get("relativePath")
+        if root is not None and isinstance(relative, str):
+            path = root / relative
+            if path.is_file():
+                try:
+                    dimensions = read_image_dimensions(path)
+                    return dimensions.width, dimensions.height
+                except (OSError, ValueError):
+                    pass
+        return (
+            max(x + width for x, _, width, _ in sources),
+            max(y + height for _, y, _, height in sources),
+        )
+
+    @staticmethod
+    def _infer_grid(
+            sources: list[tuple[int, int, int, int]],
+            frame_width: int, frame_height: int,
+            image_width: int, image_height: int,
+            ) -> tuple[int, int, int, int, tuple[int, ...]]:
+        # The authored animation stores exact source rectangles, not editor-grid
+        # metadata. Recover the smallest regular grid that reproduces every
+        # source exactly. This keeps saved Players editable without changing the
+        # runtime content format.
+        max_spacing = min(max(image_width, image_height, 0), 4096)
+        for spacing in range(max_spacing + 1):
+            pitch_x = frame_width + spacing
+            pitch_y = frame_height + spacing
+            x_residues = {x % pitch_x for x, _, _, _ in sources}
+            y_residues = {y % pitch_y for _, y, _, _ in sources}
+            if len(x_residues) != 1 or len(y_residues) != 1:
+                continue
+            origin_x = next(iter(x_residues))
+            origin_y = next(iter(y_residues))
+            columns = (image_width - origin_x + spacing) // pitch_x
+            rows = (image_height - origin_y + spacing) // pitch_y
+            if columns <= 0 or rows <= 0:
+                continue
+
+            indices: list[int] = []
+            valid = True
+            for x, y, width, height in sources:
+                if width != frame_width or height != frame_height:
+                    valid = False
+                    break
+                dx = x - origin_x
+                dy = y - origin_y
+                if dx < 0 or dy < 0 or dx % pitch_x or dy % pitch_y:
+                    valid = False
+                    break
+                column = dx // pitch_x
+                row = dy // pitch_y
+                if column >= columns or row >= rows:
+                    valid = False
+                    break
+                index = row * columns + column
+                check_row, check_column = divmod(index, columns)
+                if (
+                    origin_x + check_column * pitch_x != x or
+                    origin_y + check_row * pitch_y != y
+                ):
+                    valid = False
+                    break
+                indices.append(index)
+            if valid:
+                return (
+                    spacing, origin_x, origin_y,
+                    columns, tuple(indices))
+
+        raise ValueError(
+            "A animação não corresponde a uma grade regular que o editor "
+            "frame a frame consiga reabrir.")
