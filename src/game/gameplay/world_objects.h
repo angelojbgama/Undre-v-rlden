@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/coordinates.h"
+#include "engine/core/geometry.h"
 #include "engine/simulation/definition_id.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/world/collision.h"
