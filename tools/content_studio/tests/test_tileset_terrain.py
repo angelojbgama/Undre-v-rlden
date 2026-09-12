@@ -20,6 +20,7 @@ from tools.content_studio.services.tile_semantic_catalog import TileSemanticCata
 from tools.content_studio.services.terrain_painting_service import TerrainCollisionPolicy, TerrainPaintingService
 from tools.content_studio.services.terrain_rule_service import RULE_SLOTS, RULE_SLOT_MASK, TerrainRuleService
 from tools.content_studio.services.tileset_library import BatchTilesetImportRequest, TilesetLibrary, TilesetUsageIndex
+from tools.content_studio.services.toolchain import find_cpp_tool
 
 
 def content_root() -> dict[str, object]:
@@ -328,9 +329,10 @@ class TerrainRuleTests(unittest.TestCase):
             self.assertEqual(assignments["south"], source_at(2, 3))
 
     def test_generated_rule_keeps_content_v5_cpp_compatible(self) -> None:
-        content_check = Path(__file__).resolve().parents[3] / "build" / "linux" / "content_check"
-        if not content_check.is_file():
-            self.skipTest("C++ content_check is not available")
+        repository = Path(__file__).resolve().parents[3]
+        content_check = find_cpp_tool(repository, "content_check")
+        if content_check is None:
+            self.skipTest("native C++ content_check is not available")
         data = content_root()
         data["tilesets"] = [{"id": "tileset.rule", "displayName": "Rule", "relativeAssetPath": "rule.png", "tileSize": 16, "columns": 4, "rows": 4}]
         with tempfile.TemporaryDirectory() as directory:

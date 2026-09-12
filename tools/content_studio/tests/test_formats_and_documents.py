@@ -7,6 +7,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -29,7 +30,9 @@ from tools.content_studio.model.scene_timeline import (
     add_clip, add_marker, add_track, evaluate_preview, fit_duration, move_clip,
     new_scene, validate_scene,
 )
-from tools.content_studio.services.toolchain import CppToolchain, PlaytestService
+from tools.content_studio.services.toolchain import (
+    CppToolchain, PlaytestService, find_cpp_tool,
+)
 from tools.content_studio.services.autosave import autosave
 from tools.content_studio.services.preferences import load_preferences, save_preferences
 from tools.content_studio.services.import_service import ImageDimensions, ImportService, TilesetImporter, TilesetImportRequest, calculate_grid
@@ -636,13 +639,58 @@ class AuthoringInfrastructureTests(unittest.TestCase):
             service.stop()
 
 
+class ToolchainResolutionTests(unittest.TestCase):
+    def test_windows_resolution_never_uses_linux_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            linux = root / "build" / "linux" / "content_check"
+            windows = root / "build" / "bin" / "content_check.exe"
+            linux.parent.mkdir(parents=True)
+            windows.parent.mkdir(parents=True)
+            linux.write_text("linux", encoding="utf-8")
+            windows.write_text("windows", encoding="utf-8")
+
+            with patch("tools.content_studio.services.toolchain.os.name", "nt"):
+                self.assertEqual(
+                    windows.resolve(),
+                    find_cpp_tool(root, "content_check"),
+                )
+
+            windows.unlink()
+            with (
+                patch("tools.content_studio.services.toolchain.os.name", "nt"),
+                patch(
+                    "tools.content_studio.services.toolchain.shutil.which",
+                    return_value=None,
+                ),
+            ):
+                self.assertIsNone(find_cpp_tool(root, "content_check"))
+
+
 class CppCompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.content_check = REPOSITORY / "build" / "linux" / "content_check"
-        self.map_compile = REPOSITORY / "build" / "linux" / "map_compile"
-        self.world_compile = REPOSITORY / "build" / "linux" / "world_compile"
-        if not all(path.is_file() for path in (self.content_check, self.map_compile, self.world_compile)):
-            self.skipTest("C++ compatibility tools have not been built")
+        content_check = find_cpp_tool(REPOSITORY, "content_check")
+        map_compile = find_cpp_tool(REPOSITORY, "map_compile")
+        world_compile = find_cpp_tool(REPOSITORY, "world_compile")
+        missing = [
+            name for name, path in (
+                ("content_check", content_check),
+                ("map_compile", map_compile),
+                ("world_compile", world_compile),
+            )
+            if path is None
+        ]
+        if missing:
+            self.skipTest(
+                "native C++ compatibility tools have not been built: "
+                + ", ".join(missing)
+            )
+        assert content_check is not None
+        assert map_compile is not None
+        assert world_compile is not None
+        self.content_check = content_check
+        self.map_compile = map_compile
+        self.world_compile = world_compile
 
     def test_python_round_trip_is_accepted_by_cpp_tools(self) -> None:
         content_source = FIXTURES / "phase16-content-v4" / "content.json"

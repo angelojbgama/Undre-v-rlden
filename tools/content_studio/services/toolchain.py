@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,27 @@ from ..formats.dmap import safe_dmap_filename
 from ..formats.json_io import encode_json
 from ..model.types import Diagnostic, ToolResult
 from .world_export_service import WorldExportService
+
+
+def find_cpp_tool(repository_root: Path, name: str) -> Path | None:
+    # Resolve only native artifacts for the current platform.
+    root = repository_root.resolve()
+    if os.name == "nt":
+        candidates = [
+            root / "build" / "bin" / f"{name}.exe",
+        ]
+    else:
+        candidates = [
+            root / "build" / "bin" / name,
+            root / "build" / "linux" / name,
+        ]
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    found = shutil.which(name)
+    return Path(found) if found else None
 
 
 class ToolchainError(RuntimeError):
@@ -28,16 +50,7 @@ class CppToolchain:
         self.game = game or self._find("game")
 
     def _find(self, name: str) -> Path | None:
-        candidates = [
-            self.repository_root / "build" / "bin" / f"{name}.exe",
-            self.repository_root / "build" / "bin" / name,
-            self.repository_root / "build" / "linux" / name,
-        ]
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate
-        found = shutil.which(name)
-        return Path(found) if found else None
+        return find_cpp_tool(self.repository_root, name)
 
     @staticmethod
     def _run(command: list[str], cwd: Path | None = None) -> ToolResult:
