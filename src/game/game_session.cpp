@@ -16,10 +16,13 @@ GameSession::GameSession(simulation::PlayerId playerId,
                          core::WorldPointI initialPosition,
                          gameplay::PlayerMovementConfig movementConfig,
                          std::optional<gameplay::ActorCollisionShapeDefinition>
-                             hurtboxShape)
+                             hurtboxShape,
+                         std::optional<gameplay::PlayerHurtboxFrameProfile>
+                             hurtboxFrameOverrides)
     : player_(playerId, handles_.create(), initialPosition,
               progression.baseStats.maximumHealth, std::move(movementConfig),
-              std::move(hurtboxShape)),
+              std::move(hurtboxShape),
+              std::move(hurtboxFrameOverrides)),
       progression_(progression) {}
 
 void GameSession::relocatePlayer(core::WorldPointI position,

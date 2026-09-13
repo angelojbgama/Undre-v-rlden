@@ -40,11 +40,14 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
                core::WorldPointI feetPosition,
                int maximumHealth,
                PlayerMovementConfig config,
-               std::optional<ActorCollisionShapeDefinition> hurtboxShape)
+               std::optional<ActorCollisionShapeDefinition> hurtboxShape,
+               std::optional<PlayerHurtboxFrameProfile>
+                   hurtboxFrameOverrides)
     : id_(id), combatant_{entity, Faction::player, Health{maximumHealth}, 0, false},
       position_{checkedSubpixelCoordinate(feetPosition.x),
                 checkedSubpixelCoordinate(feetPosition.y)},
-      config_(config), hurtboxShape_(std::move(hurtboxShape)) {
+      config_(config), hurtboxShape_(std::move(hurtboxShape)),
+      hurtboxFrameOverrides_(std::move(hurtboxFrameOverrides)) {
     if (!entity) {
         throw std::invalid_argument("player requires a valid runtime entity handle");
     }
@@ -110,11 +113,16 @@ void Player::update(const simulation::PlayerCommand& command,
     if (moveX < -1 || moveX > 1 || moveY < -1 || moveY > 1) {
         throw std::invalid_argument("player movement intent must be in the range -1 through 1");
     }
+    const auto previousMotion = motionState_;
+    const auto previousFacing = facing_;
+    const auto previousAction = actionState_;
+
     if (combatant_.health.depleted()) {
         damageKnockbackRemainingX_ = 0;
         damageKnockbackRemainingY_ = 0;
         actionState_ = PlayerActionState::none;
         motionState_ = PlayerMotionState::idle;
+        gameplayFrameTicks_ = 0;
         lastMovement_ = {};
         return;
     }
@@ -195,17 +203,84 @@ void Player::update(const simulation::PlayerCommand& command,
     position_.y = resolvedFeet.y == targetFeet.y
                       ? target.y
                       : checkedSubpixelCoordinate(resolvedFeet.y);
+
+    if (motionState_ != previousMotion ||
+        facing_ != previousFacing ||
+        actionState_ != previousAction) {
+        gameplayFrameTicks_ = 0;
+    } else if (gameplayFrameTicks_ <
+               std::numeric_limits<std::uint64_t>::max()) {
+        ++gameplayFrameTicks_;
+    }
 }
 
-Hurtbox Player::hurtbox() const {
-    const auto feet = feetPosition();
-    if (!hurtboxShape_) {
-        return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
-                 hurtboxWidth, hurtboxHeight},
-                !combatant_.health.depleted(), {}};
+const PlayerHurtboxTimeline* Player::currentHurtboxTimeline()
+    const noexcept {
+    if (!hurtboxFrameOverrides_) return nullptr;
+
+    const DirectionalPlayerHurtboxTimelines* directional = nullptr;
+    switch (actionState_) {
+    case PlayerActionState::swordAttack: {
+        const auto found =
+            hurtboxFrameOverrides_->actions.find("sword");
+        if (found != hurtboxFrameOverrides_->actions.end()) {
+            directional = &found->second;
+        }
+        break;
+    }
+    case PlayerActionState::bowAttack: {
+        const auto found =
+            hurtboxFrameOverrides_->actions.find("bow");
+        if (found != hurtboxFrameOverrides_->actions.end()) {
+            directional = &found->second;
+        }
+        break;
+    }
+    case PlayerActionState::hurt:
+        if (hurtboxFrameOverrides_->hurt) {
+            directional = &*hurtboxFrameOverrides_->hurt;
+        }
+        break;
+    case PlayerActionState::none:
+        directional = motionState_ == PlayerMotionState::walk
+            ? &hurtboxFrameOverrides_->walk
+            : &hurtboxFrameOverrides_->idle;
+        break;
     }
 
-    auto regions = hurtboxShape_->at(feet);
+    if (directional == nullptr) return nullptr;
+    const auto& timeline = directional->forFacing(facing_);
+    return timeline.authored ? &timeline : nullptr;
+}
+
+const ActorCollisionShapeDefinition* Player::currentHurtboxOverride()
+    const noexcept {
+    const auto* timeline = currentHurtboxTimeline();
+    if (timeline == nullptr ||
+        timeline->samples.empty() ||
+        timeline->totalTicks == 0) {
+        return nullptr;
+    }
+
+    std::uint64_t tick = gameplayFrameTicks_;
+    if (timeline->loop) {
+        tick %= timeline->totalTicks;
+    } else if (tick >= timeline->totalTicks) {
+        tick = timeline->totalTicks - 1U;
+    }
+
+    const PlayerHurtboxFrameSample* selected = nullptr;
+    for (const auto& sample : timeline->samples) {
+        if (sample.tick > tick) break;
+        selected = &sample;
+    }
+    if (selected == nullptr || !selected->shape) return nullptr;
+    return &*selected->shape;
+}
+
+Hurtbox Player::hurtboxFromShape(
+    const ActorCollisionShapeDefinition& shape) const {
+    auto regions = shape.at(feetPosition());
     world::AabbI bounds = regions.front();
     int right = bounds.x + bounds.width;
     int bottom = bounds.y + bounds.height;
@@ -222,7 +297,23 @@ Hurtbox Player::hurtbox() const {
     }
     bounds.width = right - bounds.x;
     bounds.height = bottom - bounds.y;
-    return {bounds, !combatant_.health.depleted(), std::move(regions)};
+    return {
+        bounds, !combatant_.health.depleted(),
+        std::move(regions)};
+}
+
+Hurtbox Player::hurtbox() const {
+    if (const auto* overrideShape = currentHurtboxOverride()) {
+        return hurtboxFromShape(*overrideShape);
+    }
+    if (hurtboxShape_) {
+        return hurtboxFromShape(*hurtboxShape_);
+    }
+
+    const auto feet = feetPosition();
+    return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
+             hurtboxWidth, hurtboxHeight},
+            !combatant_.health.depleted(), {}};
 }
 
 CombatTargetRef Player::combatTarget() {
@@ -266,6 +357,7 @@ void Player::relocate(core::WorldPointI feetPosition, FacingDirection facing) {
     facing_ = facing;
     motionState_ = PlayerMotionState::idle;
     actionState_ = PlayerActionState::none;
+    gameplayFrameTicks_ = 0;
     lastMovement_ = {};
     damageKnockbackRemainingX_ = 0;
     damageKnockbackRemainingY_ = 0;

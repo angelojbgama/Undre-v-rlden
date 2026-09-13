@@ -42,7 +42,9 @@ public:
                 core::WorldPointI initialPosition = {},
                 gameplay::PlayerMovementConfig movementConfig = {},
                 std::optional<gameplay::ActorCollisionShapeDefinition>
-                    hurtboxShape = {});
+                    hurtboxShape = {},
+                std::optional<gameplay::PlayerHurtboxFrameProfile>
+                    hurtboxFrameOverrides = {});
 
     [[nodiscard]] bool initializeMap(const maps::MapCatalog& maps,
                                       const maps::MapValidationCatalogs& catalogs,

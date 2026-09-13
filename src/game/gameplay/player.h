@@ -6,6 +6,7 @@
 #include "game/gameplay/actor_footprint.h"
 #include "game/gameplay/combat_types.h"
 #include "game/gameplay/facing_direction.h"
+#include "game/gameplay/player_definition.h"
 
 #include <cstdint>
 #include <optional>
@@ -68,7 +69,9 @@ public:
            core::WorldPointI feetPosition,
            int maximumHealth,
            PlayerMovementConfig config = {},
-           std::optional<ActorCollisionShapeDefinition> hurtboxShape = {});
+           std::optional<ActorCollisionShapeDefinition> hurtboxShape = {},
+           std::optional<PlayerHurtboxFrameProfile>
+               hurtboxFrameOverrides = {});
 
     void update(const simulation::PlayerCommand& command,
                 const world::CollisionGrid& collision, int tileSize,
@@ -89,6 +92,9 @@ public:
         return lastMovement_;
     }
     [[nodiscard]] PlayerActionState actionState() const noexcept { return actionState_; }
+    [[nodiscard]] std::uint64_t gameplayFrameTicks() const noexcept {
+        return gameplayFrameTicks_;
+    }
     [[nodiscard]] AttackInstanceId attackInstance() const noexcept { return attackInstance_; }
     [[nodiscard]] Health& health() noexcept { return combatant_.health; }
     [[nodiscard]] const Health& health() const noexcept { return combatant_.health; }
@@ -108,20 +114,34 @@ public:
     void beginHurt() noexcept {
         actionState_ = PlayerActionState::hurt;
         motionState_ = PlayerMotionState::idle;
+        gameplayFrameTicks_ = 0;
         lastMovement_ = {};
     }
-    void finishAttack() noexcept { actionState_ = PlayerActionState::none; }
+    void finishAttack() noexcept {
+        if (actionState_ != PlayerActionState::none) {
+            actionState_ = PlayerActionState::none;
+            gameplayFrameTicks_ = 0;
+        }
+    }
 
 private:
+    [[nodiscard]] const PlayerHurtboxTimeline* currentHurtboxTimeline()
+        const noexcept;
+    [[nodiscard]] const ActorCollisionShapeDefinition*
+        currentHurtboxOverride() const noexcept;
+    [[nodiscard]] Hurtbox hurtboxFromShape(
+        const ActorCollisionShapeDefinition& shape) const;
     simulation::PlayerId id_{};
     CombatantState combatant_{};
     SubpixelPosition position_{};
     PlayerMovementConfig config_{};
     std::optional<ActorCollisionShapeDefinition> hurtboxShape_{};
+    std::optional<PlayerHurtboxFrameProfile> hurtboxFrameOverrides_{};
     FacingDirection facing_{FacingDirection::down};
     PlayerMotionState motionState_{PlayerMotionState::idle};
     world::MovementResult lastMovement_{};
     PlayerActionState actionState_{PlayerActionState::none};
+    std::uint64_t gameplayFrameTicks_{};
     AttackInstanceId attackInstance_{};
     AttackInstanceId nextAttackInstance_{1};
     int damageKnockbackRemainingX_{};

@@ -1128,6 +1128,112 @@ void testPlayerCollision() {
 }
 
 
+void testPlayerConsumesHurtboxFrameTimeline() {
+    namespace gameplay = underworld::game::gameplay;
+
+    gameplay::ActorCollisionShapeDefinition baseShape;
+    baseShape.regions = {{-4, -4, 8, 4}};
+
+    gameplay::ActorCollisionShapeDefinition narrowShape;
+    narrowShape.regions = {{-1, -1, 2, 1}};
+
+    gameplay::ActorCollisionShapeDefinition swordShape;
+    swordShape.regions = {{1, -2, 3, 2}};
+
+    gameplay::PlayerHurtboxFrameProfile profile;
+    auto& idleDown = profile.idle.values[0];
+    idleDown.authored = true;
+    idleDown.loop = true;
+    idleDown.totalTicks = 4;
+    idleDown.samples = {
+        {0, std::nullopt},
+        {2, narrowShape},
+    };
+
+    gameplay::DirectionalPlayerHurtboxTimelines swordTimelines;
+    auto& swordDown = swordTimelines.values[0];
+    swordDown.authored = true;
+    swordDown.loop = false;
+    swordDown.totalTicks = 3;
+    swordDown.samples = {
+        {0, swordShape},
+        {2, std::nullopt},
+    };
+    profile.actions.emplace("sword", swordTimelines);
+
+    underworld::world::CollisionGrid grid(64, 64);
+    gameplay::Player player(
+        {0}, {0, 1}, {100, 100}, 5, {},
+        baseShape, profile);
+
+    expect(player.gameplayFrameTicks() == 0 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{96, 96, 8, 4},
+           "Player frame Hurtbox starts on base fallback at Idle frame zero");
+
+    player.update(movementCommand(1, 0, 0), grid, 16);
+    expect(player.gameplayFrameTicks() == 1 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{96, 96, 8, 4},
+           "base Hurtbox remains active until authored override frame");
+
+    player.update(movementCommand(2, 0, 0), grid, 16);
+    expect(player.gameplayFrameTicks() == 2 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{99, 99, 2, 1},
+           "Idle Hurtbox switches to frame override at authored tick");
+
+    gameplay::CombatSystem combat;
+    underworld::simulation::EventBuffer events;
+    const gameplay::Hitbox baseOnlyHit{
+        {96, 96, 1, 1}, {{40, 1}, 1},
+        gameplay::Faction::enemy, {1, 0}, 0, 0, true};
+    const auto blockedByOverride =
+        combat.resolve(baseOnlyHit, player.combatTarget(), events);
+    expect(!blockedByOverride.damaged &&
+               player.health().current == 5,
+           "combat uses current frame Hurtbox instead of base envelope");
+
+    player.update(movementCommand(3, 0, 0), grid, 16);
+    player.update(movementCommand(4, 0, 0), grid, 16);
+    expect(player.gameplayFrameTicks() == 4 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{96, 96, 8, 4},
+           "looped Hurtbox timeline returns to explicit base fallback");
+
+    const gameplay::Hitbox baseHit{
+        {96, 96, 1, 1}, {{41, 1}, 1},
+        gameplay::Faction::enemy, {1, 0}, 0, 0, true};
+    const auto baseResult =
+        combat.resolve(baseHit, player.combatTarget(), events);
+    expect(baseResult.damaged &&
+               player.health().current == 4,
+           "base Hurtbox receives damage again after loop fallback");
+
+    player.combatant().invulnerabilityTicks = 0;
+    player.update(actionCommand(5, true, false), grid, 16);
+    expect(player.actionState() ==
+               gameplay::PlayerActionState::swordAttack &&
+               player.gameplayFrameTicks() == 0 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{101, 98, 3, 2},
+           "starting Sword resets gameplay frame clock and selects action Hurtbox");
+
+    player.update(movementCommand(6, 0, 0), grid, 16);
+    player.update(movementCommand(7, 0, 0), grid, 16);
+    expect(player.gameplayFrameTicks() == 2 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{96, 96, 8, 4},
+           "Sword frame without Hurtbox falls back to base shape");
+
+    player.finishAttack();
+    expect(player.actionState() == gameplay::PlayerActionState::none &&
+               player.gameplayFrameTicks() == 0 &&
+               player.hurtbox().bounds ==
+                   underworld::world::AabbI{96, 96, 8, 4},
+           "finishing action resets frame clock and returns to Idle base Hurtbox");
+}
+
 void testPlayerHurtboxFrameProfileCompilation() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -10798,6 +10904,7 @@ int main() {
         testPlayerMovementAndFacing();
         testGameSessionCommandBoundary();
         testPlayerCollision();
+        testPlayerConsumesHurtboxFrameTimeline();
         testPlayerHurtboxFrameProfileCompilation();
         testPlayerAuthoredBaseHurtboxRuntime();
         testPlayerAuthoredMovementCollision();
