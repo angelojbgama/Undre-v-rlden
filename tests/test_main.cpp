@@ -1128,6 +1128,156 @@ void testPlayerCollision() {
 }
 
 
+void testPlayerHurtboxFrameProfileCompilation() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+
+    const auto player = std::find_if(
+        authored.players.begin(), authored.players.end(),
+        [](const auto& value) {
+            return value.id == gameplay::defaultPlayerDefinitionId();
+        });
+    expect(player != authored.players.end(),
+           "builtin Player exists for frame Hurtbox compilation");
+    if (player == authored.players.end()) return;
+
+    const auto visual = std::find_if(
+        authored.playerVisuals.begin(), authored.playerVisuals.end(),
+        [&](const auto& value) {
+            return value.id == player->visualSetId;
+        });
+    expect(visual != authored.playerVisuals.end() &&
+               visual->idle.down.has_value(),
+           "builtin PlayerVisual exposes Idle Down for Hurtbox compilation");
+    if (visual == authored.playerVisuals.end() ||
+        !visual->idle.down) return;
+
+    const auto idle = std::find_if(
+        authored.animations.begin(), authored.animations.end(),
+        [&](const auto& value) {
+            return value.id == *visual->idle.down;
+        });
+    expect(idle != authored.animations.end() &&
+               idle->frames.size() >= 2,
+           "Idle Down has at least two frames for Hurtbox override test");
+    if (idle == authored.animations.end() ||
+        idle->frames.size() < 2) return;
+
+    for (auto& frame : idle->frames) {
+        frame.durationTicks = 3;
+        std::erase_if(
+            frame.masks,
+            [](const auto& value) {
+                return value.channel == "hurtbox";
+            });
+    }
+
+    content::AuthoredAnimationFrameMask idleMask;
+    idleMask.channel = "hurtbox";
+    idleMask.width =
+        static_cast<std::uint32_t>(idle->frames[1].source.width);
+    idleMask.height =
+        static_cast<std::uint32_t>(idle->frames[1].source.height);
+    idleMask.origin = {
+        -idle->frames[1].anchor.x,
+        -idle->frames[1].anchor.y};
+    idleMask.cells.assign(
+        static_cast<std::size_t>(idleMask.width) *
+            idleMask.height,
+        0);
+    idleMask.cells[0] = 1;
+    idleMask.cells[1] = 1;
+    idle->frames[1].masks.push_back(idleMask);
+
+    const auto swordAction = std::find_if(
+        visual->actions.begin(), visual->actions.end(),
+        [](const auto& value) {
+            return value.actionId == "sword";
+        });
+    expect(swordAction != visual->actions.end() &&
+               swordAction->clips.left.has_value(),
+           "builtin PlayerVisual exposes Sword Left for Hurtbox compilation");
+    if (swordAction == visual->actions.end() ||
+        !swordAction->clips.left) return;
+
+    const auto sword = std::find_if(
+        authored.animations.begin(), authored.animations.end(),
+        [&](const auto& value) {
+            return value.id == *swordAction->clips.left;
+        });
+    expect(sword != authored.animations.end() &&
+               !sword->frames.empty(),
+           "Sword Left exists for Hurtbox action profile test");
+    if (sword == authored.animations.end() ||
+        sword->frames.empty()) return;
+
+    std::erase_if(
+        sword->frames[0].masks,
+        [](const auto& value) {
+            return value.channel == "hurtbox";
+        });
+    content::AuthoredAnimationFrameMask swordMask;
+    swordMask.channel = "hurtbox";
+    swordMask.width =
+        static_cast<std::uint32_t>(sword->frames[0].source.width);
+    swordMask.height =
+        static_cast<std::uint32_t>(sword->frames[0].source.height);
+    swordMask.origin = {
+        -sword->frames[0].anchor.x,
+        -sword->frames[0].anchor.y};
+    swordMask.cells.assign(
+        static_cast<std::size_t>(swordMask.width) *
+            swordMask.height,
+        0);
+    swordMask.cells.back() = 1;
+    sword->frames[0].masks.push_back(swordMask);
+
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry.has_value(),
+           "Player frame Hurtboxes compile with authored content");
+    if (!compiled.registry) return;
+
+    const auto& definition =
+        compiled.registry->players().require(
+            gameplay::defaultPlayerDefinitionId());
+    expect(definition.hurtboxFrameOverrides.has_value(),
+           "PlayerDefinition contains compiled frame Hurtbox profile");
+    if (!definition.hurtboxFrameOverrides) return;
+
+    const auto& idleDown =
+        definition.hurtboxFrameOverrides->idle.values[0];
+    expect(idleDown.authored &&
+               idleDown.loop == idle->loop &&
+               idleDown.samples.size() == idle->frames.size(),
+           "Idle Down keeps authored animation Hurtbox timing");
+    expect(!idleDown.samples[0].shape.has_value() &&
+               idleDown.samples[1].shape.has_value(),
+           "frame without Hurtbox is explicit base fallback and next frame overrides");
+    expect(idleDown.totalTicks ==
+               static_cast<std::uint32_t>(
+                   idle->frames.size() * 3),
+           "frame Hurtbox timeline preserves frame durations");
+    if (idleDown.samples[1].shape) {
+        expect(
+            !idleDown.samples[1].shape->regions.empty(),
+            "frame Hurtbox mask compiles to compact runtime regions");
+    }
+
+    const auto swordProfile =
+        definition.hurtboxFrameOverrides->actions.find("sword");
+    expect(
+        swordProfile !=
+            definition.hurtboxFrameOverrides->actions.end() &&
+        swordProfile->second.values[2].authored,
+        "Sword Left Hurtbox is kept in generic action profile");
+
+    expect(
+        !definition.hurtboxFrameOverrides->walk.authored(),
+        "animation family without Hurtbox masks stays on base fallback");
+}
+
 void testPlayerAuthoredBaseHurtboxRuntime() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -10648,6 +10798,7 @@ int main() {
         testPlayerMovementAndFacing();
         testGameSessionCommandBoundary();
         testPlayerCollision();
+        testPlayerHurtboxFrameProfileCompilation();
         testPlayerAuthoredBaseHurtboxRuntime();
         testPlayerAuthoredMovementCollision();
         testAttackWorldObstructionClipping();

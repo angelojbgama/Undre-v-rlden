@@ -24,6 +24,15 @@ const AuthoredAnimation* findAnimation(
     return found == pack.animations.end() ? nullptr : &*found;
 }
 
+const AuthoredPlayerVisual* findPlayerVisual(
+    const AuthoredContentPack& pack,
+    const simulation::DefinitionId& id) {
+    const auto found = std::find_if(
+        pack.playerVisuals.begin(), pack.playerVisuals.end(),
+        [&](const auto& value) { return value.id == id; });
+    return found == pack.playerVisuals.end() ? nullptr : &*found;
+}
+
 const presentation::DirectionalAnimationRef* defaultPlayerSwordClips(
     const AuthoredContentPack& pack) {
     const auto player = std::find_if(
@@ -73,12 +82,18 @@ std::optional<simulation::DefinitionId> animationForFacing(
     return std::nullopt;
 }
 
-const AuthoredAnimationFrameMask* attackHitboxMask(
-    const AuthoredAnimationFrame& frame) {
+const AuthoredAnimationFrameMask* frameMask(
+    const AuthoredAnimationFrame& frame,
+    std::string_view channel) {
     const auto found = std::find_if(
         frame.masks.begin(), frame.masks.end(),
-        [](const auto& value) { return value.channel == "attackHitbox"; });
+        [&](const auto& value) { return value.channel == channel; });
     return found == frame.masks.end() ? nullptr : &*found;
+}
+
+const AuthoredAnimationFrameMask* attackHitboxMask(
+    const AuthoredAnimationFrame& frame) {
+    return frameMask(frame, "attackHitbox");
 }
 
 gameplay::AttackDefinition::CollisionSample& collisionSample(
@@ -338,7 +353,125 @@ gameplay::ActorCollisionShapeDefinition compilePlayerMask(
     return result;
 }
 
-gameplay::PlayerDefinition compilePlayer(const AuthoredPlayer& v) {
+gameplay::ActorCollisionShapeDefinition compilePlayerFrameMask(
+    const AuthoredAnimationFrameMask& mask) {
+    gameplay::ActorCollisionShapeDefinition result;
+    const auto boxes = gameplay::compileAttackShapeMask(
+        mask.width, mask.height, mask.cells,
+        mask.origin.x, mask.origin.y);
+    result.regions.reserve(boxes.size());
+    for (const auto& box : boxes) {
+        result.regions.push_back(
+            {box.offsetX, box.offsetY, box.width, box.height});
+    }
+    return result;
+}
+
+gameplay::PlayerHurtboxTimeline compileHurtboxTimeline(
+    const AuthoredContentPack& pack,
+    const presentation::DirectionalAnimationRef& clips,
+    gameplay::FacingDirection facing) {
+    gameplay::PlayerHurtboxTimeline result;
+    const auto animationId = animationForFacing(clips, facing);
+    if (!animationId) return result;
+
+    const auto* animation = findAnimation(pack, *animationId);
+    if (animation == nullptr || animation->frames.empty()) return result;
+
+    const bool hasOverrides = std::any_of(
+        animation->frames.begin(), animation->frames.end(),
+        [](const auto& frame) {
+            return frameMask(frame, "hurtbox") != nullptr;
+        });
+    if (!hasOverrides) return result;
+
+    result.authored = true;
+    result.loop = animation->loop;
+    result.samples.reserve(animation->frames.size());
+
+    std::uint64_t tick = 0;
+    for (const auto& frame : animation->frames) {
+        if (tick > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::invalid_argument(
+                "Player Hurtbox animation timeline is too long");
+        }
+
+        gameplay::PlayerHurtboxFrameSample sample;
+        sample.tick = static_cast<std::uint32_t>(tick);
+        if (const auto* mask = frameMask(frame, "hurtbox")) {
+            sample.shape = compilePlayerFrameMask(*mask);
+        }
+        result.samples.push_back(std::move(sample));
+
+        if (frame.durationTicks >
+            std::numeric_limits<std::uint32_t>::max() - tick) {
+            throw std::invalid_argument(
+                "Player Hurtbox animation duration overflows");
+        }
+        tick += frame.durationTicks;
+    }
+
+    result.totalTicks = static_cast<std::uint32_t>(tick);
+    return result;
+}
+
+gameplay::DirectionalPlayerHurtboxTimelines compileDirectionalHurtboxes(
+    const AuthoredContentPack& pack,
+    const presentation::DirectionalAnimationRef& clips) {
+    gameplay::DirectionalPlayerHurtboxTimelines result;
+    constexpr std::array facings{
+        gameplay::FacingDirection::down,
+        gameplay::FacingDirection::up,
+        gameplay::FacingDirection::left,
+        gameplay::FacingDirection::right,
+    };
+    for (std::size_t index = 0; index < facings.size(); ++index) {
+        result.values[index] =
+            compileHurtboxTimeline(pack, clips, facings[index]);
+    }
+    return result;
+}
+
+std::optional<gameplay::PlayerHurtboxFrameProfile>
+compilePlayerHurtboxFrameProfile(
+    const AuthoredPlayer& player,
+    const AuthoredContentPack& pack) {
+    const auto* visual = findPlayerVisual(pack, player.visualSetId);
+    if (visual == nullptr) return std::nullopt;
+
+    gameplay::PlayerHurtboxFrameProfile result;
+    bool anyAuthored = false;
+
+    result.idle = compileDirectionalHurtboxes(pack, visual->idle);
+    anyAuthored = result.idle.authored() || anyAuthored;
+
+    result.walk = compileDirectionalHurtboxes(pack, visual->walk);
+    anyAuthored = result.walk.authored() || anyAuthored;
+
+    if (visual->hurt) {
+        auto hurt = compileDirectionalHurtboxes(pack, *visual->hurt);
+        if (hurt.authored()) {
+            anyAuthored = true;
+            result.hurt = std::move(hurt);
+        }
+    }
+
+    for (const auto& action : visual->actions) {
+        auto timelines =
+            compileDirectionalHurtboxes(pack, action.clips);
+        if (!timelines.authored()) continue;
+        anyAuthored = true;
+        result.actions.emplace(
+            action.actionId, std::move(timelines));
+    }
+
+    if (!anyAuthored) return std::nullopt;
+    return result;
+}
+
+gameplay::PlayerDefinition compilePlayer(
+    const AuthoredPlayer& v,
+    const AuthoredContentPack& pack) {
     std::optional<gameplay::DirectionalActorCollisionShapes> movement;
     if (v.movementCollision) {
         gameplay::DirectionalActorCollisionShapes shapes;
@@ -354,8 +487,12 @@ gameplay::PlayerDefinition compilePlayer(const AuthoredPlayer& v) {
         hurtbox = compilePlayerMask(*v.hurtbox, false);
     }
 
+    auto frameOverrides =
+        compilePlayerHurtboxFrameProfile(v, pack);
+
     return {v.id, v.visualSetId, v.progressionId,
-            std::move(movement), std::move(hurtbox)};
+            std::move(movement), std::move(hurtbox),
+            std::move(frameOverrides)};
 }
 
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }
@@ -394,7 +531,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.npcVisuals) registry.npcVisuals_.add(compileNpcVisual(value));
         for (const auto& value : authored.dialogues) registry.dialogues_.add(compileDialogue(value));
         for (const auto& value : authored.quests) registry.quests_.add(compileQuest(value));
-        for (const auto& value : authored.players) registry.players_.add(compilePlayer(value));
+        for (const auto& value : authored.players) registry.players_.add(compilePlayer(value, authored));
         for (const auto& value : authored.playerProgressions) registry.progressions_.add(compileProgression(value));
         for (const auto& value : authored.pickups) registry.pickups_.push_back(compilePickup(value));
         registry.authoringDescriptors_ = authored.authoringDescriptors;
