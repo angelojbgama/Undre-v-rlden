@@ -75,6 +75,7 @@ struct AuthoredPlayer final {
     simulation::DefinitionId visualSetId{};
     simulation::DefinitionId progressionId{};
     std::optional<AuthoredPlayerMovementCollision> movementCollision{};
+    std::optional<AuthoredPixelMask> hurtbox{};
 };
 struct AuthoredPlayerActionVisual final {
     std::string actionId;

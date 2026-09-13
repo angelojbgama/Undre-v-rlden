@@ -1168,6 +1168,65 @@ void testPlayerAuthoredMovementCollision() {
 }
 
 
+void testPlayerHurtboxAuthoringRoundTrip() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    auto player = std::find_if(
+        authored.players.begin(), authored.players.end(),
+        [](const auto& value) {
+            return value.id == gameplay::defaultPlayerDefinitionId();
+        });
+    expect(player != authored.players.end(),
+           "builtin Player exists for hurtbox authoring round trip");
+    if (player == authored.players.end()) return;
+
+    content::AuthoredPixelMask mask;
+    mask.width = 32;
+    mask.height = 32;
+    mask.origin = {-16, -31};
+    mask.cells.assign(32U * 32U, 0);
+    for (std::size_t y = 9; y < 31; ++y) {
+        for (std::size_t x = 9; x < 23; ++x) {
+            mask.cells[y * 32U + x] = 1;
+        }
+    }
+    player->hurtbox = mask;
+
+    const auto encoded = content::encodeAuthoredContentJson(authored);
+    const auto decoded = content::decodeAuthoredContentJson(encoded);
+    expect(static_cast<bool>(decoded),
+           "Player authored hurtbox survives content JSON decode");
+    if (!decoded.content) return;
+
+    const auto decodedPlayer = std::find_if(
+        decoded.content->players.begin(), decoded.content->players.end(),
+        [](const auto& value) {
+            return value.id == gameplay::defaultPlayerDefinitionId();
+        });
+    expect(decodedPlayer != decoded.content->players.end() &&
+               decodedPlayer->hurtbox.has_value(),
+           "Player authored hurtbox survives JSON round trip");
+    if (decodedPlayer != decoded.content->players.end() &&
+        decodedPlayer->hurtbox) {
+        expect(decodedPlayer->hurtbox->width == 32 &&
+                   decodedPlayer->hurtbox->height == 32 &&
+                   decodedPlayer->hurtbox->origin.x == -16 &&
+                   decodedPlayer->hurtbox->origin.y == -31,
+               "Player hurtbox dimensions and origin are preserved");
+        expect(std::count(
+                   decodedPlayer->hurtbox->cells.begin(),
+                   decodedPlayer->hurtbox->cells.end(),
+                   static_cast<std::uint8_t>(1)) == 14 * 22,
+               "Player hurtbox active cells are preserved");
+    }
+
+    const auto report = content::ContentValidator{}.validate(*decoded.content);
+    expect(!report.hasErrors(),
+           "valid Player authored hurtbox passes content validation");
+}
+
 void testAuthoredPlayerVisualPipeline() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -10221,6 +10280,7 @@ int main() {
         testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
+        testPlayerHurtboxAuthoringRoundTrip();
         testAuthoredPlayerVisualPipeline();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();

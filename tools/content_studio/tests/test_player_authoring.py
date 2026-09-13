@@ -53,6 +53,30 @@ def movement_mask(
     )
 
 
+def hurtbox_mask(
+    *,
+    width: int = 32,
+    height: int = 32,
+) -> PlayerCollisionMaskSpec:
+    cells = [0] * (width * height)
+    body_width = max(1, round(width * 14 / 32))
+    body_height = max(1, round(height * 22 / 32))
+    start_x = max(0, (width - body_width) // 2)
+    end_x = min(width, start_x + body_width)
+    end_y = max(1, height - 1)
+    start_y = max(0, end_y - body_height)
+    for y in range(start_y, end_y):
+        for x in range(start_x, end_x):
+            cells[y * width + x] = 1
+    return PlayerCollisionMaskSpec(
+        width=width,
+        height=height,
+        origin_x=-(width // 2),
+        origin_y=-(height - 1),
+        cells=tuple(cells),
+    )
+
+
 def sequence(
     indices: tuple[int, ...],
     *,
@@ -117,6 +141,8 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 "up": movement_mask(),
                 "side": movement_mask(),
             },
+            hurtbox_enabled=True,
+            hurtbox=hurtbox_mask(),
         )
 
     def test_saved_player_reopens_with_same_frame_sequences(self) -> None:
@@ -153,6 +179,8 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
             movement_mask(),
             reopened.movement_collision["side"],
         )
+        self.assertTrue(reopened.hurtbox_enabled)
+        self.assertEqual(hurtbox_mask(), reopened.hurtbox)
 
     def test_editing_reopened_player_updates_existing_content(self) -> None:
         temporary, workspace = self.make_workspace()
@@ -178,6 +206,8 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 movement_collision_enabled=(
                     reopened.movement_collision_enabled),
                 movement_collision=dict(reopened.movement_collision),
+                hurtbox_enabled=reopened.hurtbox_enabled,
+                hurtbox=reopened.hurtbox,
             ),
             editing=True,
         )
@@ -220,6 +250,8 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 sequences=reopened.sequences,
                 movement_collision_enabled=False,
                 movement_collision={},
+                hurtbox_enabled=reopened.hurtbox_enabled,
+                hurtbox=reopened.hurtbox,
             ),
             editing=True,
         )
@@ -228,6 +260,37 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         self.assertIsNotNone(player)
         self.assertNotIn(
             "movementCollision",
+            player.data,  # type: ignore[union-attr]
+        )
+
+
+    def test_disabling_hurtbox_removes_optional_field(self) -> None:
+        temporary, workspace = self.make_workspace()
+        self.addCleanup(temporary.cleanup)
+        service = PlayerAuthoringService()
+
+        created = service.save(workspace, self.make_request())
+        reopened = service.request_for(workspace, created)
+        service.save(
+            workspace,
+            PlayerAuthoringRequest(
+                player_id=reopened.player_id,
+                display_name=reopened.display_name,
+                progression_id=reopened.progression_id,
+                sequences=reopened.sequences,
+                movement_collision_enabled=(
+                    reopened.movement_collision_enabled),
+                movement_collision=dict(reopened.movement_collision),
+                hurtbox_enabled=False,
+                hurtbox=None,
+            ),
+            editing=True,
+        )
+
+        player = workspace.find("players", "player.hero")
+        self.assertIsNotNone(player)
+        self.assertNotIn(
+            "hurtbox",
             player.data,  # type: ignore[union-attr]
         )
 

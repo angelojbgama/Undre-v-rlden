@@ -295,6 +295,39 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             validateMask(value.movementCollision->up, "up");
             validateMask(value.movementCollision->side, "side");
         }
+        if (value.hurtbox) {
+            const auto& mask = *value.hurtbox;
+            const auto expectedCells =
+                mask.width > 0 &&
+                mask.height <= std::numeric_limits<std::size_t>::max() /
+                                   mask.width
+                ? static_cast<std::size_t>(mask.width) * mask.height
+                : 0;
+            if (mask.width == 0 || mask.height == 0 ||
+                expectedCells == 0 ||
+                mask.cells.size() != expectedCells) {
+                error(report, ContentKind::player, value.id,
+                      "invalid_player_hurtbox",
+                      "player hurtbox dimensions do not match its cell mask",
+                      "hurtbox");
+            } else {
+                if (visualCoordinateOutOfBounds(mask.origin.x) ||
+                    visualCoordinateOutOfBounds(mask.origin.y)) {
+                    error(report, ContentKind::player, value.id,
+                          "invalid_player_hurtbox_origin",
+                          "player hurtbox origin is outside bounds",
+                          "hurtbox.origin");
+                }
+                if (!std::any_of(
+                        mask.cells.begin(), mask.cells.end(),
+                        [](std::uint8_t cell) { return cell != 0; })) {
+                    error(report, ContentKind::player, value.id,
+                          "empty_player_hurtbox",
+                          "player hurtbox must contain at least one active cell",
+                          "hurtbox");
+                }
+            }
+        }
     }
     for (const auto& value : pack.playerVisuals) {
         validateDirectional(value.idle, animations, report, ContentKind::playerVisual, value.id, "idle");

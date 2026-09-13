@@ -42,6 +42,8 @@ class PlayerAuthoringRequest:
     movement_collision_enabled: bool = False
     movement_collision: dict[str, PlayerCollisionMaskSpec] = field(
         default_factory=dict)
+    hurtbox_enabled: bool = False
+    hurtbox: PlayerCollisionMaskSpec | None = None
 
 
 class PlayerAuthoringService:
@@ -150,6 +152,38 @@ class PlayerAuthoringService:
                     f"Movement Collision {direction}: a máscara deve usar "
                     "o mesmo tamanho do frame Idle dessa direção.")
 
+    @classmethod
+    def _validate_hurtbox(
+            cls, request: PlayerAuthoringRequest) -> None:
+        if not request.hurtbox_enabled:
+            return
+        mask = request.hurtbox
+        if mask is None:
+            raise ValueError(
+                "Hurtbox: defina a máscara antes de salvar.")
+        if mask.width <= 0 or mask.height <= 0:
+            raise ValueError("Hurtbox: dimensões inválidas.")
+        expected = mask.width * mask.height
+        if len(mask.cells) != expected:
+            raise ValueError(
+                "Hurtbox: a máscara não combina com suas dimensões.")
+        if any(cell not in (0, 1) for cell in mask.cells):
+            raise ValueError("Hurtbox: células devem ser 0 ou 1.")
+        if not any(mask.cells):
+            raise ValueError("Hurtbox: a máscara está vazia.")
+
+        idle_down = request.sequences.get("idle", {}).get("down")
+        if idle_down is None:
+            raise ValueError(
+                "Hurtbox: configure Idle / Down primeiro.")
+        if (
+            mask.width != idle_down.frame_width or
+            mask.height != idle_down.frame_height
+        ):
+            raise ValueError(
+                "Hurtbox: a máscara deve usar o mesmo tamanho "
+                "do frame Idle / Down.")
+
     @staticmethod
     def _collision_spec(value: object, direction: str) -> PlayerCollisionMaskSpec:
         if not isinstance(value, dict):
@@ -177,6 +211,29 @@ class PlayerAuthoringService:
                 f"Movement Collision {direction}: células devem ser 0 ou 1.")
         return parsed
 
+    @staticmethod
+    def _hurtbox_spec(value: object) -> PlayerCollisionMaskSpec:
+        if not isinstance(value, dict):
+            raise ValueError("Hurtbox: definição inválida.")
+        origin = value.get("origin")
+        cells = value.get("cells")
+        if not isinstance(origin, dict) or not isinstance(cells, list):
+            raise ValueError("Hurtbox: origin/cells inválidos.")
+        width = int(value.get("width", 0))
+        height = int(value.get("height", 0))
+        parsed = PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=int(origin.get("x", 0)),
+            origin_y=int(origin.get("y", 0)),
+            cells=tuple(int(cell) for cell in cells),
+        )
+        if width <= 0 or height <= 0 or len(parsed.cells) != width * height:
+            raise ValueError("Hurtbox: dimensões/células inválidas.")
+        if any(cell not in (0, 1) for cell in parsed.cells):
+            raise ValueError("Hurtbox: células devem ser 0 ou 1.")
+        return parsed
+
     def save(self, workspace: ContentWorkspace,
              request: PlayerAuthoringRequest,
              editing: bool = False) -> ContentDefinition:
@@ -197,6 +254,7 @@ class PlayerAuthoringService:
                     f"{state}: defina Down, Up e Side antes de salvar.")
 
         self._validate_movement_collision(request)
+        self._validate_hurtbox(request)
 
         existing = workspace.find("players", player_id)
         if editing and existing is None:
@@ -256,6 +314,8 @@ class PlayerAuthoringService:
                     request.movement_collision[direction])
                 for direction in self.DIRECTIONS
             }
+        if request.hurtbox_enabled and request.hurtbox is not None:
+            player_data["hurtbox"] = self._collision_data(request.hurtbox)
 
         entries = animation_entries + [
             ("playerVisuals", visual_id, {
@@ -344,6 +404,13 @@ class PlayerAuthoringService:
                 movement_collision[direction] = self._collision_spec(
                     movement_value[direction], direction)
 
+        hurtbox_value = definition.data.get("hurtbox")
+        hurtbox_enabled = isinstance(hurtbox_value, dict)
+        hurtbox = (
+            self._hurtbox_spec(hurtbox_value)
+            if hurtbox_enabled else None
+        )
+
         return PlayerAuthoringRequest(
             player_id=definition.definition_id,
             display_name=display_name,
@@ -351,6 +418,8 @@ class PlayerAuthoringService:
             sequences=sequences,
             movement_collision_enabled=movement_collision_enabled,
             movement_collision=movement_collision,
+            hurtbox_enabled=hurtbox_enabled,
+            hurtbox=hurtbox,
         )
 
     @classmethod

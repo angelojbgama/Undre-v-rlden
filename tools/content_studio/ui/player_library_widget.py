@@ -346,6 +346,7 @@ class PlayerDefinitionDialog(QDialog):
         self.service = PlayerAuthoringService()
         self.sequences: dict[str, dict[str, FrameSequenceSpec]] = {}
         self.movement_collision: dict[str, PlayerCollisionMaskSpec] = {}
+        self.hurtbox: PlayerCollisionMaskSpec | None = None
 
         self.name = QLineEdit()
         self.player_id = QLineEdit("player.hero")
@@ -436,6 +437,27 @@ class PlayerDefinitionDialog(QDialog):
         collision_hint.setStyleSheet("color:#aeb8c4;")
         collision_layout.addWidget(collision_hint, 3, 0, 1, 3)
 
+        self.hurtbox_enabled = QCheckBox("Ativar Hurtbox autorável")
+        self.hurtbox_enabled.toggled.connect(self._hurtbox_toggled)
+        self.hurtbox_button = QPushButton("Editar Hurtbox...")
+        self.hurtbox_button.clicked.connect(self._edit_hurtbox)
+        self.hurtbox_summary = QLabel("não definida")
+        self.hurtbox_summary.setStyleSheet("color:#aeb8c4;")
+
+        hurtbox_group = QGroupBox("Hurtbox / área que recebe dano")
+        hurtbox_layout = QGridLayout(hurtbox_group)
+        hurtbox_layout.addWidget(self.hurtbox_enabled, 0, 0, 1, 2)
+        hurtbox_layout.addWidget(self.hurtbox_button, 1, 0)
+        hurtbox_layout.addWidget(self.hurtbox_summary, 1, 1)
+        hurtbox_hint = QLabel(
+            "A Hurtbox é uma forma de combate estável, separada da "
+            "Movement Collision. Ela não muda a cada frame nem altera o "
+            "bloqueio contra paredes. Use o primeiro Idle / Down como "
+            "referência e ajuste somente a área que deve receber dano.")
+        hurtbox_hint.setWordWrap(True)
+        hurtbox_hint.setStyleSheet("color:#aeb8c4;")
+        hurtbox_layout.addWidget(hurtbox_hint, 2, 0, 1, 2)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel |
             QDialogButtonBox.StandardButton.Ok)
@@ -447,6 +469,7 @@ class PlayerDefinitionDialog(QDialog):
         layout.addWidget(help_label)
         layout.addWidget(scroll, 1)
         layout.addWidget(collision_group)
+        layout.addWidget(hurtbox_group)
         layout.addWidget(buttons)
         self.resize(1220, 820)
         self.setWindowTitle(
@@ -456,6 +479,7 @@ class PlayerDefinitionDialog(QDialog):
             self._load_definition(definition)
         else:
             self._collision_toggled(False)
+            self._hurtbox_toggled(False)
 
     def _load_definition(self, definition: ContentDefinition) -> None:
         request = self.service.request_for(
@@ -479,6 +503,10 @@ class PlayerDefinitionDialog(QDialog):
         self._refresh_collision_summaries()
         self._collision_toggled(
             request.movement_collision_enabled)
+        self.hurtbox = request.hurtbox
+        self.hurtbox_enabled.setChecked(request.hurtbox_enabled)
+        self._refresh_hurtbox_summary()
+        self._hurtbox_toggled(request.hurtbox_enabled)
 
     def _refresh_summaries(self) -> None:
         for label in self.summary_labels.values():
@@ -617,6 +645,87 @@ class PlayerDefinitionDialog(QDialog):
         )
         self._refresh_collision_summaries()
 
+    def _hurtbox_toggled(self, checked: bool) -> None:
+        self.hurtbox_button.setEnabled(checked)
+        if checked:
+            self._refresh_hurtbox_summary()
+
+    def _refresh_hurtbox_summary(self) -> None:
+        if self.hurtbox is None:
+            self.hurtbox_summary.setText("não definida")
+            return
+        active = sum(1 for cell in self.hurtbox.cells if cell)
+        self.hurtbox_summary.setText(
+            f"{self.hurtbox.width}x{self.hurtbox.height} • "
+            f"{active} pixel(s) ativos")
+
+    def _default_hurtbox_mask(self) -> PlayerCollisionMaskSpec | None:
+        spec = self.sequences.get("idle", {}).get("down")
+        if spec is None:
+            return None
+        width = spec.frame_width
+        height = spec.frame_height
+
+        body_width = max(1, round(width * 14 / 32))
+        body_height = max(1, round(height * 22 / 32))
+        start_x = max(0, (width - body_width) // 2)
+        end_x = min(width, start_x + body_width)
+        end_y = max(1, height - 1)
+        start_y = max(0, end_y - body_height)
+
+        cells = [0] * (width * height)
+        for y in range(start_y, end_y):
+            for x in range(start_x, end_x):
+                cells[y * width + x] = 1
+        return PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=-(width // 2),
+            origin_y=-(height - 1),
+            cells=tuple(cells),
+        )
+
+    def _edit_hurtbox(self) -> None:
+        if not self.hurtbox_enabled.isChecked():
+            return
+        image = self._collision_frame_image("down")
+        if image is None:
+            QMessageBox.information(
+                self, self.windowTitle(),
+                "Configure primeiro Idle / Down. "
+                "A Hurtbox usa esse frame como referência visual.")
+            return
+        current = self.hurtbox or self._default_hurtbox_mask()
+        if current is None:
+            return
+        mask = {
+            "width": current.width,
+            "height": current.height,
+            "origin": {
+                "x": current.origin_x,
+                "y": current.origin_y,
+            },
+            "cells": list(current.cells),
+        }
+        dialog = ShapeMaskEditorDialog(
+            image, mask, self.translate, self,
+            title_key="mask_editor_title")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        result = dialog.result_mask()
+        origin = result.get("origin", {})
+        cells = result.get("cells", [])
+        if not isinstance(origin, dict) or not isinstance(cells, list):
+            return
+        self.hurtbox = PlayerCollisionMaskSpec(
+            width=int(result.get("width", image.width())),
+            height=int(result.get("height", image.height())),
+            origin_x=int(origin.get("x", 0)),
+            origin_y=int(origin.get("y", 0)),
+            cells=tuple(int(cell) for cell in cells),
+        )
+        self._refresh_hurtbox_summary()
+
     def _save(self) -> None:
         progression_id = str(
             self.progression.currentData()
@@ -629,6 +738,8 @@ class PlayerDefinitionDialog(QDialog):
             movement_collision_enabled=(
                 self.collision_enabled.isChecked()),
             movement_collision=dict(self.movement_collision),
+            hurtbox_enabled=self.hurtbox_enabled.isChecked(),
+            hurtbox=self.hurtbox,
         )
         try:
             self.service.save(
