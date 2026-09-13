@@ -1168,6 +1168,59 @@ void testPlayerAuthoredMovementCollision() {
 }
 
 
+void testAttackWorldObstructionClipping() {
+    using underworld::game::gameplay::FacingDirection;
+    using underworld::game::gameplay::clipAttackRegionAgainstSolidTiles;
+    using underworld::game::gameplay::clipAttackRegionAgainstSolidWorld;
+    using underworld::world::AabbI;
+    using underworld::world::CollisionGrid;
+
+    CollisionGrid grid(8, 8);
+    constexpr int tileSize = 4;
+
+    // Solid tile occupies world [12,16) x [8,12).
+    grid.setSolid(3, 2, true);
+    const auto right = clipAttackRegionAgainstSolidTiles(
+        grid, {8, 8, 12, 4},
+        FacingDirection::right, tileSize);
+    expect(right.has_value() &&
+               *right == AabbI{8, 8, 4, 4},
+           "sword region stops before a solid tile to the right");
+
+    const auto left = clipAttackRegionAgainstSolidTiles(
+        grid, {8, 8, 12, 4},
+        FacingDirection::left, tileSize);
+    expect(!left.has_value(),
+           "sword region is fully blocked when its leading left slice is solid");
+
+    CollisionGrid openGrid(8, 8);
+    const std::array<AabbI, 1> obstacle{{
+        {14, 8, 2, 4},
+    }};
+    const auto objectBlocked = clipAttackRegionAgainstSolidWorld(
+        openGrid, {8, 8, 12, 4},
+        FacingDirection::right, tileSize, obstacle);
+    expect(objectBlocked.has_value() &&
+               *objectBlocked == AabbI{8, 8, 6, 4},
+           "sword region stops at authored object collision");
+
+    const auto unobstructed = clipAttackRegionAgainstSolidWorld(
+        openGrid, {8, 8, 4, 4},
+        FacingDirection::right, tileSize, obstacle);
+    expect(unobstructed.has_value() &&
+               *unobstructed == AabbI{8, 8, 4, 4},
+           "unobstructed sword region is preserved");
+
+    const std::array<AabbI, 1> immediateObstacle{{
+        {8, 8, 1, 4},
+    }};
+    const auto immediate = clipAttackRegionAgainstSolidWorld(
+        openGrid, {8, 8, 4, 4},
+        FacingDirection::right, tileSize, immediateObstacle);
+    expect(!immediate.has_value(),
+           "solid geometry on the leading sword slice blocks the region");
+}
+
 void testAnimationFrameMaskAuthoringRoundTrip() {
     namespace content = underworld::game::content;
 
@@ -10516,6 +10569,7 @@ int main() {
         testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
+        testAttackWorldObstructionClipping();
         testAnimationFrameMaskAuthoringRoundTrip();
         testPlayerSwordFrameMasksCompileToCollisionSamples();
         testLegacyPlayerMovementSideCompatibility();

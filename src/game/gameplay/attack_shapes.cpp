@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 
 namespace underworld::game::gameplay {
 
@@ -14,6 +15,67 @@ std::size_t facingIndex(FacingDirection facing) noexcept {
     }
     return 0;
 }
+
+namespace {
+
+template <typename Query>
+std::optional<world::AabbI> clipAttackRegion(
+    world::AabbI region,
+    FacingDirection facing,
+    Query&& collides) {
+    if (region.width <= 0 || region.height <= 0) return std::nullopt;
+
+    const auto horizontalSlice = [&](int x) {
+        return world::AabbI{x, region.y, 1, region.height};
+    };
+    const auto verticalSlice = [&](int y) {
+        return world::AabbI{region.x, y, region.width, 1};
+    };
+
+    if (facing == FacingDirection::right) {
+        for (int offset = 0; offset < region.width; ++offset) {
+            if (!collides(horizontalSlice(region.x + offset))) continue;
+            if (offset == 0) return std::nullopt;
+            region.width = offset;
+            return region;
+        }
+        return region;
+    }
+
+    if (facing == FacingDirection::left) {
+        for (int offset = 0; offset < region.width; ++offset) {
+            const int x = region.x + region.width - 1 - offset;
+            if (!collides(horizontalSlice(x))) continue;
+            if (offset == 0) return std::nullopt;
+            region.x = region.x + region.width - offset;
+            region.width = offset;
+            return region;
+        }
+        return region;
+    }
+
+    if (facing == FacingDirection::down) {
+        for (int offset = 0; offset < region.height; ++offset) {
+            if (!collides(verticalSlice(region.y + offset))) continue;
+            if (offset == 0) return std::nullopt;
+            region.height = offset;
+            return region;
+        }
+        return region;
+    }
+
+    for (int offset = 0; offset < region.height; ++offset) {
+        const int y = region.y + region.height - 1 - offset;
+        if (!collides(verticalSlice(y))) continue;
+        if (offset == 0) return std::nullopt;
+        region.y = region.y + region.height - offset;
+        region.height = offset;
+        return region;
+    }
+    return region;
+}
+
+} // namespace
 
 std::vector<DirectionalBoxDefinition> compileAttackShapeMask(
     std::uint32_t width, std::uint32_t height, const std::vector<std::uint8_t>& cells,
@@ -51,6 +113,33 @@ std::vector<DirectionalBoxDefinition> compileAttackShapeMask(
         result.push_back({originX + run.x, originY + run.y, run.width, 1});
     }
     return result;
+}
+
+std::optional<world::AabbI> clipAttackRegionAgainstSolidTiles(
+    const world::CollisionGrid& grid,
+    world::AabbI region,
+    FacingDirection facing,
+    int tileSize) {
+    return clipAttackRegion(
+        region, facing,
+        [&](world::AabbI slice) {
+            return world::querySolidTiles(
+                grid, slice, tileSize).collides;
+        });
+}
+
+std::optional<world::AabbI> clipAttackRegionAgainstSolidWorld(
+    const world::CollisionGrid& grid,
+    world::AabbI region,
+    FacingDirection facing,
+    int tileSize,
+    std::span<const world::AabbI> staticObstacles) {
+    return clipAttackRegion(
+        region, facing,
+        [&](world::AabbI slice) {
+            return world::querySolidWorld(
+                grid, slice, tileSize, staticObstacles).collides;
+        });
 }
 
 } // namespace underworld::game::gameplay

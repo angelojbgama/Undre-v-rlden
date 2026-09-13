@@ -414,90 +414,146 @@ void GameSession::applyResolution(const gameplay::CombatResolution& resolution) 
 }
 
 void GameSession::resolvePlayerSword() {
+    const auto& map = mapSession_->world()->map();
+    const int tileSize = map.tileSize();
+    const auto objectCollisions =
+        mapSession_->world()->objectCollisionBounds();
+
+    const auto direction = playerAttack_
+        ? playerAttack_->lockedFacing
+        : player_.facing();
+    const auto damage = effectivePlayerDamage(
+        swordDefinition_->damage);
+    const auto knockback = gameplay::directionVector(direction);
+
+    bool hasDebugBounds = false;
+    world::AabbI debugBounds{};
+
+    const auto addDebugBounds = [&](world::AabbI bounds) {
+        if (!hasDebugBounds) {
+            debugBounds = bounds;
+            hasDebugBounds = true;
+            return;
+        }
+        const int left = std::min(debugBounds.x, bounds.x);
+        const int top = std::min(debugBounds.y, bounds.y);
+        const int right = std::max(
+            debugBounds.x + debugBounds.width,
+            bounds.x + bounds.width);
+        const int bottom = std::max(
+            debugBounds.y + debugBounds.height,
+            bounds.y + bounds.height);
+        debugBounds = {
+            left, top, right - left, bottom - top};
+    };
+
+    const auto hitboxFor = [&](world::AabbI bounds) {
+        return gameplay::Hitbox{
+            bounds,
+            playerAttack_
+                ? playerAttack_->key
+                : gameplay::AttackKey{
+                      player_.entityHandle(),
+                      player_.attackInstance()},
+            gameplay::Faction::player,
+            damage,
+            knockback.x * damage.knockbackPixels,
+            knockback.y * damage.knockbackPixels,
+            true};
+    };
+
+    const auto targetObjectBlockers =
+        [&](const maps::PersistentObject& target) {
+            std::vector<world::AabbI> blockers = objectCollisions;
+            const auto& collision =
+                target.instance.definition().collision;
+            if (!collision) return blockers;
+
+            for (const auto& region : collision->regions) {
+                const world::AabbI targetRegion{
+                    target.instance.position().x + region.x,
+                    target.instance.position().y + region.y,
+                    region.width,
+                    region.height};
+                blockers.erase(
+                    std::remove(
+                        blockers.begin(), blockers.end(),
+                        targetRegion),
+                    blockers.end());
+            }
+            return blockers;
+        };
+
+    const auto resolveRegion = [&](world::AabbI rawBounds) {
+        const auto tileVisible =
+            gameplay::clipAttackRegionAgainstSolidTiles(
+                map.collision(), rawBounds, direction, tileSize);
+        if (!tileVisible) return;
+
+        // A destructible/attackable solid object must be able to receive the
+        // blow that reaches its own blocker. Other solid objects still occlude it.
+        for (auto& object : mapSession_->world()->objects()) {
+            if (!object.instance.combatant()) continue;
+            const auto blockers = targetObjectBlockers(object);
+            const auto visibleToObject =
+                gameplay::clipAttackRegionAgainstSolidWorld(
+                    map.collision(), *tileVisible, direction,
+                    tileSize, blockers);
+            if (!visibleToObject) continue;
+            applyResolution(combat_.resolve(
+                hitboxFor(*visibleToObject),
+                object.instance.combatTarget(), events_));
+        }
+
+        // Enemies behind any solid object are occluded by that object.
+        const auto actorVisible =
+            gameplay::clipAttackRegionAgainstSolidWorld(
+                map.collision(), *tileVisible, direction,
+                tileSize, objectCollisions);
+        if (!actorVisible) {
+            addDebugBounds(*tileVisible);
+            return;
+        }
+
+        addDebugBounds(*actorVisible);
+        for (auto& enemy : mapSession_->world()->enemies()) {
+            applyResolution(combat_.resolve(
+                hitboxFor(*actorVisible),
+                enemy.instance.combatTarget(), events_));
+        }
+    };
+
     if (playerAttack_ &&
         playerAttack_->definition == swordDefinition_ &&
         swordDefinition_->hasCollisionSamples(
             playerAttack_->lockedFacing)) {
+        activeSword_.enabled = false;
         const auto* sample = swordDefinition_->collisionSampleAt(
             playerAttack_->elapsedTicks,
             playerAttack_->lockedFacing);
-        activeSword_.enabled = false;
-        if (sample == nullptr) return;
-
-        const auto index =
-            gameplay::facingIndex(playerAttack_->lockedFacing);
-        const auto& regions = sample->regions[index];
-        if (regions.empty()) return;
-
-        const auto direction =
-            gameplay::directionVector(playerAttack_->lockedFacing);
-        const auto damage =
-            effectivePlayerDamage(playerAttack_->definition->damage);
-        const auto feet = player_.feetPosition();
-
-        auto debugBounds = regions.front().at(feet);
-        for (std::size_t regionIndex = 1;
-             regionIndex < regions.size(); ++regionIndex) {
-            const auto bounds = regions[regionIndex].at(feet);
-            const int left = std::min(debugBounds.x, bounds.x);
-            const int top = std::min(debugBounds.y, bounds.y);
-            const int right = std::max(
-                debugBounds.x + debugBounds.width,
-                bounds.x + bounds.width);
-            const int bottom = std::max(
-                debugBounds.y + debugBounds.height,
-                bounds.y + bounds.height);
-            debugBounds = {
-                left, top, right - left, bottom - top};
+        if (sample != nullptr) {
+            const auto index =
+                gameplay::facingIndex(
+                    playerAttack_->lockedFacing);
+            for (const auto& region : sample->regions[index]) {
+                resolveRegion(region.at(player_.feetPosition()));
+            }
         }
-
-        activeSword_ = {
-            debugBounds, playerAttack_->key,
-            gameplay::Faction::player, damage,
-            direction.x * damage.knockbackPixels,
-            direction.y * damage.knockbackPixels, true};
-
-        const auto resolveRegion =
-            [&](const gameplay::DirectionalBoxDefinition& region) {
-                const gameplay::Hitbox hitbox{
-                    region.at(feet), playerAttack_->key,
-                    gameplay::Faction::player, damage,
-                    direction.x * damage.knockbackPixels,
-                    direction.y * damage.knockbackPixels, true};
-                for (auto& enemy :
-                     mapSession_->world()->enemies()) {
-                    applyResolution(combat_.resolve(
-                        hitbox, enemy.instance.combatTarget(), events_));
-                }
-                for (auto& object :
-                     mapSession_->world()->objects()) {
-                    if (object.instance.combatant()) {
-                        applyResolution(combat_.resolve(
-                            hitbox, object.instance.combatTarget(),
-                            events_));
-                    }
-                }
-            };
-
-        for (const auto& region : regions) {
-            resolveRegion(region);
+        if (hasDebugBounds) {
+            activeSword_ = hitboxFor(debugBounds);
         }
         return;
     }
 
-    if (!activeSword_.enabled) { return; }
-    activeSword_.bounds =
+    if (!activeSword_.enabled) return;
+
+    resolveRegion(
         swordDefinition_->meleeHitboxes->forFacing(
-            player_.facing()).at(player_.feetPosition());
-    for (auto& enemy : mapSession_->world()->enemies()) {
-        applyResolution(combat_.resolve(
-            activeSword_, enemy.instance.combatTarget(), events_));
-    }
-    for (auto& object : mapSession_->world()->objects()) {
-        if (object.instance.combatant()) {
-            applyResolution(combat_.resolve(
-                activeSword_, object.instance.combatTarget(), events_));
-        }
+            player_.facing()).at(player_.feetPosition()));
+    if (hasDebugBounds) {
+        activeSword_ = hitboxFor(debugBounds);
+    } else {
+        activeSword_.enabled = false;
     }
 }
 
