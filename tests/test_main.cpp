@@ -1251,10 +1251,12 @@ void testAuthoredPlayerVisualPipeline() {
 
     expect(visual->idle.down.has_value() &&
                visual->idle.up.has_value() &&
-               visual->idle.side.has_value() &&
+               visual->idle.left.has_value() &&
+               visual->idle.right.has_value() &&
                visual->walk.down.has_value() &&
                visual->walk.up.has_value() &&
-               visual->walk.side.has_value(),
+               visual->walk.left.has_value() &&
+               visual->walk.right.has_value(),
            "builtin PlayerVisual has complete Idle and Walk directions");
 
     const auto sword = std::find_if(
@@ -1265,6 +1267,38 @@ void testAuthoredPlayerVisualPipeline() {
         [](const auto& action) { return action.actionId == "bow"; });
     expect(sword != visual->actions.end() && bow != visual->actions.end(),
            "builtin PlayerVisual exposes sword and bow action bindings");
+}
+
+void testExplicitPlayerLeftRightVisuals() {
+    namespace gameplay = underworld::game::gameplay;
+
+    underworld::game::PlayerVisualSet set;
+    set.id = {"visual.player.explicit_direction_test"};
+    set.idle = {
+        makeTestClip("explicit.idle.down", true),
+        makeTestClip("explicit.idle.up", true),
+        makeTestClip("explicit.idle.left", true),
+        makeTestClip("explicit.idle.right", true)};
+    set.walk = {
+        makeTestClip("explicit.walk.down", true),
+        makeTestClip("explicit.walk.up", true),
+        makeTestClip("explicit.walk.left", true),
+        makeTestClip("explicit.walk.right", true)};
+
+    underworld::game::PlayerVisual visual(set);
+    visual.update(
+        gameplay::PlayerMotionState::idle,
+        gameplay::FacingDirection::left, 0);
+    expect(visual.animator().clip().id() == "explicit.idle.left" &&
+               !visual.flipX(),
+           "authored Player Left selects explicit Left clip");
+
+    visual.update(
+        gameplay::PlayerMotionState::idle,
+        gameplay::FacingDirection::right, 0);
+    expect(visual.animator().clip().id() == "explicit.idle.right" &&
+               !visual.flipX(),
+           "authored Player Right selects explicit Right clip");
 }
 
 void testPlayerVisualAndCameraFollow() {
@@ -10282,6 +10316,7 @@ int main() {
         testPlayerAuthoredMovementCollision();
         testPlayerHurtboxAuthoringRoundTrip();
         testAuthoredPlayerVisualPipeline();
+        testExplicitPlayerLeftRightVisuals();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();
         testAttackTimeline();

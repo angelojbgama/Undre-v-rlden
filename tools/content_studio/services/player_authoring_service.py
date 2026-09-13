@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import re
 
@@ -52,7 +52,9 @@ class PlayerAuthoringService:
         "hurt", "sword", "bow", "shield", "death", "dead",
         "sleeping", "wake_up",
     )
-    DIRECTIONS = ("down", "up", "side")
+    VISUAL_DIRECTIONS = ("down", "up", "left", "right")
+    MOVEMENT_DIRECTIONS = ("down", "up", "side")
+    DIRECTIONS = VISUAL_DIRECTIONS
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -116,7 +118,7 @@ class PlayerAuthoringService:
         if not request.movement_collision_enabled:
             return
         missing = [
-            direction for direction in cls.DIRECTIONS
+            direction for direction in cls.MOVEMENT_DIRECTIONS
             if direction not in request.movement_collision
         ]
         if missing:
@@ -124,7 +126,7 @@ class PlayerAuthoringService:
                 "Movement Collision: defina Down, Up e Side antes de salvar.")
 
         idle = request.sequences.get("idle", {})
-        for direction in cls.DIRECTIONS:
+        for direction in cls.MOVEMENT_DIRECTIONS:
             mask = request.movement_collision[direction]
             if mask.width <= 0 or mask.height <= 0:
                 raise ValueError(
@@ -140,7 +142,8 @@ class PlayerAuthoringService:
             if not any(mask.cells):
                 raise ValueError(
                     f"Movement Collision {direction}: a máscara está vazia.")
-            idle_spec = idle.get(direction)
+            visual_direction = "left" if direction == "side" else direction
+            idle_spec = idle.get(visual_direction)
             if idle_spec is None:
                 raise ValueError(
                     f"Movement Collision {direction}: configure Idle primeiro.")
@@ -251,7 +254,7 @@ class PlayerAuthoringService:
             ]
             if missing:
                 raise ValueError(
-                    f"{state}: defina Down, Up e Side antes de salvar.")
+                    f"{state}: defina Down, Up, Left e Right antes de salvar.")
 
         self._validate_movement_collision(request)
         self._validate_hurtbox(request)
@@ -312,7 +315,7 @@ class PlayerAuthoringService:
             player_data["movementCollision"] = {
                 direction: self._collision_data(
                     request.movement_collision[direction])
-                for direction in self.DIRECTIONS
+                for direction in self.MOVEMENT_DIRECTIONS
             }
         if request.hurtbox_enabled and request.hurtbox is not None:
             player_data["hurtbox"] = self._collision_data(request.hurtbox)
@@ -387,16 +390,22 @@ class PlayerAuthoringService:
                 if animation is None:
                     raise ValueError(
                         f"Animação referenciada não existe: {animation_id}")
-                sequences.setdefault(state, {})[direction] = (
-                    self._sequence_from_animation(
-                        workspace, animation, asset_root))
+                sequence = self._sequence_from_animation(
+                    workspace, animation, asset_root)
+                if (
+                    direction == "right" and
+                    refs.get("left") == refs.get("right")
+                ):
+                    sequence = replace(
+                        sequence, flip_x=not sequence.flip_x)
+                sequences.setdefault(state, {})[direction] = sequence
 
         movement_value = definition.data.get("movementCollision")
         movement_collision_enabled = isinstance(movement_value, dict)
         movement_collision: dict[str, PlayerCollisionMaskSpec] = {}
         if movement_collision_enabled:
             assert isinstance(movement_value, dict)
-            for direction in self.DIRECTIONS:
+            for direction in self.MOVEMENT_DIRECTIONS:
                 if direction not in movement_value:
                     raise ValueError(
                         "Movement Collision salvo está incompleto: "
@@ -510,10 +519,14 @@ class PlayerAuthoringService:
         if not isinstance(value, dict):
             return {}
         refs: dict[str, str] = {}
-        for direction in PlayerAuthoringService.DIRECTIONS:
+        for direction in PlayerAuthoringService.VISUAL_DIRECTIONS:
             animation_id = str(value.get(direction, ""))
             if animation_id:
                 refs[direction] = animation_id
+        legacy_side = str(value.get("side", ""))
+        if legacy_side:
+            refs.setdefault("left", legacy_side)
+            refs.setdefault("right", legacy_side)
         return refs
 
     @staticmethod

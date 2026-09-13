@@ -11,8 +11,8 @@ std::size_t directionIndex(gameplay::FacingDirection facing) noexcept {
     switch (facing) {
     case gameplay::FacingDirection::down: return 0;
     case gameplay::FacingDirection::up: return 1;
-    case gameplay::FacingDirection::left:
-    case gameplay::FacingDirection::right: return 2;
+    case gameplay::FacingDirection::left: return 2;
+    case gameplay::FacingDirection::right: return 3;
     }
     return 0;
 }
@@ -58,7 +58,7 @@ PlayerVisual::PlayerVisual(const PlayerVisualSet& visualSet)
           actionClips(visualSet, "sword"),
           actionClips(visualSet, "bow"),
           visualSet.hurt ? *visualSet.hurt : DirectionalClips{}) {
-    authoredSideCanonicalLeft_ = true;
+    authoredExplicitDirections_ = true;
 }
 
 PlayerVisual::PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClips,
@@ -67,6 +67,15 @@ PlayerVisual::PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClip
     : idleClips_(std::move(idleClips)), walkClips_(std::move(walkClips)),
       swordClips_(std::move(swordClips)), bowClips_(std::move(bowClips)),
       hurtClips_(std::move(hurtClips)) {
+    const auto fillLegacyRight = [](DirectionalClips& clips) {
+        if (!clips[3] && clips[2]) clips[3] = clips[2];
+    };
+    fillLegacyRight(idleClips_);
+    fillLegacyRight(walkClips_);
+    fillLegacyRight(swordClips_);
+    fillLegacyRight(bowClips_);
+    fillLegacyRight(hurtClips_);
+
     for (const auto& clip : idleClips_) {
         if (!clip) {
             throw std::invalid_argument("player visual requires every idle direction clip");
@@ -126,8 +135,8 @@ void PlayerVisual::update(gameplay::PlayerMotionState motion,
     facing_ = facing;
     action_ = action;
 
-    if (authoredSideCanonicalLeft_) {
-        flipX_ = facing == gameplay::FacingDirection::right;
+    if (authoredExplicitDirections_) {
+        flipX_ = false;
     } else if (action == gameplay::PlayerActionState::swordAttack) {
         flipX_ = facing == gameplay::FacingDirection::left;
     } else {

@@ -1006,6 +1006,8 @@ bool ContentWorkspaceDocument::removeDefinition(const ContentDefinitionKey& key,
             return (ref.defaultAnimation && *ref.defaultAnimation == id) ||
                    (ref.down && *ref.down == id) ||
                    (ref.up && *ref.up == id) ||
+                   (ref.left && *ref.left == id) ||
+                   (ref.right && *ref.right == id) ||
                    (ref.side && *ref.side == id);
         };
         for (const auto& value : pack->enemyVisuals) {

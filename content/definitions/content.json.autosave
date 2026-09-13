@@ -4282,6 +4282,14 @@
         "object-destruction-end:6",
         "object-destruction-frame-ticks:8"
       ]
+    },
+    {
+      "definitionId": "player.hero",
+      "displayName": "hero",
+      "category": "player",
+      "tags": [
+        "player"
+      ]
     }
   ],
   "tileSemantics": [
@@ -4527,14 +4535,14 @@
       "relativePath": "Characters/Player/idle/player_idle.png"
     },
     {
-      "id": "image.player_dead",
-      "root": "gameAssets",
-      "relativePath": "Characters/Player/death/player_dead.png"
-    },
-    {
       "id": "image.player_death",
       "root": "gameAssets",
       "relativePath": "Characters/Player/death/player_death.png"
+    },
+    {
+      "id": "image.player_dead",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/death/player_dead.png"
     },
     {
       "id": "image.player_attacking",
@@ -6622,67 +6630,6 @@
       ]
     },
     {
-      "id": "animation.player_dead",
-      "imageId": "image.player_dead",
-      "loop": false,
-      "frames": [
-        {
-          "source": {
-            "x": 0,
-            "y": 0,
-            "width": 32,
-            "height": 32
-          },
-          "anchor": {
-            "x": 16,
-            "y": 31
-          },
-          "drawOffset": {
-            "x": 0,
-            "y": 0
-          },
-          "durationTicks": 8,
-          "markers": []
-        },
-        {
-          "source": {
-            "x": 0,
-            "y": 32,
-            "width": 32,
-            "height": 32
-          },
-          "anchor": {
-            "x": 16,
-            "y": 31
-          },
-          "drawOffset": {
-            "x": 0,
-            "y": 0
-          },
-          "durationTicks": 8,
-          "markers": []
-        },
-        {
-          "source": {
-            "x": 0,
-            "y": 64,
-            "width": 32,
-            "height": 32
-          },
-          "anchor": {
-            "x": 16,
-            "y": 31
-          },
-          "drawOffset": {
-            "x": 0,
-            "y": 0
-          },
-          "durationTicks": 8,
-          "markers": []
-        }
-      ]
-    },
-    {
       "id": "animation.player_death",
       "imageId": "image.player_death",
       "loop": false,
@@ -6780,6 +6727,67 @@
         {
           "source": {
             "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player_dead",
+      "imageId": "image.player_dead",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 0,
             "y": 64,
             "width": 32,
             "height": 32
@@ -7134,6 +7142,518 @@
           "markers": []
         }
       ]
+    },
+    {
+      "id": "animation.player.hero.idle.down",
+      "imageId": "image.player_idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.idle.up",
+      "imageId": "image.player_idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.idle.left",
+      "imageId": "image.player_idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.idle.right",
+      "imageId": "image.player_idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.walk.down",
+      "imageId": "image.player_walking",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.walk.up",
+      "imageId": "image.player_walking",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.walk.left",
+      "imageId": "image.player_walking",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": false,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "id": "animation.player.hero.walk.right",
+      "imageId": "image.player_walking",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "flipX": true,
+          "durationTicks": 8,
+          "markers": []
+        }
+      ]
     }
   ],
   "enemyVisuals": [],
@@ -7160,6 +7680,32 @@
       "damagedAnimationId": "animation.object.breaking_vase.damaged",
       "destroyingAnimationId": "animation.object.breaking_vase.destroying",
       "destroyedAnimationId": "animation.object.breaking_vase.destroyed"
+    }
+  ],
+  "playerVisuals": [
+    {
+      "id": "visual.player.hero",
+      "idle": {
+        "down": "animation.player.hero.idle.down",
+        "up": "animation.player.hero.idle.up",
+        "left": "animation.player.hero.idle.left",
+        "right": "animation.player.hero.idle.right"
+      },
+      "walk": {
+        "down": "animation.player.hero.walk.down",
+        "up": "animation.player.hero.walk.up",
+        "left": "animation.player.hero.walk.left",
+        "right": "animation.player.hero.walk.right"
+      },
+      "hurt": null,
+      "actions": []
+    }
+  ],
+  "players": [
+    {
+      "id": "player.hero",
+      "visualSetId": "visual.player.hero",
+      "progressionId": "progression.player.default"
     }
   ]
 }

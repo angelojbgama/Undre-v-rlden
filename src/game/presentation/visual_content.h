@@ -54,6 +54,9 @@ struct DirectionalAnimationRef final {
     std::optional<simulation::DefinitionId> defaultAnimation{};
     std::optional<simulation::DefinitionId> down{};
     std::optional<simulation::DefinitionId> up{};
+    std::optional<simulation::DefinitionId> left{};
+    std::optional<simulation::DefinitionId> right{};
+    // Legacy compatibility for content authored before explicit Left/Right.
     std::optional<simulation::DefinitionId> side{};
     [[nodiscard]] bool operator==(const DirectionalAnimationRef&) const noexcept = default;
 };

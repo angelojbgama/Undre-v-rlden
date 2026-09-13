@@ -62,22 +62,29 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
                                 int frameHeight, int frameCount, std::uint32_t duration,
                                 core::PointI anchor, bool loop) {
         presentation::DirectionalAnimationRef result;
-        const char* names[] = {"down", "up", "side"};
+        const char* names[] = {"down", "up", "left", "right"};
+        const int rows[] = {0, 1, 2, 2};
+        const bool mirrored[] = {false, false, false, true};
         std::optional<simulation::DefinitionId>* ids[] = {
-            &result.down, &result.up, &result.side};
-        for (int row = 0; row < 3; ++row) {
-            const std::string animationId = std::string(prefix) + "." + names[row];
-            *ids[row] = simulation::DefinitionId{animationId};
+            &result.down, &result.up, &result.left, &result.right};
+        for (int binding = 0; binding < 4; ++binding) {
+            const std::string animationId =
+                std::string(prefix) + "." + names[binding];
+            *ids[binding] = simulation::DefinitionId{animationId};
             AuthoredAnimation animationValue;
-            animationValue.id = **ids[row];
+            animationValue.id = **ids[binding];
             animationValue.imageId = {imageId};
             animationValue.loop = loop;
             for (int column = 0; column < frameCount; ++column) {
-                animationValue.frames.push_back({{column * frameWidth, row * frameHeight,
-                                                    frameWidth, frameHeight}, anchor, {}, duration, {}});
+                animationValue.frames.push_back({
+                    {column * frameWidth, rows[binding] * frameHeight,
+                     frameWidth, frameHeight},
+                    anchor, {}, duration, {}});
+                animationValue.frames.back().flipX = mirrored[binding];
             }
             pack.animations.push_back(std::move(animationValue));
         }
+        result.side = result.left;
         return result;
     };
     const auto objectAnimation = [&](const char* id, const char* imageId, int width, int height,
@@ -182,8 +189,12 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
         "anim.player.sword", "image.player.sword", 48, 48, 4,
         gameplay::makePlayerSwordAttackDefinition().totalTicks / 4,
         {24, 31}, false);
-    // The source sword side row faces RIGHT while side is canonical LEFT.
-    for (auto& frame : pack.animations.back().frames) frame.flipX = true;
+    // This sword source row faces RIGHT. Swap the generic lateral
+    // convention for this pair only.
+    auto& playerSwordLeft = pack.animations[pack.animations.size() - 2];
+    auto& playerSwordRight = pack.animations.back();
+    for (auto& frame : playerSwordLeft.frames) frame.flipX = true;
+    for (auto& frame : playerSwordRight.frames) frame.flipX = false;
     const auto playerBow = directional(
         "anim.player.bow", "image.player.bow", 32, 32, 2,
         gameplay::makePlayerBowAttackDefinition().totalTicks / 2,

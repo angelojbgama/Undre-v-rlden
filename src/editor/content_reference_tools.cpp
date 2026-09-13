@@ -45,6 +45,8 @@ void addDirectionalDependencies(std::vector<ContentDefinitionKey>& pending,
                                                *clips.defaultAnimation);
     if (clips.down) addDependency(pending, ContentDefinitionKind::animation, *clips.down);
     if (clips.up) addDependency(pending, ContentDefinitionKind::animation, *clips.up);
+    if (clips.left) addDependency(pending, ContentDefinitionKind::animation, *clips.left);
+    if (clips.right) addDependency(pending, ContentDefinitionKind::animation, *clips.right);
     if (clips.side) addDependency(pending, ContentDefinitionKind::animation, *clips.side);
 }
 

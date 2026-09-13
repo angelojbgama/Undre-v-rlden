@@ -124,15 +124,18 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                 "idle": {
                     "down": sequence((0, 1)),
                     "up": sequence((4, 5)),
-                    "side": sequence((8, 9), flip_x=True),
+                    "left": sequence((8, 9)),
+                    "right": sequence((8, 9), flip_x=True),
                 },
                 "walk": {
                     "down": sequence((0, 1, 2, 3)),
                     "up": sequence((4, 5, 6, 7)),
-                    "side": sequence((8, 9, 10, 11), flip_x=True),
+                    "left": sequence((8, 9, 10, 11)),
+                    "right": sequence((8, 9, 10, 11), flip_x=True),
                 },
                 "sword": {
-                    "side": sequence((8, 9, 10, 11), flip_x=True),
+                    "left": sequence((8, 9, 10, 11)),
+                    "right": sequence((8, 9, 10, 11), flip_x=True),
                 },
             },
             movement_collision_enabled=True,
@@ -163,13 +166,14 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         )
         self.assertEqual(
             (8, 9, 10, 11),
-            reopened.sequences["walk"]["side"].frame_indices,
+            reopened.sequences["walk"]["left"].frame_indices,
         )
-        self.assertTrue(reopened.sequences["walk"]["side"].flip_x)
+        self.assertFalse(reopened.sequences["walk"]["left"].flip_x)
+        self.assertTrue(reopened.sequences["walk"]["right"].flip_x)
         self.assertEqual(
-            4, reopened.sequences["walk"]["side"].columns)
+            4, reopened.sequences["walk"]["right"].columns)
         self.assertEqual(
-            32, reopened.sequences["walk"]["side"].frame_width)
+            32, reopened.sequences["walk"]["right"].frame_width)
         self.assertTrue(reopened.movement_collision_enabled)
         self.assertEqual(
             movement_mask(),
@@ -181,6 +185,16 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         )
         self.assertTrue(reopened.hurtbox_enabled)
         self.assertEqual(hurtbox_mask(), reopened.hurtbox)
+
+    def test_legacy_side_refs_expand_to_left_and_right(self) -> None:
+        refs = PlayerAuthoringService._refs({
+            "down": "animation.down",
+            "up": "animation.up",
+            "side": "animation.side",
+        })
+        self.assertEqual("animation.side", refs["left"])
+        self.assertEqual("animation.side", refs["right"])
+        self.assertNotIn("side", refs)
 
     def test_editing_reopened_player_updates_existing_content(self) -> None:
         temporary, workspace = self.make_workspace()

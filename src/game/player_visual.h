@@ -16,7 +16,7 @@
 namespace underworld::game {
 
 using PlayerDirectionalClips =
-    std::array<std::shared_ptr<const render::AnimationClip>, 3>; // down/up/side-left
+    std::array<std::shared_ptr<const render::AnimationClip>, 4>; // down/up/left/right
 
 struct PlayerVisualSet final {
     simulation::DefinitionId id{};
@@ -81,7 +81,7 @@ private:
     std::vector<render::AnimationMarkerEvent> markerEvents_;
     bool flipX_{};
     bool initialized_{};
-    bool authoredSideCanonicalLeft_{};
+    bool authoredExplicitDirections_{};
 };
 
 } // namespace underworld::game

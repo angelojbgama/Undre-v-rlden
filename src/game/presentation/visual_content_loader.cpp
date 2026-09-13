@@ -234,10 +234,15 @@ std::optional<simulation::DefinitionId> resolveDirectionalAnimationId(
     case gameplay::FacingDirection::down: exact = &reference.down; break;
     case gameplay::FacingDirection::up: exact = &reference.up; break;
     case gameplay::FacingDirection::left:
-    case gameplay::FacingDirection::right: exact = &reference.side; break;
+        exact = reference.left ? &reference.left : &reference.side;
+        break;
+    case gameplay::FacingDirection::right:
+        exact = reference.right ? &reference.right : &reference.side;
+        break;
     }
     const std::optional<simulation::DefinitionId>* candidates[] = {
-        exact, &reference.defaultAnimation, &reference.down, &reference.up, &reference.side};
+        exact, &reference.defaultAnimation, &reference.down, &reference.up,
+        &reference.left, &reference.right, &reference.side};
     for (const auto* candidate : candidates) {
         if (candidate != nullptr && candidate->has_value()) return *candidate;
     }
@@ -267,6 +272,42 @@ std::optional<DirectionalAnimationClips> resolveDirectionalAnimationClips(
             diagnostics.push_back({VisualContentDiagnosticStage::compile,
                                    "unknown_animation", ownerId, std::nullopt, {},
                                    "directional binding references an unavailable animation"});
+            return std::nullopt;
+        }
+        result[index] = *clip;
+    }
+    return result;
+}
+
+std::optional<PlayerDirectionalClips> resolvePlayerDirectionalAnimationClips(
+    const DirectionalAnimationRef& reference,
+    const RuntimeAnimationCatalog& animations,
+    std::vector<VisualContentDiagnostic>& diagnostics,
+    const simulation::DefinitionId& ownerId) {
+    PlayerDirectionalClips result{};
+    const gameplay::FacingDirection directions[] = {
+        gameplay::FacingDirection::down,
+        gameplay::FacingDirection::up,
+        gameplay::FacingDirection::left,
+        gameplay::FacingDirection::right};
+    for (std::size_t index = 0; index < std::size(directions); ++index) {
+        const auto animationId =
+            resolveDirectionalAnimationId(reference, directions[index]);
+        if (!animationId) {
+            diagnostics.push_back({
+                VisualContentDiagnosticStage::compile,
+                "missing_player_directional_animation",
+                ownerId, std::nullopt, {},
+                "Player visual binding has no animation for a direction"});
+            return std::nullopt;
+        }
+        const auto* clip = animations.find(*animationId);
+        if (!clip) {
+            diagnostics.push_back({
+                VisualContentDiagnosticStage::compile,
+                "unknown_player_animation",
+                ownerId, std::nullopt, {},
+                "Player visual binding references an unavailable animation"});
             return std::nullopt;
         }
         result[index] = *clip;
@@ -435,10 +476,10 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
             PlayerVisualSet set;
             set.id = entry->first;
 
-            const auto idle = resolveDirectionalAnimationClips(
+            const auto idle = resolvePlayerDirectionalAnimationClips(
                 entry->second.idle, runtime.animations,
                 result.diagnostics, entry->first);
-            const auto walk = resolveDirectionalAnimationClips(
+            const auto walk = resolvePlayerDirectionalAnimationClips(
                 entry->second.walk, runtime.animations,
                 result.diagnostics, entry->first);
             if (!idle || !walk) continue;
@@ -446,7 +487,7 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
             set.walk = *walk;
 
             if (entry->second.hurt) {
-                const auto hurt = resolveDirectionalAnimationClips(
+                const auto hurt = resolvePlayerDirectionalAnimationClips(
                     *entry->second.hurt, runtime.animations,
                     result.diagnostics, entry->first);
                 if (!hurt) continue;
@@ -455,7 +496,7 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
 
             bool actionsValid = true;
             for (const auto& action : entry->second.actions) {
-                const auto clips = resolveDirectionalAnimationClips(
+                const auto clips = resolvePlayerDirectionalAnimationClips(
                     action.clips, runtime.animations,
                     result.diagnostics, entry->first);
                 if (!clips) {

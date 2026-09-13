@@ -65,7 +65,8 @@ void validateDirectional(const presentation::DirectionalAnimationRef& clips,
                          ContentValidationReport& report, ContentKind kind,
                          const simulation::DefinitionId& id, std::string_view field) {
     const std::optional<simulation::DefinitionId>* values[] = {
-        &clips.defaultAnimation, &clips.down, &clips.up, &clips.side};
+        &clips.defaultAnimation, &clips.down, &clips.up,
+        &clips.left, &clips.right, &clips.side};
     bool hasBinding = false;
     for (const auto* value : values) {
         if (!value->has_value()) continue;

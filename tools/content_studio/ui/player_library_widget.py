@@ -35,7 +35,9 @@ STATE_LABELS = {
 DIRECTION_LABELS = {
     "down": "Down / baixo",
     "up": "Up / cima",
-    "side": "Side / lateral",
+    "left": "Left / esquerda",
+    "right": "Right / direita",
+    "side": "Side / lateral (colisão)",
 }
 
 
@@ -367,10 +369,10 @@ class PlayerDefinitionDialog(QDialog):
         identity_form.addRow("Progression", self.progression)
 
         help_label = QLabel(
-            "Monte cada estado adicionando somente os frames usados. "
-            "O mesmo PNG pode conter Down, Up e Side em linhas diferentes. "
-            "O botão Espelhar horizontalmente permite normalizar sprites "
-            "laterais; no runtime a direção oposta poderá usar o mesmo Side.")
+            "Monte cada estado usando Down, Up, Left e Right. "
+            "Left e Right são direções explícitas. Se o spritesheet tiver "
+            "somente um lado, use 'Usar oposto espelhado' para copiar a "
+            "sequência e inverter apenas o flip X.")
         help_label.setWordWrap(True)
         help_label.setStyleSheet("color:#aeb8c4;")
 
@@ -400,6 +402,12 @@ class PlayerDefinitionDialog(QDialog):
                     lambda unused=False, s=state, d=direction:
                     self._edit_sequence(s, d))
                 cell_layout.addWidget(button)
+                if direction in ("left", "right"):
+                    mirror_button = QPushButton("Usar oposto espelhado")
+                    mirror_button.clicked.connect(
+                        lambda unused=False, s=state, d=direction:
+                        self._use_opposite_mirrored(s, d))
+                    cell_layout.addWidget(mirror_button)
                 cell_layout.addWidget(summary)
                 grid.addWidget(cell, row, column)
                 self.summary_labels[(state, direction)] = summary
@@ -416,7 +424,8 @@ class PlayerDefinitionDialog(QDialog):
         collision_group = QGroupBox("Movement Collision")
         collision_layout = QGridLayout(collision_group)
         collision_layout.addWidget(self.collision_enabled, 0, 0, 1, 3)
-        for column, direction in enumerate(self.service.DIRECTIONS):
+        for column, direction in enumerate(
+                self.service.MOVEMENT_DIRECTIONS):
             button = QPushButton(
                 f"Editar {DIRECTION_LABELS[direction]}...")
             summary = QLabel("—")
@@ -540,6 +549,32 @@ class PlayerDefinitionDialog(QDialog):
             direction] = dialog.result_spec
         self._refresh_summaries()
 
+    def _use_opposite_mirrored(
+            self, state: str, direction: str) -> None:
+        if direction not in ("left", "right"):
+            return
+        opposite = "right" if direction == "left" else "left"
+        source = self.sequences.get(state, {}).get(opposite)
+        if source is None:
+            QMessageBox.information(
+                self, self.windowTitle(),
+                f"Configure primeiro {DIRECTION_LABELS[opposite]} neste estado.")
+            return
+        self.sequences.setdefault(state, {})[direction] = FrameSequenceSpec(
+            image_id=source.image_id,
+            frame_width=source.frame_width,
+            frame_height=source.frame_height,
+            spacing=source.spacing,
+            origin_x=source.origin_x,
+            origin_y=source.origin_y,
+            duration_ticks=source.duration_ticks,
+            loop=source.loop,
+            flip_x=not source.flip_x,
+            frame_indices=source.frame_indices,
+            columns=source.columns,
+        )
+        self._refresh_summaries()
+
     def _collision_toggled(self, checked: bool) -> None:
         for button in self.collision_buttons.values():
             button.setEnabled(checked)
@@ -558,7 +593,8 @@ class PlayerDefinitionDialog(QDialog):
                 f"{spec.width}x{spec.height} • {active} pixel(s) ativos")
 
     def _collision_frame_image(self, direction: str) -> QImage | None:
-        spec = self.sequences.get("idle", {}).get(direction)
+        visual_direction = "left" if direction == "side" else direction
+        spec = self.sequences.get("idle", {}).get(visual_direction)
         if spec is None or not spec.frame_indices or spec.columns <= 0:
             return None
         image_definition = self.workspace.find(
@@ -589,7 +625,8 @@ class PlayerDefinitionDialog(QDialog):
 
     def _default_collision_mask(
             self, direction: str) -> PlayerCollisionMaskSpec | None:
-        spec = self.sequences.get("idle", {}).get(direction)
+        visual_direction = "left" if direction == "side" else direction
+        spec = self.sequences.get("idle", {}).get(visual_direction)
         if spec is None:
             return None
         width = spec.frame_width
