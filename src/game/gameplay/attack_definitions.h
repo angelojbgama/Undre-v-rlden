@@ -73,8 +73,16 @@ struct AttackDefinition final {
     struct CollisionSample final {
         std::uint32_t tick{};
         std::array<std::vector<DirectionalBoxDefinition>, 4> regions{};
+        // Distinguishes "this facing is explicitly empty at this tick" from
+        // "this sample was authored only for another facing".
+        std::array<bool, 4> authored{};
     };
     std::vector<CollisionSample> collisionSamples{};
+
+    [[nodiscard]] bool hasCollisionSamples(
+        FacingDirection facing) const noexcept;
+    [[nodiscard]] const CollisionSample* collisionSampleAt(
+        std::uint32_t tick, FacingDirection facing) const noexcept;
 };
 
 // Gameplay attack timing is measured in fixed ticks, independently from any

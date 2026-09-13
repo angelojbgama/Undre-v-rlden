@@ -1,7 +1,11 @@
 #include "game/content/content_compiler.h"
 #include "game/gameplay/attack_shapes.h"
+#include "game/gameplay/player_definition.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -11,26 +15,216 @@ namespace {
 
 TilesetDefinition compileTileset(const AuthoredTileset& v) { return {v.id, v.displayName, v.relativeAssetPath, v.tileSize, v.columns, v.rows}; }
 gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets}; }
-gameplay::AttackDefinition compileAttack(const AuthoredAttack& v) {
+const AuthoredAnimation* findAnimation(
+    const AuthoredContentPack& pack,
+    const simulation::DefinitionId& id) {
+    const auto found = std::find_if(
+        pack.animations.begin(), pack.animations.end(),
+        [&](const auto& value) { return value.id == id; });
+    return found == pack.animations.end() ? nullptr : &*found;
+}
+
+const presentation::DirectionalAnimationRef* defaultPlayerSwordClips(
+    const AuthoredContentPack& pack) {
+    const auto player = std::find_if(
+        pack.players.begin(), pack.players.end(),
+        [](const auto& value) {
+            return value.id == gameplay::defaultPlayerDefinitionId();
+        });
+    if (player == pack.players.end()) return nullptr;
+
+    const auto visual = std::find_if(
+        pack.playerVisuals.begin(), pack.playerVisuals.end(),
+        [&](const auto& value) {
+            return value.id == player->visualSetId;
+        });
+    if (visual == pack.playerVisuals.end()) return nullptr;
+
+    const auto action = std::find_if(
+        visual->actions.begin(), visual->actions.end(),
+        [](const auto& value) { return value.actionId == "sword"; });
+    return action == visual->actions.end() ? nullptr : &action->clips;
+}
+
+std::optional<simulation::DefinitionId> animationForFacing(
+    const presentation::DirectionalAnimationRef& reference,
+    gameplay::FacingDirection facing) {
+    const std::optional<simulation::DefinitionId>* exact = nullptr;
+    switch (facing) {
+    case gameplay::FacingDirection::down:
+        exact = &reference.down;
+        break;
+    case gameplay::FacingDirection::up:
+        exact = &reference.up;
+        break;
+    case gameplay::FacingDirection::left:
+        exact = reference.left ? &reference.left : &reference.side;
+        break;
+    case gameplay::FacingDirection::right:
+        exact = reference.right ? &reference.right : &reference.side;
+        break;
+    }
+    const std::optional<simulation::DefinitionId>* candidates[] = {
+        exact, &reference.defaultAnimation, &reference.down, &reference.up,
+        &reference.left, &reference.right, &reference.side};
+    for (const auto* candidate : candidates) {
+        if (candidate != nullptr && candidate->has_value()) return **candidate;
+    }
+    return std::nullopt;
+}
+
+const AuthoredAnimationFrameMask* attackHitboxMask(
+    const AuthoredAnimationFrame& frame) {
+    const auto found = std::find_if(
+        frame.masks.begin(), frame.masks.end(),
+        [](const auto& value) { return value.channel == "attackHitbox"; });
+    return found == frame.masks.end() ? nullptr : &*found;
+}
+
+gameplay::AttackDefinition::CollisionSample& collisionSample(
+    std::vector<gameplay::AttackDefinition::CollisionSample>& samples,
+    std::uint32_t tick) {
+    const auto found = std::find_if(
+        samples.begin(), samples.end(),
+        [tick](const auto& value) { return value.tick == tick; });
+    if (found != samples.end()) return *found;
+    samples.push_back({tick, {}, {}});
+    return samples.back();
+}
+
+void applyDefaultPlayerSwordFrameMasks(
+    const AuthoredContentPack& pack,
+    gameplay::AttackDefinition& result) {
+    if (result.id != gameplay::playerSwordAttackId()) return;
+    const auto* clips = defaultPlayerSwordClips(pack);
+    if (clips == nullptr) return;
+
+    constexpr std::array facings{
+        gameplay::FacingDirection::down,
+        gameplay::FacingDirection::up,
+        gameplay::FacingDirection::left,
+        gameplay::FacingDirection::right,
+    };
+    std::array<bool, 4> authoredFacings{};
+    std::array<std::uint32_t, 4> authoredDurations{};
+    std::uint32_t longestDuration = result.totalTicks;
+
+    for (const auto facing : facings) {
+        const auto animationId = animationForFacing(*clips, facing);
+        if (!animationId) continue;
+        const auto* animation = findAnimation(pack, *animationId);
+        if (animation == nullptr || animation->frames.empty()) continue;
+
+        const bool hasAttackMasks = std::any_of(
+            animation->frames.begin(), animation->frames.end(),
+            [](const auto& frame) {
+                return attackHitboxMask(frame) != nullptr;
+            });
+        if (!hasAttackMasks) continue;
+
+        const auto index = gameplay::facingIndex(facing);
+        authoredFacings[index] = true;
+
+        // Frame masks are authoritative for this facing. Remove any older
+        // authored shape samples only for this direction, leaving the other
+        // directions untouched for backwards compatibility.
+        for (auto& sample : result.collisionSamples) {
+            sample.regions[index].clear();
+            sample.authored[index] = false;
+        }
+
+        std::uint64_t tick = 0;
+        for (const auto& frame : animation->frames) {
+            if (tick >= std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument(
+                    "Player sword animation is too long for attack timing");
+            }
+            auto& sample = collisionSample(
+                result.collisionSamples,
+                static_cast<std::uint32_t>(tick));
+            sample.authored[index] = true;
+            sample.regions[index].clear();
+
+            if (const auto* mask = attackHitboxMask(frame)) {
+                sample.regions[index] = gameplay::compileAttackShapeMask(
+                    mask->width, mask->height, mask->cells,
+                    mask->origin.x, mask->origin.y);
+            }
+
+            if (frame.durationTicks >
+                std::numeric_limits<std::uint32_t>::max() - tick) {
+                throw std::invalid_argument(
+                    "Player sword animation duration overflows attack timing");
+            }
+            tick += frame.durationTicks;
+        }
+
+        authoredDurations[index] = static_cast<std::uint32_t>(tick);
+        longestDuration = std::max(
+            longestDuration, authoredDurations[index]);
+    }
+
+    if (!std::any_of(
+            authoredFacings.begin(), authoredFacings.end(),
+            [](bool value) { return value; })) {
+        return;
+    }
+
+    // When authored animation is longer than the legacy sword timing, the
+    // gameplay attack stays alive long enough to reach every authored frame.
+    result.totalTicks = longestDuration;
+
+    // A shorter direction gets an explicit empty sample so its last active
+    // frame never leaks into the remainder of a longer attack.
+    for (std::size_t index = 0; index < authoredFacings.size(); ++index) {
+        if (!authoredFacings[index] ||
+            authoredDurations[index] >= result.totalTicks) {
+            continue;
+        }
+        auto& sample = collisionSample(
+            result.collisionSamples, authoredDurations[index]);
+        sample.authored[index] = true;
+        sample.regions[index].clear();
+    }
+
+    result.collisionSamples.erase(
+        std::remove_if(
+            result.collisionSamples.begin(),
+            result.collisionSamples.end(),
+            [](const auto& sample) {
+                return !std::any_of(
+                    sample.authored.begin(), sample.authored.end(),
+                    [](bool value) { return value; });
+            }),
+        result.collisionSamples.end());
+
+    std::sort(
+        result.collisionSamples.begin(), result.collisionSamples.end(),
+        [](const auto& left, const auto& right) {
+            return left.tick < right.tick;
+        });
+}
+
+gameplay::AttackDefinition compileAttack(
+    const AuthoredAttack& v,
+    const AuthoredContentPack& pack) {
     gameplay::AttackDefinition result{v.id, v.kind, v.damage, v.totalTicks, v.cooldownTicks,
                                       v.minimumRangePixels, v.maximumRangePixels,
                                       v.visualActionId, v.meleeHitboxes,
                                       v.projectileDefinitionId, v.timeline, {}};
     for (const auto& authoredDirection : v.shapes) {
         for (const auto& frame : authoredDirection.frames) {
-            auto sample = std::find_if(result.collisionSamples.begin(),
-                                       result.collisionSamples.end(),
-                                       [&](const auto& candidate) {
-                                           return candidate.tick == frame.tick;
-                                       });
-            if (sample == result.collisionSamples.end()) {
-                result.collisionSamples.push_back({frame.tick, {}});
-                sample = std::prev(result.collisionSamples.end());
-            }
-            sample->regions[gameplay::facingIndex(authoredDirection.facing)] =
-                gameplay::compileAttackShapeMask(frame.width, frame.height, frame.cells);
+            auto& sample = collisionSample(
+                result.collisionSamples, frame.tick);
+            const auto index =
+                gameplay::facingIndex(authoredDirection.facing);
+            sample.regions[index] =
+                gameplay::compileAttackShapeMask(
+                    frame.width, frame.height, frame.cells);
+            sample.authored[index] = true;
         }
     }
+    applyDefaultPlayerSwordFrameMasks(pack, result);
     std::sort(result.collisionSamples.begin(), result.collisionSamples.end(),
               [](const auto& left, const auto& right) { return left.tick < right.tick; });
     return result;
@@ -181,7 +375,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         GameContentRegistry registry;
         for (const auto& value : authored.tilesets) registry.tilesets_.add(compileTileset(value));
         for (const auto& value : authored.projectiles) registry.projectiles_.add(compileProjectile(value));
-        for (const auto& value : authored.attacks) registry.attacks_.add(compileAttack(value));
+        for (const auto& value : authored.attacks) registry.attacks_.add(compileAttack(value, authored));
         for (const auto& value : authored.behaviors) registry.behaviors_.add(compileBehavior(value));
         for (const auto& value : authored.enemies) registry.enemies_.add(compileEnemy(value));
         for (const auto& value : authored.rewardProfiles) registry.rewards_.add(compileReward(value));

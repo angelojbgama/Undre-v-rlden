@@ -64,6 +64,27 @@ void validate(const AttackDefinition& definition) {
                         })) {
         throw std::invalid_argument("attack timeline events must be ordered by tick");
     }
+
+    std::uint32_t previousSample{};
+    bool firstSample = true;
+    for (const auto& sample : definition.collisionSamples) {
+        if (sample.tick >= definition.totalTicks ||
+            (!firstSample && sample.tick <= previousSample)) {
+            throw std::invalid_argument(
+                "attack collision samples must be unique, ordered and inside totalTicks");
+        }
+        for (std::size_t facing = 0; facing < sample.regions.size(); ++facing) {
+            if (!sample.authored[facing]) continue;
+            for (const auto& region : sample.regions[facing]) {
+                if (!region.valid()) {
+                    throw std::invalid_argument(
+                        "attack collision sample contains an invalid region");
+                }
+            }
+        }
+        previousSample = sample.tick;
+        firstSample = false;
+    }
 }
 
 template <typename Map, typename Definition>
@@ -105,6 +126,25 @@ const DirectionalBoxDefinition& DirectionalBoxes::forFacing(
 
 core::WorldPointI DirectionalOffsets::forFacing(FacingDirection facing) const noexcept {
     return values[facingIndex(facing)];
+}
+
+bool AttackDefinition::hasCollisionSamples(
+    FacingDirection facing) const noexcept {
+    const auto index = facingIndex(facing);
+    return std::any_of(
+        collisionSamples.begin(), collisionSamples.end(),
+        [index](const auto& sample) { return sample.authored[index]; });
+}
+
+const AttackDefinition::CollisionSample* AttackDefinition::collisionSampleAt(
+    std::uint32_t tick, FacingDirection facing) const noexcept {
+    const auto index = facingIndex(facing);
+    const CollisionSample* result = nullptr;
+    for (const auto& sample : collisionSamples) {
+        if (sample.tick > tick) break;
+        if (sample.authored[index]) result = &sample;
+    }
+    return result;
 }
 
 void AttackCatalog::add(AttackDefinition definition) {

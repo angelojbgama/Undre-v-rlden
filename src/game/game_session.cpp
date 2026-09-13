@@ -1,5 +1,6 @@
 #include "game/game_session.h"
 
+#include "game/gameplay/attack_shapes.h"
 #include "game/save/save_data.h"
 
 #include <algorithm>
@@ -413,15 +414,89 @@ void GameSession::applyResolution(const gameplay::CombatResolution& resolution) 
 }
 
 void GameSession::resolvePlayerSword() {
+    if (playerAttack_ &&
+        playerAttack_->definition == swordDefinition_ &&
+        swordDefinition_->hasCollisionSamples(
+            playerAttack_->lockedFacing)) {
+        const auto* sample = swordDefinition_->collisionSampleAt(
+            playerAttack_->elapsedTicks,
+            playerAttack_->lockedFacing);
+        activeSword_.enabled = false;
+        if (sample == nullptr) return;
+
+        const auto index =
+            gameplay::facingIndex(playerAttack_->lockedFacing);
+        const auto& regions = sample->regions[index];
+        if (regions.empty()) return;
+
+        const auto direction =
+            gameplay::directionVector(playerAttack_->lockedFacing);
+        const auto damage =
+            effectivePlayerDamage(playerAttack_->definition->damage);
+        const auto feet = player_.feetPosition();
+
+        auto debugBounds = regions.front().at(feet);
+        for (std::size_t regionIndex = 1;
+             regionIndex < regions.size(); ++regionIndex) {
+            const auto bounds = regions[regionIndex].at(feet);
+            const int left = std::min(debugBounds.x, bounds.x);
+            const int top = std::min(debugBounds.y, bounds.y);
+            const int right = std::max(
+                debugBounds.x + debugBounds.width,
+                bounds.x + bounds.width);
+            const int bottom = std::max(
+                debugBounds.y + debugBounds.height,
+                bounds.y + bounds.height);
+            debugBounds = {
+                left, top, right - left, bottom - top};
+        }
+
+        activeSword_ = {
+            debugBounds, playerAttack_->key,
+            gameplay::Faction::player, damage,
+            direction.x * damage.knockbackPixels,
+            direction.y * damage.knockbackPixels, true};
+
+        const auto resolveRegion =
+            [&](const gameplay::DirectionalBoxDefinition& region) {
+                const gameplay::Hitbox hitbox{
+                    region.at(feet), playerAttack_->key,
+                    gameplay::Faction::player, damage,
+                    direction.x * damage.knockbackPixels,
+                    direction.y * damage.knockbackPixels, true};
+                for (auto& enemy :
+                     mapSession_->world()->enemies()) {
+                    applyResolution(combat_.resolve(
+                        hitbox, enemy.instance.combatTarget(), events_));
+                }
+                for (auto& object :
+                     mapSession_->world()->objects()) {
+                    if (object.instance.combatant()) {
+                        applyResolution(combat_.resolve(
+                            hitbox, object.instance.combatTarget(),
+                            events_));
+                    }
+                }
+            };
+
+        for (const auto& region : regions) {
+            resolveRegion(region);
+        }
+        return;
+    }
+
     if (!activeSword_.enabled) { return; }
-    activeSword_.bounds = swordDefinition_->meleeHitboxes->forFacing(player_.facing()).at(
-        player_.feetPosition());
+    activeSword_.bounds =
+        swordDefinition_->meleeHitboxes->forFacing(
+            player_.facing()).at(player_.feetPosition());
     for (auto& enemy : mapSession_->world()->enemies()) {
-        applyResolution(combat_.resolve(activeSword_, enemy.instance.combatTarget(), events_));
+        applyResolution(combat_.resolve(
+            activeSword_, enemy.instance.combatTarget(), events_));
     }
     for (auto& object : mapSession_->world()->objects()) {
         if (object.instance.combatant()) {
-            applyResolution(combat_.resolve(activeSword_, object.instance.combatTarget(), events_));
+            applyResolution(combat_.resolve(
+                activeSword_, object.instance.combatTarget(), events_));
         }
     }
 }

@@ -1217,6 +1217,117 @@ void testAnimationFrameMaskAuthoringRoundTrip() {
            "valid animation frame gameplay mask passes content validation");
 }
 
+void testPlayerSwordFrameMasksCompileToCollisionSamples() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+
+    const auto player = std::find_if(
+        authored.players.begin(), authored.players.end(),
+        [](const auto& value) {
+            return value.id == underworld::simulation::DefinitionId{"player.hero"};
+        });
+    expect(player != authored.players.end(),
+           "builtin Player exists for sword frame mask compilation");
+    if (player == authored.players.end()) return;
+
+    const auto visual = std::find_if(
+        authored.playerVisuals.begin(), authored.playerVisuals.end(),
+        [&](const auto& value) {
+            return value.id == player->visualSetId;
+        });
+    expect(visual != authored.playerVisuals.end(),
+           "builtin PlayerVisual exists for sword frame mask compilation");
+    if (visual == authored.playerVisuals.end()) return;
+
+    const auto swordAction = std::find_if(
+        visual->actions.begin(), visual->actions.end(),
+        [](const auto& value) { return value.actionId == "sword"; });
+    expect(swordAction != visual->actions.end() &&
+               swordAction->clips.down.has_value(),
+           "builtin PlayerVisual has a Down sword animation");
+    if (swordAction == visual->actions.end() ||
+        !swordAction->clips.down) return;
+
+    const auto animation = std::find_if(
+        authored.animations.begin(), authored.animations.end(),
+        [&](const auto& value) {
+            return value.id == *swordAction->clips.down;
+        });
+    expect(animation != authored.animations.end() &&
+               animation->frames.size() >= 3,
+           "builtin sword animation has enough frames for mask timing");
+    if (animation == authored.animations.end() ||
+        animation->frames.size() < 3) return;
+
+    for (auto& frame : animation->frames) {
+        frame.durationTicks = 8;
+        frame.masks.clear();
+    }
+
+    content::AuthoredAnimationFrameMask mask;
+    mask.channel = "attackHitbox";
+    mask.width = static_cast<std::uint32_t>(
+        animation->frames[1].source.width);
+    mask.height = static_cast<std::uint32_t>(
+        animation->frames[1].source.height);
+    mask.origin = {-2, -3};
+    mask.cells.assign(
+        static_cast<std::size_t>(mask.width) * mask.height, 0);
+    mask.cells[0] = 1;
+    mask.cells[1] = 1;
+    animation->frames[1].masks.push_back(mask);
+
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry.has_value(),
+           "Player sword frame masks compile with authored content");
+    if (!compiled.registry) return;
+
+    const auto& sword = compiled.registry->attacks().require(
+        gameplay::playerSwordAttackId());
+    expect(sword.hasCollisionSamples(
+               gameplay::FacingDirection::down),
+           "Player sword Down uses authored collision samples");
+    expect(!sword.hasCollisionSamples(
+               gameplay::FacingDirection::up),
+           "unmasked Player sword direction keeps legacy fallback");
+    expect(sword.totalTicks == 32,
+           "Player sword duration expands to authored animation timing");
+
+    const auto* first = sword.collisionSampleAt(
+        0, gameplay::FacingDirection::down);
+    expect(first != nullptr &&
+               first->regions[
+                   gameplay::facingIndex(
+                       gameplay::FacingDirection::down)].empty(),
+           "unmasked sword frame is an explicit inactive sample");
+
+    const auto* active = sword.collisionSampleAt(
+        8, gameplay::FacingDirection::down);
+    expect(active != nullptr,
+           "masked sword frame has a collision sample");
+    if (active) {
+        const auto& regions = active->regions[
+            gameplay::facingIndex(
+                gameplay::FacingDirection::down)];
+        expect(regions.size() == 1 &&
+                   regions[0].offsetX == -2 &&
+                   regions[0].offsetY == -3 &&
+                   regions[0].width == 2 &&
+                   regions[0].height == 1,
+               "attackHitbox pixels compile to compact world-relative AABB");
+    }
+
+    const auto* after = sword.collisionSampleAt(
+        16, gameplay::FacingDirection::down);
+    expect(after != nullptr &&
+               after->regions[
+                   gameplay::facingIndex(
+                       gameplay::FacingDirection::down)].empty(),
+           "next unmasked sword frame disables authored damage shape");
+}
+
 void testLegacyPlayerMovementSideCompatibility() {
     namespace content = underworld::game::content;
     const std::string json = R"json({
@@ -10406,6 +10517,7 @@ int main() {
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
         testAnimationFrameMaskAuthoringRoundTrip();
+        testPlayerSwordFrameMasksCompileToCollisionSamples();
         testLegacyPlayerMovementSideCompatibility();
         testPlayerHurtboxAuthoringRoundTrip();
         testAuthoredPlayerVisualPipeline();
