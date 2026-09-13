@@ -430,6 +430,43 @@ VisualContentLoadResult VisualContentLoader::load(const GameContentRegistry& reg
                                    {source, entry->second.anchor, {}, false}});
     }
     try {
+
+        for (const auto* entry : orderedEntries(registry.playerVisuals().values())) {
+            PlayerVisualSet set;
+            set.id = entry->first;
+
+            const auto idle = resolveDirectionalAnimationClips(
+                entry->second.idle, runtime.animations,
+                result.diagnostics, entry->first);
+            const auto walk = resolveDirectionalAnimationClips(
+                entry->second.walk, runtime.animations,
+                result.diagnostics, entry->first);
+            if (!idle || !walk) continue;
+            set.idle = *idle;
+            set.walk = *walk;
+
+            if (entry->second.hurt) {
+                const auto hurt = resolveDirectionalAnimationClips(
+                    *entry->second.hurt, runtime.animations,
+                    result.diagnostics, entry->first);
+                if (!hurt) continue;
+                set.hurt = *hurt;
+            }
+
+            bool actionsValid = true;
+            for (const auto& action : entry->second.actions) {
+                const auto clips = resolveDirectionalAnimationClips(
+                    action.clips, runtime.animations,
+                    result.diagnostics, entry->first);
+                if (!clips) {
+                    actionsValid = false;
+                    break;
+                }
+                set.actions.emplace(action.actionId, *clips);
+            }
+            if (!actionsValid) continue;
+            runtime.players.add(std::move(set));
+        }
         for (const auto* entry : orderedEntries(registry.enemyVisuals().values())) {
             EnemyVisualSet set;
             set.id = entry->first;

@@ -1,17 +1,49 @@
 #pragma once
 
 #include "engine/render/animation.h"
+#include "engine/simulation/definition_id.h"
 #include "game/gameplay/player.h"
 
 #include <array>
 #include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace underworld::game {
 
+using PlayerDirectionalClips =
+    std::array<std::shared_ptr<const render::AnimationClip>, 3>; // down/up/side-left
+
+struct PlayerVisualSet final {
+    simulation::DefinitionId id{};
+    PlayerDirectionalClips idle{};
+    PlayerDirectionalClips walk{};
+    std::optional<PlayerDirectionalClips> hurt{};
+    std::unordered_map<std::string, PlayerDirectionalClips> actions;
+};
+
+class PlayerVisualSetCatalog final {
+public:
+    void add(PlayerVisualSet set);
+    [[nodiscard]] const PlayerVisualSet* find(
+        const simulation::DefinitionId& id) const noexcept;
+    [[nodiscard]] const PlayerVisualSet& require(
+        const simulation::DefinitionId& id) const;
+
+private:
+    std::unordered_map<simulation::DefinitionId, PlayerVisualSet,
+                       simulation::DefinitionIdHash> sets_;
+};
+
 class PlayerVisual final {
 public:
-    using DirectionalClips =
-        std::array<std::shared_ptr<const render::AnimationClip>, 3>; // down, up, side-left
+    using DirectionalClips = PlayerDirectionalClips;
+
+    explicit PlayerVisual(const PlayerVisualSet& visualSet);
 
     PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClips,
                  DirectionalClips swordClips = {}, DirectionalClips bowClips = {},
@@ -49,6 +81,7 @@ private:
     std::vector<render::AnimationMarkerEvent> markerEvents_;
     bool flipX_{};
     bool initialized_{};
+    bool authoredSideCanonicalLeft_{};
 };
 
 } // namespace underworld::game

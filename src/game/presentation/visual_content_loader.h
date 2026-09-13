@@ -4,6 +4,7 @@
 #include "game/enemy_visual.h"
 #include "game/game_content.h"
 #include "game/gameplay/npcs/npc_engine.h"
+#include "game/player_visual.h"
 #include "game/world_object_visual.h"
 #include "game/presentation/visual_content.h"
 
@@ -101,6 +102,7 @@ struct RuntimeVisualContent final {
     RuntimeStaticSpriteCatalog staticSprites;
     RuntimeAnimationCatalog animations;
     EnemyVisualCatalog enemies;
+    PlayerVisualSetCatalog players;
     WorldObjectVisualCatalog objects;
     RuntimeNpcVisualCatalog npcs;
 };

@@ -1167,6 +1167,47 @@ void testPlayerAuthoredMovementCollision() {
            "Player movement resolves against exact compound authored regions");
 }
 
+
+void testAuthoredPlayerVisualPipeline() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    const auto authored = content::makeBuiltinAuthoredContent();
+    const auto compiled = content::compileContent(authored);
+    expect(static_cast<bool>(compiled),
+           "builtin authored Player visual content compiles");
+    if (!compiled.registry) return;
+
+    const auto& registry = *compiled.registry;
+    const auto* player = registry.players().find(
+        gameplay::defaultPlayerDefinitionId());
+    expect(player != nullptr,
+           "builtin runtime content exposes default PlayerDefinition");
+    if (!player) return;
+
+    const auto* visual = registry.playerVisuals().find(player->visualSetId);
+    expect(visual != nullptr,
+           "default PlayerDefinition references a compiled PlayerVisual");
+    if (!visual) return;
+
+    expect(visual->idle.down.has_value() &&
+               visual->idle.up.has_value() &&
+               visual->idle.side.has_value() &&
+               visual->walk.down.has_value() &&
+               visual->walk.up.has_value() &&
+               visual->walk.side.has_value(),
+           "builtin PlayerVisual has complete Idle and Walk directions");
+
+    const auto sword = std::find_if(
+        visual->actions.begin(), visual->actions.end(),
+        [](const auto& action) { return action.actionId == "sword"; });
+    const auto bow = std::find_if(
+        visual->actions.begin(), visual->actions.end(),
+        [](const auto& action) { return action.actionId == "bow"; });
+    expect(sword != visual->actions.end() && bow != visual->actions.end(),
+           "builtin PlayerVisual exposes sword and bow action bindings");
+}
+
 void testPlayerVisualAndCameraFollow() {
     namespace gameplay = underworld::game::gameplay;
     underworld::game::PlayerVisual::DirectionalClips idle{
@@ -10180,6 +10221,7 @@ int main() {
         testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
+        testAuthoredPlayerVisualPipeline();
         testPlayerVisualAndCameraFollow();
         testActionCommandsAndPlayerAttackState();
         testAttackTimeline();

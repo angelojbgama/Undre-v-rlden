@@ -90,24 +90,6 @@ gameplay::PlayerMovementConfig selectedPlayerMovementConfig(
     return config;
 }
 
-std::shared_ptr<const render::AnimationClip> makeDirectionalClip(
-    std::string id, std::shared_ptr<const render::SpriteSheet> sheet, int row,
-    int frameSize, int frameCount, std::uint32_t durationTicks, core::PointI anchor,
-    bool loop, std::vector<std::vector<std::string>> markers = {}) {
-    std::vector<render::AnimationFrame> frames;
-    frames.reserve(static_cast<std::size_t>(frameCount));
-    for (int column = 0; column < frameCount; ++column) {
-        std::vector<std::string> frameMarkers;
-        if (static_cast<std::size_t>(column) < markers.size()) {
-            frameMarkers = std::move(markers[static_cast<std::size_t>(column)]);
-        }
-        frames.push_back({{{column * frameSize, row * frameSize, frameSize, frameSize},
-                           anchor, {}, false}, durationTicks, std::move(frameMarkers)});
-    }
-    return std::make_shared<const render::AnimationClip>(
-        std::move(id), std::move(sheet), std::move(frames), loop);
-}
-
 const char* objectStateName(gameplay::WorldObjectState state) noexcept {
     switch (state) {
     case gameplay::WorldObjectState::idle: return "idle";
@@ -128,19 +110,6 @@ const char* questStatusName(gameplay::quests::QuestStatus status) noexcept {
     return "unknown";
 }
 
-PlayerVisual::DirectionalClips makeClips(
-    const std::string& prefix, const std::shared_ptr<const render::SpriteSheet>& sheet,
-    int frameSize, int frameCount, std::uint32_t durationTicks, core::PointI anchor,
-    bool loop, const std::vector<std::vector<std::string>>& markers = {}) {
-    return {
-        makeDirectionalClip(prefix + ".down", sheet, 0, frameSize, frameCount,
-                            durationTicks, anchor, loop, markers),
-        makeDirectionalClip(prefix + ".up", sheet, 1, frameSize, frameCount,
-                            durationTicks, anchor, loop, markers),
-        makeDirectionalClip(prefix + ".side", sheet, 2, frameSize, frameCount,
-                            durationTicks, anchor, loop, markers)};
-}
-
 std::shared_ptr<const render::AnimationClip> makeImpactClip(
     const std::shared_ptr<const render::SpriteSheet>& sheet) {
     std::vector<render::AnimationFrame> frames;
@@ -156,11 +125,6 @@ std::shared_ptr<const render::AnimationClip> makeImpactClip(
 struct GameRuntime::State final {
     State(std::shared_ptr<const render::Image> tileImage,
           std::shared_ptr<const render::Image> fontImage,
-          std::shared_ptr<const render::Image> idleImage,
-          std::shared_ptr<const render::Image> walkImage,
-          std::shared_ptr<const render::Image> swordImage,
-          std::shared_ptr<const render::Image> bowImage,
-          std::shared_ptr<const render::Image> hurtImage,
           std::shared_ptr<const render::Image> impactImage,
           presentation::RuntimeVisualContent runtimeVisualContent,
           std::shared_ptr<const render::Image> hudHeartImage,
@@ -171,11 +135,6 @@ struct GameRuntime::State final {
         : tileset(std::move(tileImage)),
           atlas(tileset->width(), tileset->height(), core::GameMetrics::tileSize),
           font(std::move(fontImage)),
-          idleSheet(std::make_shared<const render::SpriteSheet>(std::move(idleImage))),
-          walkSheet(std::make_shared<const render::SpriteSheet>(std::move(walkImage))),
-          swordSheet(std::make_shared<const render::SpriteSheet>(std::move(swordImage))),
-          bowSheet(std::make_shared<const render::SpriteSheet>(std::move(bowImage))),
-          hurtSheet(std::make_shared<const render::SpriteSheet>(std::move(hurtImage))),
           impactSheet(std::make_shared<const render::SpriteSheet>(std::move(impactImage))),
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
@@ -188,16 +147,12 @@ struct GameRuntime::State final {
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
+        const auto* playerDefinition = selectedPlayerDefinition(content);
+        if (!playerDefinition) {
+            throw std::runtime_error("default PlayerDefinition is missing");
+        }
         visual = std::make_unique<PlayerVisual>(
-            makeClips("player.idle", idleSheet, 32, 2, 30, {16, 31}, true),
-            makeClips("player.walk", walkSheet, 32, 4, 8, {16, 31}, true),
-            makeClips("player.sword", swordSheet, 48, 4,
-                      attackCatalog.require(gameplay::playerSwordAttackId()).totalTicks / 4,
-                      {24, 31}, false),
-            makeClips("player.bow", bowSheet, 32, 2,
-                      attackCatalog.require(gameplay::playerBowAttackId()).totalTicks / 2,
-                      {16, 31}, false),
-            makeClips("player.hurt", hurtSheet, 32, 2, 4, {16, 31}, false));
+            runtimeVisualContent.players.require(playerDefinition->visualSetId));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
             enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog);
@@ -585,11 +540,6 @@ struct GameRuntime::State final {
     std::shared_ptr<const render::Image> tileset;
     world::TileAtlasLayout atlas;
     render::BitmapFont font;
-    std::shared_ptr<const render::SpriteSheet> idleSheet;
-    std::shared_ptr<const render::SpriteSheet> walkSheet;
-    std::shared_ptr<const render::SpriteSheet> swordSheet;
-    std::shared_ptr<const render::SpriteSheet> bowSheet;
-    std::shared_ptr<const render::SpriteSheet> hurtSheet;
     std::shared_ptr<const render::SpriteSheet> impactSheet;
     std::shared_ptr<const render::Image> hudHeartImage;
     std::shared_ptr<const render::Image> hudMoneyImage;
@@ -648,11 +598,6 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
     const auto tileset = assets_.loadImage("tileset.dungeon",
         assetRoot / dungeonDefinition.relativeAssetPath, decoder);
     const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
-    const auto idle = assets_.loadImage("player.idle", assetRoot / "Characters/Player/idle/player_idle.png", decoder);
-    const auto walk = assets_.loadImage("player.walk", assetRoot / "Characters/Player/walking/player_walking.png", decoder);
-    const auto sword = assets_.loadImage("player.sword", assetRoot / "Characters/Player/attacking/player_attacking.png", decoder);
-    const auto bow = assets_.loadImage("player.bow", assetRoot / "Characters/Player/attacking/player_attacking_bow.png", decoder);
-    const auto hurt = assets_.loadImage("player.hurt", assetRoot / "Characters/Player/death/player_death.png", decoder);
     const auto impact = assets_.loadImage("effect.arrow_impact", assetRoot / "Explosion/arrow_hits_dust.png", decoder);
     const auto hudHeart = assets_.loadImage(
         "hud.heart", assetRoot / "Icons/heart_complete.png", decoder);
@@ -669,7 +614,7 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
         throw std::runtime_error(message);
     }
     state_ = std::make_unique<State>(
-        tileset, font, idle, walk, sword, bow, hurt, impact, std::move(*visualContent.content),
+        tileset, font, impact, std::move(*visualContent.content),
         hudHeart, hudMoney, std::move(contentDefinitions), executableDirectory, launchOptions);
     for (const auto& definition : state_->content.tilesets().definitions()) {
         if (definition.id == dungeonTilesetId) continue;

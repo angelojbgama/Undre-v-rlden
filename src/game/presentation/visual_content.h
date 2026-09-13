@@ -77,6 +77,22 @@ struct EnemyVisualDefinition final {
     [[nodiscard]] bool operator==(const EnemyVisualDefinition&) const noexcept = default;
 };
 
+
+struct PlayerActionVisualDefinition final {
+    std::string actionId;
+    DirectionalAnimationRef clips;
+    [[nodiscard]] bool operator==(const PlayerActionVisualDefinition&) const noexcept = default;
+};
+
+struct PlayerVisualDefinition final {
+    simulation::DefinitionId id{};
+    DirectionalAnimationRef idle;
+    DirectionalAnimationRef walk;
+    std::optional<DirectionalAnimationRef> hurt;
+    std::vector<PlayerActionVisualDefinition> actions;
+    [[nodiscard]] bool operator==(const PlayerVisualDefinition&) const noexcept = default;
+};
+
 struct WorldObjectVisualDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId idleAnimationId{};
@@ -122,6 +138,7 @@ using VisualImageCatalog = DefinitionCatalog<VisualImageDefinition>;
 using StaticSpriteDefinitionCatalog = DefinitionCatalog<StaticSpriteDefinition>;
 using AnimationDefinitionCatalog = DefinitionCatalog<AnimationDefinition>;
 using EnemyVisualDefinitionCatalog = DefinitionCatalog<EnemyVisualDefinition>;
+using PlayerVisualDefinitionCatalog = DefinitionCatalog<PlayerVisualDefinition>;
 using WorldObjectVisualDefinitionCatalog = DefinitionCatalog<WorldObjectVisualDefinition>;
 
 } // namespace underworld::game::presentation

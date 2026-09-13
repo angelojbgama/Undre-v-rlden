@@ -140,6 +140,7 @@ validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry) {
         bool present = false;
         if (category == "tilesets") present = registry.tilesets().find(id) != nullptr;
         else if (category == "progressions") present = registry.progressions().find(id) != nullptr;
+        else if (category == "players") present = registry.players().find(id) != nullptr;
         else if (category == "attacks") present = registry.attacks().find(id) != nullptr;
         else if (category == "projectiles") present = registry.projectiles().find(id) != nullptr;
         else if (category == "presentationEffects") present = registry.presentationEffects().find(id) != nullptr;
@@ -151,6 +152,7 @@ validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry) {
     };
     require("tilesets", {"tileset.dungeon"});
     require("progressions", gameplay::rpg::defaultPlayerProgressionId());
+    require("players", gameplay::defaultPlayerDefinitionId());
     require("attacks", gameplay::playerSwordAttackId());
     require("attacks", gameplay::playerBowAttackId());
     require("attacks", gameplay::creatures::soldierSwordAttackId());

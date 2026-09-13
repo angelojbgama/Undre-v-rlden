@@ -17,7 +17,49 @@ std::size_t directionIndex(gameplay::FacingDirection facing) noexcept {
     return 0;
 }
 
+PlayerDirectionalClips actionClips(
+    const PlayerVisualSet& set, std::string_view actionId) {
+    const auto found = set.actions.find(std::string(actionId));
+    return found == set.actions.end()
+        ? PlayerDirectionalClips{}
+        : found->second;
+}
+
 } // namespace
+
+void PlayerVisualSetCatalog::add(PlayerVisualSet set) {
+    if (set.id.empty()) {
+        throw std::invalid_argument("Player runtime visual requires id");
+    }
+    const auto [unused, inserted] = sets_.emplace(set.id, std::move(set));
+    static_cast<void>(unused);
+    if (!inserted) {
+        throw std::logic_error("duplicate Player runtime visual");
+    }
+}
+
+const PlayerVisualSet* PlayerVisualSetCatalog::find(
+    const simulation::DefinitionId& id) const noexcept {
+    const auto found = sets_.find(id);
+    return found == sets_.end() ? nullptr : &found->second;
+}
+
+const PlayerVisualSet& PlayerVisualSetCatalog::require(
+    const simulation::DefinitionId& id) const {
+    const auto* value = find(id);
+    if (!value) throw std::out_of_range("Player runtime visual not found");
+    return *value;
+}
+
+PlayerVisual::PlayerVisual(const PlayerVisualSet& visualSet)
+    : PlayerVisual(
+          visualSet.idle,
+          visualSet.walk,
+          actionClips(visualSet, "sword"),
+          actionClips(visualSet, "bow"),
+          visualSet.hurt ? *visualSet.hurt : DirectionalClips{}) {
+    authoredSideCanonicalLeft_ = true;
+}
 
 PlayerVisual::PlayerVisual(DirectionalClips idleClips, DirectionalClips walkClips,
                            DirectionalClips swordClips, DirectionalClips bowClips,
@@ -67,13 +109,15 @@ const std::shared_ptr<const render::AnimationClip>& PlayerVisual::selectedClip(
     if (action == gameplay::PlayerActionState::hurt && hurtClips_[0]) {
         return hurtClips_[directionIndex(facing)];
     }
-    const auto& clips = motion == gameplay::PlayerMotionState::walk ? walkClips_ : idleClips_;
+    const auto& clips =
+        motion == gameplay::PlayerMotionState::walk ? walkClips_ : idleClips_;
     return clips[directionIndex(facing)];
 }
 
 void PlayerVisual::update(gameplay::PlayerMotionState motion,
                           gameplay::FacingDirection facing,
-                          gameplay::PlayerActionState action, std::uint64_t ticks) {
+                          gameplay::PlayerActionState action,
+                          std::uint64_t ticks) {
     if (!initialized_ || motion != motion_ || facing != facing_ || action != action_) {
         animator_.play(selectedClip(motion, facing, action));
         initialized_ = true;
@@ -81,14 +125,15 @@ void PlayerVisual::update(gameplay::PlayerMotionState motion,
     motion_ = motion;
     facing_ = facing;
     action_ = action;
-    // Idle/walk sheets contain the left-facing side view.  The authored attack
-    // sheets use the opposite side orientation, so their horizontal transform
-    // is intentionally inverted without changing gameplay-facing direction.
-    if (action == gameplay::PlayerActionState::swordAttack) {
+
+    if (authoredSideCanonicalLeft_) {
+        flipX_ = facing == gameplay::FacingDirection::right;
+    } else if (action == gameplay::PlayerActionState::swordAttack) {
         flipX_ = facing == gameplay::FacingDirection::left;
     } else {
         flipX_ = facing == gameplay::FacingDirection::right;
     }
+
     animator_.updateTicks(ticks, markerEvents_);
 }
 

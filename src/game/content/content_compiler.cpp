@@ -82,6 +82,16 @@ presentation::EnemyVisualDefinition compileEnemyVisual(const AuthoredEnemyVisual
     for (const auto& attack : v.attacks) result.attacks.push_back({attack.visualActionId, attack.clips});
     return result;
 }
+presentation::PlayerVisualDefinition compilePlayerVisual(
+    const AuthoredPlayerVisual& v) {
+    presentation::PlayerVisualDefinition result{
+        v.id, v.idle, v.walk, v.hurt, {}
+    };
+    for (const auto& action : v.actions) {
+        result.actions.push_back({action.actionId, action.clips});
+    }
+    return result;
+}
 presentation::WorldObjectVisualDefinition compileObjectVisual(const AuthoredWorldObjectVisual& v) {
     return {v.id, v.idleAnimationId, v.openedAnimationId, v.destroyingAnimationId,
             v.activationInactiveAnimationId, v.activationActiveAnimationId,
@@ -195,6 +205,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.staticSprites) registry.staticSprites_.add(compileStaticSprite(value));
         for (const auto& value : authored.animations) registry.animations_.add(compileAnimation(value));
         for (const auto& value : authored.enemyVisuals) registry.enemyVisuals_.add(compileEnemyVisual(value));
+        for (const auto& value : authored.playerVisuals) registry.playerVisuals_.add(compilePlayerVisual(value));
         for (const auto& value : authored.objectVisuals) registry.objectVisuals_.add(compileObjectVisual(value));
         result.registry.emplace(std::move(registry));
     } catch (const std::exception& exception) {

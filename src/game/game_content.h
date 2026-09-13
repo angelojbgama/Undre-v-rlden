@@ -75,6 +75,7 @@ public:
     [[nodiscard]] const presentation::StaticSpriteDefinitionCatalog& staticSprites() const noexcept { return staticSprites_; }
     [[nodiscard]] const presentation::AnimationDefinitionCatalog& animations() const noexcept { return animations_; }
     [[nodiscard]] const presentation::EnemyVisualDefinitionCatalog& enemyVisuals() const noexcept { return enemyVisuals_; }
+    [[nodiscard]] const presentation::PlayerVisualDefinitionCatalog& playerVisuals() const noexcept { return playerVisuals_; }
     [[nodiscard]] const presentation::WorldObjectVisualDefinitionCatalog& objectVisuals() const noexcept { return objectVisuals_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
@@ -112,6 +113,7 @@ private:
     presentation::StaticSpriteDefinitionCatalog staticSprites_;
     presentation::AnimationDefinitionCatalog animations_;
     presentation::EnemyVisualDefinitionCatalog enemyVisuals_;
+    presentation::PlayerVisualDefinitionCatalog playerVisuals_;
     presentation::WorldObjectVisualDefinitionCatalog objectVisuals_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;

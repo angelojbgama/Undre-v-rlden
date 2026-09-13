@@ -163,6 +163,43 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     pack.objectVisuals.push_back({{"visual.object.stone_block_2"}, {"anim.object.stone_block_2.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}});
     pack.objectVisuals.push_back({{"visual.object.fire_block"}, {"anim.object.fire_block.inactive"}, std::nullopt, std::nullopt, {"anim.object.fire_block.inactive"}, {"anim.object.fire_block.active"}, std::nullopt, std::nullopt, std::nullopt, {"anim.object.fire_block.destroyed"}});
     pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+
+    // The built-in Player now uses the same authored visual pipeline as
+    // workspace Players. These definitions form the fallback base layer.
+    image("image.player.idle", "Characters/Player/idle/player_idle.png");
+    image("image.player.walk", "Characters/Player/walking/player_walking.png");
+    image("image.player.sword", "Characters/Player/attacking/player_attacking.png");
+    image("image.player.bow", "Characters/Player/attacking/player_attacking_bow.png");
+    image("image.player.hurt", "Characters/Player/death/player_death.png");
+
+    const auto playerIdle = directional(
+        "anim.player.idle", "image.player.idle", 32, 32, 2, 30,
+        {16, 31}, true);
+    const auto playerWalk = directional(
+        "anim.player.walk", "image.player.walk", 32, 32, 4, 8,
+        {16, 31}, true);
+    const auto playerSword = directional(
+        "anim.player.sword", "image.player.sword", 48, 48, 4,
+        gameplay::makePlayerSwordAttackDefinition().totalTicks / 4,
+        {24, 31}, false);
+    // The source sword side row faces RIGHT while side is canonical LEFT.
+    for (auto& frame : pack.animations.back().frames) frame.flipX = true;
+    const auto playerBow = directional(
+        "anim.player.bow", "image.player.bow", 32, 32, 2,
+        gameplay::makePlayerBowAttackDefinition().totalTicks / 2,
+        {16, 31}, false);
+    const auto playerHurt = directional(
+        "anim.player.hurt", "image.player.hurt", 32, 32, 2, 4,
+        {16, 31}, false);
+
+    AuthoredPlayerVisual playerVisual;
+    playerVisual.id = {"visual.player.hero"};
+    playerVisual.idle = playerIdle;
+    playerVisual.walk = playerWalk;
+    playerVisual.hurt = playerHurt;
+    playerVisual.actions.push_back({"sword", playerSword});
+    playerVisual.actions.push_back({"bow", playerBow});
+    pack.playerVisuals.push_back(std::move(playerVisual));
 }
 
 } // namespace
@@ -172,6 +209,8 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.tilesets.push_back({{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
     // Temporary development curve; final game balance is intentionally undecided.
     pack.playerProgressions.push_back({{"progression.player.default"}, {5}, {0, 100, 250}});
+    pack.players.push_back({{"player.hero"}, {"visual.player.hero"},
+                            {"progression.player.default"}, std::nullopt});
     pack.projectiles = {
         {{"projectile.player.arrow"}, {"visual.projectile.player.arrow"}, FacingDirection::up, 4, 120, 6, 6, arrowOffsets()},
         {{"projectile.skull.arrow"}, {"visual.projectile.skull.arrow"}, FacingDirection::right, 4, 120, 6, 6, arrowOffsets()}};
