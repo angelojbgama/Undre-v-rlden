@@ -1526,7 +1526,16 @@ void testAttackWorldObstructionClipping() {
     const auto left = clipAttackRegionAgainstSolidTiles(
         grid, {8, 8, 12, 4},
         FacingDirection::left, tileSize);
-    expect(!left.has_value(),
+    expect(left.has_value() &&
+               *left == AabbI{16, 8, 4, 4},
+           "sword region stops before the first solid tile when sweeping left");
+
+    CollisionGrid leftBlockedGrid(8, 8);
+    leftBlockedGrid.setSolid(4, 2, true);
+    const auto leftImmediate = clipAttackRegionAgainstSolidTiles(
+        leftBlockedGrid, {8, 8, 12, 4},
+        FacingDirection::left, tileSize);
+    expect(!leftImmediate.has_value(),
            "sword region is fully blocked when its leading left slice is solid");
 
     CollisionGrid openGrid(8, 8);
@@ -8367,7 +8376,8 @@ void testPhase14WorldClosure() {
     if (arenaContent.registry) {
         auto arenaMap = makeSyntheticMap("map.phase14.arena", "map.phase14.arena");
         arenaMap.objects[1].position = {32, 16};
-        arenaMap.enemies.push_back({{6}, gameplay::creatures::soldierEnemyId(), {40, 24},
+        arenaMap.enemies[0].position = {24, 24};
+        arenaMap.enemies.push_back({{6}, gameplay::creatures::soldierEnemyId(), {24, 24},
                                     gameplay::FacingDirection::left});
         arenaMap.regions.push_back({{"region.arena"}, {0, 0, 64, 48}});
         arenaMap.encounters.push_back({{"encounter.arena"}, {{1}, {6}},
@@ -8442,7 +8452,7 @@ void testPhase14WorldClosure() {
                        arenaSession.world().doorState({3}) == gameplay::DoorState::locked &&
                        arenaSession.world().map().collision().isSolid(2, 1),
                    "arena entry emits RegionEntered, locks the door and starts the encounter");
-            arenaSession.relocatePlayer({28, 24}, gameplay::FacingDirection::right);
+            arenaSession.relocatePlayer({12, 24}, gameplay::FacingDirection::right);
             for (std::uint64_t tick = 2; tick < 80; ++tick) {
                 const auto encounterNow = std::find_if(arenaSession.worldState().encounters.begin(),
                     arenaSession.worldState().encounters.end(), [](const auto& value) {

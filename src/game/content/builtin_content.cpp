@@ -84,7 +84,6 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
             }
             pack.animations.push_back(std::move(animationValue));
         }
-        result.side = result.left;
         return result;
     };
     const auto objectAnimation = [&](const char* id, const char* imageId, int width, int height,
