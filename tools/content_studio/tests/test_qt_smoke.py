@@ -235,6 +235,72 @@ class QtSmokeTests(unittest.TestCase):
                 splitter.setSizes([0, 1000, 120])
                 self.assertEqual(0, splitter.sizes()[0])
 
+    def test_player_frame_sequence_dialog_exposes_independent_pixel_mask_rows(self) -> None:
+        from tools.content_studio.services.localization import Translator
+        from tools.content_studio.services.player_authoring_service import (
+            PlayerAuthoringService,
+            PlayerCollisionMaskSpec,
+        )
+        from tools.content_studio.ui.player_library_widget import (
+            FrameSequenceDialog,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+            content.update({
+                category: [] for category in CONTENT_CATEGORIES
+            })
+            (root / "content.json").write_text(
+                encode_json(content), encoding="utf-8")
+            workspace = ContentWorkspace.open(root)
+            translator = Translator("pt-BR")
+            dialog = FrameSequenceDialog(
+                workspace, None, translator, "Idle — Baixo")
+            self.addCleanup(dialog.deleteLater)
+
+            channels = PlayerAuthoringService.FRAME_MASK_CHANNELS
+            self.assertIs(translator, dialog.translate)
+            self.assertFalse(hasattr(dialog, "mask_channel"))
+            self.assertEqual(set(channels), set(dialog.frame_mask_summaries))
+            self.assertEqual(
+                set(channels), set(dialog.edit_frame_mask_buttons))
+            self.assertEqual(
+                set(channels), set(dialog.copy_previous_mask_buttons))
+            self.assertEqual(
+                set(channels), set(dialog.clear_frame_mask_buttons))
+            self.assertTrue(all(
+                button.text() == "Editar por pixel..."
+                for button in dialog.edit_frame_mask_buttons.values()
+            ))
+
+            mask = PlayerCollisionMaskSpec(
+                width=1,
+                height=1,
+                origin_x=0,
+                origin_y=0,
+                cells=(1,),
+            )
+            dialog._selected_indices = [0]
+            dialog._selected_masks = [{
+                channel: mask for channel in channels
+            }]
+            dialog.sequence.addItem("frame #0")
+            dialog.sequence.setCurrentRow(0)
+            dialog._refresh_frame_mask_summaries()
+
+            self.assertTrue(all(
+                "Definida" in dialog.frame_mask_summaries[channel].text()
+                for channel in channels
+            ))
+            self.assertTrue(all(
+                dialog.clear_frame_mask_buttons[channel].isEnabled()
+                for channel in channels
+            ))
+
     def test_tileset_import_dialog_opens_offscreen(self) -> None:
         from tools.content_studio.ui.tileset_import_dialog import TilesetImportDialog
 

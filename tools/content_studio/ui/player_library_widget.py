@@ -49,11 +49,13 @@ class FrameSequenceDialog(QDialog):
     # Builds one animation by appending spritesheet cells in order.
 
     def __init__(self, workspace: ContentWorkspace, asset_root: Path | None,
-                 title: str, initial: FrameSequenceSpec | None = None,
+                 translator: Translator, title: str,
+                 initial: FrameSequenceSpec | None = None,
                  parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.asset_root = asset_root
+        self.translate = translator
         self.result_spec: FrameSequenceSpec | None = None
         self._image = QImage()
         self._frames: list[QImage] = []
@@ -133,47 +135,60 @@ class FrameSequenceDialog(QDialog):
                 down_button, clear_button):
             sequence_buttons.addWidget(button)
 
-        self.mask_channel = QComboBox()
-        for channel in self.service.FRAME_MASK_CHANNELS:
-            self.mask_channel.addItem(
-                FRAME_MASK_LABELS[channel], channel)
-        self.edit_frame_mask = QPushButton(
-            "Editar máscara do frame...")
-        self.copy_previous_mask = QPushButton(
-            "Copiar do frame anterior")
-        self.clear_frame_mask = QPushButton(
-            "Limpar máscara deste canal")
-        self.frame_mask_summary = QLabel(
-            "Selecione um frame da sequência.")
-        self.frame_mask_summary.setWordWrap(True)
-        self.frame_mask_summary.setStyleSheet("color:#aeb8c4;")
-        self.edit_frame_mask.clicked.connect(
-            self._edit_selected_frame_mask)
-        self.copy_previous_mask.clicked.connect(
-            self._copy_previous_frame_mask)
-        self.clear_frame_mask.clicked.connect(
-            self._clear_selected_frame_mask)
-        self.mask_channel.currentIndexChanged.connect(
-            self._refresh_frame_mask_summary)
-        self.sequence.currentRowChanged.connect(
-            self._refresh_frame_mask_summary)
+        self.frame_mask_summaries: dict[str, QLabel] = {}
+        self.edit_frame_mask_buttons: dict[str, QPushButton] = {}
+        self.copy_previous_mask_buttons: dict[str, QPushButton] = {}
+        self.clear_frame_mask_buttons: dict[str, QPushButton] = {}
 
-        mask_controls = QHBoxLayout()
-        mask_controls.addWidget(QLabel("Canal"))
-        mask_controls.addWidget(self.mask_channel)
-        mask_controls.addWidget(self.edit_frame_mask)
-        mask_controls.addWidget(self.copy_previous_mask)
-        mask_controls.addWidget(self.clear_frame_mask)
         frame_mask_group = QGroupBox(
             "Máscaras de gameplay por frame")
         frame_mask_layout = QVBoxLayout(frame_mask_group)
-        frame_mask_layout.addLayout(mask_controls)
-        frame_mask_layout.addWidget(self.frame_mask_summary)
+        frame_mask_grid = QGridLayout()
+        frame_mask_grid.addWidget(QLabel("Canal"), 0, 0)
+        frame_mask_grid.addWidget(QLabel("Estado no frame"), 0, 1)
+        frame_mask_grid.addWidget(QLabel("Edição"), 0, 2, 1, 3)
+
+        for row_index, channel in enumerate(
+                PlayerAuthoringService.FRAME_MASK_CHANNELS, start=1):
+            channel_label = QLabel(FRAME_MASK_LABELS[channel])
+            summary = QLabel("Selecione um frame da sequência.")
+            summary.setWordWrap(True)
+            summary.setStyleSheet("color:#aeb8c4;")
+            edit_button = QPushButton("Editar por pixel...")
+            copy_button = QPushButton("Copiar anterior")
+            clear_button = QPushButton("Limpar")
+            edit_button.clicked.connect(
+                lambda unused=False, c=channel:
+                self._edit_selected_frame_mask(c))
+            copy_button.clicked.connect(
+                lambda unused=False, c=channel:
+                self._copy_previous_frame_mask(c))
+            clear_button.clicked.connect(
+                lambda unused=False, c=channel:
+                self._clear_selected_frame_mask(c))
+
+            frame_mask_grid.addWidget(channel_label, row_index, 0)
+            frame_mask_grid.addWidget(summary, row_index, 1)
+            frame_mask_grid.addWidget(edit_button, row_index, 2)
+            frame_mask_grid.addWidget(copy_button, row_index, 3)
+            frame_mask_grid.addWidget(clear_button, row_index, 4)
+
+            self.frame_mask_summaries[channel] = summary
+            self.edit_frame_mask_buttons[channel] = edit_button
+            self.copy_previous_mask_buttons[channel] = copy_button
+            self.clear_frame_mask_buttons[channel] = clear_button
+
+        self.sequence.currentRowChanged.connect(
+            self._refresh_frame_mask_summaries)
+        frame_mask_layout.addLayout(frame_mask_grid)
         frame_mask_hint = QLabel(
-            "As máscaras pertencem ao frame selecionado e podem coexistir. "
-            "Movement Collision e Hurtbox serão overrides opcionais das "
-            "máscaras base; Attack Hitbox representa a área de dano ativa "
-            "daquele frame. Nesta etapa o runtime ainda não as consome.")
+            "Cada canal é independente e pode coexistir no mesmo frame. "
+            "Use 'Editar por pixel...' para pintar Movement Collision, "
+            "Hurtbox e Attack Hitbox separadamente. Um mesmo pixel pode "
+            "pertencer a mais de uma máscara porque os canais são armazenados "
+            "como camadas binárias independentes. Attack Hitbox e Hurtbox por "
+            "frame já são consumidas pelo runtime; Movement Collision por "
+            "frame permanece autorável e terá integração de runtime própria.")
         frame_mask_hint.setWordWrap(True)
         frame_mask_hint.setStyleSheet("color:#aeb8c4;")
         frame_mask_layout.addWidget(frame_mask_hint)
@@ -348,21 +363,21 @@ class FrameSequenceDialog(QDialog):
         del unused
         self.sequence.clear()
         for order, index in enumerate(self._selected_indices):
-            channels = ", ".join(
-                FRAME_MASK_LABELS.get(channel, channel)
-                for channel in self._selected_masks[order])
-            suffix = f"\n  máscaras: {channels}" if channels else ""
+            masks = self._selected_masks[order]
+            statuses = " | ".join(
+                (
+                    "✓ " if channel in masks else "— "
+                ) + FRAME_MASK_LABELS.get(channel, channel)
+                for channel in PlayerAuthoringService.FRAME_MASK_CHANNELS
+            )
             item = QListWidgetItem(
                 QIcon(QPixmap.fromImage(self._frame_image(index))),
-                f"{order + 1}. frame #{index}{suffix}")
+                f"{order + 1}. frame #{index}\n  {statuses}")
             self.sequence.addItem(item)
         self._preview_index = 0
         self._show_preview()
         self._restart_preview()
-        self._refresh_frame_mask_summary()
-
-    def _selected_mask_channel(self) -> str:
-        return str(self.mask_channel.currentData() or "")
+        self._refresh_frame_mask_summaries()
 
     def _default_frame_mask(self) -> PlayerCollisionMaskSpec:
         width = self.frame_width.value()
@@ -375,40 +390,46 @@ class FrameSequenceDialog(QDialog):
             cells=(0,) * (width * height),
         )
 
-    def _refresh_frame_mask_summary(
+    def _refresh_frame_mask_summaries(
             self, unused: object = None) -> None:
         del unused
         row = self.sequence.currentRow()
-        channel = self._selected_mask_channel()
         enabled = 0 <= row < len(self._selected_masks)
-        self.edit_frame_mask.setEnabled(enabled)
-        self.clear_frame_mask.setEnabled(
-            enabled and channel in (
-                self._selected_masks[row] if enabled else {}))
-        self.copy_previous_mask.setEnabled(
-            enabled and row > 0)
-        if not enabled:
-            self.frame_mask_summary.setText(
-                "Selecione um frame da sequência.")
-            return
-        current = self._selected_masks[row].get(channel)
-        if current is None:
-            self.frame_mask_summary.setText(
-                f"{FRAME_MASK_LABELS.get(channel, channel)}: "
-                "sem máscara neste frame.")
-            return
-        active = sum(1 for cell in current.cells if cell)
-        self.frame_mask_summary.setText(
-            f"{FRAME_MASK_LABELS.get(channel, channel)}: "
-            f"{current.width}x{current.height} • "
-            f"{active} pixel(s) ativos.")
+        masks = self._selected_masks[row] if enabled else {}
 
-    def _edit_selected_frame_mask(self) -> None:
+        for channel in PlayerAuthoringService.FRAME_MASK_CHANNELS:
+            summary = self.frame_mask_summaries[channel]
+            self.edit_frame_mask_buttons[channel].setEnabled(enabled)
+            self.copy_previous_mask_buttons[channel].setEnabled(
+                enabled and row > 0)
+            self.clear_frame_mask_buttons[channel].setEnabled(
+                enabled and channel in masks)
+
+            if not enabled:
+                summary.setText("Selecione um frame da sequência.")
+                continue
+
+            current = masks.get(channel)
+            if current is None:
+                summary.setText("Não definida neste frame.")
+                continue
+
+            active = sum(1 for cell in current.cells if cell)
+            summary.setText(
+                f"Definida • {current.width}x{current.height} • "
+                f"{active} pixel(s) ativos.")
+
+    @staticmethod
+    def _valid_frame_mask_channel(channel: str) -> bool:
+        return channel in PlayerAuthoringService.FRAME_MASK_CHANNELS
+
+    def _edit_selected_frame_mask(self, channel: str) -> None:
         row = self.sequence.currentRow()
-        if row < 0 or row >= len(self._selected_indices):
-            return
-        channel = self._selected_mask_channel()
-        if not channel:
+        if (
+            row < 0 or
+            row >= len(self._selected_indices) or
+            not self._valid_frame_mask_channel(channel)
+        ):
             return
         image = self._frame_image(self._selected_indices[row])
         if image.isNull():
@@ -432,6 +453,9 @@ class FrameSequenceDialog(QDialog):
         dialog = ShapeMaskEditorDialog(
             image, mask, self.translate, self,
             title_key="mask_editor_title")
+        dialog.setWindowTitle(
+            f"{FRAME_MASK_LABELS.get(channel, channel)} — "
+            "edição por pixel")
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         result = dialog.result_mask()
@@ -453,25 +477,32 @@ class FrameSequenceDialog(QDialog):
         self._refresh_sequence()
         self.sequence.setCurrentRow(row)
 
-    def _copy_previous_frame_mask(self) -> None:
+    def _copy_previous_frame_mask(self, channel: str) -> None:
         row = self.sequence.currentRow()
-        channel = self._selected_mask_channel()
-        if row <= 0 or row >= len(self._selected_masks):
+        if (
+            row <= 0 or
+            row >= len(self._selected_masks) or
+            not self._valid_frame_mask_channel(channel)
+        ):
             return
         previous = self._selected_masks[row - 1].get(channel)
         if previous is None:
             QMessageBox.information(
                 self, self.windowTitle(),
-                "O frame anterior não possui máscara neste canal.")
+                f"O frame anterior não possui "
+                f"{FRAME_MASK_LABELS.get(channel, channel)}.")
             return
         self._selected_masks[row][channel] = previous
         self._refresh_sequence()
         self.sequence.setCurrentRow(row)
 
-    def _clear_selected_frame_mask(self) -> None:
+    def _clear_selected_frame_mask(self, channel: str) -> None:
         row = self.sequence.currentRow()
-        channel = self._selected_mask_channel()
-        if row < 0 or row >= len(self._selected_masks):
+        if (
+            row < 0 or
+            row >= len(self._selected_masks) or
+            not self._valid_frame_mask_channel(channel)
+        ):
             return
         self._selected_masks[row].pop(channel, None)
         self._refresh_sequence()
@@ -750,7 +781,7 @@ class PlayerDefinitionDialog(QDialog):
             return
         initial = self.sequences.get(state, {}).get(direction)
         dialog = FrameSequenceDialog(
-            self.workspace, self.asset_root,
+            self.workspace, self.asset_root, self.translate,
             f"{STATE_LABELS[state]} — {DIRECTION_LABELS[direction]}",
             initial, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
