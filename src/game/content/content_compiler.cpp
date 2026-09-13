@@ -348,7 +348,14 @@ gameplay::PlayerDefinition compilePlayer(const AuthoredPlayer& v) {
         shapes.values[3] = compilePlayerMask(v.movementCollision->right, false);
         movement = std::move(shapes);
     }
-    return {v.id, v.visualSetId, v.progressionId, std::move(movement)};
+
+    std::optional<gameplay::ActorCollisionShapeDefinition> hurtbox;
+    if (v.hurtbox) {
+        hurtbox = compilePlayerMask(*v.hurtbox, false);
+    }
+
+    return {v.id, v.visualSetId, v.progressionId,
+            std::move(movement), std::move(hurtbox)};
 }
 
 gameplay::rpg::PlayerProgressionDefinition compileProgression(const AuthoredPlayerProgression& v) { return {v.id, {v.baseStats.maximumHealth}, v.cumulativeExperienceThresholds}; }

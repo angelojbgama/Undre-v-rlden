@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace underworld::game::gameplay {
 
@@ -38,11 +39,12 @@ std::int64_t checkedAdd(std::int64_t value, std::int64_t delta) {
 Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
                core::WorldPointI feetPosition,
                int maximumHealth,
-               PlayerMovementConfig config)
+               PlayerMovementConfig config,
+               std::optional<ActorCollisionShapeDefinition> hurtboxShape)
     : id_(id), combatant_{entity, Faction::player, Health{maximumHealth}, 0, false},
       position_{checkedSubpixelCoordinate(feetPosition.x),
                 checkedSubpixelCoordinate(feetPosition.y)},
-      config_(config) {
+      config_(config), hurtboxShape_(std::move(hurtboxShape)) {
     if (!entity) {
         throw std::invalid_argument("player requires a valid runtime entity handle");
     }
@@ -52,6 +54,10 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
     if (config_.collisionShapes && !config_.collisionShapes->valid()) {
         throw std::invalid_argument(
             "player authored movement collision must contain positive regions");
+    }
+    if (hurtboxShape_ && !hurtboxShape_->valid()) {
+        throw std::invalid_argument(
+            "player authored hurtbox must contain positive regions");
     }
     if (config_.cornerSlideMaxProbePixels < 0 ||
         (config_.cornerSlideMaxProbePixels > 0 &&
@@ -191,13 +197,35 @@ void Player::update(const simulation::PlayerCommand& command,
                       : checkedSubpixelCoordinate(resolvedFeet.y);
 }
 
-Hurtbox Player::hurtbox() const noexcept {
+Hurtbox Player::hurtbox() const {
     const auto feet = feetPosition();
-    return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
-             hurtboxWidth, hurtboxHeight}, !combatant_.health.depleted()};
+    if (!hurtboxShape_) {
+        return {{feet.x + hurtboxOffsetX, feet.y + hurtboxOffsetY,
+                 hurtboxWidth, hurtboxHeight},
+                !combatant_.health.depleted(), {}};
+    }
+
+    auto regions = hurtboxShape_->at(feet);
+    world::AabbI bounds = regions.front();
+    int right = bounds.x + bounds.width;
+    int bottom = bounds.y + bounds.height;
+    for (std::size_t index = 1; index < regions.size(); ++index) {
+        const auto& region = regions[index];
+        const int regionRight = region.x + region.width;
+        const int regionBottom = region.y + region.height;
+        const int left = std::min(bounds.x, region.x);
+        const int top = std::min(bounds.y, region.y);
+        right = std::max(right, regionRight);
+        bottom = std::max(bottom, regionBottom);
+        bounds.x = left;
+        bounds.y = top;
+    }
+    bounds.width = right - bounds.x;
+    bounds.height = bottom - bounds.y;
+    return {bounds, !combatant_.health.depleted(), std::move(regions)};
 }
 
-CombatTargetRef Player::combatTarget() noexcept {
+CombatTargetRef Player::combatTarget() {
     return {combatant_, hurtbox()};
 }
 

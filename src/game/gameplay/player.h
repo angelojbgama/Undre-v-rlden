@@ -67,7 +67,8 @@ public:
     Player(simulation::PlayerId id, simulation::EntityHandle entity,
            core::WorldPointI feetPosition,
            int maximumHealth,
-           PlayerMovementConfig config = {});
+           PlayerMovementConfig config = {},
+           std::optional<ActorCollisionShapeDefinition> hurtboxShape = {});
 
     void update(const simulation::PlayerCommand& command,
                 const world::CollisionGrid& collision, int tileSize,
@@ -93,8 +94,8 @@ public:
     [[nodiscard]] const Health& health() const noexcept { return combatant_.health; }
     [[nodiscard]] CombatantState& combatant() noexcept { return combatant_; }
     [[nodiscard]] const CombatantState& combatant() const noexcept { return combatant_; }
-    [[nodiscard]] CombatTargetRef combatTarget() noexcept;
-    [[nodiscard]] Hurtbox hurtbox() const noexcept;
+    [[nodiscard]] CombatTargetRef combatTarget();
+    [[nodiscard]] Hurtbox hurtbox() const;
     [[nodiscard]] InteractionArea interactionArea() const noexcept;
     void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
                         int tileSize, std::span<const world::AabbI> staticObstacles = {});
@@ -116,6 +117,7 @@ private:
     CombatantState combatant_{};
     SubpixelPosition position_{};
     PlayerMovementConfig config_{};
+    std::optional<ActorCollisionShapeDefinition> hurtboxShape_{};
     FacingDirection facing_{FacingDirection::down};
     PlayerMotionState motionState_{PlayerMotionState::idle};
     world::MovementResult lastMovement_{};

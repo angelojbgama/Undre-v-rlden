@@ -40,7 +40,9 @@ public:
     GameSession(simulation::PlayerId playerId,
                 const gameplay::rpg::PlayerProgressionDefinition& progression,
                 core::WorldPointI initialPosition = {},
-                gameplay::PlayerMovementConfig movementConfig = {});
+                gameplay::PlayerMovementConfig movementConfig = {},
+                std::optional<gameplay::ActorCollisionShapeDefinition>
+                    hurtboxShape = {});
 
     [[nodiscard]] bool initializeMap(const maps::MapCatalog& maps,
                                       const maps::MapValidationCatalogs& catalogs,

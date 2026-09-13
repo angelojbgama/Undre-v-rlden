@@ -12,6 +12,15 @@ bool overlaps(world::AabbI left, world::AabbI right) noexcept {
            left.y < right.y + right.height && right.y < left.y + left.height;
 }
 
+bool overlapsHurtbox(world::AabbI attack, const Hurtbox& hurtbox) noexcept {
+    if (!hurtbox.regions.empty()) {
+        return std::any_of(
+            hurtbox.regions.begin(), hurtbox.regions.end(),
+            [&](world::AabbI region) { return overlaps(attack, region); });
+    }
+    return overlaps(attack, hurtbox.bounds);
+}
+
 CombatResolution CombatSystem::resolve(const Hitbox& attack, CombatTargetRef target,
                                        simulation::EventBuffer& events) {
     if (attack.damage.amount <= 0 || attack.damage.knockbackPixels < 0) {
@@ -22,7 +31,7 @@ CombatResolution CombatSystem::resolve(const Hitbox& attack, CombatTargetRef tar
     if (!attack.enabled || !target.hurtbox.enabled || combatant.health.depleted() ||
         attack.attack.owner == combatant.handle ||
         !factionsCanDamage(attack.faction, combatant.faction) ||
-        !overlaps(attack.bounds, target.hurtbox.bounds) ||
+        !overlapsHurtbox(attack.bounds, target.hurtbox) ||
         combatant.invulnerabilityTicks > 0) {
         return result;
     }

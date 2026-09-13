@@ -1128,6 +1128,86 @@ void testPlayerCollision() {
 }
 
 
+void testPlayerAuthoredBaseHurtboxRuntime() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    const auto playerDef = std::find_if(
+        authored.players.begin(), authored.players.end(),
+        [](const auto& value) {
+            return value.id == gameplay::defaultPlayerDefinitionId();
+        });
+    expect(playerDef != authored.players.end(),
+           "builtin Player exists for authored hurtbox runtime test");
+    if (playerDef == authored.players.end()) return;
+
+    content::AuthoredPixelMask mask;
+    mask.width = 8;
+    mask.height = 4;
+    mask.origin = {-4, -4};
+    mask.cells.assign(32, 0);
+    mask.cells[0] = 1;
+    mask.cells[1] = 1;
+    mask.cells[6] = 1;
+    mask.cells[7] = 1;
+    playerDef->hurtbox = mask;
+
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry.has_value(),
+           "authored Player hurtbox compiles into runtime content");
+    if (!compiled.registry) return;
+
+    const auto& runtimeDef = compiled.registry->players().require(
+        gameplay::defaultPlayerDefinitionId());
+    expect(runtimeDef.hurtbox.has_value() &&
+               runtimeDef.hurtbox->regions.size() == 2,
+           "authored Player hurtbox becomes compact exact regions");
+    if (!runtimeDef.hurtbox) return;
+
+    gameplay::Player player(
+        {0}, {0, 1}, {100, 100}, 5, {}, runtimeDef.hurtbox);
+    const auto hurtbox = player.hurtbox();
+    expect(hurtbox.bounds ==
+               underworld::world::AabbI{96, 96, 8, 1},
+           "authored Player hurtbox exposes aggregate debug bounds");
+    expect(hurtbox.regions.size() == 2 &&
+               hurtbox.regions[0] ==
+                   underworld::world::AabbI{96, 96, 2, 1} &&
+               hurtbox.regions[1] ==
+                   underworld::world::AabbI{102, 96, 2, 1},
+           "authored Player hurtbox preserves separated compact regions");
+
+    gameplay::CombatSystem combat;
+    underworld::simulation::EventBuffer events;
+    const gameplay::Hitbox gapAttack{
+        {99, 96, 2, 1}, {{7, 1}, 1},
+        gameplay::Faction::enemy, {1, 0}, 0, 0, true};
+    const auto gapResult =
+        combat.resolve(gapAttack, player.combatTarget(), events);
+    expect(!gapResult.damaged && player.health().current == 5,
+           "attack inside hurtbox envelope gap does not damage Player");
+
+    const gameplay::Hitbox exactAttack{
+        {96, 96, 1, 1}, {{8, 1}, 1},
+        gameplay::Faction::enemy, {1, 0}, 0, 0, true};
+    const auto exactResult =
+        combat.resolve(exactAttack, player.combatTarget(), events);
+    expect(exactResult.damaged && player.health().current == 4,
+           "attack overlapping an authored hurtbox region damages Player");
+
+    gameplay::Player legacy({1}, {0, 2}, {100, 100}, 5);
+    const auto legacyHurtbox = legacy.hurtbox();
+    expect(legacyHurtbox.regions.empty() &&
+               legacyHurtbox.bounds ==
+                   underworld::world::AabbI{
+                       100 + gameplay::Player::hurtboxOffsetX,
+                       100 + gameplay::Player::hurtboxOffsetY,
+                       gameplay::Player::hurtboxWidth,
+                       gameplay::Player::hurtboxHeight},
+           "Player without authored hurtbox preserves legacy fallback");
+}
+
 void testPlayerAuthoredMovementCollision() {
     namespace gameplay = underworld::game::gameplay;
 
@@ -10568,6 +10648,7 @@ int main() {
         testPlayerMovementAndFacing();
         testGameSessionCommandBoundary();
         testPlayerCollision();
+        testPlayerAuthoredBaseHurtboxRuntime();
         testPlayerAuthoredMovementCollision();
         testAttackWorldObstructionClipping();
         testAnimationFrameMaskAuthoringRoundTrip();

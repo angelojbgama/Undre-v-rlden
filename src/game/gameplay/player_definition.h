@@ -16,6 +16,7 @@ struct PlayerDefinition final {
     simulation::DefinitionId visualSetId{};
     simulation::DefinitionId progressionId{};
     std::optional<DirectionalActorCollisionShapes> movementCollision{};
+    std::optional<ActorCollisionShapeDefinition> hurtbox{};
 };
 
 class PlayerDefinitionCatalog final {

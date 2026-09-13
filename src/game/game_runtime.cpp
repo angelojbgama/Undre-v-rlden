@@ -90,6 +90,15 @@ gameplay::PlayerMovementConfig selectedPlayerMovementConfig(
     return config;
 }
 
+std::optional<gameplay::ActorCollisionShapeDefinition> selectedPlayerHurtbox(
+    const GameContentRegistry& content) {
+    if (const auto* definition = selectedPlayerDefinition(content);
+        definition && definition->hurtbox) {
+        return definition->hurtbox;
+    }
+    return std::nullopt;
+}
+
 const char* objectStateName(gameplay::WorldObjectState state) noexcept {
     switch (state) {
     case gameplay::WorldObjectState::idle: return "idle";
@@ -141,7 +150,8 @@ struct GameRuntime::State final {
           content(std::move(contentDefinitions)),
           runtimeVisualContent(std::move(runtimeVisualContent)),
           session(localPlayerId, selectedPlayerProgression(content), {},
-                  selectedPlayerMovementConfig(content)) {
+                  selectedPlayerMovementConfig(content),
+                  selectedPlayerHurtbox(content)) {
         const auto& dungeonDefinition = content.tilesets().require(
             simulation::DefinitionId{"tileset.dungeon"});
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,

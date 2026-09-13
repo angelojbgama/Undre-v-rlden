@@ -6,6 +6,7 @@
 #include "engine/world/collision.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace underworld::game::gameplay {
 
@@ -33,7 +34,13 @@ enum class AttackKind {
 };
 
 struct CollisionBody final { world::AabbI bounds{}; };
-struct Hurtbox final { world::AabbI bounds{}; bool enabled{true}; };
+struct Hurtbox final {
+    // bounds is kept as a cheap aggregate/debug envelope. When regions is
+    // non-empty, combat uses the exact compact regions instead of the envelope.
+    world::AabbI bounds{};
+    bool enabled{true};
+    std::vector<world::AabbI> regions{};
+};
 struct InteractionArea final { world::AabbI bounds{}; bool enabled{true}; };
 
 struct Health final {
