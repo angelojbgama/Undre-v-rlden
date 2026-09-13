@@ -49,7 +49,8 @@ using AuthoredPickupPayload = std::variant<AuthoredHealthPickup, AuthoredCurrenc
 struct AuthoredPickup final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; world::AabbI collectionBounds{}; AuthoredPickupPayload payload{}; };
 struct AuthoredVisualImage final { simulation::DefinitionId id{}; presentation::VisualAssetRoot root{presentation::VisualAssetRoot::gameAssets}; std::string relativePath; };
 struct AuthoredStaticSprite final { simulation::DefinitionId id{}; simulation::DefinitionId imageId{}; std::optional<core::RectI> source; core::PointI anchor{}; };
-struct AuthoredAnimationFrame final { core::RectI source{}; core::PointI anchor{}; core::PointI drawOffset{}; std::uint32_t durationTicks{}; std::vector<std::string> markers; bool flipX{}; };
+struct AuthoredAnimationFrameMask final { std::string channel; std::uint32_t width{}; std::uint32_t height{}; core::PointI origin{}; std::vector<std::uint8_t> cells; };
+struct AuthoredAnimationFrame final { core::RectI source{}; core::PointI anchor{}; core::PointI drawOffset{}; std::uint32_t durationTicks{}; std::vector<std::string> markers; bool flipX{}; std::vector<AuthoredAnimationFrameMask> masks; };
 struct AuthoredAnimation final { simulation::DefinitionId id{}; simulation::DefinitionId imageId{}; std::vector<AuthoredAnimationFrame> frames; bool loop{true}; };
 struct AuthoredEnemyAttackVisual final { simulation::DefinitionId visualActionId{}; presentation::DirectionalAnimationRef clips; };
 struct AuthoredEnemyVisual final { simulation::DefinitionId id{}; presentation::DirectionalAnimationRef idle; std::optional<presentation::DirectionalAnimationRef> move; std::optional<presentation::DirectionalAnimationRef> hurt; std::optional<presentation::DirectionalAnimationRef> death; std::optional<presentation::DirectionalAnimationRef> dead; // Keys are arbitrary visual actions, not a rigid attack list.

@@ -243,6 +243,52 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (frame.markers.size() > 32)
                 error(report, ContentKind::animation, value.id, "invalid_marker_count",
                       "animation frame has too many markers", "frames.markers");
+            if (frame.masks.size() > 16)
+                error(report, ContentKind::animation, value.id,
+                      "invalid_frame_mask_count",
+                      "animation frame has too many gameplay masks",
+                      "frames.masks");
+            std::unordered_set<std::string> frameMaskChannels;
+            for (const auto& mask : frame.masks) {
+                const auto expectedCells =
+                    mask.width > 0 &&
+                    mask.height <= std::numeric_limits<std::size_t>::max() /
+                                       mask.width
+                    ? static_cast<std::size_t>(mask.width) * mask.height
+                    : 0;
+                if (mask.channel.empty() || mask.channel.size() > 64)
+                    error(report, ContentKind::animation, value.id,
+                          "invalid_frame_mask_channel",
+                          "animation frame mask channel is invalid",
+                          "frames.masks.channel");
+                else if (!frameMaskChannels.emplace(mask.channel).second)
+                    error(report, ContentKind::animation, value.id,
+                          "duplicate_frame_mask_channel",
+                          "animation frame contains the same mask channel twice",
+                          "frames.masks.channel");
+                if (mask.width == 0 || mask.height == 0 ||
+                    expectedCells == 0 ||
+                    mask.cells.size() != expectedCells ||
+                    mask.width != static_cast<std::uint32_t>(frame.source.width) ||
+                    mask.height != static_cast<std::uint32_t>(frame.source.height))
+                    error(report, ContentKind::animation, value.id,
+                          "invalid_frame_mask",
+                          "animation frame mask must match frame dimensions",
+                          "frames.masks");
+                if (visualCoordinateOutOfBounds(mask.origin.x) ||
+                    visualCoordinateOutOfBounds(mask.origin.y))
+                    error(report, ContentKind::animation, value.id,
+                          "invalid_frame_mask_origin",
+                          "animation frame mask origin is outside bounds",
+                          "frames.masks.origin");
+                if (!std::any_of(
+                        mask.cells.begin(), mask.cells.end(),
+                        [](std::uint8_t cell) { return cell != 0; }))
+                    error(report, ContentKind::animation, value.id,
+                          "empty_frame_mask",
+                          "animation frame mask must contain an active cell",
+                          "frames.masks.cells");
+            }
         }
     }
     for (const auto& value : pack.players) {

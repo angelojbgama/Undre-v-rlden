@@ -10,6 +10,13 @@ from .import_service import read_image_dimensions
 
 
 @dataclass(frozen=True, slots=True)
+class FrameMaskSpec:
+    sequence_index: int
+    channel: str
+    mask: "PlayerCollisionMaskSpec"
+
+
+@dataclass(frozen=True, slots=True)
 class FrameSequenceSpec:
     image_id: str
     frame_width: int
@@ -22,6 +29,7 @@ class FrameSequenceSpec:
     flip_x: bool
     frame_indices: tuple[int, ...]
     columns: int
+    frame_masks: tuple[FrameMaskSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +62,11 @@ class PlayerAuthoringService:
     )
     VISUAL_DIRECTIONS = ("down", "up", "left", "right")
     MOVEMENT_DIRECTIONS = ("down", "up", "left", "right")
+    FRAME_MASK_CHANNELS = (
+        "movementCollision",
+        "hurtbox",
+        "attackHitbox",
+    )
     DIRECTIONS = VISUAL_DIRECTIONS
 
     @staticmethod
@@ -69,20 +82,26 @@ class PlayerAuthoringService:
     def _directional(refs: dict[str, str]) -> dict[str, JsonValue]:
         return {key: value for key, value in refs.items() if value}
 
-    @staticmethod
-    def _materialize(spec: FrameSequenceSpec) -> list[JsonValue]:
+    @classmethod
+    def _materialize(cls, spec: FrameSequenceSpec) -> list[JsonValue]:
         if spec.columns <= 0:
             raise ValueError("spritesheet sem colunas válidas")
         if not spec.frame_indices:
             raise ValueError("adicione pelo menos um frame")
+        cls._validate_frame_masks(spec)
         pitch_x = spec.frame_width + spec.spacing
         pitch_y = spec.frame_height + spec.spacing
+        masks_by_frame: dict[int, list[FrameMaskSpec]] = {}
+        for frame_mask in spec.frame_masks:
+            masks_by_frame.setdefault(
+                frame_mask.sequence_index, []).append(frame_mask)
+
         frames: list[JsonValue] = []
-        for index in spec.frame_indices:
+        for sequence_index, index in enumerate(spec.frame_indices):
             if index < 0:
                 raise ValueError("índice de frame inválido")
             row, column = divmod(index, spec.columns)
-            frames.append({
+            frame: dict[str, JsonValue] = {
                 "source": {
                     "x": spec.origin_x + column * pitch_x,
                     "y": spec.origin_y + row * pitch_y,
@@ -97,7 +116,14 @@ class PlayerAuthoringService:
                 "flipX": spec.flip_x,
                 "durationTicks": spec.duration_ticks,
                 "markers": [],
-            })
+            }
+            authored_masks = masks_by_frame.get(sequence_index, [])
+            if authored_masks:
+                frame["masks"] = [
+                    cls._frame_mask_data(value)
+                    for value in authored_masks
+                ]
+            frames.append(frame)
         return frames
 
     @staticmethod
@@ -111,6 +137,106 @@ class PlayerAuthoringService:
             },
             "cells": list(spec.cells),
         }
+
+    @classmethod
+    def _frame_mask_data(cls, value: FrameMaskSpec) -> dict[str, JsonValue]:
+        result = cls._collision_data(value.mask)
+        result["channel"] = value.channel
+        return result
+
+    @classmethod
+    def _validate_frame_masks(cls, spec: FrameSequenceSpec) -> None:
+        seen: set[tuple[int, str]] = set()
+        for value in spec.frame_masks:
+            if value.sequence_index < 0 or value.sequence_index >= len(
+                    spec.frame_indices):
+                raise ValueError(
+                    "Máscara por frame referencia um frame inexistente.")
+            if value.channel not in cls.FRAME_MASK_CHANNELS:
+                raise ValueError(
+                    f"Canal de máscara por frame inválido: {value.channel}")
+            key = (value.sequence_index, value.channel)
+            if key in seen:
+                raise ValueError(
+                    "Existe mais de uma máscara do mesmo canal no frame.")
+            seen.add(key)
+            mask = value.mask
+            if (
+                mask.width != spec.frame_width or
+                mask.height != spec.frame_height
+            ):
+                raise ValueError(
+                    "Máscara por frame deve usar as dimensões do frame.")
+            expected = mask.width * mask.height
+            if expected <= 0 or len(mask.cells) != expected:
+                raise ValueError(
+                    "Máscara por frame não combina com suas dimensões.")
+            if any(cell not in (0, 1) for cell in mask.cells):
+                raise ValueError(
+                    "Máscara por frame aceita somente células 0 ou 1.")
+            if not any(mask.cells):
+                raise ValueError(
+                    "Máscara por frame vazia deve ser removida, não salva.")
+
+    @classmethod
+    def _frame_masks_from_animation(
+            cls, raw_frames: list[object],
+            frame_width: int,
+            frame_height: int) -> tuple[FrameMaskSpec, ...]:
+        result: list[FrameMaskSpec] = []
+        for sequence_index, raw_frame in enumerate(raw_frames):
+            if not isinstance(raw_frame, dict):
+                continue
+            raw_masks = raw_frame.get("masks", [])
+            if raw_masks is None:
+                continue
+            if not isinstance(raw_masks, list):
+                raise ValueError(
+                    "Lista de máscaras por frame inválida.")
+            for raw_mask in raw_masks:
+                if not isinstance(raw_mask, dict):
+                    raise ValueError(
+                        "Máscara por frame inválida.")
+                channel = str(raw_mask.get("channel", ""))
+                if channel not in cls.FRAME_MASK_CHANNELS:
+                    raise ValueError(
+                        f"Canal de máscara por frame inválido: {channel}")
+                origin = raw_mask.get("origin")
+                cells = raw_mask.get("cells")
+                if (
+                    not isinstance(origin, dict) or
+                    not isinstance(cells, list)
+                ):
+                    raise ValueError(
+                        "Máscara por frame sem origin/cells válidos.")
+                mask = PlayerCollisionMaskSpec(
+                    width=int(raw_mask.get("width", 0)),
+                    height=int(raw_mask.get("height", 0)),
+                    origin_x=int(origin.get("x", 0)),
+                    origin_y=int(origin.get("y", 0)),
+                    cells=tuple(int(cell) for cell in cells),
+                )
+                result.append(FrameMaskSpec(
+                    sequence_index=sequence_index,
+                    channel=channel,
+                    mask=mask,
+                ))
+        probe = FrameSequenceSpec(
+            image_id="",
+            frame_width=frame_width,
+            frame_height=frame_height,
+            spacing=0,
+            origin_x=0,
+            origin_y=0,
+            duration_ticks=1,
+            loop=True,
+            flip_x=False,
+            frame_indices=tuple(range(len(raw_frames))),
+            columns=max(1, len(raw_frames)),
+            frame_masks=tuple(result),
+        )
+        cls._validate_frame_masks(probe)
+        return tuple(result)
 
     @classmethod
     def _validate_movement_collision(
@@ -540,6 +666,8 @@ class PlayerAuthoringService:
         spacing, origin_x, origin_y, columns, frame_indices = cls._infer_grid(
             sources, frame_width, frame_height,
             image_width, image_height)
+        frame_masks = cls._frame_masks_from_animation(
+            raw_frames, frame_width, frame_height)
 
         return FrameSequenceSpec(
             image_id=image_id,
@@ -553,6 +681,7 @@ class PlayerAuthoringService:
             flip_x=flip_x,
             frame_indices=frame_indices,
             columns=columns,
+            frame_masks=frame_masks,
         )
 
     @staticmethod

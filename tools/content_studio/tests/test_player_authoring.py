@@ -9,6 +9,7 @@ from tools.content_studio.formats.content_json import CONTENT_CATEGORIES
 from tools.content_studio.formats.json_io import encode_json
 from tools.content_studio.model.content_workspace import ContentWorkspace
 from tools.content_studio.services.player_authoring_service import (
+    FrameMaskSpec,
     FrameSequenceSpec,
     PlayerAuthoringRequest,
     PlayerAuthoringService,
@@ -82,6 +83,7 @@ def sequence(
     *,
     flip_x: bool = False,
     duration_ticks: int = 8,
+    frame_masks: tuple[FrameMaskSpec, ...] = (),
 ) -> FrameSequenceSpec:
     return FrameSequenceSpec(
         image_id="image.player",
@@ -95,6 +97,7 @@ def sequence(
         flip_x=flip_x,
         frame_indices=indices,
         columns=4,
+        frame_masks=frame_masks,
     )
 
 
@@ -134,7 +137,21 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
                     "right": sequence((8, 9, 10, 11), flip_x=True),
                 },
                 "sword": {
-                    "left": sequence((8, 9, 10, 11)),
+                    "left": sequence(
+                        (8, 9, 10, 11),
+                        frame_masks=(
+                            FrameMaskSpec(
+                                sequence_index=1,
+                                channel="attackHitbox",
+                                mask=hurtbox_mask(),
+                            ),
+                            FrameMaskSpec(
+                                sequence_index=2,
+                                channel="attackHitbox",
+                                mask=movement_mask(),
+                            ),
+                        ),
+                    ),
                     "right": sequence((8, 9, 10, 11), flip_x=True),
                 },
             },
@@ -190,6 +207,13 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         )
         self.assertTrue(reopened.hurtbox_enabled)
         self.assertEqual(hurtbox_mask(), reopened.hurtbox)
+        sword_masks = reopened.sequences["sword"]["left"].frame_masks
+        self.assertEqual(2, len(sword_masks))
+        self.assertEqual(1, sword_masks[0].sequence_index)
+        self.assertEqual("attackHitbox", sword_masks[0].channel)
+        self.assertEqual(hurtbox_mask(), sword_masks[0].mask)
+        self.assertEqual(2, sword_masks[1].sequence_index)
+        self.assertEqual(movement_mask(), sword_masks[1].mask)
 
     def test_legacy_side_refs_expand_to_left_and_right(self) -> None:
         refs = PlayerAuthoringService._refs({
@@ -226,6 +250,27 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         self.assertEqual(
             PlayerAuthoringService.mirror_mask_horizontal(side),
             masks["right"],
+        )
+
+    def test_frame_masks_are_written_on_animation_frames(self) -> None:
+        temporary, workspace = self.make_workspace()
+        self.addCleanup(temporary.cleanup)
+        service = PlayerAuthoringService()
+
+        service.save(workspace, self.make_request())
+        animation = workspace.find(
+            "animations", "animation.player.hero.sword.left")
+        self.assertIsNotNone(animation)
+        frames = animation.data["frames"]  # type: ignore[index]
+        self.assertIsInstance(frames, list)
+        self.assertNotIn("masks", frames[0])  # type: ignore[index]
+        self.assertEqual(
+            "attackHitbox",
+            frames[1]["masks"][0]["channel"],  # type: ignore[index]
+        )
+        self.assertEqual(
+            32,
+            frames[2]["masks"][0]["width"],  # type: ignore[index]
         )
 
     def test_editing_reopened_player_updates_existing_content(self) -> None:

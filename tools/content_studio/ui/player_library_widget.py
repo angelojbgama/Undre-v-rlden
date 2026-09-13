@@ -14,8 +14,8 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
 from ..services.player_authoring_service import (
-    FrameSequenceSpec, PlayerAuthoringRequest, PlayerAuthoringService,
-    PlayerCollisionMaskSpec,
+    FrameMaskSpec, FrameSequenceSpec, PlayerAuthoringRequest,
+    PlayerAuthoringService, PlayerCollisionMaskSpec,
 )
 from .shape_mask_editor import ShapeMaskEditorDialog
 
@@ -38,6 +38,11 @@ DIRECTION_LABELS = {
     "left": "Left / esquerda",
     "right": "Right / direita",
 }
+FRAME_MASK_LABELS = {
+    "movementCollision": "Movement Collision",
+    "hurtbox": "Hurtbox",
+    "attackHitbox": "Attack Hitbox / dano",
+}
 
 
 class FrameSequenceDialog(QDialog):
@@ -54,6 +59,16 @@ class FrameSequenceDialog(QDialog):
         self._frames: list[QImage] = []
         self._selected_indices = list(
             initial.frame_indices if initial else ())
+        self._selected_masks: list[
+            dict[str, PlayerCollisionMaskSpec]
+        ] = [
+            {} for _ in self._selected_indices
+        ]
+        if initial is not None:
+            for value in initial.frame_masks:
+                if 0 <= value.sequence_index < len(self._selected_masks):
+                    self._selected_masks[value.sequence_index][
+                        value.channel] = value.mask
         self._columns = initial.columns if initial else 0
         self._preview_index = 0
         self._timer = QTimer(self)
@@ -118,6 +133,51 @@ class FrameSequenceDialog(QDialog):
                 down_button, clear_button):
             sequence_buttons.addWidget(button)
 
+        self.mask_channel = QComboBox()
+        for channel in self.service.FRAME_MASK_CHANNELS:
+            self.mask_channel.addItem(
+                FRAME_MASK_LABELS[channel], channel)
+        self.edit_frame_mask = QPushButton(
+            "Editar máscara do frame...")
+        self.copy_previous_mask = QPushButton(
+            "Copiar do frame anterior")
+        self.clear_frame_mask = QPushButton(
+            "Limpar máscara deste canal")
+        self.frame_mask_summary = QLabel(
+            "Selecione um frame da sequência.")
+        self.frame_mask_summary.setWordWrap(True)
+        self.frame_mask_summary.setStyleSheet("color:#aeb8c4;")
+        self.edit_frame_mask.clicked.connect(
+            self._edit_selected_frame_mask)
+        self.copy_previous_mask.clicked.connect(
+            self._copy_previous_frame_mask)
+        self.clear_frame_mask.clicked.connect(
+            self._clear_selected_frame_mask)
+        self.mask_channel.currentIndexChanged.connect(
+            self._refresh_frame_mask_summary)
+        self.sequence.currentRowChanged.connect(
+            self._refresh_frame_mask_summary)
+
+        mask_controls = QHBoxLayout()
+        mask_controls.addWidget(QLabel("Canal"))
+        mask_controls.addWidget(self.mask_channel)
+        mask_controls.addWidget(self.edit_frame_mask)
+        mask_controls.addWidget(self.copy_previous_mask)
+        mask_controls.addWidget(self.clear_frame_mask)
+        frame_mask_group = QGroupBox(
+            "Máscaras de gameplay por frame")
+        frame_mask_layout = QVBoxLayout(frame_mask_group)
+        frame_mask_layout.addLayout(mask_controls)
+        frame_mask_layout.addWidget(self.frame_mask_summary)
+        frame_mask_hint = QLabel(
+            "As máscaras pertencem ao frame selecionado e podem coexistir. "
+            "Movement Collision e Hurtbox serão overrides opcionais das "
+            "máscaras base; Attack Hitbox representa a área de dano ativa "
+            "daquele frame. Nesta etapa o runtime ainda não as consome.")
+        frame_mask_hint.setWordWrap(True)
+        frame_mask_hint.setStyleSheet("color:#aeb8c4;")
+        frame_mask_layout.addWidget(frame_mask_hint)
+
         self.preview = QLabel("Prévia")
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumHeight(180)
@@ -151,16 +211,17 @@ class FrameSequenceDialog(QDialog):
         layout.addWidget(self.preview, 1, 0)
         layout.addWidget(available_group, 0, 1, 2, 1)
         layout.addWidget(sequence_group, 2, 0, 1, 2)
+        layout.addWidget(frame_mask_group, 3, 0, 1, 2)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel |
             QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons, 3, 0, 1, 2)
+        layout.addWidget(buttons, 4, 0, 1, 2)
 
         self.setWindowTitle(title)
-        self.resize(1120, 780)
+        self.resize(1180, 900)
 
         self.image_combo.currentIndexChanged.connect(self._refresh_grid)
         for control in (
@@ -228,9 +289,14 @@ class FrameSequenceDialog(QDialog):
                 item.setData(
                     Qt.ItemDataRole.UserRole, frame_index)
                 self.available.addItem(item)
-        self._selected_indices = [
-            index for index in self._selected_indices
-            if 0 <= index < len(self._frames)]
+        kept = [
+            (index, masks)
+            for index, masks in zip(
+                self._selected_indices, self._selected_masks)
+            if 0 <= index < len(self._frames)
+        ]
+        self._selected_indices = [value[0] for value in kept]
+        self._selected_masks = [value[1] for value in kept]
         self._refresh_sequence()
 
     def _display_image(self, image: QImage) -> QImage:
@@ -249,12 +315,14 @@ class FrameSequenceDialog(QDialog):
             return
         self._selected_indices.append(
             int(item.data(Qt.ItemDataRole.UserRole)))
+        self._selected_masks.append({})
         self._refresh_sequence()
 
     def _remove_frame(self) -> None:
         row = self.sequence.currentRow()
         if 0 <= row < len(self._selected_indices):
             self._selected_indices.pop(row)
+            self._selected_masks.pop(row)
             self._refresh_sequence()
 
     def _move_frame(self, delta: int) -> None:
@@ -265,24 +333,149 @@ class FrameSequenceDialog(QDialog):
         self._selected_indices[row], self._selected_indices[target] = (
             self._selected_indices[target],
             self._selected_indices[row])
+        self._selected_masks[row], self._selected_masks[target] = (
+            self._selected_masks[target],
+            self._selected_masks[row])
         self._refresh_sequence()
         self.sequence.setCurrentRow(target)
 
     def _clear_sequence(self) -> None:
         self._selected_indices.clear()
+        self._selected_masks.clear()
         self._refresh_sequence()
 
     def _refresh_sequence(self, unused: object = None) -> None:
         del unused
         self.sequence.clear()
         for order, index in enumerate(self._selected_indices):
+            channels = ", ".join(
+                FRAME_MASK_LABELS.get(channel, channel)
+                for channel in self._selected_masks[order])
+            suffix = f"\n  máscaras: {channels}" if channels else ""
             item = QListWidgetItem(
                 QIcon(QPixmap.fromImage(self._frame_image(index))),
-                f"{order + 1}. frame #{index}")
+                f"{order + 1}. frame #{index}{suffix}")
             self.sequence.addItem(item)
         self._preview_index = 0
         self._show_preview()
         self._restart_preview()
+        self._refresh_frame_mask_summary()
+
+    def _selected_mask_channel(self) -> str:
+        return str(self.mask_channel.currentData() or "")
+
+    def _default_frame_mask(self) -> PlayerCollisionMaskSpec:
+        width = self.frame_width.value()
+        height = self.frame_height.value()
+        return PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=-(width // 2),
+            origin_y=-(height - 1),
+            cells=(0,) * (width * height),
+        )
+
+    def _refresh_frame_mask_summary(
+            self, unused: object = None) -> None:
+        del unused
+        row = self.sequence.currentRow()
+        channel = self._selected_mask_channel()
+        enabled = 0 <= row < len(self._selected_masks)
+        self.edit_frame_mask.setEnabled(enabled)
+        self.clear_frame_mask.setEnabled(
+            enabled and channel in (
+                self._selected_masks[row] if enabled else {}))
+        self.copy_previous_mask.setEnabled(
+            enabled and row > 0)
+        if not enabled:
+            self.frame_mask_summary.setText(
+                "Selecione um frame da sequência.")
+            return
+        current = self._selected_masks[row].get(channel)
+        if current is None:
+            self.frame_mask_summary.setText(
+                f"{FRAME_MASK_LABELS.get(channel, channel)}: "
+                "sem máscara neste frame.")
+            return
+        active = sum(1 for cell in current.cells if cell)
+        self.frame_mask_summary.setText(
+            f"{FRAME_MASK_LABELS.get(channel, channel)}: "
+            f"{current.width}x{current.height} • "
+            f"{active} pixel(s) ativos.")
+
+    def _edit_selected_frame_mask(self) -> None:
+        row = self.sequence.currentRow()
+        if row < 0 or row >= len(self._selected_indices):
+            return
+        channel = self._selected_mask_channel()
+        if not channel:
+            return
+        image = self._frame_image(self._selected_indices[row])
+        if image.isNull():
+            return
+        current = self._selected_masks[row].get(
+            channel, self._default_frame_mask())
+        if (
+            current.width != image.width() or
+            current.height != image.height()
+        ):
+            current = self._default_frame_mask()
+        mask = {
+            "width": current.width,
+            "height": current.height,
+            "origin": {
+                "x": current.origin_x,
+                "y": current.origin_y,
+            },
+            "cells": list(current.cells),
+        }
+        dialog = ShapeMaskEditorDialog(
+            image, mask, self.translate, self,
+            title_key="mask_editor_title")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        result = dialog.result_mask()
+        origin = result.get("origin", {})
+        cells = result.get("cells", [])
+        if not isinstance(origin, dict) or not isinstance(cells, list):
+            return
+        parsed = PlayerCollisionMaskSpec(
+            width=int(result.get("width", image.width())),
+            height=int(result.get("height", image.height())),
+            origin_x=int(origin.get("x", 0)),
+            origin_y=int(origin.get("y", 0)),
+            cells=tuple(int(cell) for cell in cells),
+        )
+        if any(parsed.cells):
+            self._selected_masks[row][channel] = parsed
+        else:
+            self._selected_masks[row].pop(channel, None)
+        self._refresh_sequence()
+        self.sequence.setCurrentRow(row)
+
+    def _copy_previous_frame_mask(self) -> None:
+        row = self.sequence.currentRow()
+        channel = self._selected_mask_channel()
+        if row <= 0 or row >= len(self._selected_masks):
+            return
+        previous = self._selected_masks[row - 1].get(channel)
+        if previous is None:
+            QMessageBox.information(
+                self, self.windowTitle(),
+                "O frame anterior não possui máscara neste canal.")
+            return
+        self._selected_masks[row][channel] = previous
+        self._refresh_sequence()
+        self.sequence.setCurrentRow(row)
+
+    def _clear_selected_frame_mask(self) -> None:
+        row = self.sequence.currentRow()
+        channel = self._selected_mask_channel()
+        if row < 0 or row >= len(self._selected_masks):
+            return
+        self._selected_masks[row].pop(channel, None)
+        self._refresh_sequence()
+        self.sequence.setCurrentRow(row)
 
     def _show_preview(self) -> None:
         if not self._selected_indices:
@@ -318,6 +511,15 @@ class FrameSequenceDialog(QDialog):
                 self, self.windowTitle(),
                 "Adicione pelo menos um frame à sequência.")
             return
+        frame_masks = tuple(
+            FrameMaskSpec(
+                sequence_index=sequence_index,
+                channel=channel,
+                mask=mask,
+            )
+            for sequence_index, masks in enumerate(self._selected_masks)
+            for channel, mask in masks.items()
+        )
         self.result_spec = FrameSequenceSpec(
             image_id=str(self.image_combo.currentData() or ""),
             frame_width=self.frame_width.value(),
@@ -330,6 +532,7 @@ class FrameSequenceDialog(QDialog):
             flip_x=self.mirror.isChecked(),
             frame_indices=tuple(self._selected_indices),
             columns=self._columns,
+            frame_masks=frame_masks,
         )
         self.accept()
 
@@ -581,6 +784,15 @@ class PlayerDefinitionDialog(QDialog):
             flip_x=not source.flip_x,
             frame_indices=source.frame_indices,
             columns=source.columns,
+            frame_masks=tuple(
+                FrameMaskSpec(
+                    sequence_index=value.sequence_index,
+                    channel=value.channel,
+                    mask=self.service.mirror_mask_horizontal(
+                        value.mask),
+                )
+                for value in source.frame_masks
+            ),
         )
         self._refresh_summaries()
 

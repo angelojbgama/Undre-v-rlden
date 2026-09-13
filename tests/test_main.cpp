@@ -1168,6 +1168,55 @@ void testPlayerAuthoredMovementCollision() {
 }
 
 
+void testAnimationFrameMaskAuthoringRoundTrip() {
+    namespace content = underworld::game::content;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    expect(!authored.animations.empty() &&
+               !authored.animations.front().frames.empty(),
+           "builtin content has an animation for frame mask round trip");
+    if (authored.animations.empty() ||
+        authored.animations.front().frames.empty()) return;
+
+    auto& frame = authored.animations.front().frames.front();
+    content::AuthoredAnimationFrameMask mask;
+    mask.channel = "attackHitbox";
+    mask.width = static_cast<std::uint32_t>(frame.source.width);
+    mask.height = static_cast<std::uint32_t>(frame.source.height);
+    mask.origin = {-frame.anchor.x, -frame.anchor.y};
+    mask.cells.assign(
+        static_cast<std::size_t>(mask.width) * mask.height, 0);
+    mask.cells[mask.cells.size() / 2] = 1;
+    frame.masks.push_back(mask);
+
+    const auto encoded = content::encodeAuthoredContentJson(authored);
+    expect(encoded.find("\"masks\"") != std::string::npos &&
+               encoded.find("\"attackHitbox\"") != std::string::npos,
+           "animation frame gameplay mask is emitted to JSON");
+
+    const auto decoded = content::decodeAuthoredContentJson(encoded);
+    expect(static_cast<bool>(decoded) && decoded.content.has_value(),
+           "animation frame gameplay mask survives JSON decode");
+    if (!decoded.content ||
+        decoded.content->animations.empty() ||
+        decoded.content->animations.front().frames.empty()) return;
+
+    const auto& masks =
+        decoded.content->animations.front().frames.front().masks;
+    expect(masks.size() == 1 &&
+               masks.front().channel == "attackHitbox" &&
+               masks.front().width == mask.width &&
+               masks.front().height == mask.height &&
+               masks.front().origin == mask.origin &&
+               masks.front().cells == mask.cells,
+           "animation frame gameplay mask round trip preserves data");
+
+    const auto report =
+        content::ContentValidator{}.validate(*decoded.content);
+    expect(!report.hasErrors(),
+           "valid animation frame gameplay mask passes content validation");
+}
+
 void testLegacyPlayerMovementSideCompatibility() {
     namespace content = underworld::game::content;
     const std::string json = R"json({
@@ -10356,6 +10405,7 @@ int main() {
         testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
+        testAnimationFrameMaskAuthoringRoundTrip();
         testLegacyPlayerMovementSideCompatibility();
         testPlayerHurtboxAuthoringRoundTrip();
         testAuthoredPlayerVisualPipeline();
