@@ -107,7 +107,6 @@
 #include "game/presentation/presentation_feedback_controller.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content_loader.h"
-#include "tools/map_compile_options.h"
 
 #ifdef _WIN32
 #include "engine/platform/win32/win32_clock.h"
@@ -6009,30 +6008,6 @@ void testPhase9StartupAndEditorPerformanceContracts() {
     const wchar_t* wideEditorMissing[] = {L"editor", L"--content"};
     expect(!editor::parseEditorLaunchOptions(2, wideEditorMissing, optionError),
            "wide editor startup options reject content without a value");
-    const char* mapCompileContent[] = {"map_compile", "--content=content", "source.umap",
-                                       "output.dmap"};
-    const auto mapCompileOptions = underworld::tools::parseMapCompileOptions(
-        4, mapCompileContent, optionError);
-    expect(mapCompileOptions && mapCompileOptions->contentRoot &&
-               mapCompileOptions->contentRoot->generic_string() == "content" &&
-               mapCompileOptions->source == "source.umap" &&
-               mapCompileOptions->output == "output.dmap",
-           "map_compile parser accepts content= and authored source/output paths");
-    const char* mapCompileMissingContent[] = {"map_compile", "--content"};
-    expect(!underworld::tools::parseMapCompileOptions(
-               2, mapCompileMissingContent, optionError) &&
-               optionError.find("requires") != std::string::npos,
-           "map_compile parser rejects a missing content directory value");
-    const char* mapCompileDuplicate[] = {"map_compile", "--content=a", "--content=b",
-                                         "source.umap", "output.dmap"};
-    expect(!underworld::tools::parseMapCompileOptions(
-               5, mapCompileDuplicate, optionError) &&
-               optionError.find("duplicate") != std::string::npos,
-           "map_compile parser rejects duplicate content sources");
-    const char* mapCompileMissingPositionals[] = {"map_compile", "--content=content"};
-    expect(!underworld::tools::parseMapCompileOptions(
-               2, mapCompileMissingPositionals, optionError),
-           "map_compile parser requires both source and output paths");
     const auto authored = game::selectStartupMap(defaults, root / "build" / "bin", root);
     expect(authored.source == game::StartupMapSource::officialGameplay &&
                authored.path == canonical,

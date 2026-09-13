@@ -7,7 +7,7 @@ jogo não importa Python nem PySide6.
 ```text
 Python Content Studio
         ↓ content JSON v5 / UMAP v4 / UWORLD v1
-C++ content_check / map_compile / world_compile
+C++ content_check / world_compile + Python DMAP writer
         ↓ DMAP 1.5
 C++ game/runtime
 ```
@@ -23,7 +23,7 @@ a autoridade para operações executáveis.
 | Documento de mapa, dirty state e histórico | `EditorDocument` | `model/map_document.py` | `test_formats_and_documents.py` | MIGRATED |
 | Workspace, ownership e índice authored | `ContentWorkspaceDocument` | `model/content_workspace.py` | index/origin/CRUD tests | MIGRATED |
 | Content JSON v5 | `content_json*` | `formats/content_json.py`, `formats/json_io.py` | round-trip + C++ `content_check` | MIGRATED |
-| UMAP v4 | `authored_map*` | `formats/umap.py`, `model/map_document.py` | round-trip + C++ `map_compile` | MIGRATED |
+| UMAP v4 | `authored_map*` | `formats/umap.py`, `model/map_document.py` | round-trip + Python DMAP writer | MIGRATED |
 | UWORLD v1 multimapa | `authored_world*`, `WorldProjectDocument` | `formats/uworld.py`, `model/world_project.py` | order/link/save tests | MIGRATED |
 | Descoberta de entidades | `AuthoredEntityIndex` | `model/authored_entity_index.py` | unrelated-error/local-validation tests | MIGRATED |
 | Browser de conteúdo e referências | `content_collection`, `content_reference_tools` | `ui/widgets.py` (`ContentBrowser`, `StructuredInspector`) | Qt smoke + model tests | MIGRATED |
@@ -39,7 +39,7 @@ a autoridade para operações executáveis.
 | Undo/redo | `EditorCommand`, `CommandHistory` | `model/commands.py` + document histories | edit/undo/redo tests | MIGRATED |
 | Autosave, preferências e localização | editor services | `services/autosave.py`, `preferences.py`, `localization.py` | autosave/preferences model coverage | MIGRATED |
 | Validate workspace | `ContentValidator`, `content_check` | `services/toolchain.py` | C++ integration tests | MIGRATED |
-| Export DMAP | `map_compile`, world compiler | `services/toolchain.py`, `src/tools/world_compile.cpp` | map/world integration tests | MIGRATED |
+| Export DMAP | Python DMAP writer + world compatibility tool | `formats/dmap.py`, `services/world_export_service.py`, `src/tools/world_compile.cpp` | map/world integration tests | MIGRATED |
 | Playtest, inclusive alterações não salvas | `EditorPlaytestSession` | `services/toolchain.py` (`PlaytestService`) | compile/launch service path | MIGRATED |
 | Shell/UI nativo do autor | `EditorApp`, `EditorUiContext`, `editor_launch` | `__main__.py`, `ui/main_window.py` e widgets Qt | offscreen smoke | RETIRED |
 
@@ -82,8 +82,7 @@ não são versionados neste repositório.
 ## Fronteira C++
 
 O Python grava somente artefatos authored e invoca processos C++ por arquivos,
-exit code e stdout/stderr. `content_check` valida o workspace, `map_compile`
-compila um UMAP e `world_compile` valida/compila todos os mapas de um UWORLD.
+exit code e stdout/stderr. `content_check` valida o workspace. O Content Studio Python serializa DMAP diretamente; `world_compile` permanece somente como compatibilidade nativa.
 `PlaytestService` copia o estado em memória para uma pasta temporária, compila
 os DMAPs e inicia o binário C++ sem alterar os arquivos originais. Falhas de
 validação ficam no painel de diagnósticos e bloqueiam export/playtest.
@@ -91,4 +90,4 @@ validação ficam no painel de diagnósticos e bloqueiam export/playtest.
 Os arquivos `src/editor/*.cpp` restantes não formam mais um produto/editor
 oficial: são suporte de regressão nativa e do `playtest_runner` existente. O
 target `map_editor.exe` e o shell Win32 exclusivo foram retirados dos builds;
-`game`, `content_check`, `map_compile` e `world_compile` não linkam a UI C++.
+`game`, `content_check` e `world_compile` não linkam a UI C++.

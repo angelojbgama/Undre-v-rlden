@@ -41,12 +41,10 @@ class CppToolchain:
     """Runs the authoritative C++ validation/compiler/runtime tools."""
 
     def __init__(self, repository_root: Path | None = None, *, content_check: Path | None = None,
-                 map_compile: Path | None = None,
                  game: Path | None = None, asset_root: Path | None = None) -> None:
         self.repository_root = (repository_root or Path(__file__).resolve().parents[3]).resolve()
         self.asset_root = asset_root
         self.content_check = content_check or self._find("content_check")
-        self.map_compile = map_compile or self._find("map_compile")
         self.game = game or self._find("game")
 
     def _find(self, name: str) -> Path | None:
@@ -78,14 +76,6 @@ class CppToolchain:
         else:
             result = self._run([str(self.content_check), str(content_root)])
         return result, self.diagnostics(result, content_root)
-
-    def compile_map(self, source: Path, output: Path, content_root: Path | None = None) -> tuple[ToolResult, list[Diagnostic]]:
-        command = [str(self.map_compile)] if self.map_compile else ["map_compile"]
-        if content_root is not None:
-            command.extend(["--content", str(content_root)])
-        command.extend([str(source), str(output)])
-        result = self._run(command, self.repository_root)
-        return result, self.diagnostics(result, source)
 
     def launch_playtest(self, map_path: Path, content_root: Path | None = None,
                         asset_root: Path | None = None,

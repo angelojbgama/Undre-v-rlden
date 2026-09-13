@@ -532,22 +532,6 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\playtest_runner.obj"
 if errorlevel 1 goto :build_failed
 
-echo Compiling map compiler...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\map_compile.obj" "src\tools\map_compile.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Linking map_compile.exe...
-link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\map_compile.exe" ^
-    "build\obj\image.obj" "build\obj\asset_manager.obj" "build\obj\tile.obj" "build\obj\collision_grid.obj" "build\obj\collision.obj" "build\obj\entity_handle.obj" ^
-    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" ^
-    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\combat_types.obj" "build\obj\combat_system.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\creature_engine.obj" "build\obj\player_progression.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\shops.obj" ^
-    "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" ^
-    "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
-    "build\obj\world_objects.obj" "build\obj\items.obj" "build\obj\world_pickups.obj" "build\obj\scene_definition.obj" ^
-    "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\quest_model.obj" ^
-    "build\obj\encounter_system.obj" "build\obj\world_logic.obj" "build\obj\presentation_effects.obj" "build\obj\map_compile.obj"
-if errorlevel 1 goto :build_failed
-
 echo Compiling world compiler...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\world_compile.obj" "src\tools\world_compile.cpp"
 if errorlevel 1 goto :build_failed
@@ -569,7 +553,6 @@ echo Build succeeded:
 echo   build\bin\game.exe
 echo   build\bin\tests.exe
 echo   build\bin\playtest_runner.exe
-echo   build\bin\map_compile.exe
 echo   build\bin\world_compile.exe
 
 popd

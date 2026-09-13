@@ -1268,8 +1268,7 @@ quest/world flags
 O Content Studio oficial é `python -m tools.content_studio`, uma ferramenta
 Python/PySide6 multiplataforma que possui modos MAP/CONTENT e um projeto de mundo
 `.uworld` que mantém vários mapas authored em memória. O jogo/runtime permanece
-inteiramente em C++; `content_check`, `map_compile` e `world_compile` continuam
-sendo as autoridades de validação/compilação.
+inteiramente em C++; `content_check` continua como validador nativo do contúdo. A exportação DMAP é feita pelo Content Studio Python; `world_compile` permanece somente para compatibilidade nativa.
 
 Executável recomendado:
 

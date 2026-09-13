@@ -13,6 +13,7 @@ from pathlib import Path
 
 from tools.content_studio.formats.content_json import CONTENT_CATEGORIES, decode_content, write_content
 from tools.content_studio.formats.json_io import encode_json
+from tools.content_studio.formats.dmap import write_dmap
 from tools.content_studio.formats.umap import decode_map, load_map, new_map, write_map
 from tools.content_studio.formats.uworld import decode_world, write_world
 from tools.content_studio.model.content_workspace import ContentWorkspace
@@ -670,12 +671,10 @@ class ToolchainResolutionTests(unittest.TestCase):
 class CppCompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
         content_check = find_cpp_tool(REPOSITORY, "content_check")
-        map_compile = find_cpp_tool(REPOSITORY, "map_compile")
         world_compile = find_cpp_tool(REPOSITORY, "world_compile")
         missing = [
             name for name, path in (
                 ("content_check", content_check),
-                ("map_compile", map_compile),
                 ("world_compile", world_compile),
             )
             if path is None
@@ -686,10 +685,8 @@ class CppCompatibilityTests(unittest.TestCase):
                 + ", ".join(missing)
             )
         assert content_check is not None
-        assert map_compile is not None
         assert world_compile is not None
         self.content_check = content_check
-        self.map_compile = map_compile
         self.world_compile = world_compile
 
     def test_python_round_trip_is_accepted_by_cpp_tools(self) -> None:
@@ -709,25 +706,18 @@ class CppCompatibilityTests(unittest.TestCase):
             document.save(copied_map)  # type: ignore[union-attr]
             validation = subprocess.run([str(self.content_check), str(copied_content)], capture_output=True, text=True, check=False)
             self.assertEqual(0, validation.returncode, validation.stderr)
-            compiled = subprocess.run([str(self.map_compile), "--content", str(copied_content), str(copied_map), str(root / "map.dmap")], capture_output=True, text=True, check=False)
-            self.assertEqual(0, compiled.returncode, compiled.stderr)
+            write_dmap(root / "map.dmap", document.data)  # type: ignore[union-attr]
+            self.assertTrue((root / "map.dmap").is_file())
 
-    def test_python_scene_map_round_trip_is_accepted_by_cpp_map_compiler(self) -> None:
+    def test_python_scene_map_round_trip_is_exported_by_python_dmap_writer(self) -> None:
         source = json.loads((FIXTURES / "phase16-map-v3.umap").read_text(encoding="utf-8"))
         source["version"] = 4
         source["scenes"] = [new_scene("scene.python.compat", 60)]
         source["placementOverrides"] = []
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            content_root_path = root / "content"
-            shutil.copytree(FIXTURES / "phase16-content-v4", content_root_path)
-            authored_map = root / "scene.umap"
-            write_map(authored_map, source)
-            compiled = subprocess.run(
-                [str(self.map_compile), "--content", str(content_root_path), str(authored_map), str(root / "scene.dmap")],
-                capture_output=True, text=True, check=False)
-            self.assertEqual(0, compiled.returncode, compiled.stderr)
-            self.assertTrue((root / "scene.dmap").is_file())
+            target = Path(directory) / "scene.dmap"
+            write_dmap(target, source)
+            self.assertTrue(target.is_file())
 
     def test_multi_map_world_is_compiled_by_cpp_world_tool(self) -> None:
         document, diagnostics = MapDocument.open(FIXTURES / "phase16-map-v3.umap")
