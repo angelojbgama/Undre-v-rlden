@@ -68,7 +68,8 @@ struct AuthoredQuest final { simulation::DefinitionId id{}; std::string title; s
 struct AuthoredPlayerMovementCollision final {
     AuthoredPixelMask down;
     AuthoredPixelMask up;
-    AuthoredPixelMask side;
+    AuthoredPixelMask left;
+    AuthoredPixelMask right;
 };
 struct AuthoredPlayer final {
     simulation::DefinitionId id{};

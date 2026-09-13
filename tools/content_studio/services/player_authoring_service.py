@@ -53,7 +53,7 @@ class PlayerAuthoringService:
         "sleeping", "wake_up",
     )
     VISUAL_DIRECTIONS = ("down", "up", "left", "right")
-    MOVEMENT_DIRECTIONS = ("down", "up", "side")
+    MOVEMENT_DIRECTIONS = ("down", "up", "left", "right")
     DIRECTIONS = VISUAL_DIRECTIONS
 
     @staticmethod
@@ -123,7 +123,8 @@ class PlayerAuthoringService:
         ]
         if missing:
             raise ValueError(
-                "Movement Collision: defina Down, Up e Side antes de salvar.")
+                "Movement Collision: defina Down, Up, Left e Right "
+                "antes de salvar.")
 
         idle = request.sequences.get("idle", {})
         for direction in cls.MOVEMENT_DIRECTIONS:
@@ -142,8 +143,7 @@ class PlayerAuthoringService:
             if not any(mask.cells):
                 raise ValueError(
                     f"Movement Collision {direction}: a máscara está vazia.")
-            visual_direction = "left" if direction == "side" else direction
-            idle_spec = idle.get(visual_direction)
+            idle_spec = idle.get(direction)
             if idle_spec is None:
                 raise ValueError(
                     f"Movement Collision {direction}: configure Idle primeiro.")
@@ -186,6 +186,54 @@ class PlayerAuthoringService:
             raise ValueError(
                 "Hurtbox: a máscara deve usar o mesmo tamanho "
                 "do frame Idle / Down.")
+
+    @staticmethod
+    def mirror_mask_horizontal(
+            spec: PlayerCollisionMaskSpec) -> PlayerCollisionMaskSpec:
+        width = spec.width
+        height = spec.height
+        cells = [0] * len(spec.cells)
+        for y in range(height):
+            row = y * width
+            for x in range(width):
+                cells[row + (width - 1 - x)] = spec.cells[row + x]
+        return PlayerCollisionMaskSpec(
+            width=width,
+            height=height,
+            origin_x=-(spec.origin_x + width),
+            origin_y=spec.origin_y,
+            cells=tuple(cells),
+        )
+
+    @classmethod
+    def _movement_collision_specs(
+            cls, value: object
+            ) -> tuple[bool, dict[str, PlayerCollisionMaskSpec]]:
+        if not isinstance(value, dict):
+            return False, {}
+
+        result: dict[str, PlayerCollisionMaskSpec] = {}
+        for direction in cls.MOVEMENT_DIRECTIONS:
+            if direction in value:
+                result[direction] = cls._collision_spec(
+                    value[direction], direction)
+
+        legacy_side = value.get("side")
+        if legacy_side is not None:
+            side = cls._collision_spec(legacy_side, "side")
+            result.setdefault("left", side)
+            result.setdefault(
+                "right", cls.mirror_mask_horizontal(side))
+
+        missing = [
+            direction for direction in cls.MOVEMENT_DIRECTIONS
+            if direction not in result
+        ]
+        if missing:
+            raise ValueError(
+                "Movement Collision salvo está incompleto: "
+                f"faltam {', '.join(missing)}.")
+        return True, result
 
     @staticmethod
     def _collision_spec(value: object, direction: str) -> PlayerCollisionMaskSpec:
@@ -400,18 +448,11 @@ class PlayerAuthoringService:
                         sequence, flip_x=not sequence.flip_x)
                 sequences.setdefault(state, {})[direction] = sequence
 
-        movement_value = definition.data.get("movementCollision")
-        movement_collision_enabled = isinstance(movement_value, dict)
-        movement_collision: dict[str, PlayerCollisionMaskSpec] = {}
-        if movement_collision_enabled:
-            assert isinstance(movement_value, dict)
-            for direction in self.MOVEMENT_DIRECTIONS:
-                if direction not in movement_value:
-                    raise ValueError(
-                        "Movement Collision salvo está incompleto: "
-                        f"falta {direction}.")
-                movement_collision[direction] = self._collision_spec(
-                    movement_value[direction], direction)
+        (
+            movement_collision_enabled,
+            movement_collision,
+        ) = self._movement_collision_specs(
+            definition.data.get("movementCollision"))
 
         hurtbox_value = definition.data.get("hurtbox")
         hurtbox_enabled = isinstance(hurtbox_value, dict)

@@ -1168,6 +1168,48 @@ void testPlayerAuthoredMovementCollision() {
 }
 
 
+void testLegacyPlayerMovementSideCompatibility() {
+    namespace content = underworld::game::content;
+    const std::string json = R"json({
+        "format":"dungeon-underworld-content",
+        "version":5,
+        "players":[{
+            "id":"player.legacy_collision",
+            "visualSetId":"visual.player.hero",
+            "progressionId":"progression.player.default",
+            "movementCollision":{
+                "down":{"width":4,"height":2,"origin":{"x":-2,"y":-1},"cells":[0,0,0,0,1,1,0,0]},
+                "up":{"width":4,"height":2,"origin":{"x":-2,"y":-1},"cells":[0,0,0,0,1,1,0,0]},
+                "side":{"width":4,"height":2,"origin":{"x":-3,"y":-1},"cells":[1,0,0,0,1,1,0,0]}
+            }
+        }]
+    })json";
+
+    const auto decoded = content::decodeAuthoredContentJson(json);
+    expect(static_cast<bool>(decoded) && decoded.content.has_value(),
+           "legacy Player movement Side JSON still decodes");
+    if (!decoded.content || decoded.content->players.empty()) return;
+
+    const auto& movement = decoded.content->players.front().movementCollision;
+    expect(movement.has_value(),
+           "legacy Player movement Side creates movement collision");
+    if (!movement) return;
+
+    expect(movement->left.origin.x == -3 &&
+               movement->left.cells[0] == 1,
+           "legacy Side becomes explicit Left collision");
+    expect(movement->right.origin.x == -1 &&
+               movement->right.cells[3] == 1 &&
+               movement->right.cells[6] == 1 &&
+               movement->right.cells[7] == 1,
+           "legacy Side becomes mirrored explicit Right collision");
+
+    const auto encoded = content::encodeAuthoredContentJson(*decoded.content);
+    expect(encoded.find("\"left\"") != std::string::npos &&
+               encoded.find("\"right\"") != std::string::npos,
+           "re-encoding legacy movement writes Left and Right");
+}
+
 void testPlayerHurtboxAuthoringRoundTrip() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
@@ -10314,6 +10356,7 @@ int main() {
         testGameSessionCommandBoundary();
         testPlayerCollision();
         testPlayerAuthoredMovementCollision();
+        testLegacyPlayerMovementSideCompatibility();
         testPlayerHurtboxAuthoringRoundTrip();
         testAuthoredPlayerVisualPipeline();
         testExplicitPlayerLeftRightVisuals();

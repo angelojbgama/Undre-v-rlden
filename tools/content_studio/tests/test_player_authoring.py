@@ -142,7 +142,8 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
             movement_collision={
                 "down": movement_mask(),
                 "up": movement_mask(),
-                "side": movement_mask(),
+                "left": movement_mask(),
+                "right": movement_mask(),
             },
             hurtbox_enabled=True,
             hurtbox=hurtbox_mask(),
@@ -181,7 +182,11 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         )
         self.assertEqual(
             movement_mask(),
-            reopened.movement_collision["side"],
+            reopened.movement_collision["left"],
+        )
+        self.assertEqual(
+            movement_mask(),
+            reopened.movement_collision["right"],
         )
         self.assertTrue(reopened.hurtbox_enabled)
         self.assertEqual(hurtbox_mask(), reopened.hurtbox)
@@ -195,6 +200,33 @@ class PlayerAuthoringReopenTests(unittest.TestCase):
         self.assertEqual("animation.side", refs["left"])
         self.assertEqual("animation.side", refs["right"])
         self.assertNotIn("side", refs)
+
+    def test_legacy_side_collision_reopens_as_left_and_mirrored_right(
+            self) -> None:
+        side = PlayerCollisionMaskSpec(
+            width=4,
+            height=2,
+            origin_x=-3,
+            origin_y=-1,
+            cells=(1, 0, 0, 0, 1, 1, 0, 0),
+        )
+        payload = {
+            "width": side.width,
+            "height": side.height,
+            "origin": {"x": side.origin_x, "y": side.origin_y},
+            "cells": list(side.cells),
+        }
+        enabled, masks = PlayerAuthoringService._movement_collision_specs({
+            "down": payload,
+            "up": payload,
+            "side": payload,
+        })
+        self.assertTrue(enabled)
+        self.assertEqual(side, masks["left"])
+        self.assertEqual(
+            PlayerAuthoringService.mirror_mask_horizontal(side),
+            masks["right"],
+        )
 
     def test_editing_reopened_player_updates_existing_content(self) -> None:
         temporary, workspace = self.make_workspace()

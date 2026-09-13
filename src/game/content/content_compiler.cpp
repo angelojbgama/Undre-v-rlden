@@ -150,9 +150,8 @@ gameplay::PlayerDefinition compilePlayer(const AuthoredPlayer& v) {
         gameplay::DirectionalActorCollisionShapes shapes;
         shapes.values[0] = compilePlayerMask(v.movementCollision->down, false);
         shapes.values[1] = compilePlayerMask(v.movementCollision->up, false);
-        // Side authoring is canonical LEFT. RIGHT mirrors around the feet.
-        shapes.values[2] = compilePlayerMask(v.movementCollision->side, false);
-        shapes.values[3] = compilePlayerMask(v.movementCollision->side, true);
+        shapes.values[2] = compilePlayerMask(v.movementCollision->left, false);
+        shapes.values[3] = compilePlayerMask(v.movementCollision->right, false);
         movement = std::move(shapes);
     }
     return {v.id, v.visualSetId, v.progressionId, std::move(movement)};

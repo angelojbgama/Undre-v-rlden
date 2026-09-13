@@ -294,7 +294,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             };
             validateMask(value.movementCollision->down, "down");
             validateMask(value.movementCollision->up, "up");
-            validateMask(value.movementCollision->side, "side");
+            validateMask(value.movementCollision->left, "left");
+            validateMask(value.movementCollision->right, "right");
         }
         if (value.hurtbox) {
             const auto& mask = *value.hurtbox;
