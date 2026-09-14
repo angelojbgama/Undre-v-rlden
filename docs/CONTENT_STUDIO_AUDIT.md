@@ -6,10 +6,10 @@ a classes C++ abaixo identificam responsabilidades substituídas ou preservadas 
 toolchain, não um segundo editor oficial. A matriz final de migração e os comandos
 de execução estão em `CONTENT_STUDIO_PYTHON_MIGRATION.md`.
 
-Este documento registra a auditoria do código local do Content Studio e serve como
-checklist de produção. A autoridade para as categorias continua sendo
-`ContentWorkspaceDocument::categoryOrder()`; a tabela abaixo não substitui o código
-nem marca uma capacidade como completa apenas porque existe uma operação no backend.
+Este documento registra a auditoria histórica usada durante a migração e serve como
+checklist de produção. A autoridade atual para as categorias é o modelo Python
+`ContentWorkspace`; nomes de classes C++ abaixo descrevem somente a implementação
+substituída e não marcam uma capacidade como completa por si mesmos.
 
 ## Critério
 
@@ -132,8 +132,8 @@ os fluxos baseline como migrados para o Python.
 
 ## Persistência e arquitetura
 
-As operações continuam passando pelo `ContentWorkspaceDocument`, que altera DTOs
-authored, revalida o workspace e grava Content JSON de forma canônica/atômica.
+As operações passam pelo `ContentWorkspace` Python, que altera DTOs authored,
+revalida o workspace e grava Content JSON de forma canônica/atômica.
 Collection Editor, picker, quick inspect, seleção, busca e navegação são estado de
 tooling e não entram em UMAP, UWORLD, DMAP, DSAV ou nos Content JSON.
 

@@ -424,26 +424,13 @@ Responsável por:
 
 Nunca serializa dump cru de structs runtime.
 
-### `editor` — somente na fase do Map Maker
+### Content Studio Python
 
-Compartilha:
-
-- renderer;
-- assets;
-- world/map;
-- definitions;
-- serialização.
-
-Mantém separado:
-
-- `EditorDocument`;
-- seleção;
-- ferramentas;
-- undo/redo;
-- dirty state;
-- UI do editor.
-
-O runtime nunca depende do editor.
+O tooling de autoria compartilha contratos de arquivos e IDs estáveis com o
+runtime, mas não código de UI ou estado global. `MapDocument`, seleção,
+ferramentas, undo/redo, dirty state e UI pertencem exclusivamente a
+`tools/content_studio`. O runtime C++ nunca depende do Studio, de Python ou de
+PySide6.
 
 ---
 
@@ -1018,7 +1005,7 @@ migration
   ↓
 semantic validation
   ↓
-RuntimeMap / EditorDocument
+RuntimeMap / authored map DTO
 ```
 
 Save guarda estado do Player/progressão necessária e **deltas persistentes** do mundo, por exemplo:
@@ -1081,14 +1068,14 @@ O jogo é compilado como executável C++ e o Content Studio é iniciado como
 aplicação Python/PySide6. Eles compartilham contratos de mapa/conteúdo por
 arquivos authored, sem que Python seja carregado pelo runtime.
 
-O editor possui modelo próprio:
+O Studio Python possui modelo próprio:
 
 ```text
-EditorDocument
+MapDocument
 selection
 dirty state
 tools
-EditorCommand apply/revert
+Command apply/revert
 undo/redo
 property editing
 playtest session
@@ -1223,7 +1210,8 @@ src/
   game/
     gameplay/
     ...                 # composição/visuals/states conforme necessidade
-  editor/               # somente na fase do Map Maker
+tools/
+  content_studio/       # autoria Python/PySide6
 tests/
 build.bat
 ```
@@ -1374,11 +1362,12 @@ GameLaunchOptions
     -> synchronized runtime visuals
 ```
 
-Map Maker authored content follows the same boundary:
+O Content Studio Python segue a mesma fronteira:
 
 ```text
-EditorDocument -> MapData -> DMAP v1.1 -> readDmap/validateMapData
-                -> MapCatalog/MapSession -> RuntimeWorld
+Python MapDocument -> authored DTO -> Python DMAP writer
+                   -> readDmap/validateMapData
+                   -> MapCatalog/MapSession -> RuntimeWorld
 ```
 
 The three reference maps cover the current 72 semantic Dungeon atlas cells and the
@@ -1945,15 +1934,13 @@ continue authoring while unrelated workspace diagnostics are repaired. Invalid
 candidates remain visible with a placement diagnostic; they are never silently
 compiled or passed to runtime.
 
-Explicit workspace validation has two layers. Content diagnostics come from the
-shared workspace validator/compiler. When that derived registry is valid, the Studio
-invokes `VisualContentLoader` with the editor's game-asset root and (for external
-workspaces) the document root. Its diagnostics are cached by the document's tooling
-revision, so rendering does not repeatedly decode images; any authored mutation
-invalidates the cache. Invalid semantic content skips asset loading and is shown as
-such. Static sprite source rectangles, animation frame fields and opaque markers are
-edited through typed document operations; uncommitted buffers are scoped to the
-selected definition/frame/marker and are cancelled on selection changes or Escape.
+Workspace validation and preview are Python tooling concerns. Content diagnostics
+come from the Python workspace validator, while explicit native compatibility checks
+cross the `ContentValidator`/`ContentCompiler` boundary through `content_check`.
+Static sprite source rectangles, animation frame fields and opaque markers are
+edited through typed Python document operations; uncommitted buffers are scoped to
+the selected definition/frame/marker and are cancelled on selection changes or
+Escape.
 
 ## Visual authoring preview — Phase 18B
 
@@ -1962,23 +1949,22 @@ The Studio preview is a presentation/tooling service, not a second renderer:
 ```text
 Authored VisualImage / Animation
              ↓
-shared secure VisualAssetResolver
+Python asset-root resolution
              ↓
-ImageDecoder (lazy, cached)
+QImage (loaded on demand)
              ↓
-EditorVisualPreview
-   ├ source-rectangle canvas
-   ├ grid/pan/nearest-neighbor zoom
-   └ shared AnimationClip + Animator playback
+Python PreviewWidget
+   ├ selected asset/definition image
+   ├ aspect-preserving nearest-neighbor scaling
+   └ tooling-only descriptive metadata
 ```
 
-`VisualContentLoader` and the Studio share path containment, workspace/game-assets
-root selection, image decoding and animation-clip construction. The Studio may
-preview a locally resolvable selected definition while unrelated workspace errors
-remain editable; full asset validation still runs through `VisualContentLoader` on
-the explicit Validate command. Preview ticks come from the editor timer, not paint
-frequency. Pan, zoom, grid, selected frame, playback and facing are editor-only and
-never enter Content JSON or gameplay/save state.
+The Studio resolves a selected definition against its Python workspace/game-assets
+roots without linking the C++ visual loader. It may preview a locally resolvable
+selected definition while unrelated workspace errors remain editable; explicit
+native compatibility validation crosses the authored content validator/compiler
+boundary. Preview selection and presentation state are tooling-only and never enter
+Content JSON or gameplay/save state.
 
 The spritesheet canvas authoring operations are deliberately bounded: mouse drags
 are clamped to decoded image bounds, grid multi-cell additions use authored row-major
@@ -2095,8 +2081,8 @@ O Content Studio agora possui uma camada de projeto acima do documento de mapa:
 Content Studio
         ↓
 Python WorldProject
-        ├── EditorDocument map A
-        ├── EditorDocument map B
+        ├── MapDocument map A
+        ├── MapDocument map B
         └── ... na ordem authored
         ↓
 AuthoredWorldSource (UWORLD v1)
@@ -2180,5 +2166,5 @@ The existing 7x9 font remains the renderer and gains a small Latin accent treatm
 Portuguese; no installed system font or third-party typography dependency is required.
 `DefinitionId`, map/save/content formats, authored `displayName`, dialogue text and all
 runtime serialization remain language-independent. Editor language is therefore not
-game content localization and does not dirty an `EditorDocument` or
+game content localization and does not dirty a Python `MapDocument` or
 `ContentWorkspace`.

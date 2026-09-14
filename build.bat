@@ -2,6 +2,10 @@
 setlocal EnableExtensions EnableDelayedExpansion
 pushd "%~dp0"
 
+rem The C++ map compiler/editor were retired after the Python Content Studio migration.
+rem Purge stale artifacts from older builds so they cannot be mistaken for supported tools.
+del /q "build\bin\map_compile.exe" "build\bin\map_editor.exe" >nul 2>nul
+
 where cl.exe >nul 2>nul
 if errorlevel 1 (
     set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -182,73 +186,6 @@ if errorlevel 1 goto :build_failed
 
 echo Compiling reachability validation...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\reachability.obj" "src\game\maps\reachability.cpp"
-if errorlevel 1 goto :build_failed
-
-rem The official Content Studio is Python/PySide6.  The legacy C++ editor
-rem sources below are retained only for native regression tests and the
-rem in-memory playtest runner; no C++ editor executable is linked.
-echo Compiling legacy C++ authoring regression support...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_document.obj" "src\editor\editor_document.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling content studio workspace document...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\content_workspace_document.obj" "src\editor\content_workspace_document.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor asset browser...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\asset_browser.obj" "src\editor\asset_browser.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling content collection helpers...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\content_collection.obj" "src\editor\content_collection.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling content reference tools...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\content_reference_tools.obj" "src\editor\content_reference_tools.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling map editor commands...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_commands.obj" "src\editor\editor_commands.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling legacy C++ editor regression UI support...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_ui.obj" "src\editor\editor_ui.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor icons...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_icons.obj" "src\editor\editor_icons.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor localization...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_localization.obj" "src\editor\editor_localization.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor preferences...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_preferences.obj" "src\editor\editor_preferences.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor layout and text helpers...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_layout.obj" "src\editor\editor_layout.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_text_layout.obj" "src\editor\editor_text_layout.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\visual_authoring.obj" "src\editor\visual_authoring.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\scene_timeline.obj" "src\editor\scene_timeline.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling legacy C++ authoring regression support...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_app.obj" "src\editor\editor_app.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\visual_preview.obj" "src\editor\visual_preview.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_launch.obj" "src\editor\editor_launch.cpp"
-if errorlevel 1 goto :build_failed
-
-echo Compiling editor playtest...
-cl.exe %COMMON_FLAGS% /Fo"build\obj\editor_playtest.obj" "src\editor\editor_playtest.cpp"
-if errorlevel 1 goto :build_failed
-cl.exe %COMMON_FLAGS% /Fo"build\obj\world_project_document.obj" "src\editor\world_project_document.cpp"
 if errorlevel 1 goto :build_failed
 
 echo [15/40] Compiling combat data...
@@ -480,7 +417,6 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\asset_browser.obj" "build\obj\content_collection.obj" "build\obj\content_reference_tools.obj" "build\obj\editor_commands.obj" "build\obj\editor_ui.obj" "build\obj\editor_icons.obj" "build\obj\editor_localization.obj" "build\obj\editor_preferences.obj" "build\obj\editor_layout.obj" "build\obj\editor_text_layout.obj" "build\obj\visual_authoring.obj" "build\obj\scene_timeline.obj" "build\obj\world_project_document.obj" "build\obj\editor_app.obj" "build\obj\visual_preview.obj" "build\obj\editor_playtest.obj" "build\obj\editor_launch.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^
@@ -514,7 +450,6 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
     "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
-    "build\obj\editor_document.obj" "build\obj\content_workspace_document.obj" "build\obj\editor_commands.obj" "build\obj\visual_preview.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
     "build\obj\items.obj" "build\obj\player_items.obj" ^

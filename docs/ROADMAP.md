@@ -849,10 +849,10 @@ separado de `game.exe`; validação e compilação continuam nos tools C++.
 ## Modelo próprio
 
 ```text
-EditorDocument
+Python MapDocument
 selection
 dirty state
-EditorCommand apply/revert
+Python Command apply/revert
 undo/redo
 property model
 playtest session

@@ -87,7 +87,9 @@ exit code e stdout/stderr. `content_check` valida o workspace. O Content Studio 
 os DMAPs e inicia o binário C++ sem alterar os arquivos originais. Falhas de
 validação ficam no painel de diagnósticos e bloqueiam export/playtest.
 
-Os arquivos `src/editor/*.cpp` restantes não formam mais um produto/editor
-oficial: são suporte de regressão nativa e do `playtest_runner` existente. O
-target `map_editor.exe` e o shell Win32 exclusivo foram retirados dos builds;
-`game`, `content_check` e `world_compile` não linkam a UI C++.
+O antigo subsistema `src/editor` foi removido. Python/PySide6 é a única
+implementação oficial de autoria de mapas e conteúdo; os testes desse produto
+vivem em `tools/content_studio/tests`. `map_editor.exe` e `map_compile.exe` não
+existem mais como targets. `game`, `content_check`, `playtest_runner` e o
+`world_compile` de compatibilidade permanecem nativos e não dependem do Studio,
+de Python ou de PySide6.
