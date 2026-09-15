@@ -17,6 +17,7 @@ from .canvas_camera import CanvasCamera
 from .canvas_renderer import CanvasRenderer
 from .preview import load_definition_image
 from ..services.terrain_painting_service import TerrainPaintingService
+from ..services.door_placement_service import DoorPlacementService
 from ..services.localization import Translator
 
 
@@ -62,6 +63,7 @@ class MapCanvas(QWidget):
         self.selected_brush: list[tuple[int, int, str, int, int]] = []
         self.selected_stamp_id = ""
         self.selected_stamp = ""
+        self.selected_door_definition_id = ""
         self.layer_index = 0
         self.grid_visible = True
         self._moving: Selection | None = None
@@ -134,6 +136,9 @@ class MapCanvas(QWidget):
         if tool != "entity":
             self.selected_entity_category = ""
             self.selected_definition_id = ""
+        if tool != "door":
+            self.selected_door_definition_id = ""
+            self.renderer.clear_door_preview()
         self.update()
 
     def set_grid_visible(self, visible: bool) -> None:
@@ -159,6 +164,152 @@ class MapCanvas(QWidget):
         self.renderer.preview_world = None
         self.setFocus()
         self.update()
+
+    def set_door_selection(
+        self,
+        definition_id: str,
+    ) -> None:
+        if (
+            self.document is None
+            or self.workspace is None
+        ):
+            raise ValueError(
+                "door placement requires a map and content workspace"
+            )
+
+        definition = self.workspace.find(
+            "objects",
+            definition_id,
+        )
+
+        if (
+            definition is None
+            or not isinstance(
+                definition.data.get("door"),
+                dict,
+            )
+        ):
+            raise ValueError(
+                f"not a door definition: {definition_id}"
+            )
+
+        self.tool = "door"
+        self.selected_door_definition_id = definition_id
+        self.selected_entity_category = ""
+        self.selected_definition_id = ""
+
+        self.interaction.set_active_payload(
+            None
+        )
+        self.interaction.set_terrain_selection(
+            None
+        )
+        self.interaction.set_room_profile(
+            None
+        )
+
+        self.renderer.preview_world = None
+        self.renderer.preview_image = None
+        self.renderer.clear_door_preview()
+
+        self.setFocus()
+        self.update()
+
+    def preview_door_at(
+        self,
+        tile: tuple[int, int],
+    ) -> bool:
+        if (
+            self.document is None
+            or self.workspace is None
+            or not self.selected_door_definition_id
+        ):
+            self.renderer.clear_door_preview()
+            return False
+
+        try:
+            preview = DoorPlacementService(
+                self.document,
+                self.workspace,
+            ).preview(
+                self.selected_door_definition_id,
+                tile,
+                preferred_layer_index=self.layer_index,
+            )
+        except (
+            IndexError,
+            ValueError,
+        ) as error:
+            self.renderer.set_door_preview(
+                (),
+                None,
+                False,
+                str(error),
+            )
+            return False
+
+        self.renderer.set_door_preview(
+            preview.cells,
+            preview.position,
+            preview.valid,
+            preview.error,
+        )
+
+        return preview.valid
+
+    def place_door_at(
+        self,
+        tile: tuple[int, int],
+    ) -> Selection | None:
+        if (
+            self.document is None
+            or self.workspace is None
+            or not self.selected_door_definition_id
+        ):
+            return None
+
+        try:
+            result = DoorPlacementService(
+                self.document,
+                self.workspace,
+            ).place(
+                self.selected_door_definition_id,
+                tile,
+                preferred_layer_index=self.layer_index,
+            )
+        except (
+            IndexError,
+            ValueError,
+        ) as error:
+            self.preview_door_at(
+                tile
+            )
+            self._set_status(
+                str(error)
+            )
+            self.update()
+            return None
+
+        selection = self.selection_controller.select(
+            "objects",
+            result.object_id,
+        )
+
+        self.renderer.clear_door_preview()
+
+        self.document_changed.emit()
+
+        self._set_status(
+            self.translate(
+                "door_placed"
+            ).format(
+                definition_id=result.plan.definition_id,
+            )
+        )
+
+        self.update()
+
+        return selection
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
         self.interaction.set_tile_erase_mode(False)
@@ -232,13 +383,15 @@ class MapCanvas(QWidget):
         self.update()
 
     def cancel_placement(self) -> None:
-        if self.tool in {"entity", "spawn", "region", "link", "transition"}:
+        if self.tool in {"entity", "spawn", "region", "link", "transition", "door"}:
             self.tool = "select"
             self.selected_entity_category = ""
             self.selected_definition_id = ""
+            self.selected_door_definition_id = ""
             self.interaction.set_active_payload(None)
         self.renderer.preview_world = None
         self.renderer.rectangle_start = None
+        self.renderer.clear_door_preview()
         self.update()
 
     def fit_map(self) -> None:
@@ -286,6 +439,16 @@ class MapCanvas(QWidget):
         modifiers = self._modifiers(event.modifiers())
         tile = self.tile_at(point)
         world = self._snap_world(self.screen_to_world(point))
+
+        if self.tool == "door":
+            if button == "left":
+                self.place_door_at(
+                    tile
+                )
+            elif button == "right":
+                self.cancel_placement()
+            return
+
         if self.tool == "select" and button == "left":
             self._moving = self._hit_selection(self.screen_to_world(point))
             self.selection_controller.select_value(self._moving)
@@ -335,6 +498,14 @@ class MapCanvas(QWidget):
         tile = self.tile_at(point)
         self.renderer.pointer_tile = tile
         world = self._snap_world(self.screen_to_world(point))
+
+        if self.tool == "door":
+            self.preview_door_at(
+                tile
+            )
+            self.update()
+            return
+
         payload = self.interaction.active_payload
         if payload and payload.kind in {"ContentDefinition", "Reference", "MapElement"}:
             self.renderer.preview_world = world
@@ -366,6 +537,10 @@ class MapCanvas(QWidget):
         tile = self.tile_at(point)
         modifiers = self._modifiers(event.modifiers())
         button = self._button_name(event.button())
+
+        if self.tool == "door":
+            return
+
         if self.tool == "erase" and button == "left":
             button = "right"
         if self.tool == "rectangle":
@@ -459,6 +634,10 @@ class MapCanvas(QWidget):
     def leaveEvent(self, event: object) -> None:
         del event
         self.renderer.preview_world = None
+
+        if self.tool == "door":
+            self.renderer.clear_door_preview()
+
         self.update()
 
     def _selection_changed(self, selection: Selection | None) -> None:

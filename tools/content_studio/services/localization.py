@@ -298,6 +298,19 @@ TRANSLATIONS["en-US"].update({
 TRANSLATIONS["pt-BR"].update({
     "doors_tab": "Portas",
     "search_doors": "Procurar portas",
+    "door_place_button": "Colocar no mapa",
+    "door_placement_active": (
+        "Colocacao de porta ativa: {definition_id}. "
+        "Passe o mouse sobre uma parede e clique para colocar. "
+        "Escape cancela."
+    ),
+    "door_placed": "Porta colocada: {definition_id}",
+    "door_workspace_required": (
+        "A colocacao de portas requer um workspace de conteudo."
+    ),
+    "door_definition_invalid": (
+        "Definicao de porta invalida: {definition_id}"
+    ),
     "no_doors": "Nenhuma porta criada",
     "door_placement_wall": "Encaixe: parede",
     "door_span_summary": "Área de encaixe: {span} × {thickness} tiles",
@@ -317,6 +330,19 @@ TRANSLATIONS["pt-BR"].update({
 TRANSLATIONS["en-US"].update({
     "doors_tab": "Doors",
     "search_doors": "Search doors",
+    "door_place_button": "Place on map",
+    "door_placement_active": (
+        "Door placement active: {definition_id}. "
+        "Move over a wall and click to place. "
+        "Escape cancels."
+    ),
+    "door_placed": "Door placed: {definition_id}",
+    "door_workspace_required": (
+        "Door placement requires a content workspace."
+    ),
+    "door_definition_invalid": (
+        "Invalid door definition: {definition_id}"
+    ),
     "no_doors": "No doors created",
     "door_placement_wall": "Placement: wall",
     "door_span_summary": "Placement footprint: {span} × {thickness} tiles",

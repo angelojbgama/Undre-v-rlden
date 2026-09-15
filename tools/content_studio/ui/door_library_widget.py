@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -180,6 +181,7 @@ class DoorLibraryWidget(QWidget):
     """
 
     selected = Signal(object)
+    place_requested = Signal(str)
     status_changed = Signal(str)
 
     definition_id_role = (
@@ -222,6 +224,20 @@ class DoorLibraryWidget(QWidget):
 
         self.doors.currentItemChanged.connect(
             self._selection_changed
+        )
+
+        self.doors.itemDoubleClicked.connect(
+            self._request_place
+        )
+
+        self.place_button = QPushButton()
+
+        self.place_button.setEnabled(
+            False
+        )
+
+        self.place_button.clicked.connect(
+            self._request_place
         )
 
         self.preview = QLabel(
@@ -295,6 +311,10 @@ class DoorLibraryWidget(QWidget):
         left_layout.addWidget(
             self.doors,
             1,
+        )
+
+        left_layout.addWidget(
+            self.place_button
         )
 
         right = QWidget()
@@ -396,6 +416,12 @@ class DoorLibraryWidget(QWidget):
         self.search.setPlaceholderText(
             self.translate(
                 "search_doors"
+            )
+        )
+
+        self.place_button.setText(
+            self.translate(
+                "door_place_button"
             )
         )
 
@@ -616,8 +642,33 @@ class DoorLibraryWidget(QWidget):
                     )
                 )
 
+        self.place_button.setEnabled(
+            entry is not None
+        )
+
         self._show_entry(
             entry
+        )
+
+    def _request_place(
+        self,
+        unused: object = None,
+    ) -> None:
+        del unused
+
+        try:
+            entry = self.current_entry()
+        except ValueError as error:
+            self.status_changed.emit(
+                str(error)
+            )
+            return
+
+        if entry is None:
+            return
+
+        self.place_requested.emit(
+            entry.definition_id
         )
 
     def _show_entry(

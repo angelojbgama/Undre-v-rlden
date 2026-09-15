@@ -27,6 +27,23 @@ class DoorPlacementPlan:
     frozen=True,
     slots=True,
 )
+class DoorPlacementPreview:
+    definition_id: str
+    orientation: str
+    cells: tuple[
+        tuple[int, int],
+        ...,
+    ]
+    position: tuple[int, int]
+    valid: bool
+    layer_index: int | None = None
+    error: str = ""
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class DoorPlacementResult:
     object_id: int
     plan: DoorPlacementPlan
@@ -54,13 +71,13 @@ class DoorPlacementService:
             workspace
         )
 
-    def plan(
+    def preview(
         self,
         definition_id: str,
         tile: tuple[int, int],
         preferred_layer_index: int | None = None,
         orientation: str | None = None,
-    ) -> DoorPlacementPlan:
+    ) -> DoorPlacementPreview:
         entry = self.doors.entry(
             definition_id,
             self.document.tile_size,
@@ -93,9 +110,6 @@ class DoorPlacementService:
                 f"{selected_orientation}"
             )
 
-        # Rotation/alternate directional visuals are not authored yet.
-        # Keep this contract explicit instead of silently placing an
-        # unrotated sprite on a vertical wall.
         if selected_orientation != "horizontal":
             raise ValueError(
                 "vertical door placement requires "
@@ -138,16 +152,6 @@ class DoorPlacementService:
             + span
         )
 
-        if (
-            left < 0
-            or top < 0
-            or right > self.document.width
-            or bottom > self.document.height
-        ):
-            raise ValueError(
-                "door footprint is outside the map"
-            )
-
         cells = tuple(
             (
                 x,
@@ -163,13 +167,6 @@ class DoorPlacementService:
             )
         )
 
-        layer_index = (
-            self._find_wall_layer(
-                cells,
-                preferred_layer_index,
-            )
-        )
-
         tile_size = (
             self.document.tile_size
         )
@@ -182,12 +179,80 @@ class DoorPlacementService:
             bottom * tile_size,
         )
 
-        return DoorPlacementPlan(
+        if (
+            left < 0
+            or top < 0
+            or right > self.document.width
+            or bottom > self.document.height
+        ):
+            return DoorPlacementPreview(
+                definition_id=definition_id,
+                orientation=selected_orientation,
+                cells=cells,
+                position=position,
+                valid=False,
+                error="door footprint is outside the map",
+            )
+
+        try:
+            layer_index = (
+                self._find_wall_layer(
+                    cells,
+                    preferred_layer_index,
+                )
+            )
+        except (
+            IndexError,
+            ValueError,
+        ) as error:
+            return DoorPlacementPreview(
+                definition_id=definition_id,
+                orientation=selected_orientation,
+                cells=cells,
+                position=position,
+                valid=False,
+                error=str(error),
+            )
+
+        return DoorPlacementPreview(
             definition_id=definition_id,
             orientation=selected_orientation,
-            layer_index=layer_index,
             cells=cells,
             position=position,
+            valid=True,
+            layer_index=layer_index,
+        )
+
+    def plan(
+        self,
+        definition_id: str,
+        tile: tuple[int, int],
+        preferred_layer_index: int | None = None,
+        orientation: str | None = None,
+    ) -> DoorPlacementPlan:
+        preview = self.preview(
+            definition_id,
+            tile,
+            preferred_layer_index,
+            orientation,
+        )
+
+        if not preview.valid:
+            raise ValueError(
+                preview.error
+            )
+
+        if preview.layer_index is None:
+            raise ValueError(
+                "door preview has no wall layer"
+            )
+
+        return DoorPlacementPlan(
+            definition_id=preview.definition_id,
+            orientation=preview.orientation,
+            layer_index=preview.layer_index,
+            cells=preview.cells,
+            position=preview.position,
         )
 
     def place(

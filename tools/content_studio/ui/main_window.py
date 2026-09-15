@@ -180,6 +180,8 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root,
             self.project.active_map.tile_size, self.translator)
         self.door_library.selected.connect(self._entity_selected)
+        self.door_library.place_requested.connect(
+            self._place_door_definition)
         self.door_library.status_changed.connect(self.set_status)
         self.player_library = PlayerLibraryWidget(
             self.workspace, self.asset_root, self.translator)
@@ -686,6 +688,72 @@ class MainWindow(QMainWindow):
             self.set_status(
                 str(error)
             )
+
+    def _place_door_definition(
+            self,
+            definition_id: str) -> None:
+        if self.workspace is None:
+            self.set_status(
+                self.translator(
+                    "door_workspace_required"
+                )
+            )
+            return
+
+        definition = self.workspace.find(
+            "objects",
+            definition_id,
+        )
+
+        if (
+            definition is None
+            or not isinstance(
+                definition.data.get("door"),
+                dict,
+            )
+        ):
+            self.set_status(
+                self.translator(
+                    "door_definition_invalid"
+                ).format(
+                    definition_id=definition_id,
+                )
+            )
+            return
+
+        local_issues = (
+            self.workspace
+            .validate_local(
+                definition
+            )
+        )
+
+        if any(
+            issue.is_error
+            for issue in local_issues
+        ):
+            self._refresh_diagnostics(
+                local_issues
+            )
+            return
+
+        self.mode_tabs.setCurrentIndex(
+            0
+        )
+
+        self._clear_toolbar_tools()
+
+        self.map_canvas.set_door_selection(
+            definition_id
+        )
+
+        self.set_status(
+            self.translator(
+                "door_placement_active"
+            ).format(
+                definition_id=definition_id,
+            )
+        )
 
     def _place_definition(self, category: str, definition_id: str) -> None:
         if self.workspace:

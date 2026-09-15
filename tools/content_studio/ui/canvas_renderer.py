@@ -31,6 +31,10 @@ class CanvasRenderer:
         self.rectangle_start: tuple[int, int] | None = None
         self.moving_selection: tuple[str, str | int] | None = None
         self.moving_world: tuple[int, int] | None = None
+        self.door_preview_cells: tuple[tuple[int, int], ...] = ()
+        self.door_preview_world: tuple[int, int] | None = None
+        self.door_preview_valid = False
+        self.door_preview_error = ""
 
     def set_context(self, document: MapDocument | None, workspace: ContentWorkspace | None,
                     asset_root: Path | None) -> None:
@@ -61,6 +65,7 @@ class CanvasRenderer:
         self._draw_links(painter, viewport_width, viewport_height)
         self._draw_regions(painter, viewport_width, viewport_height)
         self._draw_preview(painter, viewport_width, viewport_height)
+        self._draw_door_preview(painter, viewport_width, viewport_height)
         if self.grid_visible:
             self._draw_grid(painter, viewport_width, viewport_height)
 
@@ -230,6 +235,104 @@ class CanvasRenderer:
             end_y = (max(self.rectangle_start[1], self.pointer_tile[1]) + 1) * self.document.tile_size
             start = self._point(start_x, start_y, viewport_width, viewport_height); end = self._point(end_x, end_y, viewport_width, viewport_height)
             painter.setBrush(QColor(139, 184, 232, 45)); painter.setPen(QPen(QColor("#8bb8e8"), 2, Qt.PenStyle.DashLine)); painter.drawRect(start.x(), start.y(), end.x() - start.x(), end.y() - start.y())
+
+    def set_door_preview(
+        self,
+        cells: tuple[tuple[int, int], ...],
+        world: tuple[int, int] | None,
+        valid: bool,
+        error: str = "",
+    ) -> None:
+        self.door_preview_cells = tuple(
+            cells
+        )
+        self.door_preview_world = world
+        self.door_preview_valid = bool(
+            valid
+        )
+        self.door_preview_error = error
+
+    def clear_door_preview(
+        self,
+    ) -> None:
+        self.door_preview_cells = ()
+        self.door_preview_world = None
+        self.door_preview_valid = False
+        self.door_preview_error = ""
+
+    def _draw_door_preview(
+        self,
+        painter: QPainter,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> None:
+        document = self.document
+
+        if (
+            document is None
+            or not self.door_preview_cells
+        ):
+            return
+
+        border = (
+            QColor("#8ff0a4")
+            if self.door_preview_valid
+            else QColor("#ff6b6b")
+        )
+
+        fill = (
+            QColor(95, 220, 120, 70)
+            if self.door_preview_valid
+            else QColor(255, 90, 90, 70)
+        )
+
+        painter.setPen(
+            QPen(
+                border,
+                2,
+                Qt.PenStyle.DashLine,
+            )
+        )
+
+        for x, y in self.door_preview_cells:
+            start = self._point(
+                x * document.tile_size,
+                y * document.tile_size,
+                viewport_width,
+                viewport_height,
+            )
+
+            end = self._point(
+                (x + 1) * document.tile_size,
+                (y + 1) * document.tile_size,
+                viewport_width,
+                viewport_height,
+            )
+
+            width = (
+                end.x()
+                - start.x()
+            )
+
+            height = (
+                end.y()
+                - start.y()
+            )
+
+            painter.fillRect(
+                start.x(),
+                start.y(),
+                width,
+                height,
+                fill,
+            )
+
+            painter.drawRect(
+                start.x(),
+                start.y(),
+                width,
+                height,
+            )
 
     def _draw_grid(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
         document = self.document
