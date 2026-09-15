@@ -9,7 +9,7 @@ from ..model.types import JsonValue
 
 
 DMAP_MAJOR = 1
-DMAP_MINOR = 5
+DMAP_MINOR = 6
 EMPTY_CELL = 0xFFFFFFFF
 
 FACING = {"down": 0, "up": 1, "left": 2, "right": 3}
@@ -136,6 +136,9 @@ def _collect_strings(map_data: dict[str, JsonValue]) -> list[str]:
         for value in _values(map_data, category): add(_mapping(value, category).get("definitionId"))
     for value in _values(map_data, "objects"):
         item = _mapping(value, "objects"); add(item.get("definitionId"))
+        door = item.get("door")
+        if isinstance(door, dict):
+            add(door.get("requiredItemId"))
         for stack in _array(item.get("initialContents", []), "objects.initialContents"):
             add(_mapping(stack, "objects.initialContents").get("itemId"))
     for value in _values(map_data, "pickups"):
@@ -278,6 +281,74 @@ def serialize_dmap(map_data: dict[str, JsonValue]) -> bytes:
         item = _mapping(value, f"objects[{index}]"); ents.u64(placement_id(item, f"objects[{index}]"))
         ents.u32(_index(indices, item.get("definitionId"), "objects.definitionId")); _write_point(ents, item.get("position"), "objects.position")
         ents.u8(_enum(PERSISTENCE, item.get("persistence"), "objects.persistence", "persistent"))
+
+        door_value = item.get("door")
+
+        if door_value is None:
+            ents.u8(0)
+        else:
+            door = _mapping(
+                door_value,
+                f"objects[{index}].door",
+            )
+
+            initial_state = _enum(
+                DOOR_STATES,
+                door.get("initialState"),
+                f"objects[{index}].door.initialState",
+            )
+
+            required_item = door.get(
+                "requiredItemId"
+            )
+
+            if required_item is not None:
+                required_item = _text(
+                    required_item,
+                    f"objects[{index}].door.requiredItemId",
+                )
+
+            consume_item = door.get(
+                "consumeItem",
+                False,
+            )
+
+            if not isinstance(
+                consume_item,
+                bool,
+            ):
+                raise DmapError(
+                    f"objects[{index}].door.consumeItem must be boolean"
+                )
+
+            if consume_item and not required_item:
+                raise DmapError(
+                    f"objects[{index}].door.consumeItem requires requiredItemId"
+                )
+
+            ents.u8(1)
+            ents.u8(initial_state)
+            ents.u8(
+                1
+                if required_item
+                else 0
+            )
+
+            if required_item:
+                ents.u32(
+                    _index(
+                        indices,
+                        required_item,
+                        f"objects[{index}].door.requiredItemId",
+                    )
+                )
+
+            ents.u8(
+                1
+                if consume_item
+                else 0
+            )
+
         stacks = _array(item.get("initialContents", []), "objects.initialContents"); ents.u32(len(stacks))
         for stack_value in stacks:
             stack = _mapping(stack_value, "objects.initialContents"); ents.u32(_index(indices, stack.get("itemId"), "objects.initialContents.itemId")); ents.u32(_integer(stack.get("quantity"), 1, 0xFFFFFFFF))

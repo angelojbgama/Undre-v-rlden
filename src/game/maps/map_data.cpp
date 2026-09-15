@@ -150,6 +150,32 @@ MapValidationResult validateMapData(const MapData& data,
         if (!object.initialContents.empty() && definition && !definition->container) {
             return failure("non-container object placement has initial contents");
         }
+        if (object.door) {
+            if (!validDoorState(object.door->initialState)) {
+                return failure("object door initial state is invalid");
+            }
+            if (definition && !definition->door) {
+                return failure("non-door object placement has door configuration");
+            }
+            if (object.door->consumeItem && !object.door->requiredItemId) {
+                return failure("door consumeItem requires requiredItemId");
+            }
+            if (object.door->requiredItemId) {
+                if (object.door->requiredItemId->empty()) {
+                    return failure("door requiredItemId is empty");
+                }
+                if (catalogs && catalogs->items) {
+                    const auto* key = catalogs->items->find(
+                        *object.door->requiredItemId);
+                    if (!key) {
+                        return failure("door references an unknown required item");
+                    }
+                    if (key->category != gameplay::ItemCategory::key) {
+                        return failure("door required item must have key category");
+                    }
+                }
+            }
+        }
         if (definition && definition->activation &&
             definition->activation->mode == gameplay::ObjectActivationMode::playerPressure) {
             const auto bounds = *definition->activation->activationBounds;
@@ -564,7 +590,8 @@ bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {
     for (std::size_t i = 0; i < a.objects.size(); ++i) {
         const auto& x = a.objects[i]; const auto& y = b.objects[i];
         if (!(x.id == y.id) || !(x.definitionId == y.definitionId) || !(x.position == y.position) ||
-            x.persistence != y.persistence || x.initialContents.size() != y.initialContents.size()) { return false; }
+            x.persistence != y.persistence || x.door != y.door ||
+            x.initialContents.size() != y.initialContents.size()) { return false; }
         for (std::size_t j = 0; j < x.initialContents.size(); ++j) {
             if (!equalStack(x.initialContents[j], y.initialContents[j])) { return false; }
         }

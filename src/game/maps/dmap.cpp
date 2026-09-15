@@ -40,6 +40,9 @@ StringTable collectStrings(const MapData& data) {
     for (const auto& npc : data.npcs) { addString(table.values, npc.definitionId.value()); }
     for (const auto& object : data.objects) {
         addString(table.values, object.definitionId.value());
+        if (object.door && object.door->requiredItemId) {
+            addString(table.values, object.door->requiredItemId->value());
+        }
         for (const auto& stack : object.initialContents) { addString(table.values, stack.itemId.value()); }
     }
     for (const auto& pickup : data.pickups) {
@@ -188,6 +191,15 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
         ents.writeU64(object.id.value); ents.writeU32(strings.index(object.definitionId.value()));
         writePoint(ents, object.position);
         ents.writeU8(persistenceValue(object.persistence));
+        ents.writeU8(object.door ? 1 : 0);
+        if (object.door) {
+            ents.writeU8(static_cast<std::uint8_t>(object.door->initialState));
+            ents.writeU8(object.door->requiredItemId ? 1 : 0);
+            if (object.door->requiredItemId) {
+                ents.writeU32(strings.index(object.door->requiredItemId->value()));
+            }
+            ents.writeU8(object.door->consumeItem ? 1 : 0);
+        }
         ents.writeU32(static_cast<std::uint32_t>(object.initialContents.size()));
         for (const auto& stack : object.initialContents) {
             ents.writeU32(strings.index(stack.itemId.value())); ents.writeU32(stack.quantity);
@@ -416,13 +428,61 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             data.enemies.push_back({{id},std::move(def),point,facing});}
         if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid object count");
         data.objects.reserve(count);
-        for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def;core::WorldPointI point;ObjectPersistencePolicy persistence{};std::uint32_t stackCount{};
+        for(std::uint32_t i=0;i<count;++i){
+            std::uint64_t id{};
+            simulation::DefinitionId def;
+            core::WorldPointI point;
+            ObjectPersistencePolicy persistence{};
+            std::uint8_t hasDoor{};
+            std::uint32_t stackCount{};
             if(!in.readU64(id)||!readId(in,strings,def)||!readPoint(in,point)||
                (minor >= 5 ? !readPersistence(in,persistence) : false)||
-               !readCount(in,MapLimits::maximumPlacements,stackCount))return fail("invalid object record");
-            ObjectPlacement object{{id},std::move(def),point,{},persistence};object.initialContents.reserve(stackCount);
-            for(std::uint32_t s=0;s<stackCount;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(in,strings,item)||!in.readU32(quantity)) return fail("invalid object contents");object.initialContents.push_back({std::move(item),quantity});}
-            data.objects.push_back(std::move(object));}
+               (minor >= 6 ? !in.readU8(hasDoor) : false)) {
+                return fail("invalid object record");
+            }
+            std::optional<ObjectDoorInstanceConfig> door;
+            if (minor >= 6) {
+                if (hasDoor > 1) return fail("invalid object door marker");
+                if (hasDoor != 0) {
+                    std::uint8_t state{};
+                    std::uint8_t hasRequiredItem{};
+                    std::uint8_t consumeItem{};
+                    if (!in.readU8(state) || state > 2 ||
+                        !in.readU8(hasRequiredItem) || hasRequiredItem > 1) {
+                        return fail("invalid object door configuration");
+                    }
+                    ObjectDoorInstanceConfig config;
+                    config.initialState = static_cast<gameplay::DoorState>(state);
+                    if (hasRequiredItem != 0) {
+                        simulation::DefinitionId itemId;
+                        if (!readId(in, strings, itemId)) {
+                            return fail("invalid object door required item");
+                        }
+                        config.requiredItemId = std::move(itemId);
+                    }
+                    if (!in.readU8(consumeItem) || consumeItem > 1) {
+                        return fail("invalid object door consume flag");
+                    }
+                    config.consumeItem = consumeItem != 0;
+                    door = std::move(config);
+                }
+            }
+            if(!readCount(in,MapLimits::maximumPlacements,stackCount)) {
+                return fail("invalid object record");
+            }
+            ObjectPlacement object{
+                {id}, std::move(def), point, {}, persistence, std::move(door)};
+            object.initialContents.reserve(stackCount);
+            for(std::uint32_t s=0;s<stackCount;++s){
+                simulation::DefinitionId item;
+                std::uint32_t quantity{};
+                if(!readId(in,strings,item)||!in.readU32(quantity)) {
+                    return fail("invalid object contents");
+                }
+                object.initialContents.push_back({std::move(item),quantity});
+            }
+            data.objects.push_back(std::move(object));
+        }
         if(!readCount(in,MapLimits::maximumPlacements,count)) return fail("invalid pickup count");
         data.pickups.reserve(count);
         for(std::uint32_t i=0;i<count;++i){std::uint64_t id{};simulation::DefinitionId def,visual;core::WorldPointI point;world::AabbI area;std::uint8_t kind{};

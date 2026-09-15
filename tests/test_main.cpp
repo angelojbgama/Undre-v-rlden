@@ -3744,12 +3744,33 @@ void testPhase8PersistentMapsAndSave() {
     expect(!truncated.readString(text, 8), "ByteReader rejects truncated and oversized string lengths without access violation");
 
     gameplay::ItemCatalog items; items.add(gameplay::makeLifePotionDefinition());
+
+    gameplay::ItemDefinition blueKey;
+    blueKey.id = {"item.key.blue"};
+    blueKey.visualId = {"visual.item.key.blue"};
+    blueKey.category = gameplay::ItemCategory::key;
+    blueKey.stackLimit = 1;
+    items.add(std::move(blueKey));
+
     gameplay::WorldObjectCatalog objects;
     objects.add({simulation::DefinitionId{"object.chest"}, simulation::DefinitionId{"visual.object.chest"},
                  gameplay::ObjectInteractionDefinition{{-12,-12,24,24}},
                  gameplay::ObjectContainerDefinition{5}, std::nullopt});
     objects.add({simulation::DefinitionId{"object.crate"}, simulation::DefinitionId{"visual.object.crate"},
                  std::nullopt, std::nullopt, gameplay::ObjectDestructibleDefinition{2,{-8,-24,16,24}}});
+
+    gameplay::WorldObjectDefinition keyedDoorDefinition;
+    keyedDoorDefinition.id = {"object.door.keyed"};
+    keyedDoorDefinition.visualSetId = {"visual.object.door"};
+    keyedDoorDefinition.interactable =
+        gameplay::ObjectInteractionDefinition{{-8,-8,16,16}};
+    keyedDoorDefinition.door =
+        gameplay::ObjectDoorDefinition{
+            gameplay::DoorState::closed,
+            {},
+            false};
+    objects.add(std::move(keyedDoorDefinition));
+
     gameplay::AttackCatalog attacks; attacks.add(creatures::makeSoldierSwordAttackDefinition());
     attacks.add(creatures::makeSkullArrowAttackDefinition());
     gameplay::ProjectileCatalog projectiles;
@@ -3771,6 +3792,57 @@ void testPhase8PersistentMapsAndSave() {
     auto invalidReference = map; invalidReference.objects[0].initialContents[0].itemId = simulation::DefinitionId{"item.missing"};
     expect(!maps::validateMapData(invalidReference,&validation),
            "MapData rejects unknown item definition references before construction");
+
+    auto keyedDoorMap = map;
+
+    maps::ObjectPlacement keyedDoor;
+    keyedDoor.id = {6};
+    keyedDoor.definitionId = {"object.door.keyed"};
+    keyedDoor.position = {32, 32};
+    keyedDoor.persistence =
+        maps::ObjectPersistencePolicy::resetOnMapEnter;
+    keyedDoor.door =
+        maps::ObjectDoorInstanceConfig{
+            gameplay::DoorState::locked,
+            simulation::DefinitionId{"item.key.blue"},
+            false};
+
+    keyedDoorMap.objects.push_back(
+        keyedDoor
+    );
+
+    expect(
+        maps::validateMapData(
+            keyedDoorMap,
+            &validation).valid,
+        "MapData accepts per-instance key door configuration");
+
+    auto wrongDoorItem = keyedDoorMap;
+
+    wrongDoorItem.objects.back()
+        .door->requiredItemId =
+        gameplay::lifePotionItemId();
+
+    expect(
+        !maps::validateMapData(
+            wrongDoorItem,
+            &validation),
+        "door required item must use ItemCategory::key");
+
+    auto consumeWithoutKey = keyedDoorMap;
+
+    consumeWithoutKey.objects.back()
+        .door->requiredItemId.reset();
+
+    consumeWithoutKey.objects.back()
+        .door->consumeItem = true;
+
+    expect(
+        !maps::validateMapData(
+            consumeWithoutKey,
+            &validation),
+        "consumeItem requires requiredItemId");
+
     auto invalidDimensions = map; invalidDimensions.width = 0;
     expect(!maps::validateMapData(invalidDimensions), "MapData rejects zero dimensions before allocation");
 
@@ -7202,12 +7274,43 @@ void testPhase14AuthoredMapFoundation() {
     source.regions.push_back({simulation::DefinitionId{"region.test"}, {0, 0, 16, 16}});
     source.encounters.push_back({simulation::DefinitionId{"encounter.test"}, {{42}}, std::nullopt});
 
+    maps::ObjectPlacement authoredDoor;
+    authoredDoor.id = {77};
+    authoredDoor.definitionId = {
+        "object.door.test"};
+    authoredDoor.position = {16, 16};
+    authoredDoor.persistence =
+        maps::ObjectPersistencePolicy::persistent;
+    authoredDoor.door =
+        maps::ObjectDoorInstanceConfig{
+            underworld::game::gameplay::DoorState::locked,
+            simulation::DefinitionId{"item.key.blue"},
+            false};
+
+    source.geometry.objects.push_back(
+        authoredDoor
+    );
+
     const auto json = maps::encodeAuthoredMapJson(source);
     const auto decoded = maps::decodeAuthoredMapJson(json);
     expect(decoded.source.has_value() && decoded.diagnostics.empty(),
            "authored map JSON decodes through the strict parser");
     expect(decoded.source && maps::encodeAuthoredMapJson(*decoded.source) == json,
            "authored map JSON roundtrip is deterministic");
+
+    expect(
+        decoded.source &&
+        decoded.source->geometry.objects.size() == 1 &&
+        decoded.source->geometry.objects.front().door &&
+        decoded.source->geometry.objects.front()
+            .door->initialState ==
+            underworld::game::gameplay::DoorState::locked &&
+        decoded.source->geometry.objects.front()
+            .door->requiredItemId ==
+            simulation::DefinitionId{"item.key.blue"} &&
+        !decoded.source->geometry.objects.front()
+            .door->consumeItem,
+        "UMAP v5 preserves per-instance door configuration");
     expect(decoded.source && decoded.source->geometry.collisionBindings.size() == 1 &&
                decoded.source->geometry.collisionBindings.front().layer == 0 &&
                decoded.source->geometry.collisionBindings.front().x == 1 &&
@@ -7221,7 +7324,21 @@ void testPhase14AuthoredMapFoundation() {
     const auto compiled = maps::mapDataFromAuthored(source);
     const auto dmap = maps::deserializeDmap(maps::serializeDmap(compiled));
     expect(dmap && dmap.data.regions == source.regions,
-           "DMAP 1.2 preserves authored regions");
+           "DMAP preserves authored regions");
+
+    expect(
+        dmap &&
+        dmap.data.objects.size() == 1 &&
+        dmap.data.objects.front().door &&
+        dmap.data.objects.front()
+            .door->initialState ==
+            underworld::game::gameplay::DoorState::locked &&
+        dmap.data.objects.front()
+            .door->requiredItemId ==
+            simulation::DefinitionId{"item.key.blue"} &&
+        !dmap.data.objects.front()
+            .door->consumeItem,
+        "DMAP 1.6 preserves per-instance door configuration");
 
     simulation::EventBuffer events;
     maps::RegionTracker tracker;

@@ -732,6 +732,15 @@ JsonValue encodeObject(const ObjectPlacement& value) {
     put(objectValue, "definitionId", idValue(value.definitionId.value()));
     put(objectValue, "position", pointValue(value.position));
     put(objectValue, "persistence", stringValue(std::string(persistenceName(value.persistence))));
+    if (value.door) {
+        JsonObject door;
+        put(door, "initialState", stringValue(doorName(value.door->initialState)));
+        if (value.door->requiredItemId) {
+            put(door, "requiredItemId", idValue(value.door->requiredItemId->value()));
+        }
+        put(door, "consumeItem", boolValue(value.door->consumeItem));
+        put(objectValue, "door", ::underworld::game::maps::objectValue(std::move(door)));
+    }
     JsonArray contents;
     for (const auto& stack : value.initialContents) contents.push_back(encodeStack(stack));
     put(objectValue, "initialContents", arrayValue(std::move(contents)));
@@ -743,7 +752,7 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
     const auto* objectValue = object(value, reader, path);
     if (objectValue == nullptr) return false;
     allowed(*objectValue, reader, path,
-            {"id", "definitionId", "position", "persistence", "initialContents"});
+            {"id", "definitionId", "position", "persistence", "initialContents", "door"});
     const auto* id = required(*objectValue, value, reader, path, "id");
     const auto* definition = required(*objectValue, value, reader, path, "definitionId");
     const auto* position = required(*objectValue, value, reader, path, "position");
@@ -758,6 +767,37 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
     if (const auto* persistence = field(*objectValue, "persistence")) {
         good = readPersistence(*persistence, reader, std::string(path) + ".persistence",
                                output.persistence) && good;
+    }
+    if (const auto* doorValue = field(*objectValue, "door")) {
+        const auto doorPath = std::string(path) + ".door";
+        const auto* doorObject = object(*doorValue, reader, doorPath);
+        if (doorObject == nullptr) {
+            good = false;
+        } else {
+            allowed(*doorObject, reader, doorPath,
+                    {"initialState", "requiredItemId", "consumeItem"});
+            ObjectDoorInstanceConfig door;
+            const auto* initialState = required(
+                *doorObject, *doorValue, reader, doorPath, "initialState");
+            good = initialState != nullptr &&
+                readDoorState(*initialState, reader, doorPath + ".initialState",
+                              door.initialState) && good;
+            if (const auto* requiredItem = field(*doorObject, "requiredItemId")) {
+                simulation::DefinitionId itemId;
+                const bool itemGood = readId(
+                    *requiredItem, reader, doorPath + ".requiredItemId", itemId);
+                if (itemGood) {
+                    door.requiredItemId = std::move(itemId);
+                }
+                good = itemGood && good;
+            }
+            if (const auto* consumeItem = field(*doorObject, "consumeItem")) {
+                good = readBool(
+                    *consumeItem, reader, doorPath + ".consumeItem",
+                    door.consumeItem) && good;
+            }
+            output.door = std::move(door);
+        }
     }
     const auto* values = contents == nullptr ? nullptr :
         array(*contents, reader, std::string(path) + ".initialContents");
@@ -1339,7 +1379,7 @@ std::string encodeAuthoredMapJson(const AuthoredMapSource& source) {
     const auto& geometry = source.geometry;
     JsonObject root;
     put(root, "format", stringValue("dungeon-underworld-map-source"));
-    put(root, "version", unsignedValue(4));
+    put(root, "version", unsignedValue(5));
     put(root, "id", idValue(geometry.id.value()));
     put(root, "width", unsignedValue(geometry.width));
     put(root, "height", unsignedValue(geometry.height));
@@ -1459,7 +1499,8 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
     }
     std::uint64_t schemaVersion{};
     if (version == nullptr || !parseUnsigned(*version, schemaVersion) ||
-        (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != 4)) {
+        (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 &&
+         schemaVersion != 4 && schemaVersion != 5)) {
         if (version != nullptr) reader.error(*version, "version", "unsupported_version",
                                               "unsupported map schema version");
         good = false;
@@ -1550,6 +1591,38 @@ AuthoredMapDecodeResult decodeAuthoredMapJson(std::string_view json) {
             }
         }
     }
+    if (schemaVersion >= 1 && schemaVersion < 5) {
+        if (const auto* objectsValue = field(*root, "objects")) {
+            if (const auto* objects =
+                    std::get_if<JsonArray>(&objectsValue->value)) {
+                for (std::size_t index = 0;
+                     index < objects->size();
+                     ++index) {
+                    const auto* objectValue =
+                        std::get_if<JsonObject>(
+                            &(*objects)[index].value);
+
+                    if (objectValue == nullptr) {
+                        continue;
+                    }
+
+                    if (const auto* door =
+                            field(*objectValue, "door")) {
+                        reader.error(
+                            *door,
+                            "objects[" + std::to_string(index)
+                                + "].door",
+                            "unsupported_version",
+                            "per-instance door configuration requires "
+                            "map schema version 5");
+
+                        good = false;
+                    }
+                }
+            }
+        }
+    }
+
     if (schemaVersion >= 1 && schemaVersion < 4) {
         if (const auto* scenes = field(*root, "scenes")) {
             reader.error(*scenes, "scenes", "unsupported_version",

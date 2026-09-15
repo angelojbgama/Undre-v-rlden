@@ -7,7 +7,7 @@ from ..model.types import Diagnostic, JsonValue
 from .json_io import DuplicateKeyError, decode_json, load_json, write_atomic
 
 MAP_FORMAT = "dungeon-underworld-map-source"
-MAP_VERSION = 4
+MAP_VERSION = 5
 
 
 @dataclass(slots=True)
@@ -54,6 +54,112 @@ def decode_map(value: object, source_path: Path | None = None) -> MapDecode:
                         diagnostics.append(Diagnostic("error", "collision binding numeric field is invalid", f"{path}.{name}", "wrong_type", source_path=source_path))
                 if not isinstance(binding.get("tilesetId"), str) or not binding.get("tilesetId"):
                     diagnostics.append(Diagnostic("error", "collision binding tilesetId is invalid", f"{path}.tilesetId", "wrong_type", source_path=source_path))
+
+    objects = value.get("objects")
+
+    if isinstance(objects, list):
+        for index, placement in enumerate(objects):
+            if not isinstance(placement, dict):
+                continue
+
+            door = placement.get("door")
+
+            if door is None:
+                continue
+
+            door_path = f"objects[{index}].door"
+
+            if isinstance(version, int) and version < 5:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "per-instance door configuration requires map schema version 5",
+                        door_path,
+                        "unsupported_version",
+                        source_path=source_path,
+                    )
+                )
+
+            if not isinstance(door, dict):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "door configuration must be an object",
+                        door_path,
+                        "wrong_type",
+                        source_path=source_path,
+                    )
+                )
+                continue
+
+            state = door.get("initialState")
+
+            if state not in {
+                "locked",
+                "closed",
+                "open",
+            }:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "door initialState is invalid",
+                        f"{door_path}.initialState",
+                        "invalid_value",
+                        source_path=source_path,
+                    )
+                )
+
+            required_item = door.get(
+                "requiredItemId"
+            )
+
+            if required_item is not None and (
+                not isinstance(required_item, str)
+                or not required_item
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "door requiredItemId must be a non-empty string",
+                        f"{door_path}.requiredItemId",
+                        "wrong_type",
+                        source_path=source_path,
+                    )
+                )
+
+            consume_item = door.get(
+                "consumeItem",
+                False,
+            )
+
+            if not isinstance(
+                consume_item,
+                bool,
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "door consumeItem must be boolean",
+                        f"{door_path}.consumeItem",
+                        "wrong_type",
+                        source_path=source_path,
+                    )
+                )
+
+            elif consume_item and not (
+                isinstance(required_item, str)
+                and required_item
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "consumeItem requires requiredItemId",
+                        f"{door_path}.consumeItem",
+                        "invalid_value",
+                        source_path=source_path,
+                    )
+                )
+
     return MapDecode(value, diagnostics)
 
 

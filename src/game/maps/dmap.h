@@ -15,7 +15,8 @@ inline constexpr std::uint16_t dmapMajorVersion = 1;
 // presentation environment bindings and world presentation actions; minor 4
 // adds interactive-object world-rule kinds; minor 5 adds object placement
 // persistence policies, map-authored scenes, and the startScene world action.
-inline constexpr std::uint16_t dmapMinorVersion = 5;
+// Minor 6 adds optional per-instance door configuration to object placements.
+inline constexpr std::uint16_t dmapMinorVersion = 6;
 
 struct DmapLoadResult final {
     bool success{};

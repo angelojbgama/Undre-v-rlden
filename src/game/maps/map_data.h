@@ -27,6 +27,14 @@ namespace underworld::game::maps {
 
 enum class ObjectPersistencePolicy { persistent, resetOnMapEnter };
 
+struct ObjectDoorInstanceConfig final {
+    gameplay::DoorState initialState{gameplay::DoorState::closed};
+    std::optional<simulation::DefinitionId> requiredItemId{};
+    bool consumeItem{};
+    [[nodiscard]] bool operator==(
+        const ObjectDoorInstanceConfig&) const noexcept = default;
+};
+
 struct MapLimits final {
     static constexpr std::uint32_t maximumDimension = 4096;
     static constexpr std::uint32_t maximumLayers = 64;
@@ -81,6 +89,7 @@ struct ObjectPlacement final {
     core::WorldPointI position{};
     std::vector<gameplay::ItemStack> initialContents;
     ObjectPersistencePolicy persistence{ObjectPersistencePolicy::persistent};
+    std::optional<ObjectDoorInstanceConfig> door{};
 };
 
 struct PickupPlacement final {
