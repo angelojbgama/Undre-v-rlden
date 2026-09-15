@@ -101,10 +101,41 @@ std::optional<gameplay::DoorState> RuntimeWorld::doorState(
         : std::optional{runtimeDoor->state};
 }
 
-bool RuntimeWorld::interactDoor(simulation::PersistentInstanceId id) noexcept {
-    const auto state = doorState(id);
-    if (!state || *state == gameplay::DoorState::locked) return false;
-    return setDoorState(id, gameplay::DoorState::open);
+bool RuntimeWorld::interactDoor(
+    simulation::PersistentInstanceId id,
+    gameplay::ItemContainer& inventory) noexcept {
+    const auto found =
+        std::find_if(
+            doors_.begin(),
+            doors_.end(),
+            [&](const RuntimeDoor& candidate) {
+                return candidate.id == id;
+            });
+
+    if (found == doors_.end()) {
+        return false;
+    }
+
+    if (found->state == gameplay::DoorState::locked) {
+        if (!found->requiredItemId) {
+            return false;
+        }
+
+        if (inventory.count(
+                *found->requiredItemId) == 0) {
+            return false;
+        }
+
+        if (found->consumeItem &&
+            !inventory.consume(
+                *found->requiredItemId)) {
+            return false;
+        }
+    }
+
+    return setDoorState(
+        id,
+        gameplay::DoorState::open);
 }
 
 bool RuntimeWorld::setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept {

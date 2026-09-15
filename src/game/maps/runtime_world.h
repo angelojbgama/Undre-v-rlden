@@ -90,7 +90,9 @@ public:
         simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] std::optional<gameplay::DoorState> doorState(
         simulation::PersistentInstanceId id) const noexcept;
-    [[nodiscard]] bool interactDoor(simulation::PersistentInstanceId id) noexcept;
+    [[nodiscard]] bool interactDoor(
+        simulation::PersistentInstanceId id,
+        gameplay::ItemContainer& inventory) noexcept;
     [[nodiscard]] bool setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept;
     [[nodiscard]] std::optional<bool> objectActivation(
         simulation::PersistentInstanceId id) const noexcept;

@@ -811,7 +811,11 @@ void GameSession::interactWithWorld() {
         return;
     }
     if (object.isDoor()) {
-        if (!mapSession_->world()->interactDoor(selected->persistentId)) { return; }
+        if (!mapSession_->world()->interactDoor(
+                selected->persistentId,
+                playerItems_->inventory().items())) {
+            return;
+        }
         // Doors have their own state transition and must not masquerade as
         // container/object-open events for quests or world rules.
     } else if (!object.open()) {

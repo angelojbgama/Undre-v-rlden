@@ -326,9 +326,21 @@ void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& 
         }
         const bool opened = runtime->instance.state() == gameplay::WorldObjectState::opened;
         std::optional<gameplay::DoorState> doorState;
-        if (runtime->instance.isDoor() &&
-            runtime->instance.doorState() != runtime->instance.definition().door->initialState) {
-            doorState = runtime->instance.doorState();
+        if (runtime->instance.isDoor()) {
+            const auto* runtimeDoor =
+                world.door(placement.id);
+
+            const auto initialDoorState =
+                runtimeDoor != nullptr
+                    ? runtimeDoor->initialState
+                    : runtime->instance.definition()
+                          .door->initialState;
+
+            if (runtime->instance.doorState() !=
+                initialDoorState) {
+                doorState =
+                    runtime->instance.doorState();
+            }
         }
         std::optional<bool> activationState;
         if (runtime->instance.definition().activation &&

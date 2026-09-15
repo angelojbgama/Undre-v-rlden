@@ -3457,16 +3457,91 @@ std::optional<std::vector<std::uint8_t>> makeDmapV12WithoutObjectPersistence(
         legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(payload),
                       bytes.begin() + static_cast<std::ptrdiff_t>(cursor));
         for (std::uint32_t index = 0; index < objectCount; ++index) {
-            if (cursor + objectPrefixSize + 1 + 4 > payloadEnd) return std::nullopt;
-            legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
-                          bytes.begin() + static_cast<std::ptrdiff_t>(cursor + objectPrefixSize));
-            cursor += objectPrefixSize + 1; // Drop the v1.5 persistence-policy byte.
+            // Current v1.6 object records contain:
+            //
+            //   common prefix
+            //   persistence       (introduced in v1.5)
+            //   door marker/data  (introduced in v1.6)
+            //   initialContents
+            //
+            // A genuine v1.2 fixture must strip both newer fields.
+            if (cursor + objectPrefixSize + 2 > payloadEnd) {
+                return std::nullopt;
+            }
+
+            legacy.insert(
+                legacy.end(),
+                bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                bytes.begin() + static_cast<std::ptrdiff_t>(
+                    cursor + objectPrefixSize));
+
+            cursor += objectPrefixSize;
+
+            // Drop the v1.5 persistence-policy byte.
+            ++cursor;
+
+            // Drop the v1.6 per-instance door configuration.
+            const auto hasDoor = bytes[cursor++];
+
+            if (hasDoor > 1) {
+                return std::nullopt;
+            }
+
+            if (hasDoor != 0) {
+                if (cursor + 2 > payloadEnd) {
+                    return std::nullopt;
+                }
+
+                const auto state = bytes[cursor++];
+                const auto hasRequiredItem = bytes[cursor++];
+
+                if (state > 2 || hasRequiredItem > 1) {
+                    return std::nullopt;
+                }
+
+                if (hasRequiredItem != 0) {
+                    if (cursor + 4 > payloadEnd) {
+                        return std::nullopt;
+                    }
+
+                    cursor += 4;
+                }
+
+                if (cursor >= payloadEnd) {
+                    return std::nullopt;
+                }
+
+                const auto consumeItem = bytes[cursor++];
+
+                if (consumeItem > 1) {
+                    return std::nullopt;
+                }
+            }
+
+            if (cursor + 4 > payloadEnd) {
+                return std::nullopt;
+            }
+
             std::uint32_t stackCount{};
+
             if (!readU32(bytes, cursor, stackCount) ||
-                stackCount > (payloadEnd - cursor - 4) / 8) return std::nullopt;
-            const auto recordEnd = cursor + 4 + static_cast<std::size_t>(stackCount) * 8;
-            legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
-                          bytes.begin() + static_cast<std::ptrdiff_t>(recordEnd));
+                stackCount >
+                    (payloadEnd - cursor - 4) / 8) {
+                return std::nullopt;
+            }
+
+            const auto recordEnd =
+                cursor +
+                4 +
+                static_cast<std::size_t>(
+                    stackCount) *
+                    8;
+
+            legacy.insert(
+                legacy.end(),
+                bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                bytes.begin() + static_cast<std::ptrdiff_t>(recordEnd));
+
             cursor = recordEnd;
         }
         legacy.insert(legacy.end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
@@ -3927,7 +4002,140 @@ void testPhase8PersistentMapsAndSave() {
             runtimeObject->instance.doorState() ==
                 gameplay::DoorState::locked,
             "runtime object instance starts in authored door state");
+
+        gameplay::ItemContainer consumingDoorInventory(
+            4,
+            items);
+
+        expect(
+            !keyedRuntime.world->interactDoor(
+                simulation::PersistentInstanceId{6},
+                consumingDoorInventory) &&
+            keyedRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::locked,
+            "locked keyed door stays locked when player does not own the key");
+
+        const auto consumedKeyAdd =
+            consumingDoorInventory.add(
+                simulation::DefinitionId{"item.key.blue"},
+                1);
+
+        expect(
+            consumedKeyAdd.remainder == 0 &&
+            keyedRuntime.world->interactDoor(
+                simulation::PersistentInstanceId{6},
+                consumingDoorInventory) &&
+            keyedRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::open &&
+            consumingDoorInventory.count(
+                simulation::DefinitionId{"item.key.blue"}) == 0,
+            "consumeItem door consumes one matching key and opens");
     }
+
+    auto persistentDoorMap =
+        keyedDoorMap;
+
+    persistentDoorMap.objects.back().persistence =
+        maps::ObjectPersistencePolicy::persistent;
+
+    persistentDoorMap.objects.back()
+        .door->consumeItem = false;
+
+    const auto persistentDoorRuntime =
+        builder.build(
+            persistentDoorMap,
+            simulation::SpawnId{"entry.start"});
+
+    expect(
+        static_cast<bool>(persistentDoorRuntime),
+        "persistent keyed door builds for interaction and save tests");
+
+    if (persistentDoorRuntime) {
+        save::SessionWorldState untouchedDoorState;
+
+        save::captureWorldState(
+            persistentDoorMap,
+            *persistentDoorRuntime.world,
+            untouchedDoorState);
+
+        expect(
+            untouchedDoorState.findObject({
+                persistentDoorMap.id,
+                simulation::PersistentInstanceId{6}
+            }) == nullptr,
+            "save capture treats authored instance door initialState as baseline");
+
+        gameplay::ItemContainer reusableDoorInventory(
+            4,
+            items);
+
+        const auto reusableKeyAdd =
+            reusableDoorInventory.add(
+                simulation::DefinitionId{"item.key.blue"},
+                1);
+
+        expect(
+            reusableKeyAdd.remainder == 0 &&
+            persistentDoorRuntime.world->interactDoor(
+                simulation::PersistentInstanceId{6},
+                reusableDoorInventory) &&
+            reusableDoorInventory.count(
+                simulation::DefinitionId{"item.key.blue"}) == 1 &&
+            persistentDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::open,
+            "non-consuming keyed door opens and keeps the matching key");
+
+        save::SessionWorldState openedDoorState;
+
+        save::captureWorldState(
+            persistentDoorMap,
+            *persistentDoorRuntime.world,
+            openedDoorState);
+
+        const auto* openedDoorDelta =
+            openedDoorState.findObject({
+                persistentDoorMap.id,
+                simulation::PersistentInstanceId{6}
+            });
+
+        expect(
+            openedDoorDelta != nullptr &&
+            openedDoorDelta->doorState ==
+                gameplay::DoorState::open,
+            "save capture persists door state relative to instance baseline");
+    }
+
+    auto scriptLockedMap =
+        keyedDoorMap;
+
+    scriptLockedMap.objects.back()
+        .door->requiredItemId.reset();
+
+    scriptLockedMap.objects.back()
+        .door->consumeItem = false;
+
+    const auto scriptLockedRuntime =
+        builder.build(
+            scriptLockedMap,
+            simulation::SpawnId{"entry.start"});
+
+    gameplay::ItemContainer scriptLockedInventory(
+        4,
+        items);
+
+    expect(
+        scriptLockedRuntime &&
+        !scriptLockedRuntime.world->interactDoor(
+            simulation::PersistentInstanceId{6},
+            scriptLockedInventory) &&
+        scriptLockedRuntime.world->doorState(
+            simulation::PersistentInstanceId{6}) ==
+            gameplay::DoorState::locked,
+        "locked door without requiredItemId remains script-unlockable only");
+
     expect(!builder.build(decoded.data,simulation::SpawnId{"missing"}),
            "runtime builder fails clearly instead of silently spawning at zero");
 
@@ -4306,11 +4514,11 @@ void testWorldObjectPersistencePolicies() {
     const auto authoredJson = maps::encodeAuthoredMapJson(initialSource);
     const auto authoredDecoded = maps::decodeAuthoredMapJson(authoredJson);
     expect(authoredDecoded.source && authoredDecoded.diagnostics.empty() &&
-               authoredJson.find("\"version\": 4") != std::string::npos &&
+               authoredJson.find("\"version\": 5") != std::string::npos &&
                maps::semanticallyEqual(maps::mapDataFromAuthored(*authoredDecoded.source), mapA) &&
                authoredDecoded.source->geometry.objects[1].persistence ==
                    maps::ObjectPersistencePolicy::resetOnMapEnter,
-           "UMAP v4 roundtrips persistent and reset-on-map-enter placement policies");
+           "UMAP v5 roundtrips persistent and reset-on-map-enter placement policies");
     auto legacyJson = authoredJson;
     const auto persistenceField = legacyJson.find("\"persistence\"");
     if (persistenceField != std::string::npos) {
@@ -4327,7 +4535,7 @@ void testWorldObjectPersistencePolicies() {
     expect(dmapDecoded && dmapDecoded.data.objects[1].persistence ==
                maps::ObjectPersistencePolicy::resetOnMapEnter &&
                dmapDecoded.data.objects[0].persistence == maps::ObjectPersistencePolicy::persistent,
-           "DMAP 1.5 roundtrips both object persistence policies");
+           "DMAP 1.6 roundtrips both object persistence policies");
     const auto legacyDmap = makeDmapV12WithoutObjectPersistence(maps::serializeDmap(mapA));
     const auto legacyDmapDecoded = legacyDmap ? maps::deserializeDmap(*legacyDmap)
                                               : maps::DmapLoadResult{};
@@ -7743,10 +7951,13 @@ void testPhase14WorldClosure() {
         maps::RuntimeWorldBuilder doorBuilder(doorCatalogs, doorEnemies, doorObjects,
                                               doorHandles, doorTilesets);
         const auto doorWorld = doorBuilder.build(doorMap, simulation::SpawnId{"entry.start"});
+        gameplay::ItemContainer doorInventory(
+            1,
+            compiledDoorContent.registry->items());
         doorBehaviorPassed = doorWorld &&
             doorWorld.world->doorState({3}) == gameplay::DoorState::closed &&
             doorWorld.world->map().collision().isSolid(2, 1) &&
-            doorWorld.world->interactDoor({3}) &&
+            doorWorld.world->interactDoor({3}, doorInventory) &&
             doorWorld.world->doorState({3}) == gameplay::DoorState::open &&
             !doorWorld.world->map().collision().isSolid(2, 1) &&
             doorWorld.world->setDoorState({3}, gameplay::DoorState::locked) &&
@@ -8196,13 +8407,13 @@ void testPhase15PresentationFeedback() {
     }
     const auto legacyVersion = legacyUmap.find("\"version\"");
     const auto legacyValue = legacyVersion == std::string::npos
-        ? std::string::npos : legacyUmap.find('4', legacyVersion);
+        ? std::string::npos : legacyUmap.find('5', legacyVersion);
     if (legacyValue != std::string::npos) legacyUmap.replace(legacyValue, 1, "1");
     const auto legacyDecoded = maps::decodeAuthoredMapJson(legacyUmap);
     auto incompatibleUmap = authoredJson;
     const auto incompatibleVersion = incompatibleUmap.find("\"version\"");
     const auto incompatibleValue = incompatibleVersion == std::string::npos
-        ? std::string::npos : incompatibleUmap.find('4', incompatibleVersion);
+        ? std::string::npos : incompatibleUmap.find('5', incompatibleVersion);
     if (incompatibleValue != std::string::npos) incompatibleUmap.replace(incompatibleValue, 1, "1");
     const auto incompatibleDecoded = maps::decodeAuthoredMapJson(incompatibleUmap);
     expect(legacyDecoded.source.has_value(), "UMAP v1 remains readable");
