@@ -699,6 +699,85 @@ class MapDocument:
 
         return persistent_id
 
+    def set_object_door_configuration(
+            self,
+            persistent_id: int,
+            door: dict[str, JsonValue] | None,
+            persistence: str,
+            label: str = "Edit Door Configuration") -> None:
+        """Update one object placement door override as a single undo step."""
+
+        placement = self.entity(
+            "objects",
+            persistent_id,
+        )
+
+        if placement is None:
+            raise ValueError(
+                "object placement was not found"
+            )
+
+        if persistence not in {
+            "persistent",
+            "resetOnMapEnter",
+        }:
+            raise ValueError(
+                "invalid object persistence policy"
+            )
+
+        door_copy = (
+            copy.deepcopy(
+                door
+            )
+            if door is not None
+            else None
+        )
+
+        def operation() -> None:
+            placement["persistence"] = (
+                persistence
+            )
+
+            if door_copy is None:
+                placement.pop(
+                    "door",
+                    None,
+                )
+                return
+
+            placement["door"] = (
+                copy.deepcopy(
+                    door_copy
+                )
+            )
+
+            current_version = self.data.get(
+                "version",
+                1,
+            )
+
+            if (
+                not isinstance(
+                    current_version,
+                    int,
+                )
+                or isinstance(
+                    current_version,
+                    bool,
+                )
+            ):
+                current_version = 1
+
+            self.data["version"] = max(
+                current_version,
+                MAP_VERSION,
+            )
+
+        self.mutate(
+            label,
+            operation,
+        )
+
     def add_entity(
             self, category: str, definition_id: str, x: int, y: int,
             facing: str = "down",
