@@ -581,6 +581,124 @@ class MapDocument:
 
         self.mutate("Paste Tiles", operation)
 
+    def place_object_with_tile_opening(
+            self,
+            definition_id: str,
+            x: int,
+            y: int,
+            layer: int,
+            opening_cells: Iterable[tuple[int, int]],
+            label: str = "Place Wall Object") -> int:
+        """Clear authored tiles and place one WorldObject as one undo step."""
+
+        definition_id = definition_id.strip()
+
+        if not definition_id:
+            raise ValueError(
+                "object definition ID cannot be empty"
+            )
+
+        if (
+            layer < 0
+            or layer >= len(self.layers)
+        ):
+            raise IndexError(
+                "layer index out of range"
+            )
+
+        coordinates = tuple(
+            sorted({
+                (
+                    int(cell_x),
+                    int(cell_y),
+                )
+                for cell_x, cell_y
+                in opening_cells
+            })
+        )
+
+        if not coordinates:
+            raise ValueError(
+                "wall opening cannot be empty"
+            )
+
+        for cell_x, cell_y in coordinates:
+            self._check_tile(
+                cell_x,
+                cell_y,
+            )
+
+        target = self.layers[
+            layer
+        ].get(
+            "cells",
+            [],
+        )
+
+        if (
+            not isinstance(target, list)
+            or len(target)
+            != self.width * self.height
+        ):
+            raise ValueError(
+                "layer cells do not match map dimensions"
+            )
+
+        objects = self.data.get(
+            "objects",
+        )
+
+        if not isinstance(
+            objects,
+            list,
+        ):
+            raise ValueError(
+                "objects collection is unavailable"
+            )
+
+        persistent_id = (
+            self.next_persistent_id()
+        )
+
+        value: dict[str, JsonValue] = {
+            "id": persistent_id,
+            "definitionId": definition_id,
+            "position": {
+                "x": int(x),
+                "y": int(y),
+            },
+            "initialContents": [],
+            "persistence": "persistent",
+        }
+
+        def operation() -> None:
+            for cell_x, cell_y in coordinates:
+                index = (
+                    cell_y
+                    * self.width
+                    + cell_x
+                )
+
+                if target[index] is not None:
+                    self._unlink_tile_collision(
+                        layer,
+                        cell_x,
+                        cell_y,
+                    )
+
+                    target[index] = None
+
+            objects.append(
+                value
+            )
+
+        self.mutate(
+            label,
+            operation,
+        )
+
+        return persistent_id
+
     def add_entity(
             self, category: str, definition_id: str, x: int, y: int,
             facing: str = "down",
