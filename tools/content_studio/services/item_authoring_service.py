@@ -73,6 +73,90 @@ class ItemAuthoringService:
         )
         return "pickup." + normalized[len("item."):]
 
+    def stack_limit(
+        self,
+        item_id: str,
+    ) -> int:
+        """Return the authored stack limit for one Item."""
+
+        normalized = item_id.strip()
+
+        if not normalized:
+            raise ValueError(
+                "item ID cannot be empty"
+            )
+
+        item = self._require_item(
+            normalized
+        )
+
+        value = item.data.get(
+            "stackLimit"
+        )
+
+        if (
+            not isinstance(
+                value,
+                int,
+            )
+            or isinstance(
+                value,
+                bool,
+            )
+            or value <= 0
+            or value > MAX_STACK_LIMIT
+        ):
+            raise ValueError(
+                f"item stackLimit is invalid: "
+                f"{normalized}"
+            )
+
+        return value
+
+    def validate_stack(
+        self,
+        item_id: str,
+        quantity: int,
+    ) -> dict[str, JsonValue]:
+        """Validate and normalize one authored ItemStack."""
+
+        normalized = item_id.strip()
+
+        if not normalized:
+            raise ValueError(
+                "itemId must reference an Item"
+            )
+
+        if (
+            not isinstance(
+                quantity,
+                int,
+            )
+            or isinstance(
+                quantity,
+                bool,
+            )
+            or quantity <= 0
+        ):
+            raise ValueError(
+                "item quantity must be positive"
+            )
+
+        limit = self.stack_limit(
+            normalized
+        )
+
+        if quantity > limit:
+            raise ValueError(
+                f"item quantity exceeds stackLimit "
+                f"{limit}: {normalized}"
+            )
+
+        return {
+            "itemId": normalized,
+            "quantity": quantity,
+        }
+
     def pickup_for_item(
         self,
         item_id: str,

@@ -20,6 +20,7 @@ from ..model.types import ContentDefinition, JsonValue
 from ..interaction.drag_payload import StudioDragPayload
 from ..services.assets import AssetCatalog
 from ..services.localization import Translator
+from .item_stack_editor import ItemStackEditor
 
 _PATH_PART = re.compile(r"([^.[\]]+)|\[([0-9]+)\]")
 ENUM_VALUES: dict[str, tuple[str, ...]] = {
@@ -190,6 +191,17 @@ class StructuredInspector(QWidget):
                 else:
                     self._add_editor(form, key, child_path, child)
         elif isinstance(value, list):
+            if (
+                path.rsplit(".", 1)[-1]
+                == "initialContents"
+            ):
+                self._populate_item_stacks(
+                    form,
+                    value,
+                    path,
+                )
+                return
+
             for index, child in enumerate(value):
                 child_path = f"{path}[{index}]"
                 if isinstance(child, (dict, list)):
@@ -210,6 +222,67 @@ class StructuredInspector(QWidget):
                 form.addRow(QLabel("(empty collection)"))
         else:
             self._add_editor(form, path, path, value)
+
+    def _populate_item_stacks(
+            self,
+            form: QFormLayout,
+            value: list[JsonValue],
+            path: str) -> None:
+        if not value:
+            form.addRow(
+                QLabel(
+                    "(empty collection)"
+                )
+            )
+            return
+
+        for index, child in enumerate(
+            value
+        ):
+            if not isinstance(
+                child,
+                dict,
+            ):
+                form.addRow(
+                    QLabel(
+                        f"Invalid ItemStack [{index}]"
+                    )
+                )
+                continue
+
+            child_path = (
+                f"{path}[{index}]"
+            )
+
+            editor = ItemStackEditor(
+                self._workspace,
+                child,
+            )
+
+            editor.stack_changed.connect(
+                lambda stack,
+                p=child_path:
+                self._commit(
+                    p,
+                    stack,
+                )
+            )
+
+            editor.remove_requested.connect(
+                lambda p=path,
+                i=index:
+                self.collection_changed.emit(
+                    p,
+                    f"remove_at:{i}",
+                )
+            )
+
+            form.addRow(
+                QLabel(
+                    f"Item {index + 1}"
+                ),
+                editor,
+            )
 
     def _add_editor(self, form: QFormLayout, label: str, path: str, value: JsonValue,
                     remove_from: tuple[str, int] | None = None) -> None:
@@ -317,111 +390,25 @@ class StructuredInspector(QWidget):
         layout.addLayout(buttons)
 
     def _initial_contents_buttons(
-            self, layout: QVBoxLayout, path: str) -> None:
-        buttons = QHBoxLayout()
-
-        picker = QComboBox()
-        picker.setObjectName(
-            "initialContentsItemPicker"
+            self,
+            layout: QVBoxLayout,
+            path: str) -> None:
+        editor = ItemStackEditor(
+            self._workspace,
+            add_mode=True,
         )
 
-        definitions = (
-            tuple(
-                self._workspace.definitions(
-                    "items"
-                )
-            )
-            if self._workspace is not None
-            else ()
-        )
-
-        for definition in definitions:
-            picker.addItem(
-                f"{definition.display_name} "
-                f"[{definition.definition_id}]",
-                definition.definition_id,
-            )
-
-        add = QPushButton(
-            "Add Item"
-        )
-
-        add.setObjectName(
-            "initialContentsAddButton"
-        )
-
-        remove = QPushButton(
-            "Remove Last"
-        )
-
-        remove.setObjectName(
-            "initialContentsRemoveLastButton"
-        )
-
-        if not definitions:
-            picker.addItem(
-                "Create an Item in the Items tab first",
-                None,
-            )
-
-            picker.setEnabled(
-                False
-            )
-
-            add.setEnabled(
-                False
-            )
-
-            add.setToolTip(
-                "Create an Item in the Items tab first."
-            )
-
-        add.clicked.connect(
-            lambda unused=False, p=path, control=picker:
-            self._emit_initial_content(
+        editor.add_requested.connect(
+            lambda value,
+            p=path:
+            self.collection_value_requested.emit(
                 p,
-                control,
+                value,
             )
         )
 
-        remove.clicked.connect(
-            lambda unused=False, p=path:
-            self.collection_changed.emit(
-                p,
-                "remove",
-            )
-        )
-
-        buttons.addWidget(
-            picker,
-            1,
-        )
-
-        buttons.addWidget(
-            add
-        )
-
-        buttons.addWidget(
-            remove
-        )
-
-        layout.addLayout(
-            buttons
-        )
-
-    def _emit_initial_content(
-            self, path: str, picker: QComboBox) -> None:
-        item_id = picker.currentData()
-
-        if not isinstance(item_id, str) or not item_id:
-            return
-
-        self.collection_value_requested.emit(
-            path,
-            {
-                "itemId": item_id,
-                "quantity": 1,
-            },
+        layout.addWidget(
+            editor
         )
 
     @staticmethod

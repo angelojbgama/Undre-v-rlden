@@ -20,6 +20,7 @@ from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
 from ..services.localization import Translator
 from ..services.door_instance_service import DoorInstanceService
+from ..services.item_authoring_service import ItemAuthoringService
 from ..services.autosave import autosave
 from ..services.legacy_tile_collision_migration import LegacyTileCollisionMigrationService
 from ..services.preferences import load_preferences, save_preferences
@@ -739,11 +740,72 @@ class MainWindow(QMainWindow):
         if self.map_canvas.delete_selection():
             self.set_status(self.translator("selection_deleted"))
 
+    def _validated_item_stack(
+            self,
+            value: object) -> dict[str, object]:
+        if self.workspace is None:
+            raise ValueError(
+                "ItemStack requires a content workspace"
+            )
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            raise ValueError(
+                "ItemStack must be an object"
+            )
+
+        item_id = value.get(
+            "itemId"
+        )
+
+        quantity = value.get(
+            "quantity"
+        )
+
+        if not isinstance(
+            item_id,
+            str,
+        ):
+            raise ValueError(
+                "ItemStack itemId must reference an Item"
+            )
+
+        return dict(
+            ItemAuthoringService(
+                self.workspace
+            ).validate_stack(
+                item_id,
+                quantity,
+            )
+        )
+
     def _edit_map_field(self, path: str, value: object) -> None:
         selection = self.map_canvas.selected_entity
         if not selection:
             return
         category, identifier = selection
+
+        if (
+            category == "objects"
+            and path.startswith(
+                "initialContents["
+            )
+            and path.endswith(
+                "]"
+            )
+        ):
+            try:
+                value = self._validated_item_stack(
+                    value
+                )
+            except ValueError as error:
+                self.set_status(
+                    str(error)
+                )
+                return
+
         if category in {"enemies", "npcs", "objects", "pickups"}:
             value_to_edit = self.project.active_map.entity(category, int(identifier))
         else:
@@ -793,51 +855,23 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if not isinstance(value, dict):
+        try:
+            stack = self._validated_item_stack(
+                value
+            )
+        except ValueError as error:
             self.set_status(
-                "Initial content must be an item stack"
+                str(error)
             )
             return
 
-        item_id = value.get(
-            "itemId"
+        item_id = str(
+            stack["itemId"]
         )
 
-        quantity = value.get(
-            "quantity",
-            1,
+        quantity = int(
+            stack["quantity"]
         )
-
-        if (
-            not isinstance(item_id, str)
-            or not item_id
-        ):
-            self.set_status(
-                "Select a valid Item first"
-            )
-            return
-
-        if (
-            not isinstance(quantity, int)
-            or isinstance(quantity, bool)
-            or quantity <= 0
-        ):
-            self.set_status(
-                "Item quantity must be positive"
-            )
-            return
-
-        if (
-            self.workspace is None
-            or self.workspace.find(
-                "items",
-                item_id,
-            ) is None
-        ):
-            self.set_status(
-                f"Unknown Item definition: {item_id}"
-            )
-            return
 
         try:
             self.command_coordinator.mark(
