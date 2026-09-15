@@ -358,3 +358,53 @@ TRANSLATIONS["en-US"].update({
         "wall operation."
     ),
 })
+
+
+# door-instance-editor-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "door_instance_title": "Configuracao da porta",
+    "door_instance_mode": "Comportamento",
+    "door_instance_defaults": "Usar padrao da definicao",
+    "door_instance_custom": "Personalizar esta porta",
+    "door_initial_state": "Estado inicial",
+    "door_state_closed": "Fechada",
+    "door_state_locked": "Trancada",
+    "door_state_open": "Aberta",
+    "door_required_key": "Chave necessaria",
+    "door_no_required_key": "Sem chave / desbloqueio por script",
+    "door_consume_key": "Consumir chave",
+    "door_persistence": "Persistencia",
+    "door_persistence_persistent": "Persistente",
+    "door_persistence_reset": "Reiniciar ao entrar no mapa",
+    "door_apply_configuration": "Aplicar configuracao",
+    "door_configuration_saved": "Configuracao da porta atualizada",
+    "door_instance_help": (
+        "A porta continua sendo um WorldObject. "
+        "Personalize somente o comportamento desta instancia. "
+        "Uma porta trancada sem chave pode ser liberada por script."
+    ),
+})
+
+TRANSLATIONS["en-US"].update({
+    "door_instance_title": "Door configuration",
+    "door_instance_mode": "Behavior",
+    "door_instance_defaults": "Use definition defaults",
+    "door_instance_custom": "Customize this door",
+    "door_initial_state": "Initial state",
+    "door_state_closed": "Closed",
+    "door_state_locked": "Locked",
+    "door_state_open": "Open",
+    "door_required_key": "Required key",
+    "door_no_required_key": "No key / script unlock",
+    "door_consume_key": "Consume key",
+    "door_persistence": "Persistence",
+    "door_persistence_persistent": "Persistent",
+    "door_persistence_reset": "Reset on map enter",
+    "door_apply_configuration": "Apply configuration",
+    "door_configuration_saved": "Door configuration updated",
+    "door_instance_help": (
+        "The door remains a WorldObject. "
+        "Customize only this placement behavior. "
+        "A locked door without a key can still be unlocked by script."
+    ),
+})

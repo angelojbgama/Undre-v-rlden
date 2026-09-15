@@ -19,6 +19,7 @@ from ..interaction.command_coordinator import CommandCoordinator
 from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
 from ..services.localization import Translator
+from ..services.door_instance_service import DoorInstanceService
 from ..services.autosave import autosave
 from ..services.legacy_tile_collision_migration import LegacyTileCollisionMigrationService
 from ..services.preferences import load_preferences, save_preferences
@@ -33,6 +34,7 @@ from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .object_library_widget import ObjectLibraryWidget
 from .door_library_widget import DoorLibraryWidget
+from .door_instance_editor import DoorInstanceEditor
 from .player_library_widget import PlayerLibraryWidget
 from .item_library_widget import ItemLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
@@ -222,12 +224,23 @@ class MainWindow(QMainWindow):
         self.map_inspector.collection_changed.connect(self._edit_map_collection)
         self.map_inspector.collection_value_requested.connect(
             self._add_map_collection_value)
+
+        self.door_instance_editor = DoorInstanceEditor(
+            self.translator)
+
+        self.door_instance_editor.configuration_requested.connect(
+            self._configure_selected_door)
+
+        self.door_instance_editor.status_changed.connect(
+            self.set_status)
+
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
         self.delete_map_selection_button.setEnabled(False)
         self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
         map_inspector_panel = QWidget()
         map_inspector_layout = QVBoxLayout(map_inspector_panel)
         map_inspector_layout.setContentsMargins(0, 0, 0, 0)
+        map_inspector_layout.addWidget(self.door_instance_editor)
         map_inspector_layout.addWidget(self.map_inspector, 1)
         map_inspector_layout.addWidget(self.delete_map_selection_button)
         self._map_panels = QStackedWidget()
@@ -379,6 +392,7 @@ class MainWindow(QMainWindow):
         self.spritesheet_library.retranslate(self.translator)
         self.object_library.retranslate(self.translator)
         self.door_library.retranslate(self.translator)
+        self.door_instance_editor.retranslate(self.translator)
         self.player_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
@@ -547,14 +561,179 @@ class MainWindow(QMainWindow):
     def _map_selection_changed(self, selection: object) -> None:
         if not selection:
             self.map_inspector.clear("No selection")
+            self.door_instance_editor.clear()
             self.delete_map_selection_button.setEnabled(False)
             return
+
         category, identifier = selection
-        value = self.project.active_map.entity(category, identifier) if category in {"enemies", "npcs", "objects", "pickups"} else next((entry for entry in self.project.active_map.all_collection(category) if entry.get("id") == identifier), None)
-        can_delete = value is not None
-        self.delete_map_selection_button.setEnabled(can_delete)
-        if value is not None:
-            self.map_inspector.set_object(f"{category}: {identifier}", value)
+
+        value = (
+            self.project.active_map.entity(
+                category,
+                identifier,
+            )
+            if category in {
+                "enemies",
+                "npcs",
+                "objects",
+                "pickups",
+            }
+            else next(
+                (
+                    entry
+                    for entry
+                    in self.project.active_map.all_collection(
+                        category
+                    )
+                    if entry.get("id")
+                    == identifier
+                ),
+                None,
+            )
+        )
+
+        can_delete = (
+            value is not None
+        )
+
+        self.delete_map_selection_button.setEnabled(
+            can_delete
+        )
+
+        if value is None:
+            self.door_instance_editor.clear()
+            return
+
+        is_door = False
+
+        if (
+            category == "objects"
+            and self.workspace is not None
+        ):
+            is_door = self.door_instance_editor.set_context(
+                self.project.active_map,
+                self.workspace,
+                int(identifier),
+            )
+        else:
+            self.door_instance_editor.clear()
+
+        inspector_value = value
+
+        if (
+            is_door
+            and isinstance(
+                value,
+                dict,
+            )
+        ):
+            # Door behavior has a dedicated contextual editor.
+            # Keep generic placement fields available without exposing
+            # duplicate raw door/persistence controls.
+            inspector_value = dict(
+                value
+            )
+
+            inspector_value.pop(
+                "door",
+                None,
+            )
+
+            inspector_value.pop(
+                "persistence",
+                None,
+            )
+
+        self.map_inspector.set_object(
+            f"{category}: {identifier}",
+            inspector_value,
+        )
+
+    def _configure_selected_door(
+            self,
+            request: object) -> None:
+        selection = (
+            self.map_canvas.selected_entity
+        )
+
+        if (
+            not selection
+            or self.workspace is None
+            or not isinstance(
+                request,
+                dict,
+            )
+        ):
+            return
+
+        category, identifier = selection
+
+        if category != "objects":
+            return
+
+        try:
+            DoorInstanceService(
+                self.project.active_map,
+                self.workspace,
+            ).configure(
+                int(identifier),
+                uses_definition_defaults=bool(
+                    request.get(
+                        "uses_definition_defaults",
+                        True,
+                    )
+                ),
+                initial_state=str(
+                    request.get(
+                        "initial_state",
+                        "closed",
+                    )
+                ),
+                required_item_id=(
+                    request.get(
+                        "required_item_id"
+                    )
+                    if isinstance(
+                        request.get(
+                            "required_item_id"
+                        ),
+                        str,
+                    )
+                    else None
+                ),
+                consume_item=bool(
+                    request.get(
+                        "consume_item",
+                        False,
+                    )
+                ),
+                persistence=str(
+                    request.get(
+                        "persistence",
+                        "persistent",
+                    )
+                ),
+            )
+
+            self.command_coordinator.mark(
+                "map"
+            )
+
+            self._refresh_map()
+
+            self.set_status(
+                self.translator(
+                    "door_configuration_saved"
+                )
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            self.set_status(
+                str(error)
+            )
 
     def _delete_map_selection(self) -> None:
         if self.map_canvas.delete_selection():
