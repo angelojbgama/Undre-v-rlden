@@ -2085,9 +2085,9 @@ Python WorldProject
         ├── MapDocument map B
         └── ... na ordem authored
         ↓
-AuthoredWorldSource (UWORLD v1)
-        ↓ validação + compiler
-MapData por MapId
+UWORLD v1 authored data (Python)
+        ↓ validação + export Python
+DMAP por MapId
 ```
 
 `MapDocument` continua representando um único mapa e mantém seu viewport,
@@ -2105,9 +2105,10 @@ separados, um por mapa; DMAP não foi transformado em um container de mundo.
 ### Multi-map playtest
 
 O playtest usa a fonte authored atual do `WorldProject`, não a última versão
-salva. Todos os mapas são compilados em memória e inseridos em um provider/catalog
-runtime. A sessão inicia no mapa ativo para iteração rápida (ou no `entryMapId` quando
-solicitado) e reutiliza `MapSession`, `MapLink` e `PendingMapTransition` para carregar
+salva. Todos os mapas são exportados como DMAPs temporários pelo Python e entregues
+ao executável C++ por `--map-root`. A sessão inicia no mapa ativo para iteração rápida
+(ou no `entryMapId` quando solicitado) e reutiliza `MapSession`, `MapLink` e
+`PendingMapTransition` para carregar
 o alvo. Há somente um `RuntimeWorld` ativo por vez; mapas não são simulados
 simultaneamente e o editor não mantém um sistema de transição paralelo.
 

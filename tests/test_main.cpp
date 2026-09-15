@@ -81,7 +81,6 @@
 #include "game/maps/reachability.h"
 #include "game/maps/runtime_world.h"
 #include "game/maps/authored_map.h"
-#include "game/maps/authored_world.h"
 #include "game/maps/region_tracker.h"
 #include "game/save/save_data.h"
 #include "game/presentation/presentation_effect_renderer.h"

@@ -38,7 +38,7 @@ class ToolchainError(RuntimeError):
 
 
 class CppToolchain:
-    """Runs the authoritative C++ validation/compiler/runtime tools."""
+    """Runs the authoritative C++ validation and runtime tools."""
 
     def __init__(self, repository_root: Path | None = None, *, content_check: Path | None = None,
                  game: Path | None = None, asset_root: Path | None = None) -> None:
@@ -137,7 +137,7 @@ class PlaytestService:
         if not result.ok:
             self.stop()
             return False, diagnostics
-        # The world is still compiled in full so cross-map transitions work,
+        # The world is exported in full so cross-map transitions work,
         # but iteration must launch from the map currently being authored.
         map_path = output / safe_dmap_filename(active_map.map_id)
         if not map_path.is_file():

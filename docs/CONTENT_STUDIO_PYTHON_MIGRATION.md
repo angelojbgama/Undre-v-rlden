@@ -7,7 +7,7 @@ jogo não importa Python nem PySide6.
 ```text
 Python Content Studio
         ↓ content JSON v5 / UMAP v4 / UWORLD v1
-C++ content_check / world_compile + Python DMAP writer
+C++ content_check + Python DMAP writer
         ↓ DMAP 1.5
 C++ game/runtime
 ```
@@ -39,7 +39,7 @@ a autoridade para operações executáveis.
 | Undo/redo | `EditorCommand`, `CommandHistory` | `model/commands.py` + document histories | edit/undo/redo tests | MIGRATED |
 | Autosave, preferências e localização | editor services | `services/autosave.py`, `preferences.py`, `localization.py` | autosave/preferences model coverage | MIGRATED |
 | Validate workspace | `ContentValidator`, `content_check` | `services/toolchain.py` | C++ integration tests | MIGRATED |
-| Export DMAP | Python DMAP writer + world compatibility tool | `formats/dmap.py`, `services/world_export_service.py`, `src/tools/world_compile.cpp` | map/world integration tests | MIGRATED |
+| Export DMAP | Python DMAP writer | `formats/dmap.py`, `services/world_export_service.py` | map/world integration tests | MIGRATED |
 | Playtest, inclusive alterações não salvas | `EditorPlaytestSession` | `services/toolchain.py` (`PlaytestService`) | compile/launch service path | MIGRATED |
 | Shell/UI nativo do autor | `EditorApp`, `EditorUiContext`, `editor_launch` | `__main__.py`, `ui/main_window.py` e widgets Qt | offscreen smoke | RETIRED |
 
@@ -81,15 +81,16 @@ não são versionados neste repositório.
 
 ## Fronteira C++
 
-O Python grava somente artefatos authored e invoca processos C++ por arquivos,
-exit code e stdout/stderr. `content_check` valida o workspace. O Content Studio Python serializa DMAP diretamente; `world_compile` permanece somente como compatibilidade nativa.
-`PlaytestService` copia o estado em memória para uma pasta temporária, compila
+O Python grava arquivos authored e artefatos DMAP, e invoca processos C++ por arquivos,
+exit code e stdout/stderr. `content_check` valida o workspace. O Content Studio Python serializa DMAP diretamente e é o único compilador/exportador de UWORLD para DMAP.
+`PlaytestService` copia o estado em memória para uma pasta temporária, exporta
 os DMAPs e inicia o binário C++ sem alterar os arquivos originais. Falhas de
 validação ficam no painel de diagnósticos e bloqueiam export/playtest.
 
 O antigo subsistema `src/editor` foi removido. Python/PySide6 é a única
 implementação oficial de autoria de mapas e conteúdo; os testes desse produto
 vivem em `tools/content_studio/tests`. `map_editor.exe` e `map_compile.exe` não
-existem mais como targets. `game`, `content_check`, `playtest_runner` e o
-`world_compile` de compatibilidade permanecem nativos e não dependem do Studio,
-de Python ou de PySide6.
+existem mais como targets. O antigo `world_compile` também foi removido para não
+manter uma segunda compilação de UWORLD em C++. `game`, `content_check` e
+`playtest_runner` permanecem nativos e não dependem do Studio, de Python ou de
+PySide6.

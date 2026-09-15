@@ -1,5 +1,8 @@
 # Legacy C++ Editor Retirement Implementation Plan
 
+> Historical note: the compatibility `world_compile` retained by this completed
+> plan was retired in the subsequent Python-authority cleanup.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Remove the obsolete C++ editor implementation while preserving the Python Content Studio and legitimate C++ runtime/tooling.

@@ -26,28 +26,33 @@ class NativeAuthoringRetirementTests(unittest.TestCase):
         self.assertNotIn("TEST_EDITOR_", self.linux_build)
         self.assertNotIn("src/editor", self.linux_build)
 
-    def test_cpp_map_compile_and_map_editor_targets_stay_retired(self) -> None:
+    def test_cpp_native_authoring_compilers_and_editor_stay_retired(self) -> None:
         self.assertFalse((REPOSITORY / "src" / "tools" / "map_compile.cpp").exists())
         self.assertFalse((REPOSITORY / "src" / "tools" / "map_compile_options.h").exists())
+        self.assertFalse((REPOSITORY / "src" / "tools" / "world_compile.cpp").exists())
+        self.assertFalse((REPOSITORY / "src" / "game" / "maps" / "authored_world.cpp").exists())
+        self.assertFalse((REPOSITORY / "src" / "game" / "maps" / "authored_world.h").exists())
         self.assertNotIn('/OUT:"build\\bin\\map_compile.exe"', self.windows_build)
         self.assertNotIn('/OUT:"build\\bin\\map_editor.exe"', self.windows_build)
+        self.assertNotIn('/OUT:"build\\bin\\world_compile.exe"', self.windows_build)
         self.assertNotIn("map_compile:", self.linux_build)
         self.assertNotIn("map_editor:", self.linux_build)
+        self.assertNotIn("world_compile:", self.linux_build)
 
     def test_builds_remove_stale_native_authoring_binaries(self) -> None:
         self.assertIn(
-            'del /q "build\\bin\\map_compile.exe" "build\\bin\\map_editor.exe"',
+            'del /q "build\\bin\\map_compile.exe" "build\\bin\\map_editor.exe" "build\\bin\\world_compile.exe"',
             self.windows_build,
         )
         self.assertLess(
             self.windows_build.index(
-                'del /q "build\\bin\\map_compile.exe" "build\\bin\\map_editor.exe"'
+                'del /q "build\\bin\\map_compile.exe" "build\\bin\\map_editor.exe" "build\\bin\\world_compile.exe"'
             ),
             self.windows_build.index("where cl.exe"),
         )
         self.assertIn("retire_legacy_authoring:", self.linux_build)
         self.assertIn(
-            "rm -f $(BUILD_DIR)/map_compile $(BUILD_DIR)/map_editor",
+            "rm -f $(BUILD_DIR)/map_compile $(BUILD_DIR)/map_editor $(BUILD_DIR)/world_compile",
             self.linux_build,
         )
         self.assertIn("all: retire_legacy_authoring", self.linux_build)

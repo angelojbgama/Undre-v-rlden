@@ -37,7 +37,8 @@ from tools.content_studio.services.toolchain import (
 from tools.content_studio.services.autosave import autosave
 from tools.content_studio.services.preferences import load_preferences, save_preferences
 from tools.content_studio.services.import_service import ImageDimensions, ImportService, TilesetImporter, TilesetImportRequest, calculate_grid
-from tools.content_studio.model.types import ContentReference, ToolResult
+from tools.content_studio.services.world_export_service import WorldExportService
+from tools.content_studio.model.types import ContentReference
 from tools.content_studio.model.types import ProjectPreferences
 
 
@@ -603,16 +604,10 @@ class AuthoringInfrastructureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             TilesetImporter()._validate_request(TilesetImportRequest(Path("tileset.png"), "tileset.spaced", spacing=1))
 
-    def test_playtest_compiles_world_but_launches_active_map(self) -> None:
+    def test_playtest_exports_world_but_launches_active_map(self) -> None:
         class FakeToolchain:
             def __init__(self) -> None:
                 self.launched: Path | None = None
-
-            def compile_world(self, source: Path, output: Path, content_root: Path) -> tuple[ToolResult, list[object]]:
-                del source, content_root
-                output.mkdir(parents=True, exist_ok=True)
-                (output / "map.active.dmap").write_bytes(b"dmap")
-                return ToolResult(0, "PASS", ""), []
 
             def launch_playtest(self, map_path: Path, content_root: Path, asset_root: Path | None, map_root: Path):
                 del content_root, asset_root, map_root
@@ -638,6 +633,22 @@ class AuthoringInfrastructureTests(unittest.TestCase):
             self.assertIsNotNone(service.toolchain.launched)  # type: ignore[attr-defined]
             self.assertIn("map.active", service.toolchain.launched.name)  # type: ignore[union-attr, attr-defined]
             service.stop()
+
+    def test_world_export_service_writes_every_project_map_with_python(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = ContentWorkspace.new(root / "content")
+            project = WorldProject.new("map.first", 2, 2)
+            project.add_map(MapDocument.new("map.second", 2, 2))
+
+            result, diagnostics = WorldExportService().export(
+                project, root / "maps", workspace)
+
+            self.assertTrue(result.ok, diagnostics)
+            self.assertEqual(
+                ["map.first.dmap", "map.second.dmap"],
+                sorted(path.name for path in (root / "maps").glob("*.dmap")),
+            )
 
 
 class ToolchainResolutionTests(unittest.TestCase):
@@ -671,11 +682,9 @@ class ToolchainResolutionTests(unittest.TestCase):
 class CppCompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
         content_check = find_cpp_tool(REPOSITORY, "content_check")
-        world_compile = find_cpp_tool(REPOSITORY, "world_compile")
         missing = [
             name for name, path in (
                 ("content_check", content_check),
-                ("world_compile", world_compile),
             )
             if path is None
         ]
@@ -685,13 +694,10 @@ class CppCompatibilityTests(unittest.TestCase):
                 + ", ".join(missing)
             )
         assert content_check is not None
-        assert world_compile is not None
         self.content_check = content_check
-        self.world_compile = world_compile
 
-    def test_python_round_trip_is_accepted_by_cpp_tools(self) -> None:
+    def test_python_content_round_trip_is_accepted_by_cpp_validator(self) -> None:
         content_source = FIXTURES / "phase16-content-v4" / "content.json"
-        map_source = FIXTURES / "phase16-map-v3.umap"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             content = ContentWorkspace.open(content_source.parent)
@@ -699,15 +705,8 @@ class CppCompatibilityTests(unittest.TestCase):
             copied_content = root / "content"
             copied_content.mkdir()
             (copied_content / "content.json").write_text(encode_json(content.files[0].data), encoding="utf-8")
-            copied_map = root / "map.umap"
-            document, diagnostics = MapDocument.open(map_source)
-            self.assertIsNotNone(document)
-            self.assertFalse([issue for issue in diagnostics if issue.is_error])
-            document.save(copied_map)  # type: ignore[union-attr]
             validation = subprocess.run([str(self.content_check), str(copied_content)], capture_output=True, text=True, check=False)
             self.assertEqual(0, validation.returncode, validation.stderr)
-            write_dmap(root / "map.dmap", document.data)  # type: ignore[union-attr]
-            self.assertTrue((root / "map.dmap").is_file())
 
     def test_python_scene_map_round_trip_is_exported_by_python_dmap_writer(self) -> None:
         source = json.loads((FIXTURES / "phase16-map-v3.umap").read_text(encoding="utf-8"))
@@ -718,20 +717,6 @@ class CppCompatibilityTests(unittest.TestCase):
             target = Path(directory) / "scene.dmap"
             write_dmap(target, source)
             self.assertTrue(target.is_file())
-
-    def test_multi_map_world_is_compiled_by_cpp_world_tool(self) -> None:
-        document, diagnostics = MapDocument.open(FIXTURES / "phase16-map-v3.umap")
-        self.assertIsNotNone(document)
-        self.assertFalse([issue for issue in diagnostics if issue.is_error])
-        project = WorldProject([document], document.map_id)  # type: ignore[arg-type]
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            world = root / "project.uworld"
-            world.write_text(json.dumps(project.authored_data(), ensure_ascii=False, indent=2), encoding="utf-8")
-            output = root / "dmap"
-            result = subprocess.run([str(self.world_compile), "--content", str(FIXTURES / "phase16-content-v4"), str(world), str(output)], capture_output=True, text=True, check=False)
-            self.assertEqual(0, result.returncode, result.stderr)
-            self.assertTrue(any(output.glob("*.dmap")))
 
     def test_invalid_authored_content_is_rejected_by_cpp_validator(self) -> None:
         result = subprocess.run(

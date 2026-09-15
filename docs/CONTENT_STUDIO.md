@@ -197,5 +197,5 @@ QT_QPA_PLATFORM=offscreen python -m unittest discover -s tools/content_studio/te
 
 O build C++ de produto não contém mais `map_compile`, `map_editor` ou
 `src/editor`; a exportação DMAP é responsabilidade do Content Studio Python.
-`game`, `content_check`, `playtest_runner` e `world_compile` permanecem nativos
+`game`, `content_check` e `playtest_runner` permanecem nativos
 e independentes de Python/PySide6.

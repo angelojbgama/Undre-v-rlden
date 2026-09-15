@@ -1,5 +1,8 @@
 # Legacy C++ Editor Retirement Design
 
+> Historical note: the compatibility `world_compile` retained by this design was
+> retired in the subsequent Python-authority cleanup.
+
 ## Goal
 
 Make the Python/PySide6 Content Studio the only implementation of map and

@@ -14,26 +14,24 @@ COMMON_OBJECTS := $(COMMON_SOURCES:src/%.cpp=$(OBJ_DIR)/common/%.o)
 GAME_OBJECT := $(OBJ_DIR)/game.o
 RUNNER_OBJECT := $(OBJ_DIR)/tools/playtest_runner.o
 CONTENT_CHECK_OBJECT := $(OBJ_DIR)/tools/content_check.o
-WORLD_COMPILE_OBJECT := $(OBJ_DIR)/tools/world_compile.o
 TEST_OBJECT := $(OBJ_DIR)/tests/test_main.o
 LINUX_OBJECTS := $(patsubst src/%.cpp,$(OBJ_DIR)/linux/%.o,$(shell find src/engine/platform/linux -name '*.cpp' -print))
 
-ALL_OBJECTS := $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT) $(CONTENT_CHECK_OBJECT) $(WORLD_COMPILE_OBJECT) $(TEST_OBJECT) $(LINUX_OBJECTS)
+ALL_OBJECTS := $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT) $(CONTENT_CHECK_OBJECT) $(TEST_OBJECT) $(LINUX_OBJECTS)
 DEP_FILES := $(ALL_OBJECTS:.o=.d)
 
-.PHONY: all build tests playtest game content_check world_compile retire_legacy_authoring clean
+.PHONY: all build tests playtest game content_check retire_legacy_authoring clean
 
-all: retire_legacy_authoring tests playtest game content_check world_compile
+all: retire_legacy_authoring tests playtest game content_check
 build: all
 
 retire_legacy_authoring:
-	rm -f $(BUILD_DIR)/map_compile $(BUILD_DIR)/map_editor
+	rm -f $(BUILD_DIR)/map_compile $(BUILD_DIR)/map_editor $(BUILD_DIR)/world_compile
 
 tests: $(BUILD_DIR)/tests
 playtest: $(BUILD_DIR)/playtest_runner
 game: $(BUILD_DIR)/game
 content_check: $(BUILD_DIR)/content_check
-world_compile: $(BUILD_DIR)/world_compile
 
 $(BUILD_DIR)/tests: $(COMMON_OBJECTS) $(TEST_OBJECT)
 	@mkdir -p $(@D)
@@ -51,10 +49,6 @@ $(BUILD_DIR)/content_check: $(COMMON_OBJECTS) $(CONTENT_CHECK_OBJECT)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(BUILD_DIR)/world_compile: $(COMMON_OBJECTS) $(WORLD_COMPILE_OBJECT)
-	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
 $(OBJ_DIR)/common/%.o: src/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
@@ -68,10 +62,6 @@ $(OBJ_DIR)/tools/playtest_runner.o: src/tools/playtest_runner.cpp
 	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(OBJ_DIR)/tools/content_check.o: src/tools/content_check.cpp
-	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
-
-$(OBJ_DIR)/tools/world_compile.o: src/tools/world_compile.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
