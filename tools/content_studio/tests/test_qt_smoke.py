@@ -860,5 +860,416 @@ class QtSmokeTests(unittest.TestCase):
             )
 
 
+
+    def test_item_library_authors_searches_and_places_generated_pickup(self) -> None:
+        try:
+            from tools.content_studio.ui.item_library_widget import (
+                ItemDefinitionDialog,
+                ItemLibraryWidget,
+            )
+        except ModuleNotFoundError as error:
+            raise AssertionError(
+                "ItemLibraryWidget ainda nao foi implementado"
+            ) from error
+
+        from tools.content_studio.services.localization import (
+            Translator,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["visualImages"] = [{
+                "id": "image.item.base",
+                "root": "contentWorkspace",
+                "relativePath": "item.png",
+            }]
+
+            content["staticSprites"] = [{
+                "id": "visual.item.base",
+                "imageId": "image.item.base",
+                "source": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                "anchor": {
+                    "x": 8,
+                    "y": 15,
+                },
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            image = QImage(
+                16,
+                16,
+                QImage.Format.Format_ARGB32,
+            )
+
+            image.fill(
+                QColor(
+                    100,
+                    140,
+                    190,
+                )
+            )
+
+            self.assertTrue(
+                image.save(
+                    str(root / "item.png")
+                )
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            translator = Translator(
+                "pt-BR"
+            )
+
+            dialog = ItemDefinitionDialog(
+                workspace,
+                root,
+                translator,
+            )
+
+            self.addCleanup(
+                dialog.close
+            )
+
+            self.assertEqual(
+                66,
+                dialog.stack_limit.value(),
+            )
+
+            dialog.name.setText(
+                "Armadura de Teste"
+            )
+
+            dialog.item_id.setText(
+                "item.armor_test"
+            )
+
+            dialog.set_visual_id(
+                "visual.item.base"
+            )
+
+            equipment_index = dialog.category.findData(
+                "equipment"
+            )
+
+            self.assertGreaterEqual(
+                equipment_index,
+                0,
+            )
+
+            dialog.category.setCurrentIndex(
+                equipment_index
+            )
+
+            self.assertEqual(
+                1,
+                dialog.stack_limit.value(),
+            )
+
+            self.assertFalse(
+                dialog.stack_limit.isEnabled()
+            )
+
+            created = dialog.commit()
+
+            self.assertEqual(
+                "item.armor_test",
+                created.definition_id,
+            )
+
+            self.assertEqual(
+                1,
+                created.data["stackLimit"],
+            )
+
+            widget = ItemLibraryWidget(
+                workspace,
+                root,
+                translator,
+            )
+
+            self.addCleanup(
+                widget.close
+            )
+
+            self.assertEqual(
+                1,
+                widget.items.count(),
+            )
+
+            self.assertIn(
+                "Armadura de Teste",
+                widget.items.item(0).text(),
+            )
+
+            self.assertIn(
+                "item.armor_test",
+                widget.items.item(0).text(),
+            )
+
+            widget.search.setText(
+                "Armadura"
+            )
+
+            self.assertEqual(
+                1,
+                widget.items.count(),
+            )
+
+            widget.search.clear()
+
+            placements = []
+
+            widget.place_requested.connect(
+                lambda category, definition_id:
+                placements.append(
+                    (
+                        category,
+                        definition_id,
+                    )
+                )
+            )
+
+            widget.place_current()
+
+            self.assertEqual(
+                [
+                    (
+                        "pickups",
+                        "pickup.armor_test",
+                    )
+                ],
+                placements,
+            )
+
+            payload = widget._drag_payload(
+                [
+                    widget.items.currentItem()
+                ]
+            )
+
+            self.assertIsNotNone(
+                payload
+            )
+
+            self.assertEqual(
+                "pickups",
+                payload.category,
+            )
+
+            self.assertEqual(
+                "pickup.armor_test",
+                payload.definition_id,
+            )
+
+            self.assertTrue(
+                widget.delete_current(
+                    confirm=False
+                )
+            )
+
+            self.assertIsNone(
+                workspace.find(
+                    "items",
+                    "item.armor_test",
+                )
+            )
+
+            self.assertIsNone(
+                workspace.find(
+                    "pickups",
+                    "pickup.armor_test",
+                )
+            )
+
+    def test_main_window_exposes_items_section_and_activates_pickup_placement(self) -> None:
+        try:
+            from tools.content_studio.ui.item_library_widget import (
+                ItemLibraryWidget,
+            )
+        except ModuleNotFoundError as error:
+            raise AssertionError(
+                "ItemLibraryWidget ainda nao foi implementado"
+            ) from error
+
+        from tools.content_studio.services.item_authoring_service import (
+            ItemAuthoringService,
+        )
+        from tools.content_studio.ui.main_window import (
+            MainWindow,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["visualImages"] = [{
+                "id": "image.item.potion",
+                "root": "contentWorkspace",
+                "relativePath": "potion.png",
+            }]
+
+            content["staticSprites"] = [{
+                "id": "visual.item.potion",
+                "imageId": "image.item.potion",
+                "source": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                "anchor": {
+                    "x": 8,
+                    "y": 15,
+                },
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            image = QImage(
+                16,
+                16,
+                QImage.Format.Format_ARGB32,
+            )
+
+            image.fill(
+                QColor(
+                    180,
+                    60,
+                    80,
+                )
+            )
+
+            self.assertTrue(
+                image.save(
+                    str(root / "potion.png")
+                )
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            ItemAuthoringService(
+                workspace
+            ).create_item(
+                "Pocao",
+                "item.potion",
+                "visual.item.potion",
+                "consumable",
+            )
+
+            # The MainWindow close path correctly asks about unsaved content.
+            # Persist this temporary fixture first so offscreen cleanup never
+            # opens the interactive Unsaved Changes dialog.
+            workspace.save_all()
+
+            project = WorldProject.new()
+
+            window = MainWindow(
+                project,
+                workspace,
+                asset_root=root,
+            )
+
+            self.addCleanup(
+                window.close
+            )
+
+            self.assertIsInstance(
+                window.item_library,
+                ItemLibraryWidget,
+            )
+
+            window.mode_tabs.setCurrentIndex(
+                0
+            )
+
+            labels = [
+                window._section_tabs.tabText(index)
+                for index in range(
+                    window._section_tabs.count()
+                )
+            ]
+
+            item_label = window.translator(
+                "items_tab"
+            )
+
+            self.assertIn(
+                item_label,
+                labels,
+            )
+
+            item_index = labels.index(
+                item_label
+            )
+
+            window._section_tabs.setCurrentIndex(
+                item_index
+            )
+
+            self.assertIs(
+                window._map_panels.currentWidget(),
+                window.item_library,
+            )
+
+            self.assertEqual(
+                1,
+                window.item_library.items.count(),
+            )
+
+            window.item_library.place_current()
+
+            self.assertEqual(
+                "pickups",
+                window.map_canvas.selected_entity_category,
+            )
+
+            self.assertEqual(
+                "pickup.potion",
+                window.map_canvas.selected_definition_id,
+            )
+
+            self.assertEqual(
+                "entity",
+                window.map_canvas.tool,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

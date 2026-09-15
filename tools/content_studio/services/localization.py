@@ -208,3 +208,87 @@ for _english_key in ("en-US", "en"):
             "occlusion_editor_title": "Depth / Occlusion Editor",
             "mask_tool_depth": "Depth point",
         })
+
+
+# item-authoring-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "items_tab": "Itens",
+    "search_items": "Procurar itens",
+    "create_item": "Novo Item...",
+    "configure_item": "Editar Item...",
+    "delete_item": "Excluir Item",
+    "place_item": "Colocar no mapa",
+    "item_name": "Nome",
+    "item_id": "ID do item",
+    "item_visual": "Sprite / visual",
+    "item_visual_none": "Nenhum visual selecionado",
+    "item_choose_visual": "Selecionar...",
+    "item_category": "Categoria",
+    "item_stack_limit": "Stack máximo",
+    "item_category_consumable": "Consumível",
+    "item_category_equipment": "Equipamento",
+    "item_category_key": "Chave",
+    "item_category_misc": "Diversos",
+    "item_creation_help": (
+        "Todo Item gera automaticamente um Pickup correspondente. "
+        "Equipamentos sempre usam stack 1. Itens acumuláveis começam em 66."
+    ),
+    "item_id_before_visual": (
+        "Defina primeiro um ID no formato item.* antes de selecionar o visual."
+    ),
+    "item_needs_visual": (
+        "Importe ou crie primeiro um StaticSprite ou uma animação."
+    ),
+    "item_created": "Item criado",
+    "item_configured": "Item atualizado",
+    "item_deleted": "Item excluído",
+    "item_delete_confirm": "Excluir o Item {item} e seu Pickup gerado?",
+    "item_delete_map_usage": (
+        "O Item ou seu Pickup ainda é usado no(s) mapa(s): {maps}"
+    ),
+    "item_missing_pickup": "Pickup do Item não encontrado",
+    "item_stack_summary": "Stack máximo: {count}",
+    "item_pickup_summary": "Pickup: {pickup}",
+    "no_items": "Nenhum Item criado",
+})
+
+TRANSLATIONS["en-US"].update({
+    "items_tab": "Items",
+    "search_items": "Search items",
+    "create_item": "New Item...",
+    "configure_item": "Edit Item...",
+    "delete_item": "Delete Item",
+    "place_item": "Place in map",
+    "item_name": "Name",
+    "item_id": "Item ID",
+    "item_visual": "Sprite / visual",
+    "item_visual_none": "No visual selected",
+    "item_choose_visual": "Select...",
+    "item_category": "Category",
+    "item_stack_limit": "Maximum stack",
+    "item_category_consumable": "Consumable",
+    "item_category_equipment": "Equipment",
+    "item_category_key": "Key",
+    "item_category_misc": "Misc",
+    "item_creation_help": (
+        "Every Item automatically owns a matching Pickup. "
+        "Equipment always uses stack 1. Stackable Items start at 66."
+    ),
+    "item_id_before_visual": (
+        "Set an item.* ID before selecting the visual."
+    ),
+    "item_needs_visual": (
+        "Import or create a StaticSprite or animation first."
+    ),
+    "item_created": "Item created",
+    "item_configured": "Item updated",
+    "item_deleted": "Item deleted",
+    "item_delete_confirm": "Delete Item {item} and its generated Pickup?",
+    "item_delete_map_usage": (
+        "The Item or its Pickup is still used in map(s): {maps}"
+    ),
+    "item_missing_pickup": "Item Pickup was not found",
+    "item_stack_summary": "Maximum stack: {count}",
+    "item_pickup_summary": "Pickup: {pickup}",
+    "no_items": "No Items created",
+})
