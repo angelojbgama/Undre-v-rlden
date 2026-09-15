@@ -3882,6 +3882,52 @@ void testPhase8PersistentMapsAndSave() {
     expect(runtime.world->objects()[0].persistentId==simulation::PersistentInstanceId{2} &&
                runtime.world->objects()[0].instance.handle(),
            "runtime entities keep persistent identity separate from generated EntityHandle");
+
+    auto keyedRuntimeMap = keyedDoorMap;
+
+    keyedRuntimeMap.objects.back()
+        .door->consumeItem = true;
+
+    const auto keyedRuntime = builder.build(
+        keyedRuntimeMap,
+        simulation::SpawnId{"entry.start"});
+
+    expect(
+        static_cast<bool>(keyedRuntime),
+        "runtime builder accepts authored per-instance door configuration");
+
+    if (keyedRuntime) {
+        const auto* runtimeDoor =
+            keyedRuntime.world->door(
+                simulation::PersistentInstanceId{6});
+
+        expect(
+            runtimeDoor != nullptr &&
+            runtimeDoor->initialState ==
+                gameplay::DoorState::locked &&
+            runtimeDoor->state ==
+                gameplay::DoorState::locked &&
+            runtimeDoor->requiredItemId ==
+                simulation::DefinitionId{"item.key.blue"} &&
+            runtimeDoor->consumeItem,
+            "RuntimeDoor carries effective per-instance door configuration");
+
+        const auto runtimeObject =
+            std::find_if(
+                keyedRuntime.world->objects().begin(),
+                keyedRuntime.world->objects().end(),
+                [](const auto& candidate) {
+                    return candidate.persistentId ==
+                        simulation::PersistentInstanceId{6};
+                });
+
+        expect(
+            runtimeObject !=
+                    keyedRuntime.world->objects().end() &&
+            runtimeObject->instance.doorState() ==
+                gameplay::DoorState::locked,
+            "runtime object instance starts in authored door state");
+    }
     expect(!builder.build(decoded.data,simulation::SpawnId{"missing"}),
            "runtime builder fails clearly instead of silently spawning at zero");
 

@@ -78,11 +78,27 @@ bool RuntimeWorld::setDoorState(simulation::PersistentInstanceId id,
     return true;
 }
 
+const RuntimeDoor* RuntimeWorld::door(
+    simulation::PersistentInstanceId id) const noexcept {
+    const auto found = std::find_if(
+        doors_.begin(),
+        doors_.end(),
+        [&](const RuntimeDoor& candidate) {
+            return candidate.id == id;
+        });
+
+    return found == doors_.end()
+        ? nullptr
+        : &*found;
+}
+
 std::optional<gameplay::DoorState> RuntimeWorld::doorState(
     simulation::PersistentInstanceId id) const noexcept {
-    const auto found = std::find_if(doors_.begin(), doors_.end(),
-        [&](const RuntimeDoor& door) { return door.id == id; });
-    return found == doors_.end() ? std::nullopt : std::optional{found->state};
+    const auto* runtimeDoor = door(id);
+
+    return runtimeDoor == nullptr
+        ? std::nullopt
+        : std::optional{runtimeDoor->state};
 }
 
 bool RuntimeWorld::interactDoor(simulation::PersistentInstanceId id) noexcept {
@@ -259,12 +275,62 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                                        placement.initialContents)});
         }
         for (const auto& placement : data.objects) {
-            const auto* definition = catalogs_.objects ? catalogs_.objects->find(placement.definitionId) : nullptr;
-            if (!definition || !definition->door) continue;
-            // New authored collision masks supersede the legacy tile-cell door blocker.
-            // Old content without a collision component keeps the previous behaviour.
-            if (definition->collision || !definition->door->hasBlockingBounds) {
-                result->doors_.push_back({placement.id, definition->door->initialState, {}});
+            const auto* definition =
+                catalogs_.objects
+                    ? catalogs_.objects->find(
+                        placement.definitionId)
+                    : nullptr;
+
+            if (!definition || !definition->door) {
+                continue;
+            }
+
+            const auto initialState =
+                placement.door
+                    ? placement.door->initialState
+                    : definition->door->initialState;
+
+            const auto requiredItemId =
+                placement.door
+                    ? placement.door->requiredItemId
+                    : std::optional<simulation::DefinitionId>{};
+
+            const bool consumeItem =
+                placement.door &&
+                placement.door->consumeItem;
+
+            const auto runtimeObject =
+                std::find_if(
+                    result->objects_.begin(),
+                    result->objects_.end(),
+                    [&](const PersistentObject& candidate) {
+                        return candidate.persistentId ==
+                            placement.id;
+                    });
+
+            if (runtimeObject == result->objects_.end()) {
+                throw std::logic_error(
+                    "runtime door object is unavailable");
+            }
+
+            static_cast<void>(
+                runtimeObject->instance.setDoorState(
+                    initialState));
+
+            // New authored collision masks supersede the legacy
+            // tile-cell door blocker. Old content without a
+            // collision component keeps the previous behaviour.
+            if (definition->collision ||
+                !definition->door->hasBlockingBounds) {
+                result->doors_.push_back({
+                    placement.id,
+                    initialState,
+                    initialState,
+                    requiredItemId,
+                    consumeItem,
+                    {}
+                });
+
                 continue;
             }
             const auto bounds = definition->door->blockingBounds;
@@ -281,7 +347,14 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                 lastY >= static_cast<std::int64_t>(data.height)) {
                 throw std::invalid_argument("door blocking bounds are outside the map");
             }
-            RuntimeDoor door{placement.id, definition->door->initialState, {}};
+            RuntimeDoor door{
+                placement.id,
+                initialState,
+                initialState,
+                requiredItemId,
+                consumeItem,
+                {}
+            };
             for (auto y = firstY; y <= lastY; ++y) {
                 for (auto x = firstX; x <= lastX; ++x) {
                     if (std::any_of(result->doors_.begin(), result->doors_.end(),

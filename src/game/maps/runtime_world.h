@@ -47,7 +47,10 @@ struct RuntimeDoorCell final {
 };
 struct RuntimeDoor final {
     simulation::PersistentInstanceId id{};
+    gameplay::DoorState initialState{gameplay::DoorState::closed};
     gameplay::DoorState state{gameplay::DoorState::closed};
+    std::optional<simulation::DefinitionId> requiredItemId{};
+    bool consumeItem{};
     std::vector<RuntimeDoorCell> cells;
 };
 
@@ -83,6 +86,8 @@ public:
     [[nodiscard]] const std::vector<PersistentPickup>& pickups() const noexcept { return pickups_; }
     [[nodiscard]] bool setDoorState(simulation::PersistentInstanceId id,
                                      gameplay::DoorState state) noexcept;
+    [[nodiscard]] const RuntimeDoor* door(
+        simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] std::optional<gameplay::DoorState> doorState(
         simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] bool interactDoor(simulation::PersistentInstanceId id) noexcept;
