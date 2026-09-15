@@ -244,8 +244,13 @@ private:
 int run(platform::Platform& platform, const GameLaunchOptions& options) {
     render::Framebuffer framebuffer(core::GameMetrics::logicalWidth,
                                     core::GameMetrics::logicalHeight);
+    platform.log(platform::LogLevel::info, "startup: game run begin");
     const auto executableDirectory = platform.executableDirectory();
+    platform.log(platform::LogLevel::info,
+                 "startup: executable directory=" + executableDirectory.string());
+    platform.log(platform::LogLevel::info, "startup: resolving asset root");
     const auto assetRoot = options.assetRoot.value_or(findLicensedAssetRoot(executableDirectory));
+    platform.log(platform::LogLevel::info, "startup: asset root=" + assetRoot.string());
     content::ContentSourceSelection selection;
     if (options.contentRoot) {
         selection.kind = content::ContentSourceKind::workspaceDirectory;
@@ -254,6 +259,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         selection.kind = content::ContentSourceKind::workspaceDirectory;
         selection.workspaceRoot = *projectContent;
     }
+    platform.log(platform::LogLevel::info, "startup: loading content source");
     const auto source = content::loadContentSource(selection);
     if (!source) {
         for (const auto& diagnostic : source.diagnostics) {
@@ -262,6 +268,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         }
         return 1;
     }
+    platform.log(platform::LogLevel::info, "startup: content source loaded");
     if (source.content->sourceKind == content::ContentSourceKind::builtin) {
         platform.log(platform::LogLevel::info, "content source: builtin");
     } else {
@@ -270,6 +277,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
                      source.content->sourceRoot.string() + " files=" +
                      std::to_string(source.content->sourceFileCount));
     }
+    platform.log(platform::LogLevel::info, "startup: validating runtime requirements");
     const auto runtimeRequirements =
         content::validateCurrentRuntimeContentRequirements(source.content->registry);
     if (!runtimeRequirements.empty()) {
@@ -279,11 +287,14 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         }
         return 1;
     }
+    platform.log(platform::LogLevel::info, "startup: runtime requirements passed");
+    platform.log(platform::LogLevel::info, "startup: constructing game runtime");
     GameRuntime runtime(platform.imageDecoder(),
                     assetRoot, executableDirectory, std::move(source.content->registry), options,
                     source.content->sourceKind == content::ContentSourceKind::workspaceDirectory
                         ? std::optional<std::filesystem::path>{source.content->sourceRoot}
                         : std::nullopt);
+    platform.log(platform::LogLevel::info, "startup: game runtime constructed");
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 
     std::uint64_t tickCount = 0;

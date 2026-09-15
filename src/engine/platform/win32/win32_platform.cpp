@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -49,6 +50,8 @@ public:
     }
 
     [[nodiscard]] bool initialize() {
+        initializeStartupLog();
+        log(LogLevel::info, "startup: platform initialization begin");
         if (!initializeDpiAwareness()) {
             log(LogLevel::warning, "DPI awareness was already configured or could not be changed");
         }
@@ -115,6 +118,7 @@ public:
         std::ostringstream message;
         message << "startup: client area " << clientWidth_ << 'x' << clientHeight_;
         log(LogLevel::info, message.str());
+        log(LogLevel::info, "startup: platform initialized");
         return true;
     }
 
@@ -173,6 +177,10 @@ public:
         line.push_back('\n');
         OutputDebugStringA(line.c_str());
         std::clog << line;
+        if (startupLog_.is_open()) {
+            startupLog_ << line;
+            startupLog_.flush();
+        }
         if (level == LogLevel::error) {
             loggedErrors_.append(message);
             loggedErrors_.push_back('\n');
@@ -220,6 +228,21 @@ public:
     }
 
 private:
+    void initializeStartupLog() noexcept {
+        try {
+            const auto path = executableDirectory() / "game_startup.log";
+            startupLog_.open(path, std::ios::out | std::ios::trunc);
+            if (!startupLog_.is_open()) {
+                OutputDebugStringA("Could not open game_startup.log\n");
+                return;
+            }
+            startupLog_ << "[info] startup: persistent diagnostics initialized\n";
+            startupLog_.flush();
+        } catch (...) {
+            OutputDebugStringA("Could not initialize persistent startup diagnostics\n");
+        }
+    }
+
     [[nodiscard]] bool initializeDpiAwareness() const noexcept {
         if (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != FALSE) {
             return true;
@@ -230,6 +253,10 @@ private:
     void showFatalError(const wchar_t* message) const noexcept {
         OutputDebugStringW(message);
         OutputDebugStringW(L"\n");
+        if (startupLog_.is_open()) {
+            startupLog_ << "[error] startup: Win32 platform initialization failed\n";
+            startupLog_.flush();
+        }
         MessageBoxW(nullptr, message, L"Underworld initialization error", MB_OK | MB_ICONERROR);
     }
 
@@ -498,6 +525,7 @@ private:
     std::vector<std::uint8_t> dibPixels_{};
     int dibWidth_{};
     int dibHeight_{};
+    mutable std::ofstream startupLog_;
     mutable std::string loggedErrors_;
 };
 
@@ -522,9 +550,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         if (!platform.initialize()) {
             return 1;
         }
-        const int result = underworld::game::run(platform, *options);
-        if (result != 0) platform.showLoggedErrors();
-        return result;
+        try {
+            const int result = underworld::game::run(platform, *options);
+            if (result != 0) platform.showLoggedErrors();
+            return result;
+        } catch (const std::exception& exception) {
+            platform.log(underworld::platform::LogLevel::error,
+                         std::string("fatal runtime exception: ") + exception.what());
+            platform.showLoggedErrors();
+            return 1;
+        } catch (...) {
+            platform.log(underworld::platform::LogLevel::error,
+                         "Unknown fatal runtime exception.");
+            platform.showLoggedErrors();
+            return 1;
+        }
     } catch (const std::exception& exception) {
         OutputDebugStringA(exception.what());
         MessageBoxA(nullptr, exception.what(), "Underworld fatal error", MB_OK | MB_ICONERROR);

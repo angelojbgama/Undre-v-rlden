@@ -19,6 +19,16 @@ int main(int argc, char** argv) {
         }
         return 1;
     }
+    const auto runtimeRequirements =
+        underworld::game::content::validateCurrentRuntimeContentRequirements(
+            result.content->registry);
+    if (!runtimeRequirements.empty()) {
+        for (const auto& diagnostic : runtimeRequirements) {
+            std::cerr << underworld::game::content::formatContentWorkspaceDiagnostic(diagnostic)
+                      << '\n';
+        }
+        return 1;
+    }
     const auto& authored = result.content->authored;
     std::cout << "PASS\nfiles: " << result.content->sourceFileCount
               << "\ndefinitions: "
@@ -32,6 +42,7 @@ int main(int argc, char** argv) {
               + authored.stamps.size() + authored.presentationEffects.size()
               + authored.visualImages.size() + authored.staticSprites.size()
               + authored.animations.size() + authored.enemyVisuals.size()
-              + authored.objectVisuals.size() << '\n';
+              + authored.objectVisuals.size()
+              << "\nruntime requirements: PASS\n";
     return 0;
 }
