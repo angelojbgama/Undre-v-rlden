@@ -292,3 +292,43 @@ TRANSLATIONS["en-US"].update({
     "item_pickup_summary": "Pickup: {pickup}",
     "no_items": "No Items created",
 })
+
+
+# door-library-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "doors_tab": "Portas",
+    "search_doors": "Procurar portas",
+    "no_doors": "Nenhuma porta criada",
+    "door_placement_wall": "Encaixe: parede",
+    "door_span_summary": "Área de encaixe: {span} × {thickness} tiles",
+    "door_anchor_summary": "Âncora de encaixe: {anchor}",
+    "door_orientation_summary": "Orientação: {orientations}",
+    "door_orientation_horizontal": "horizontal",
+    "door_orientation_vertical": "vertical",
+    "door_animation_summary": "Animação: {animation}",
+    "door_library_help": (
+        "Portas continuam sendo WorldObjects com capability door. "
+        "Esta biblioteca mostra o encaixe na parede sem usar o pivot "
+        "genérico dos objetos. A colocação no mapa usa uma operação "
+        "especializada de parede."
+    ),
+})
+
+TRANSLATIONS["en-US"].update({
+    "doors_tab": "Doors",
+    "search_doors": "Search doors",
+    "no_doors": "No doors created",
+    "door_placement_wall": "Placement: wall",
+    "door_span_summary": "Placement footprint: {span} × {thickness} tiles",
+    "door_anchor_summary": "Placement anchor: {anchor}",
+    "door_orientation_summary": "Orientation: {orientations}",
+    "door_orientation_horizontal": "horizontal",
+    "door_orientation_vertical": "vertical",
+    "door_animation_summary": "Animation: {animation}",
+    "door_library_help": (
+        "Doors remain WorldObjects with the door capability. "
+        "This library exposes wall placement metadata instead of using "
+        "the generic object pivot. Map placement uses a specialized "
+        "wall operation."
+    ),
+})

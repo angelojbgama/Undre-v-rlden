@@ -32,6 +32,7 @@ from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel,
 from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .object_library_widget import ObjectLibraryWidget
+from .door_library_widget import DoorLibraryWidget
 from .player_library_widget import PlayerLibraryWidget
 from .item_library_widget import ItemLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
@@ -175,6 +176,11 @@ class MainWindow(QMainWindow):
         self.object_library.place_requested.connect(self._place_definition)
         self.object_library.changed.connect(self._content_changed)
         self.object_library.status_changed.connect(self.set_status)
+        self.door_library = DoorLibraryWidget(
+            self.workspace, self.asset_root,
+            self.project.active_map.tile_size, self.translator)
+        self.door_library.selected.connect(self._entity_selected)
+        self.door_library.status_changed.connect(self.set_status)
         self.player_library = PlayerLibraryWidget(
             self.workspace, self.asset_root, self.translator)
         self.player_library.changed.connect(self._content_changed)
@@ -228,6 +234,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.tile_palette)
         self._map_panels.addWidget(self.spritesheet_library)
         self._map_panels.addWidget(self.object_library)
+        self._map_panels.addWidget(self.door_library)
         self._map_panels.addWidget(self.player_library)
         self._map_panels.addWidget(self.item_library)
         self._map_panels.addWidget(self.smart_terrain)
@@ -318,7 +325,7 @@ class MainWindow(QMainWindow):
         if mode_index == 0:
             return tuple(self.translator(key) for key in (
                 "maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-                "players_tab", "items_tab", "smart_terrain", "semantic_editor",
+                "doors_tab", "players_tab", "items_tab", "smart_terrain", "semantic_editor",
                 "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
             ))
         return (self.translator("definitions"), self.translator("assets"))
@@ -369,6 +376,7 @@ class MainWindow(QMainWindow):
         self.tileset_library.retranslate(self.translator)
         self.spritesheet_library.retranslate(self.translator)
         self.object_library.retranslate(self.translator)
+        self.door_library.retranslate(self.translator)
         self.player_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
@@ -400,6 +408,9 @@ class MainWindow(QMainWindow):
         self.tileset_library.set_map_tile_size(self.project.active_map.tile_size)
         self.spritesheet_library.set_context(self.workspace, self.asset_root)
         self.object_library.set_context(self.workspace, self.asset_root)
+        self.door_library.set_context(
+            self.workspace, self.asset_root,
+            self.project.active_map.tile_size)
         self.player_library.set_context(self.workspace, self.asset_root)
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)
@@ -422,6 +433,7 @@ class MainWindow(QMainWindow):
         document = self.project.active_map
         self.map_canvas.set_context(document, self.workspace, self.asset_root)
         self.tileset_library.set_map_tile_size(document.tile_size)
+        self.door_library.set_map_tile_size(document.tile_size)
         self.layers.set_document(document)
         self.scene_editor.set_document(document)
         for panel in self.map_collections.values():
