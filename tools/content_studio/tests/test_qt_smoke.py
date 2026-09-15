@@ -678,5 +678,187 @@ class QtSmokeTests(unittest.TestCase):
             self.assertTrue(dialog.windowTitle())
 
 
+
+    def test_item_visual_picker_lists_static_sprites_and_animation_frames(self) -> None:
+        from tools.content_studio.ui.item_visual_picker import (
+            ItemVisualPickerDialog,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["visualImages"] = [{
+                "id": "image.items",
+                "root": "gameAssets",
+                "relativePath": "items.png",
+            }]
+
+            content["staticSprites"] = [{
+                "id": "visual.item.existing",
+                "imageId": "image.items",
+                "source": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                "anchor": {
+                    "x": 8,
+                    "y": 15,
+                },
+            }]
+
+            content["animations"] = [{
+                "id": "animation.items",
+                "imageId": "image.items",
+                "loop": True,
+                "frames": [
+                    {
+                        "source": {
+                            "x": 16,
+                            "y": 0,
+                            "width": 16,
+                            "height": 16,
+                        },
+                        "anchor": {
+                            "x": 8,
+                            "y": 15,
+                        },
+                        "drawOffset": {
+                            "x": 0,
+                            "y": 0,
+                        },
+                        "durationTicks": 4,
+                        "markers": [],
+                    },
+                    {
+                        "source": {
+                            "x": 32,
+                            "y": 0,
+                            "width": 16,
+                            "height": 16,
+                        },
+                        "anchor": {
+                            "x": 7,
+                            "y": 14,
+                        },
+                        "drawOffset": {
+                            "x": 0,
+                            "y": 0,
+                        },
+                        "durationTicks": 4,
+                        "markers": [],
+                    },
+                ],
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            dialog = ItemVisualPickerDialog(
+                workspace,
+                "item.potion",
+            )
+
+            self.addCleanup(
+                dialog.deleteLater
+            )
+
+            self.assertEqual(
+                3,
+                dialog.visuals.count(),
+            )
+
+            entries = [
+                dialog.visuals.itemText(index)
+                for index in range(
+                    dialog.visuals.count()
+                )
+            ]
+
+            self.assertTrue(
+                any(
+                    "visual.item.existing" in value
+                    for value in entries
+                )
+            )
+
+            self.assertTrue(
+                any(
+                    "animation.items #0" in value
+                    for value in entries
+                )
+            )
+
+            self.assertTrue(
+                any(
+                    "animation.items #1" in value
+                    for value in entries
+                )
+            )
+
+            dialog.visuals.setCurrentIndex(
+                0
+            )
+
+            self.assertEqual(
+                "visual.item.existing",
+                dialog.commit_selection(),
+            )
+
+            frame_index = next(
+                index
+                for index in range(
+                    dialog.visuals.count()
+                )
+                if dialog.visuals.itemData(index)[0] == "animation"
+                and dialog.visuals.itemData(index)[2] == 1
+            )
+
+            dialog.visuals.setCurrentIndex(
+                frame_index
+            )
+
+            self.assertEqual(
+                "visual.item.potion",
+                dialog.commit_selection(),
+            )
+
+            created = workspace.find(
+                "staticSprites",
+                "visual.item.potion",
+            )
+
+            self.assertIsNotNone(
+                created
+            )
+
+            self.assertEqual(
+                {
+                    "x": 32,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                created.data["source"],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

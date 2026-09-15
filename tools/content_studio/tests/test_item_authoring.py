@@ -615,5 +615,291 @@ class ItemAuthoringServiceTests(unittest.TestCase):
             )
 
 
+
+class ItemVisualServiceTests(unittest.TestCase):
+    @staticmethod
+    def _service(workspace: ContentWorkspace):
+        try:
+            module = importlib.import_module(
+                "tools.content_studio.services.item_visual_service"
+            )
+        except ModuleNotFoundError as error:
+            raise AssertionError(
+                "ItemVisualService ainda nao foi implementado"
+            ) from error
+
+        return module.ItemVisualService(
+            workspace
+        )
+
+    @staticmethod
+    def _add_animation(
+        workspace: ContentWorkspace,
+    ) -> None:
+        workspace.create_definition_bundle(
+            "Create Animation",
+            [(
+                "animations",
+                "animation.item.sheet",
+                {
+                    "id": "animation.item.sheet",
+                    "imageId": "image.items",
+                    "loop": True,
+                    "frames": [
+                        {
+                            "source": {
+                                "x": 0,
+                                "y": 16,
+                                "width": 16,
+                                "height": 16,
+                            },
+                            "anchor": {
+                                "x": 8,
+                                "y": 15,
+                            },
+                            "drawOffset": {
+                                "x": 0,
+                                "y": 0,
+                            },
+                            "durationTicks": 4,
+                            "markers": [],
+                        },
+                        {
+                            "source": {
+                                "x": 16,
+                                "y": 16,
+                                "width": 16,
+                                "height": 16,
+                            },
+                            "anchor": {
+                                "x": 7,
+                                "y": 14,
+                            },
+                            "drawOffset": {
+                                "x": 0,
+                                "y": 0,
+                            },
+                            "durationTicks": 4,
+                            "markers": [],
+                        },
+                    ],
+                },
+            )],
+        )
+
+    def test_existing_static_sprite_is_reused_without_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            service = self._service(
+                workspace
+            )
+
+            before = workspace.snapshot()
+
+            selected = service.select_static_sprite(
+                "visual.item.a"
+            )
+
+            self.assertEqual(
+                "visual.item.a",
+                selected.definition_id,
+            )
+
+            self.assertEqual(
+                before,
+                workspace.snapshot(),
+            )
+
+    def test_animation_frame_creates_deterministic_static_sprite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            self._add_animation(
+                workspace
+            )
+
+            service = self._service(
+                workspace
+            )
+
+            created = service.materialize_animation_frame(
+                "item.life_potion",
+                "animation.item.sheet",
+                1,
+            )
+
+            self.assertEqual(
+                "visual.item.life_potion",
+                created.definition_id,
+            )
+
+            self.assertEqual(
+                "image.items",
+                created.data["imageId"],
+            )
+
+            self.assertEqual(
+                {
+                    "x": 16,
+                    "y": 16,
+                    "width": 16,
+                    "height": 16,
+                },
+                created.data["source"],
+            )
+
+            self.assertEqual(
+                {
+                    "x": 7,
+                    "y": 14,
+                },
+                created.data["anchor"],
+            )
+
+            self.assertNotIn(
+                "drawOffset",
+                created.data,
+            )
+
+            self.assertEqual(
+                1,
+                len(
+                    workspace.definitions(
+                        "visualImages"
+                    )
+                ),
+            )
+
+    def test_materializing_same_frame_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            self._add_animation(
+                workspace
+            )
+
+            service = self._service(
+                workspace
+            )
+
+            first = service.materialize_animation_frame(
+                "item.key.blue",
+                "animation.item.sheet",
+                0,
+            )
+
+            before = workspace.snapshot()
+
+            second = service.materialize_animation_frame(
+                "item.key.blue",
+                "animation.item.sheet",
+                0,
+            )
+
+            self.assertEqual(
+                first.definition_id,
+                second.definition_id,
+            )
+
+            self.assertEqual(
+                before,
+                workspace.snapshot(),
+            )
+
+    def test_materialization_rejects_conflicting_generated_visual(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            self._add_animation(
+                workspace
+            )
+
+            workspace.create_definition_bundle(
+                "Create Conflict",
+                [(
+                    "staticSprites",
+                    "visual.item.conflict",
+                    {
+                        "id": "visual.item.conflict",
+                        "imageId": "image.items",
+                        "source": {
+                            "x": 99,
+                            "y": 99,
+                            "width": 1,
+                            "height": 1,
+                        },
+                        "anchor": {
+                            "x": 0,
+                            "y": 0,
+                        },
+                    },
+                )],
+            )
+
+            service = self._service(
+                workspace
+            )
+
+            before = workspace.snapshot()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "conflict",
+            ):
+                service.materialize_animation_frame(
+                    "item.conflict",
+                    "animation.item.sheet",
+                    0,
+                )
+
+            self.assertEqual(
+                before,
+                workspace.snapshot(),
+            )
+
+    def test_animation_frame_choices_expose_valid_frames(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            self._add_animation(
+                workspace
+            )
+
+            service = self._service(
+                workspace
+            )
+
+            choices = service.animation_frames()
+
+            self.assertEqual(
+                2,
+                len(choices),
+            )
+
+            self.assertEqual(
+                (
+                    "animation.item.sheet",
+                    0,
+                    "image.items",
+                ),
+                (
+                    choices[0].animation_id,
+                    choices[0].frame_index,
+                    choices[0].image_id,
+                ),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
