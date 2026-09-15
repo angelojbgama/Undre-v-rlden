@@ -145,7 +145,7 @@ struct GameRuntime::State final {
     State(std::shared_ptr<const render::Image> tileImage,
           std::shared_ptr<const render::Image> fontImage,
           std::shared_ptr<const render::Image> impactImage,
-          presentation::RuntimeVisualContent runtimeVisualContent,
+          presentation::RuntimeVisualContent loadedRuntimeVisualContent,
           std::shared_ptr<const render::Image> hudHeartImage,
           std::shared_ptr<const render::Image> hudMoneyImage,
           GameContentRegistry contentDefinitions,
@@ -158,7 +158,7 @@ struct GameRuntime::State final {
           hudHeartImage(std::move(hudHeartImage)), hudMoneyImage(std::move(hudMoneyImage)),
           executableDirectory(std::move(executableDirectory)),
           content(std::move(contentDefinitions)),
-          runtimeVisualContent(std::move(runtimeVisualContent)),
+          runtimeVisualContent(std::move(loadedRuntimeVisualContent)),
           session(localPlayerId, selectedPlayerProgression(content), {},
                   selectedPlayerMovementConfig(content),
                   selectedPlayerHurtbox(content),
@@ -173,7 +173,7 @@ struct GameRuntime::State final {
             throw std::runtime_error("default PlayerDefinition is missing");
         }
         visual = std::make_unique<PlayerVisual>(
-            runtimeVisualContent.players.require(playerDefinition->visualSetId));
+            this->runtimeVisualContent.players.require(playerDefinition->visualSetId));
         effects = std::make_unique<EffectSystem>(makeImpactClip(impactSheet));
         enemyFactory = std::make_unique<gameplay::creatures::EnemyFactory>(
             enemyCatalog, behaviorCatalog, attackCatalog, projectileCatalog);
