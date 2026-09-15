@@ -61718,7 +61718,7 @@
     {
       "id": "animation.player.hero.sword.down",
       "imageId": "image.player_attacking",
-      "loop": true,
+      "loop": false,
       "frames": [
         {
           "source": {
@@ -61729,14 +61729,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": [],
           "masks": [
             {
@@ -68695,14 +68695,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
-            "y": 0
+            "y": 1
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": [],
           "masks": [
             {
@@ -75661,14 +75661,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
-            "y": 0
+            "y": -2
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": [],
           "masks": [
             {
@@ -82627,14 +82627,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
-            "y": 0
+            "y": -2
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": [],
           "masks": [
             {
@@ -89589,7 +89589,7 @@
     {
       "id": "animation.player.hero.sword.up",
       "imageId": "image.player_attacking",
-      "loop": true,
+      "loop": false,
       "frames": [
         {
           "source": {
@@ -89600,14 +89600,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89619,14 +89619,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
-            "y": 0
+            "y": -1
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89638,14 +89638,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": 1,
+            "y": 2
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89657,14 +89657,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
-            "x": 0,
-            "y": 0
+            "x": 1,
+            "y": 2
           },
           "flipX": false,
-          "durationTicks": 8,
+          "durationTicks": 5,
           "markers": []
         }
       ]
@@ -89672,7 +89672,7 @@
     {
       "id": "animation.player.hero.sword.left",
       "imageId": "image.player_attacking",
-      "loop": true,
+      "loop": false,
       "frames": [
         {
           "source": {
@@ -89683,14 +89683,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": false,
-          "durationTicks": 8,
+          "flipX": true,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89702,14 +89702,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
-            "x": 0,
+            "x": 1,
             "y": 0
           },
-          "flipX": false,
-          "durationTicks": 8,
+          "flipX": true,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89721,14 +89721,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": false,
-          "durationTicks": 8,
+          "flipX": true,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89740,14 +89740,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": false,
-          "durationTicks": 8,
+          "flipX": true,
+          "durationTicks": 5,
           "markers": []
         }
       ]
@@ -89755,7 +89755,7 @@
     {
       "id": "animation.player.hero.sword.right",
       "imageId": "image.player_attacking",
-      "loop": true,
+      "loop": false,
       "frames": [
         {
           "source": {
@@ -89766,14 +89766,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": true,
-          "durationTicks": 8,
+          "flipX": false,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89785,14 +89785,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
-            "x": 0,
+            "x": 1,
             "y": 0
           },
-          "flipX": true,
-          "durationTicks": 8,
+          "flipX": false,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89804,14 +89804,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": true,
-          "durationTicks": 8,
+          "flipX": false,
+          "durationTicks": 5,
           "markers": []
         },
         {
@@ -89823,14 +89823,14 @@
           },
           "anchor": {
             "x": 24,
-            "y": 47
+            "y": 31
           },
           "drawOffset": {
             "x": 0,
             "y": 0
           },
-          "flipX": true,
-          "durationTicks": 8,
+          "flipX": false,
+          "durationTicks": 5,
           "markers": []
         }
       ]

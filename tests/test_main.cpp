@@ -8650,6 +8650,228 @@ void testPhase17VisualContentBoundary() {
     std::filesystem::remove_all(workspaceRoot, fsError);
 }
 
+void testCollisionDepenetration() {
+    using underworld::world::AabbI;
+    using underworld::world::CollisionGrid;
+    using underworld::world::resolveSolidWorldOverlap;
+
+    CollisionGrid grid(16, 16);
+
+    const std::array<AabbI, 1> obstacle{{
+        {20, 20, 4, 4},
+    }};
+
+    std::array<AabbI, 1> clearBodies{{
+        {40, 40, 4, 4},
+    }};
+
+    const auto clear = resolveSolidWorldOverlap(
+        grid,
+        std::span<AabbI>{
+            clearBodies.data(),
+            clearBodies.size()},
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()},
+        8);
+
+    expect(
+        clear.resolved &&
+            clear.movedX == 0 &&
+            clear.movedY == 0 &&
+            clearBodies[0] == AabbI{40, 40, 4, 4},
+        "depenetration leaves an already-clear body unchanged");
+
+    std::array<AabbI, 1> horizontalBodies{{
+        {22, 20, 4, 4},
+    }};
+
+    const auto horizontal = resolveSolidWorldOverlap(
+        grid,
+        std::span<AabbI>{
+            horizontalBodies.data(),
+            horizontalBodies.size()},
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()},
+        8);
+
+    expect(
+        horizontal.resolved &&
+            horizontal.movedX == 2 &&
+            horizontal.movedY == 0 &&
+            horizontalBodies[0] == AabbI{24, 20, 4, 4},
+        "depenetration chooses the smallest horizontal correction");
+
+    std::array<AabbI, 2> compoundBodies{{
+        {22, 20, 2, 2},
+        {30, 20, 2, 2},
+    }};
+
+    const auto compound = resolveSolidWorldOverlap(
+        grid,
+        std::span<AabbI>{
+            compoundBodies.data(),
+            compoundBodies.size()},
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()},
+        8);
+
+    expect(
+        compound.resolved &&
+            compound.movedX == 2 &&
+            compound.movedY == 0 &&
+            compoundBodies[0] == AabbI{24, 20, 2, 2} &&
+            compoundBodies[1] == AabbI{32, 20, 2, 2},
+        "depenetration translates every compound region together");
+
+    std::array<AabbI, 1> limitedBodies{{
+        {22, 20, 4, 4},
+    }};
+
+    const auto unresolved = resolveSolidWorldOverlap(
+        grid,
+        std::span<AabbI>{
+            limitedBodies.data(),
+            limitedBodies.size()},
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()},
+        1);
+
+    expect(
+        !unresolved.resolved &&
+            unresolved.movedX == 0 &&
+            unresolved.movedY == 0 &&
+            limitedBodies[0] == AabbI{22, 20, 4, 4},
+        "depenetration does not teleport when correction limit is exceeded");
+}
+
+void testPlayerFacingDepenetration() {
+    namespace gameplay = underworld::game::gameplay;
+
+    using underworld::world::AabbI;
+    using underworld::world::CollisionGrid;
+
+    gameplay::ActorCollisionShapeDefinition compact;
+    compact.regions = {
+        {-4, -4, 8, 4},
+    };
+
+    gameplay::ActorCollisionShapeDefinition rightWide;
+    rightWide.regions = {
+        {-8, -4, 12, 4},
+    };
+
+    gameplay::DirectionalActorCollisionShapes shapes;
+
+    shapes.values = {
+        compact,
+        compact,
+        compact,
+        rightWide,
+    };
+
+    gameplay::PlayerMovementConfig config;
+    config.collisionShapes = shapes;
+    config.cornerSlideMaxProbePixels = 0;
+    config.facingDepenetrationMaxPixels = 8;
+
+    CollisionGrid openGrid(16, 16);
+
+    const std::array<AabbI, 1> obstacle{{
+        {32, 36, 4, 4},
+    }};
+
+    gameplay::Player corrected(
+        {0},
+        {0, 1},
+        {40, 40},
+        5,
+        config);
+
+    const auto initialRegions =
+        corrected.collisionRegions();
+
+    expect(
+        !underworld::world::querySolidWorld(
+            openGrid,
+            std::span<const AabbI>{
+                initialRegions.data(),
+                initialRegions.size()},
+            16,
+            std::span<const AabbI>{
+                obstacle.data(),
+                obstacle.size()}).collides,
+        "Player begins clear with original directional collision shape");
+
+    corrected.update(
+        movementCommand(1, 1, 0),
+        openGrid,
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()});
+
+    const auto correctedRegions =
+        corrected.collisionRegions();
+
+    expect(
+        corrected.facing() ==
+            gameplay::FacingDirection::right &&
+        corrected.feetPosition().x == 45 &&
+        !underworld::world::querySolidWorld(
+            openGrid,
+            std::span<const AabbI>{
+                correctedRegions.data(),
+                correctedRegions.size()},
+            16,
+            std::span<const AabbI>{
+                obstacle.data(),
+                obstacle.size()}).collides,
+        "Player turning into wider collision shape is minimally pushed clear");
+
+    auto limitedConfig = config;
+    limitedConfig.facingDepenetrationMaxPixels = 2;
+
+    gameplay::Player limited(
+        {1},
+        {0, 2},
+        {40, 40},
+        5,
+        limitedConfig);
+
+    limited.update(
+        movementCommand(2, 1, 0, {1}),
+        openGrid,
+        16,
+        std::span<const AabbI>{
+            obstacle.data(),
+            obstacle.size()});
+
+    const auto limitedRegions =
+        limited.collisionRegions();
+
+    expect(
+        limited.facing() ==
+            gameplay::FacingDirection::down &&
+        !underworld::world::querySolidWorld(
+            openGrid,
+            std::span<const AabbI>{
+                limitedRegions.data(),
+                limitedRegions.size()},
+            16,
+            std::span<const AabbI>{
+                obstacle.data(),
+                obstacle.size()}).collides,
+        "Player keeps previous facing when depenetration limit is insufficient");
+}
+
 int main() {
     try {
         testMetrics();
@@ -8668,6 +8890,7 @@ int main() {
         testCameraAndCulling();
         testCollisionGridAndAabb();
         testCollisionMovement();
+        testCollisionDepenetration();
         testInputAndPlayerCommands();
         testPlayerMovementAndFacing();
         testGameSessionCommandBoundary();
@@ -8676,6 +8899,7 @@ int main() {
         testPlayerHurtboxFrameProfileCompilation();
         testPlayerAuthoredBaseHurtboxRuntime();
         testPlayerAuthoredMovementCollision();
+        testPlayerFacingDepenetration();
         testAttackWorldObstructionClipping();
         testAnimationFrameMaskAuthoringRoundTrip();
         testPlayerSwordFrameMasksCompileToCollisionSamples();

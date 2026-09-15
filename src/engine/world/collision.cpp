@@ -390,4 +390,126 @@ MovementResult moveAgainstSolidWorldWithCornerSlide(
     return result;
 }
 
+OverlapResolution resolveSolidWorldOverlap(
+    const CollisionGrid& grid, std::span<AabbI> bodies, int tileSize,
+    std::span<const AabbI> staticObstacles, int maxCorrectionPixels) {
+
+    if (maxCorrectionPixels < 0) {
+        throw std::invalid_argument(
+            "overlap correction limit cannot be negative");
+    }
+
+    if (bodies.empty()) {
+        throw std::invalid_argument(
+            "overlap resolution requires at least one region");
+    }
+
+    if (!querySolidWorld(
+            grid,
+            std::span<const AabbI>{
+                bodies.data(),
+                bodies.size()},
+            tileSize,
+            staticObstacles).collides) {
+
+        return {true, 0, 0};
+    }
+
+    const auto tryCorrection = [&](int deltaX, int deltaY) {
+        std::vector<AabbI> candidate(
+            bodies.begin(),
+            bodies.end());
+
+        for (auto& body : candidate) {
+            if (addWouldOverflow(body.x, deltaX) ||
+                addWouldOverflow(body.y, deltaY)) {
+
+                return false;
+            }
+
+            body.x += deltaX;
+            body.y += deltaY;
+        }
+
+        if (querySolidWorld(
+                grid,
+                std::span<const AabbI>{
+                    candidate.data(),
+                    candidate.size()},
+                tileSize,
+                staticObstacles).collides) {
+
+            return false;
+        }
+
+        for (auto& body : bodies) {
+            body.x += deltaX;
+            body.y += deltaY;
+        }
+
+        return true;
+    };
+
+    for (
+        int distance = 1;
+        distance <= maxCorrectionPixels;
+        ++distance) {
+
+        if (tryCorrection(distance, 0)) {
+            return {true, distance, 0};
+        }
+
+        if (tryCorrection(-distance, 0)) {
+            return {true, -distance, 0};
+        }
+
+        if (tryCorrection(0, distance)) {
+            return {true, 0, distance};
+        }
+
+        if (tryCorrection(0, -distance)) {
+            return {true, 0, -distance};
+        }
+
+        for (
+            int horizontal = 1;
+            horizontal < distance;
+            ++horizontal) {
+
+            const int vertical =
+                distance - horizontal;
+
+            if (tryCorrection(horizontal, vertical)) {
+                return {
+                    true,
+                    horizontal,
+                    vertical};
+            }
+
+            if (tryCorrection(horizontal, -vertical)) {
+                return {
+                    true,
+                    horizontal,
+                    -vertical};
+            }
+
+            if (tryCorrection(-horizontal, vertical)) {
+                return {
+                    true,
+                    -horizontal,
+                    vertical};
+            }
+
+            if (tryCorrection(-horizontal, -vertical)) {
+                return {
+                    true,
+                    -horizontal,
+                    -vertical};
+            }
+        }
+    }
+
+    return {};
+}
+
 } // namespace underworld::world

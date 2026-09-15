@@ -28,6 +28,12 @@ struct MovementResult final {
     bool blockedY{};
 };
 
+struct OverlapResolution final {
+    bool resolved{};
+    int movedX{};
+    int movedY{};
+};
+
 struct CornerSlideConfig final {
     int maxProbeDistance{4};
     int correctionStep{1};
@@ -50,6 +56,9 @@ struct CornerSlideConfig final {
 [[nodiscard]] MovementResult moveAgainstSolidWorld(
     const CollisionGrid& grid, std::span<AabbI> bodies, int deltaX, int deltaY,
     int tileSize, std::span<const AabbI> staticObstacles);
+[[nodiscard]] OverlapResolution resolveSolidWorldOverlap(
+    const CollisionGrid& grid, std::span<AabbI> bodies, int tileSize,
+    std::span<const AabbI> staticObstacles, int maxCorrectionPixels);
 [[nodiscard]] MovementResult moveAgainstSolidWorldWithCornerSlide(
     const CollisionGrid& grid, AabbI& body, int deltaX, int deltaY, int tileSize,
     std::span<const AabbI> staticObstacles, CornerSlideConfig config = {});

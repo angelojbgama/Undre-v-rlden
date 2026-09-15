@@ -67,18 +67,38 @@ Player::Player(simulation::PlayerId id, simulation::EntityHandle entity,
          config_.cornerSlideCorrectionPixels <= 0)) {
         throw std::invalid_argument("player corner slide configuration is invalid");
     }
+
+    if (config_.facingDepenetrationMaxPixels < 0) {
+        throw std::invalid_argument(
+            "player facing depenetration limit cannot be negative");
+    }
 }
 
 core::WorldPointI Player::feetPosition() const {
     return {checkedPixelCoordinate(position_.x), checkedPixelCoordinate(position_.y)};
 }
 
-std::vector<world::AabbI> Player::collisionRegions() const {
-    const auto feet = feetPosition();
+std::vector<world::AabbI> Player::collisionRegionsFor(
+    FacingDirection facing,
+    core::WorldPointI feet) const {
+
     if (config_.collisionShapes) {
-        return config_.collisionShapes->forFacing(facing_).at(feet);
+        return config_.collisionShapes
+            ->forFacing(facing)
+            .at(feet);
     }
-    return {config_.footprints.forFacing(facing_).at(feet)};
+
+    return {
+        config_.footprints
+            .forFacing(facing)
+            .at(feet)
+    };
+}
+
+std::vector<world::AabbI> Player::collisionRegions() const {
+    return collisionRegionsFor(
+        facing_,
+        feetPosition());
 }
 
 world::AabbI Player::collisionBody() const {
@@ -162,15 +182,85 @@ void Player::update(const simulation::PlayerCommand& command,
     motionState_ = moveX == 0 && moveY == 0
                        ? PlayerMotionState::idle
                        : PlayerMotionState::walk;
+
     // Vertical intent has explicit priority for diagonal facing.
+    FacingDirection requestedFacing = facing_;
+
     if (moveY < 0) {
-        facing_ = FacingDirection::up;
+        requestedFacing = FacingDirection::up;
     } else if (moveY > 0) {
-        facing_ = FacingDirection::down;
+        requestedFacing = FacingDirection::down;
     } else if (moveX < 0) {
-        facing_ = FacingDirection::left;
+        requestedFacing = FacingDirection::left;
     } else if (moveX > 0) {
-        facing_ = FacingDirection::right;
+        requestedFacing = FacingDirection::right;
+    }
+
+    if (requestedFacing != facing_) {
+        const auto facingFeet = feetPosition();
+
+        const auto currentBodies = collisionRegionsFor(
+            facing_,
+            facingFeet);
+
+        const bool currentShapeCollides =
+            world::querySolidWorld(
+                collision,
+                std::span<const world::AabbI>{
+                    currentBodies.data(),
+                    currentBodies.size()},
+                tileSize,
+                staticObstacles).collides;
+
+        auto requestedBodies = collisionRegionsFor(
+            requestedFacing,
+            facingFeet);
+
+        const bool requestedShapeCollides =
+            world::querySolidWorld(
+                collision,
+                std::span<const world::AabbI>{
+                    requestedBodies.data(),
+                    requestedBodies.size()},
+                tileSize,
+                staticObstacles).collides;
+
+        if (!requestedShapeCollides) {
+            facing_ = requestedFacing;
+        } else if (!currentShapeCollides) {
+            const auto correction =
+                world::resolveSolidWorldOverlap(
+                    collision,
+                    std::span<world::AabbI>{
+                        requestedBodies.data(),
+                        requestedBodies.size()},
+                    tileSize,
+                    staticObstacles,
+                    config_.facingDepenetrationMaxPixels);
+
+            if (correction.resolved) {
+                const core::WorldPointI correctedFeet{
+                    facingFeet.x + correction.movedX,
+                    facingFeet.y + correction.movedY
+                };
+
+                position_.x =
+                    checkedSubpixelCoordinate(
+                        correctedFeet.x);
+
+                position_.y =
+                    checkedSubpixelCoordinate(
+                        correctedFeet.y);
+
+                facing_ = requestedFacing;
+            }
+        } else {
+            // Preserve legacy behavior for a position that was already
+            // overlapping solid-world policy before the facing change.
+            // Depenetration is only responsible for overlap introduced
+            // by changing the directional collision shape.
+            facing_ = requestedFacing;
+        }
     }
 
     std::int64_t speed = PlayerMovementConfig::cardinalSpeedSubpixelsPerTick;

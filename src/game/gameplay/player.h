@@ -48,6 +48,7 @@ struct PlayerMovementConfig final {
 
     int cornerSlideMaxProbePixels{4};
     int cornerSlideCorrectionPixels{1};
+    int facingDepenetrationMaxPixels{8};
 };
 
 struct SubpixelPosition final {
@@ -125,6 +126,10 @@ public:
     }
 
 private:
+    [[nodiscard]] std::vector<world::AabbI> collisionRegionsFor(
+        FacingDirection facing,
+        core::WorldPointI feet) const;
+
     [[nodiscard]] const PlayerHurtboxTimeline* currentHurtboxTimeline()
         const noexcept;
     [[nodiscard]] const ActorCollisionShapeDefinition*
