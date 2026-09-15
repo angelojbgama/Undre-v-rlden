@@ -7,24 +7,29 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
     QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
+from .preview import load_definition_image
 
 
 class FrameAlignmentCanvas(QWidget):
-    """Pixel-art frame preview whose contents can be dragged by whole pixels."""
+    # Preview fiel ao runtime: logicalPosition - anchor + drawOffset.
 
     offset_dragged = Signal(int, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._frame = QImage()
+        self._anchor = QPoint()
         self._offset = QPoint()
+        self._reference_frame = QImage()
+        self._reference_anchor = QPoint()
+        self._reference_offset = QPoint()
         self._canvas_width = 1
         self._canvas_height = 1
         self._scale = 1.0
@@ -33,13 +38,38 @@ class FrameAlignmentCanvas(QWidget):
         self.setMinimumSize(420, 300)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
 
-    def set_frame(self, frame: QImage, offset_x: int, offset_y: int,
-                  canvas_width: int, canvas_height: int) -> None:
+    def set_frame(
+            self, frame: QImage, offset_x: int, offset_y: int,
+            canvas_width: int, canvas_height: int,
+            anchor_x: int = 0, anchor_y: int = 0,
+            reference_frame: QImage | None = None,
+            reference_anchor: QPoint | None = None,
+            reference_offset: QPoint | None = None) -> None:
         self._frame = frame
+        self._anchor = QPoint(anchor_x, anchor_y)
         self._offset = QPoint(offset_x, offset_y)
+        self._reference_frame = (
+            QImage(reference_frame)
+            if reference_frame is not None else QImage())
+        self._reference_anchor = (
+            QPoint(reference_anchor)
+            if reference_anchor is not None else QPoint())
+        self._reference_offset = (
+            QPoint(reference_offset)
+            if reference_offset is not None else QPoint())
         self._canvas_width = max(1, canvas_width)
         self._canvas_height = max(1, canvas_height)
         self.update()
+
+    def _destination(
+            self, image: QImage, anchor: QPoint,
+            offset: QPoint, origin: QPoint) -> QRect:
+        return QRect(
+            origin.x() + round((-anchor.x() + offset.x()) * self._scale),
+            origin.y() + round((-anchor.y() + offset.y()) * self._scale),
+            max(1, round(image.width() * self._scale)),
+            max(1, round(image.height() * self._scale)),
+        )
 
     def paintEvent(self, unused: object) -> None:  # type: ignore[override]
         del unused
@@ -47,50 +77,93 @@ class FrameAlignmentCanvas(QWidget):
         painter.fillRect(self.rect(), QColor("#161b22"))
         if self._frame.isNull():
             painter.setPen(QColor("#aeb8c4"))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No frame")
+            painter.drawText(
+                self.rect(), Qt.AlignmentFlag.AlignCenter, "No frame")
             return
 
+        reference_width = (
+            self._reference_frame.width()
+            if not self._reference_frame.isNull() else 0)
+        reference_height = (
+            self._reference_frame.height()
+            if not self._reference_frame.isNull() else 0)
         logical_padding = max(
-            4, max(self._frame.width(), self._frame.height(),
-                   self._canvas_width, self._canvas_height) // 3)
-        logical_width = max(self._frame.width(), self._canvas_width) + logical_padding * 2
-        logical_height = max(self._frame.height(), self._canvas_height) + logical_padding * 2
-        self._scale = max(0.05, min(
-            (self.width() - 24) / logical_width,
-            (self.height() - 24) / logical_height,
-        ))
-        frame_width = max(1, round(self._frame.width() * self._scale))
-        frame_height = max(1, round(self._frame.height() * self._scale))
-        canvas_width = max(1, round(self._canvas_width * self._scale))
-        canvas_height = max(1, round(self._canvas_height * self._scale))
-        canvas_left = (self.width() - canvas_width) // 2
-        canvas_top = (self.height() - canvas_height) // 2
-        frame_left = canvas_left + round(
-            (self._canvas_width - self._frame.width()) * self._scale / 2)
-        frame_top = canvas_top + round(
-            (self._canvas_height - self._frame.height()) * self._scale / 2)
-        destination = QRect(
-            frame_left + round(self._offset.x() * self._scale),
-            frame_top + round(self._offset.y() * self._scale),
-            frame_width,
-            frame_height,
+            8,
+            max(
+                self._frame.width(), self._frame.height(),
+                reference_width, reference_height,
+                self._canvas_width, self._canvas_height,
+            ) // 2,
+        )
+        logical_width = max(
+            self._frame.width(), reference_width,
+            self._canvas_width) + logical_padding * 2
+        logical_height = max(
+            self._frame.height(), reference_height,
+            self._canvas_height) + logical_padding * 2
+        self._scale = max(
+            0.05,
+            min(
+                (self.width() - 24) / max(1, logical_width),
+                (self.height() - 24) / max(1, logical_height),
+            ),
         )
 
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-        painter.drawImage(destination, self._frame)
-        guide = QPen(QColor(0, 190, 255, 220)); guide.setWidth(1); guide.setCosmetic(True)
+        origin = QPoint(self.width() // 2, self.height() // 2)
+        canvas_width = max(1, round(self._canvas_width * self._scale))
+        canvas_height = max(1, round(self._canvas_height * self._scale))
+        canvas_left = origin.x() - canvas_width // 2
+        canvas_top = origin.y() - canvas_height // 2
+
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform, False)
+
+        if not self._reference_frame.isNull():
+            painter.save()
+            painter.setOpacity(0.30)
+            painter.drawImage(
+                self._destination(
+                    self._reference_frame,
+                    self._reference_anchor,
+                    self._reference_offset,
+                    origin,
+                ),
+                self._reference_frame,
+            )
+            painter.restore()
+
+        painter.drawImage(
+            self._destination(
+                self._frame, self._anchor, self._offset, origin),
+            self._frame,
+        )
+
+        guide = QPen(QColor(0, 190, 255, 220))
+        guide.setWidth(1)
+        guide.setCosmetic(True)
         painter.setPen(guide)
         painter.drawRect(QRect(
-            canvas_left, canvas_top, canvas_width - 1, canvas_height - 1))
-        center = QPen(QColor(255, 210, 75, 170)); center.setWidth(1); center.setCosmetic(True)
-        center.setStyle(Qt.PenStyle.DashLine); painter.setPen(center)
-        painter.drawLine(canvas_left + canvas_width // 2, canvas_top,
-                         canvas_left + canvas_width // 2, canvas_top + canvas_height)
-        painter.drawLine(canvas_left, canvas_top + canvas_height // 2,
-                         canvas_left + canvas_width, canvas_top + canvas_height // 2)
+            canvas_left, canvas_top,
+            canvas_width - 1, canvas_height - 1))
+
+        origin_pen = QPen(QColor(255, 210, 75, 210))
+        origin_pen.setWidth(1)
+        origin_pen.setCosmetic(True)
+        origin_pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(origin_pen)
+        painter.drawLine(
+            origin.x(), canvas_top,
+            origin.x(), canvas_top + canvas_height)
+        painter.drawLine(
+            canvas_left, origin.y(),
+            canvas_left + canvas_width, origin.y())
+        painter.drawEllipse(origin, 3, 3)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
-        if event.button() == Qt.MouseButton.LeftButton and not self._frame.isNull():
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self._frame.isNull()
+        ):
             self._drag_origin = event.position().toPoint()
             self._drag_offset = QPoint(self._offset)
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -220,6 +293,26 @@ class AnimationFrameAlignmentDialog(QDialog):
                 "x": int(offset.get("x", 0)) if isinstance(offset, dict) else 0,
                 "y": int(offset.get("y", 0)) if isinstance(offset, dict) else 0,
             }
+            source = frame.get("source", {})
+            source_width = (
+                int(source.get("width", 1))
+                if isinstance(source, dict) else 1)
+            source_height = (
+                int(source.get("height", 1))
+                if isinstance(source, dict) else 1)
+            anchor = frame.get("anchor", {})
+            frame["anchor"] = {
+                "x": (
+                    int(anchor.get("x", source_width // 2))
+                    if isinstance(anchor, dict)
+                    else source_width // 2
+                ),
+                "y": (
+                    int(anchor.get("y", max(0, source_height - 1)))
+                    if isinstance(anchor, dict)
+                    else max(0, source_height - 1)
+                ),
+            }
         self._original_sources = [
             copy.deepcopy(frame.get("source", {}))
             if isinstance(frame, dict) else {}
@@ -236,10 +329,37 @@ class AnimationFrameAlignmentDialog(QDialog):
         frame_row = QHBoxLayout(); frame_row.addWidget(previous_button)
         frame_row.addWidget(self.frame_index, 1); frame_row.addWidget(next_button)
 
+        self._reference_images: dict[str, QImage] = {}
+        self.reference_animation = QComboBox()
+        self.reference_animation.addItem(
+            self.translate("frame_reference_none"), "")
+        for candidate in sorted(
+                self.workspace.definitions("animations"),
+                key=lambda value: value.definition_id):
+            if candidate.definition_id == self.animation.definition_id:
+                continue
+            self.reference_animation.addItem(
+                f"{candidate.display_name} — {candidate.definition_id}",
+                candidate.definition_id,
+            )
+        suggested_reference = self._suggest_reference_animation_id()
+        suggested_index = self.reference_animation.findData(
+            suggested_reference)
+        if suggested_index >= 0:
+            self.reference_animation.setCurrentIndex(suggested_index)
+        self.reference_animation.currentIndexChanged.connect(
+            self._show_frame)
+
+        self.anchor_x = self._offset_spin(); self.anchor_y = self._offset_spin()
+        self.anchor_x.valueChanged.connect(self._anchor_controls_changed)
+        self.anchor_y.valueChanged.connect(self._anchor_controls_changed)
         self.offset_x = self._offset_spin(); self.offset_y = self._offset_spin()
         self.offset_x.valueChanged.connect(self._offset_controls_changed)
         self.offset_y.valueChanged.connect(self._offset_controls_changed)
         form = QFormLayout(); form.addRow(self.translate("animation_frame"), frame_row)
+        form.addRow(
+            self.translate("frame_reference_animation"),
+            self.reference_animation)
         self.source_x = QSpinBox(); self.source_y = QSpinBox()
         self.source_width = QSpinBox(); self.source_height = QSpinBox()
         self.source_x.setRange(0, max(0, image.width() - 1))
@@ -270,6 +390,8 @@ class AnimationFrameAlignmentDialog(QDialog):
         self.canvas_height.valueChanged.connect(self._show_frame)
         form.addRow(self.translate("frame_canvas_width"), self.canvas_width)
         form.addRow(self.translate("frame_canvas_height"), self.canvas_height)
+        form.addRow(self.translate("frame_anchor_x"), self.anchor_x)
+        form.addRow(self.translate("frame_anchor_y"), self.anchor_y)
         form.addRow(self.translate("frame_offset_x"), self.offset_x)
         form.addRow(self.translate("frame_offset_y"), self.offset_y)
         self.move_all = QCheckBox(self.translate("move_all_frames"))
@@ -294,6 +416,14 @@ class AnimationFrameAlignmentDialog(QDialog):
         reset_all.clicked.connect(self._reset_all)
         reset_source = QPushButton(self.translate("reset_frame_source"))
         reset_source.clicked.connect(self._reset_current_source)
+        anchor_from_reference = QPushButton(
+            self.translate("frame_anchor_from_reference"))
+        anchor_from_reference.clicked.connect(
+            self._set_anchor_from_reference)
+        apply_anchor_all = QPushButton(
+            self.translate("apply_anchor_all_frames"))
+        apply_anchor_all.clicked.connect(
+            self._apply_anchor_to_all_frames)
         canvas_help = QLabel(self.translate("frame_canvas_help"))
         canvas_help.setWordWrap(True)
         canvas_help.setStyleSheet("color: #8ecae6;")
@@ -303,6 +433,8 @@ class AnimationFrameAlignmentDialog(QDialog):
         controls = QVBoxLayout(); controls.addLayout(form)
         controls.addWidget(canvas_help); controls.addLayout(arrows)
         controls.addWidget(center_frame); controls.addWidget(center_all)
+        controls.addWidget(anchor_from_reference)
+        controls.addWidget(apply_anchor_all)
         controls.addWidget(reset_frame); controls.addWidget(reset_all)
         controls.addWidget(reset_source)
         controls.addWidget(help_label); controls.addStretch(1)
@@ -334,17 +466,124 @@ class AnimationFrameAlignmentDialog(QDialog):
             return self.frames[index]
         return None
 
-    def _frame_image(self, frame: dict[str, object] | None) -> QImage:
+    @staticmethod
+    def _frame_image_from(
+            frame: dict[str, object] | None,
+            source_image: QImage) -> QImage:
         source = frame.get("source") if frame else None
-        if not isinstance(source, dict):
+        if not isinstance(source, dict) or source_image.isNull():
             return QImage()
         try:
-            return self.image.copy(
-                int(source.get("x", 0)), int(source.get("y", 0)),
-                int(source.get("width", 0)), int(source.get("height", 0)),
+            return source_image.copy(
+                int(source.get("x", 0)),
+                int(source.get("y", 0)),
+                int(source.get("width", 0)),
+                int(source.get("height", 0)),
             )
         except (TypeError, ValueError):
             return QImage()
+
+    def _frame_image(self, frame: dict[str, object] | None) -> QImage:
+        return self._frame_image_from(frame, self.image)
+
+    @staticmethod
+    def _directional_animation_id(
+            reference: object, direction: str) -> str:
+        if not isinstance(reference, dict):
+            return ""
+        candidates: list[object] = [reference.get(direction)]
+        if direction in {"left", "right"}:
+            candidates.append(reference.get("side"))
+        candidates.extend([
+            reference.get("defaultAnimation"),
+            reference.get("down"),
+            reference.get("up"),
+            reference.get("left"),
+            reference.get("right"),
+            reference.get("side"),
+        ])
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        return ""
+
+    def _suggest_reference_animation_id(self) -> str:
+        current_id = self.animation.definition_id
+        directions = ("down", "up", "left", "right")
+        for visual in self.workspace.definitions("playerVisuals"):
+            data = visual.data
+            idle = data.get("idle")
+            if not isinstance(idle, dict):
+                continue
+            bindings: list[object] = [
+                data.get("walk"),
+                data.get("hurt"),
+            ]
+            actions = data.get("actions", [])
+            if isinstance(actions, list):
+                for action in actions:
+                    if isinstance(action, dict):
+                        bindings.append(action.get("clips"))
+            for direction in directions:
+                if not any(
+                    self._directional_animation_id(binding, direction)
+                    == current_id
+                    for binding in bindings
+                ):
+                    continue
+                suggested = self._directional_animation_id(
+                    idle, direction)
+                if (
+                    suggested
+                    and suggested != current_id
+                    and self.workspace.find(
+                        "animations", suggested) is not None
+                ):
+                    return suggested
+        return ""
+
+    @staticmethod
+    def _frame_point(
+            frame: dict[str, object], key: str,
+            default: QPoint | None = None) -> QPoint:
+        raw = frame.get(key, {})
+        fallback = default or QPoint()
+        if not isinstance(raw, dict):
+            return QPoint(fallback)
+        try:
+            return QPoint(
+                int(raw.get("x", fallback.x())),
+                int(raw.get("y", fallback.y())),
+            )
+        except (TypeError, ValueError):
+            return QPoint(fallback)
+
+    def _reference_payload(self) -> tuple[QImage, QPoint, QPoint]:
+        reference_id = self.reference_animation.currentData()
+        if not isinstance(reference_id, str) or not reference_id:
+            return QImage(), QPoint(), QPoint()
+        animation = self.workspace.find("animations", reference_id)
+        if animation is None:
+            return QImage(), QPoint(), QPoint()
+        raw_frames = animation.data.get("frames", [])
+        if not isinstance(raw_frames, list) or not raw_frames:
+            return QImage(), QPoint(), QPoint()
+        reference_frame = raw_frames[0]
+        if not isinstance(reference_frame, dict):
+            return QImage(), QPoint(), QPoint()
+
+        source_image = self._reference_images.get(reference_id)
+        if source_image is None:
+            loaded = load_definition_image(
+                animation, self.workspace, self.asset_root)
+            source_image = QImage(loaded) if loaded is not None else QImage()
+            self._reference_images[reference_id] = source_image
+
+        return (
+            self._frame_image_from(reference_frame, source_image),
+            self._frame_point(reference_frame, "anchor"),
+            self._frame_point(reference_frame, "drawOffset"),
+        )
 
     @staticmethod
     def _source_rect(frame: dict[str, object] | None) -> QRect:
@@ -365,23 +604,50 @@ class AnimationFrameAlignmentDialog(QDialog):
         offset = frame.get("drawOffset", {}) if frame else {}
         x = int(offset.get("x", 0)) if isinstance(offset, dict) else 0
         y = int(offset.get("y", 0)) if isinstance(offset, dict) else 0
-        self.offset_x.blockSignals(True); self.offset_y.blockSignals(True)
-        self.offset_x.setValue(x); self.offset_y.setValue(y)
-        self.offset_x.blockSignals(False); self.offset_y.blockSignals(False)
+        anchor = frame.get("anchor", {}) if frame else {}
         source = self._source_rect(frame)
+        anchor_x = (
+            int(anchor.get("x", source.width() // 2))
+            if isinstance(anchor, dict) else source.width() // 2)
+        anchor_y = (
+            int(anchor.get("y", max(0, source.height() - 1)))
+            if isinstance(anchor, dict)
+            else max(0, source.height() - 1))
+
+        for control, value in (
+                (self.offset_x, x), (self.offset_y, y),
+                (self.anchor_x, anchor_x), (self.anchor_y, anchor_y)):
+            control.blockSignals(True)
+            control.setValue(value)
+            control.blockSignals(False)
+
         for control, value in (
                 (self.source_x, source.x()), (self.source_y, source.y()),
                 (self.source_width, source.width()),
                 (self.source_height, source.height())):
-            control.blockSignals(True); control.setValue(value)
+            control.blockSignals(True)
+            control.setValue(value)
             control.blockSignals(False)
+
         all_sources = [
             self._source_rect(value) for value in self.frames
             if isinstance(value, dict)]
-        self.source_canvas.set_source(self.image, all_sources, source)
+        self.source_canvas.set_source(
+            self.image, all_sources, source)
+
+        reference_frame, reference_anchor, reference_offset = (
+            self._reference_payload())
         self.canvas.set_frame(
-            self._frame_image(frame), x, y,
-            self.canvas_width.value(), self.canvas_height.value())
+            self._frame_image(frame),
+            x, y,
+            self.canvas_width.value(),
+            self.canvas_height.value(),
+            anchor_x,
+            anchor_y,
+            reference_frame,
+            reference_anchor,
+            reference_offset,
+        )
 
     def _source_controls_changed(self, unused: object = None) -> None:
         del unused
@@ -411,6 +677,46 @@ class AnimationFrameAlignmentDialog(QDialog):
             "x": old_offset_x + x - previous.x(),
             "y": old_offset_y + y - previous.y()}
         self._show_frame()
+
+    def _anchor_controls_changed(self, unused: object = None) -> None:
+        del unused
+        self._set_anchor(
+            self.anchor_x.value(), self.anchor_y.value())
+
+    def _set_anchor(self, x: int, y: int) -> None:
+        frame = self._current_frame()
+        if frame is None:
+            return
+        frame["anchor"] = {"x": int(x), "y": int(y)}
+        self._show_frame()
+
+    def _apply_anchor_to_all_frames(self) -> None:
+        frame = self._current_frame()
+        if frame is None:
+            return
+        anchor = self._frame_point(frame, "anchor")
+        for value in self.frames:
+            if isinstance(value, dict):
+                value["anchor"] = {
+                    "x": anchor.x(),
+                    "y": anchor.y(),
+                }
+        self._show_frame()
+
+    def _set_anchor_from_reference(self) -> None:
+        frame = self._current_frame()
+        if frame is None:
+            return
+        source = self._source_rect(frame)
+        reference_frame, reference_anchor, unused_offset = (
+            self._reference_payload())
+        del unused_offset
+        anchor_y = (
+            reference_anchor.y()
+            if not reference_frame.isNull()
+            else max(0, source.height() - 1)
+        )
+        self._set_anchor(source.width() // 2, anchor_y)
 
     def _offset_controls_changed(self, unused: object = None) -> None:
         del unused
