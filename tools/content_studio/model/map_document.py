@@ -758,6 +758,94 @@ class MapDocument:
             raise ValueError(f"map collection is not an array: {collection}")
         return values  # type: ignore[return-value]
 
+    def append_collection_value(
+            self, collection: str, entry_index: int, path: str,
+            value: JsonValue, label: str = "Add Collection Entry") -> None:
+        values = self.all_collection(collection)
+
+        if (
+            entry_index < 0
+            or entry_index >= len(values)
+            or not isinstance(values[entry_index], dict)
+        ):
+            raise IndexError(
+                "map collection entry out of range"
+            )
+
+        parts = _path_parts(path)
+        authored_value = copy.deepcopy(value)
+
+        def operation() -> None:
+            current: object = values[entry_index]
+
+            for part in parts:
+                current = current[part]  # type: ignore[index]
+
+            if not isinstance(current, list):
+                raise TypeError(
+                    f"{path} is not an array"
+                )
+
+            current.append(
+                copy.deepcopy(
+                    authored_value
+                )
+            )
+
+        self.mutate(
+            label,
+            operation,
+        )
+
+    def add_object_initial_content(
+            self, object_id: int, item_id: str,
+            quantity: int = 1) -> None:
+        if not isinstance(item_id, str) or not item_id.strip():
+            raise ValueError(
+                "initialContents itemId must be explicit"
+            )
+
+        if (
+            not isinstance(quantity, int)
+            or isinstance(quantity, bool)
+            or quantity <= 0
+        ):
+            raise ValueError(
+                "initialContents quantity must be positive"
+            )
+
+        values = self.all_collection(
+            "objects"
+        )
+
+        entry_index = next(
+            (
+                index
+                for index, value in enumerate(values)
+                if (
+                    isinstance(value, dict)
+                    and value.get("id") == object_id
+                )
+            ),
+            -1,
+        )
+
+        if entry_index < 0:
+            raise ValueError(
+                f"object placement not found: {object_id}"
+            )
+
+        self.append_collection_value(
+            "objects",
+            entry_index,
+            "initialContents",
+            {
+                "itemId": item_id.strip(),
+                "quantity": quantity,
+            },
+            "Add Object Initial Content",
+        )
+
     def mutate_collection_entry(self, collection: str, entry_index: int, path: str, action: str) -> None:
         values = self.all_collection(collection)
         if entry_index < 0 or entry_index >= len(values) or not isinstance(values[entry_index], dict):
@@ -771,7 +859,15 @@ class MapDocument:
             if not isinstance(current, list):
                 raise TypeError(f"{path} is not an array")
             if action == "add":
-                current.append(copy.deepcopy(current[-1]) if current and isinstance(current[-1], dict) else _default_map_collection_value(parts[-1]))
+                if str(parts[-1]) == "initialContents":
+                    raise ValueError(
+                        "initialContents requires an explicit item reference"
+                    )
+                current.append(
+                    copy.deepcopy(current[-1])
+                    if current and isinstance(current[-1], dict)
+                    else _default_map_collection_value(parts[-1])
+                )
             elif action == "remove":
                 if current: current.pop()
             elif action.startswith("remove_at:"):
@@ -839,7 +935,6 @@ def _path_parts(path: str) -> list[str | int]:
 
 def _default_map_collection_value(leaf: str | int) -> JsonValue:
     name = str(leaf)
-    if name == "initialContents": return {"itemId": "", "quantity": 1}
     if name == "participants": return 1
     if name == "conditions": return {"kind": "flagSet", "target": "flag.new"}
     if name == "actions": return {"kind": "setFlag", "target": "flag.new"}

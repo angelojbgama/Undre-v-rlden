@@ -1271,5 +1271,381 @@ class QtSmokeTests(unittest.TestCase):
             )
 
 
+
+    def test_initial_contents_inspector_emits_only_valid_item_stacks(self) -> None:
+        from PySide6.QtWidgets import (
+            QComboBox,
+            QPushButton,
+        )
+
+        from tools.content_studio.services.item_authoring_service import (
+            ItemAuthoringService,
+        )
+        from tools.content_studio.ui.widgets import (
+            StructuredInspector,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["visualImages"] = [{
+                "id": "image.item.chest_test",
+                "root": "contentWorkspace",
+                "relativePath": "item.png",
+            }]
+
+            content["staticSprites"] = [{
+                "id": "visual.item.chest_test",
+                "imageId": "image.item.chest_test",
+                "source": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                "anchor": {
+                    "x": 8,
+                    "y": 15,
+                },
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            ItemAuthoringService(
+                workspace
+            ).create_item(
+                "Pocao",
+                "item.potion",
+                "visual.item.chest_test",
+                "consumable",
+            )
+
+            inspector = StructuredInspector()
+
+            self.addCleanup(
+                inspector.deleteLater
+            )
+
+            inspector.set_workspace(
+                workspace
+            )
+
+            chest = {
+                "id": 1,
+                "definitionId": "object.chest",
+                "position": {
+                    "x": 16,
+                    "y": 16,
+                },
+                "initialContents": [],
+                "persistence": "persistent",
+            }
+
+            inspector.set_object(
+                "Chest",
+                chest,
+            )
+
+            picker = inspector.findChild(
+                QComboBox,
+                "initialContentsItemPicker",
+            )
+
+            add_button = inspector.findChild(
+                QPushButton,
+                "initialContentsAddButton",
+            )
+
+            self.assertIsNotNone(
+                picker
+            )
+
+            self.assertIsNotNone(
+                add_button
+            )
+
+            self.assertTrue(
+                add_button.isEnabled()
+            )
+
+            self.assertEqual(
+                "item.potion",
+                picker.currentData(),
+            )
+
+            emitted = []
+
+            inspector.collection_value_requested.connect(
+                lambda path, value:
+                emitted.append(
+                    (
+                        path,
+                        value,
+                    )
+                )
+            )
+
+            add_button.click()
+
+            self.assertEqual(
+                [
+                    (
+                        "initialContents",
+                        {
+                            "itemId": "item.potion",
+                            "quantity": 1,
+                        },
+                    )
+                ],
+                emitted,
+            )
+
+            chest["initialContents"] = [{
+                "itemId": "",
+                "quantity": 1,
+            }]
+
+            inspector.set_object(
+                "Legacy Chest",
+                chest,
+            )
+
+            required_reference = inspector.findChild(
+                QComboBox,
+                "initialContentsRequiredItemReference",
+            )
+
+            self.assertIsNotNone(
+                required_reference
+            )
+
+            self.assertEqual(
+                -1,
+                required_reference.findData(
+                    ""
+                ),
+            )
+
+            self.assertEqual(
+                -1,
+                required_reference.currentIndex(),
+            )
+
+            empty_root = root / "empty"
+
+            empty_root.mkdir()
+
+            empty_content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            empty_content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            (empty_root / "content.json").write_text(
+                encode_json(
+                    empty_content
+                ),
+                encoding="utf-8",
+            )
+
+            empty_workspace = ContentWorkspace.open(
+                empty_root
+            )
+
+            inspector.set_workspace(
+                empty_workspace
+            )
+
+            chest["initialContents"] = []
+
+            inspector.set_object(
+                "Empty Workspace Chest",
+                chest,
+            )
+
+            add_button = inspector.findChild(
+                QPushButton,
+                "initialContentsAddButton",
+            )
+
+            self.assertIsNotNone(
+                add_button
+            )
+
+            self.assertFalse(
+                add_button.isEnabled()
+            )
+
+    def test_main_window_adds_initial_contents_from_typed_inspector(self) -> None:
+        from PySide6.QtWidgets import (
+            QPushButton,
+        )
+
+        from tools.content_studio.services.item_authoring_service import (
+            ItemAuthoringService,
+        )
+        from tools.content_studio.ui.main_window import (
+            MainWindow,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["visualImages"] = [{
+                "id": "image.item.chest_main",
+                "root": "contentWorkspace",
+                "relativePath": "item.png",
+            }]
+
+            content["staticSprites"] = [{
+                "id": "visual.item.chest_main",
+                "imageId": "image.item.chest_main",
+                "source": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 16,
+                    "height": 16,
+                },
+                "anchor": {
+                    "x": 8,
+                    "y": 15,
+                },
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            ItemAuthoringService(
+                workspace
+            ).create_item(
+                "Pocao",
+                "item.potion",
+                "visual.item.chest_main",
+                "consumable",
+            )
+
+            workspace.save_all()
+
+            project = WorldProject.new()
+
+            chest_id = project.active_map.add_entity(
+                "objects",
+                "object.chest",
+                32,
+                32,
+            )
+
+            window = MainWindow(
+                project,
+                workspace,
+                asset_root=root,
+            )
+
+            self.addCleanup(
+                window.deleteLater
+            )
+
+            window.map_canvas.selected_entity = (
+                "objects",
+                chest_id,
+            )
+
+            window._map_selection_changed(
+                (
+                    "objects",
+                    chest_id,
+                )
+            )
+
+            add_button = window.map_inspector.findChild(
+                QPushButton,
+                "initialContentsAddButton",
+            )
+
+            self.assertIsNotNone(
+                add_button
+            )
+
+            self.assertTrue(
+                add_button.isEnabled()
+            )
+
+            add_button.click()
+
+            chest = project.active_map.entity(
+                "objects",
+                chest_id,
+            )
+
+            self.assertIsNotNone(
+                chest
+            )
+
+            self.assertEqual(
+                [
+                    {
+                        "itemId": "item.potion",
+                        "quantity": 1,
+                    }
+                ],
+                chest["initialContents"],
+            )
+
+            self.assertTrue(
+                project.active_map.undo()
+            )
+
+            reverted_chest = project.active_map.entity(
+                "objects",
+                chest_id,
+            )
+
+            self.assertIsNotNone(
+                reverted_chest
+            )
+
+            self.assertEqual(
+                [],
+                reverted_chest["initialContents"],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

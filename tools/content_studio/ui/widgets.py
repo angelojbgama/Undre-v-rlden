@@ -104,6 +104,7 @@ class PayloadListWidget(QListWidget):
 class StructuredInspector(QWidget):
     changed = Signal(str, object)
     collection_changed = Signal(str, str)
+    collection_value_requested = Signal(str, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -232,9 +233,27 @@ class StructuredInspector(QWidget):
             editor.toggled.connect(lambda checked, p=path: self._commit(p, checked))
         elif isinstance(value, int):
             editor = QSpinBox()
-            editor.setRange(-2_147_483_648, 2_147_483_647)
+            if (
+                field_name == "quantity"
+                and "initialContents[" in path
+            ):
+                editor.setRange(
+                    1,
+                    2_147_483_647,
+                )
+            else:
+                editor.setRange(
+                    -2_147_483_648,
+                    2_147_483_647,
+                )
             editor.setValue(value)
-            editor.editingFinished.connect(lambda p=path, control=editor: self._commit(p, control.value()))  # type: ignore[attr-defined]
+            editor.editingFinished.connect(
+                lambda p=path, control=editor:
+                self._commit(
+                    p,
+                    control.value(),
+                )
+            )  # type: ignore[attr-defined]
         elif isinstance(value, str) and field_name in ENUM_VALUES:
             combo = QComboBox()
             combo.addItems(ENUM_VALUES[field_name])
@@ -266,12 +285,144 @@ class StructuredInspector(QWidget):
         form.addRow(QLabel(pretty_path(label)), row)
 
     def _collection_buttons(self, layout: QVBoxLayout, path: str) -> None:
+        if path.rsplit(".", 1)[-1] == "initialContents":
+            self._initial_contents_buttons(
+                layout,
+                path,
+            )
+            return
+
         buttons = QHBoxLayout()
         add = QPushButton("Add")
         remove = QPushButton("Remove Last")
-        add.clicked.connect(lambda unused=False, value=path: self.collection_changed.emit(value, "add"))
-        remove.clicked.connect(lambda unused=False, value=path: self.collection_changed.emit(value, "remove"))
-        buttons.addWidget(add); buttons.addWidget(remove); layout.addLayout(buttons)
+
+        add.clicked.connect(
+            lambda unused=False, value=path:
+            self.collection_changed.emit(
+                value,
+                "add",
+            )
+        )
+
+        remove.clicked.connect(
+            lambda unused=False, value=path:
+            self.collection_changed.emit(
+                value,
+                "remove",
+            )
+        )
+
+        buttons.addWidget(add)
+        buttons.addWidget(remove)
+        layout.addLayout(buttons)
+
+    def _initial_contents_buttons(
+            self, layout: QVBoxLayout, path: str) -> None:
+        buttons = QHBoxLayout()
+
+        picker = QComboBox()
+        picker.setObjectName(
+            "initialContentsItemPicker"
+        )
+
+        definitions = (
+            tuple(
+                self._workspace.definitions(
+                    "items"
+                )
+            )
+            if self._workspace is not None
+            else ()
+        )
+
+        for definition in definitions:
+            picker.addItem(
+                f"{definition.display_name} "
+                f"[{definition.definition_id}]",
+                definition.definition_id,
+            )
+
+        add = QPushButton(
+            "Add Item"
+        )
+
+        add.setObjectName(
+            "initialContentsAddButton"
+        )
+
+        remove = QPushButton(
+            "Remove Last"
+        )
+
+        remove.setObjectName(
+            "initialContentsRemoveLastButton"
+        )
+
+        if not definitions:
+            picker.addItem(
+                "Create an Item in the Items tab first",
+                None,
+            )
+
+            picker.setEnabled(
+                False
+            )
+
+            add.setEnabled(
+                False
+            )
+
+            add.setToolTip(
+                "Create an Item in the Items tab first."
+            )
+
+        add.clicked.connect(
+            lambda unused=False, p=path, control=picker:
+            self._emit_initial_content(
+                p,
+                control,
+            )
+        )
+
+        remove.clicked.connect(
+            lambda unused=False, p=path:
+            self.collection_changed.emit(
+                p,
+                "remove",
+            )
+        )
+
+        buttons.addWidget(
+            picker,
+            1,
+        )
+
+        buttons.addWidget(
+            add
+        )
+
+        buttons.addWidget(
+            remove
+        )
+
+        layout.addLayout(
+            buttons
+        )
+
+    def _emit_initial_content(
+            self, path: str, picker: QComboBox) -> None:
+        item_id = picker.currentData()
+
+        if not isinstance(item_id, str) or not item_id:
+            return
+
+        self.collection_value_requested.emit(
+            path,
+            {
+                "itemId": item_id,
+                "quantity": 1,
+            },
+        )
 
     @staticmethod
     def _reference_category(field_name: str) -> tuple[str, ...] | None:
@@ -303,23 +454,113 @@ class StructuredInspector(QWidget):
 
     def _reference_editor(self, field_name: str, value: object, path: str) -> QWidget:
         combo = QComboBox()
-        combo.addItem("(none)", "")
-        categories = self._reference_category(field_name) or ()
+
+        required_initial_item = (
+            field_name == "itemId"
+            and "initialContents[" in path
+        )
+
+        if required_initial_item:
+            combo.setObjectName(
+                "initialContentsRequiredItemReference"
+            )
+        else:
+            combo.addItem(
+                "(none)",
+                "",
+            )
+
+        categories = (
+            self._reference_category(
+                field_name
+            )
+            or ()
+        )
+
         if self._workspace:
             for category in categories:
-                for definition in self._workspace.definitions(category):
-                    combo.addItem(f"{definition.display_name} [{definition.definition_id}]", definition.definition_id)
-        if isinstance(value, str) and value and combo.findData(value) < 0:
-            combo.insertItem(1, f"Missing [{value}]", value)
-        if isinstance(value, str):
-            combo.setCurrentIndex(max(0, combo.findData(value)))
+                for definition in self._workspace.definitions(
+                    category
+                ):
+                    combo.addItem(
+                        f"{definition.display_name} "
+                        f"[{definition.definition_id}]",
+                        definition.definition_id,
+                    )
+
+        if (
+            isinstance(value, str)
+            and value
+            and combo.findData(value) < 0
+        ):
+            combo.insertItem(
+                0 if required_initial_item else 1,
+                f"Missing [{value}]",
+                value,
+            )
+
+        if isinstance(value, str) and value:
+            combo.setCurrentIndex(
+                combo.findData(
+                    value
+                )
+            )
+        elif required_initial_item:
+            combo.setCurrentIndex(
+                -1
+            )
+
+            combo.setPlaceholderText(
+                "Select an Item"
+            )
         else:
-            combo.setCurrentIndex(0)
+            combo.setCurrentIndex(
+                max(
+                    0,
+                    combo.findData(
+                        value
+                    ),
+                )
+            )
+
         optional = value is None
+
         combo.currentIndexChanged.connect(
-            lambda unused, p=path, control=combo, nullable=optional: self._commit(
-                p, None if nullable and not control.currentData() else str(control.currentData() or "")))
+            lambda unused, p=path, control=combo,
+            nullable=optional,
+            required=required_initial_item:
+            self._commit_reference_selection(
+                p,
+                control,
+                nullable,
+                required,
+            )
+        )
+
         return combo
+
+    def _commit_reference_selection(
+            self, path: str, combo: QComboBox,
+            nullable: bool, required: bool) -> None:
+        selected = combo.currentData()
+
+        if required and (
+            not isinstance(selected, str)
+            or not selected
+        ):
+            return
+
+        self._commit(
+            path,
+            (
+                None
+                if nullable and not selected
+                else str(
+                    selected
+                    or ""
+                )
+            ),
+        )
 
     def _map_reference_editor(self, value: str, path: str) -> QWidget:
         combo = QComboBox(); combo.addItem("(none)", "")

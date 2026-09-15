@@ -212,6 +212,8 @@ class MainWindow(QMainWindow):
         self.map_inspector = StructuredInspector()
         self.map_inspector.changed.connect(self._edit_map_field)
         self.map_inspector.collection_changed.connect(self._edit_map_collection)
+        self.map_inspector.collection_value_requested.connect(
+            self._add_map_collection_value)
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
         self.delete_map_selection_button.setEnabled(False)
         self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
@@ -578,6 +580,100 @@ class MainWindow(QMainWindow):
             self._refresh_map()
         except (IndexError, KeyError, TypeError, ValueError) as error:
             self.set_status(str(error))
+
+    def _add_map_collection_value(
+            self, path: str, value: object) -> None:
+        selection = self.map_canvas.selected_entity
+
+        if not selection:
+            return
+
+        category, identifier = selection
+
+        if (
+            category != "objects"
+            or path != "initialContents"
+        ):
+            self.set_status(
+                f"Explicit collection value is unsupported: "
+                f"{category}.{path}"
+            )
+            return
+
+        if not isinstance(value, dict):
+            self.set_status(
+                "Initial content must be an item stack"
+            )
+            return
+
+        item_id = value.get(
+            "itemId"
+        )
+
+        quantity = value.get(
+            "quantity",
+            1,
+        )
+
+        if (
+            not isinstance(item_id, str)
+            or not item_id
+        ):
+            self.set_status(
+                "Select a valid Item first"
+            )
+            return
+
+        if (
+            not isinstance(quantity, int)
+            or isinstance(quantity, bool)
+            or quantity <= 0
+        ):
+            self.set_status(
+                "Item quantity must be positive"
+            )
+            return
+
+        if (
+            self.workspace is None
+            or self.workspace.find(
+                "items",
+                item_id,
+            ) is None
+        ):
+            self.set_status(
+                f"Unknown Item definition: {item_id}"
+            )
+            return
+
+        try:
+            self.command_coordinator.mark(
+                "map"
+            )
+
+            self.project.active_map.add_object_initial_content(
+                int(identifier),
+                item_id,
+                quantity,
+            )
+
+            self.set_status(
+                self.translator(
+                    "object_contents_updated"
+                )
+            )
+
+            self._refresh_map()
+
+        except (
+            IndexError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            self.set_status(
+                str(error)
+            )
 
     def _place_definition(self, category: str, definition_id: str) -> None:
         if self.workspace:

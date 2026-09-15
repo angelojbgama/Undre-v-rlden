@@ -1001,5 +1001,92 @@ class ItemPickupPlacementTests(unittest.TestCase):
             )
 
 
+
+class InitialContentsAuthoringTests(unittest.TestCase):
+    def test_initial_contents_requires_explicit_item_reference(self) -> None:
+        from tools.content_studio.model.map_document import (
+            MapDocument,
+        )
+
+        document = MapDocument.new(
+            "map.chest.contents",
+            4,
+            4,
+        )
+
+        chest_id = document.add_entity(
+            "objects",
+            "object.chest",
+            16,
+            16,
+        )
+
+        self.assertEqual(
+            1,
+            chest_id,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "explicit item",
+        ):
+            document.mutate_collection_entry(
+                "objects",
+                0,
+                "initialContents",
+                "add",
+            )
+
+        self.assertEqual(
+            [],
+            document.data["objects"][0]["initialContents"],
+        )
+
+        document.add_object_initial_content(
+            chest_id,
+            "item.life_potion",
+            3,
+        )
+
+        self.assertEqual(
+            [
+                {
+                    "itemId": "item.life_potion",
+                    "quantity": 3,
+                }
+            ],
+            document.data["objects"][0]["initialContents"],
+        )
+
+        self.assertTrue(
+            document.undo()
+        )
+
+        self.assertEqual(
+            [],
+            document.data["objects"][0]["initialContents"],
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "itemId",
+        ):
+            document.add_object_initial_content(
+                chest_id,
+                "",
+                1,
+            )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "quantity",
+        ):
+            document.add_object_initial_content(
+                chest_id,
+                "item.life_potion",
+                0,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
