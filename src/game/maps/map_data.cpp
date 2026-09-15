@@ -187,16 +187,42 @@ MapValidationResult validateMapData(const MapData& data,
             }
         }
         if (definition && definition->collision) {
-            const auto mapWidthPixels = static_cast<std::int64_t>(data.width) * data.tileSize;
-            const auto mapHeightPixels = static_cast<std::int64_t>(data.height) * data.tileSize;
+            const auto mapWidthPixels =
+                static_cast<std::int64_t>(data.width) * data.tileSize;
+            const auto mapHeightPixels =
+                static_cast<std::int64_t>(data.height) * data.tileSize;
+
+            // Wall-mounted authored objects may intentionally straddle the
+            // visual edge of a map. Requiring every compact collision AABB
+            // to remain fully inside makes doors aligned to an outer wall
+            // impossible to author. The collision component must instead
+            // retain at least one region that intersects playable map space.
+            bool intersectsMap = false;
+
             for (const auto& region : definition->collision->regions) {
-                const auto left = static_cast<std::int64_t>(object.position.x) + region.x;
-                const auto top = static_cast<std::int64_t>(object.position.y) + region.y;
-                const auto right = left + region.width;
-                const auto bottom = top + region.height;
-                if (left < 0 || top < 0 || right > mapWidthPixels || bottom > mapHeightPixels) {
-                    return failure("object collision bounds are outside the map");
+                const auto left =
+                    static_cast<std::int64_t>(object.position.x) +
+                    region.x;
+                const auto top =
+                    static_cast<std::int64_t>(object.position.y) +
+                    region.y;
+                const auto right =
+                    left + region.width;
+                const auto bottom =
+                    top + region.height;
+
+                if (right > 0 &&
+                    bottom > 0 &&
+                    left < mapWidthPixels &&
+                    top < mapHeightPixels) {
+                    intersectsMap = true;
+                    break;
                 }
+            }
+
+            if (!intersectsMap) {
+                return failure(
+                    "object collision bounds do not intersect the map");
             }
         }
         for (const auto& stack : object.initialContents) {

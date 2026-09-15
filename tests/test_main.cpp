@@ -3846,6 +3846,25 @@ void testPhase8PersistentMapsAndSave() {
             false};
     objects.add(std::move(keyedDoorDefinition));
 
+    gameplay::WorldObjectDefinition edgeDoorDefinition;
+    edgeDoorDefinition.id =
+        simulation::DefinitionId{"object.door.edge"};
+    edgeDoorDefinition.visualSetId =
+        simulation::DefinitionId{"visual.object.door.edge"};
+    edgeDoorDefinition.interactable =
+        gameplay::ObjectInteractionDefinition{
+            {-24, -47, 48, 48}};
+    edgeDoorDefinition.door =
+        gameplay::ObjectDoorDefinition{
+            gameplay::DoorState::closed,
+            {},
+            false};
+    edgeDoorDefinition.collision =
+        gameplay::ObjectCollisionDefinition{{
+            {-24, -36, 48, 37}
+        }};
+    objects.add(std::move(edgeDoorDefinition));
+
     gameplay::AttackCatalog attacks; attacks.add(creatures::makeSoldierSwordAttackDefinition());
     attacks.add(creatures::makeSkullArrowAttackDefinition());
     gameplay::ProjectileCatalog projectiles;
@@ -3867,6 +3886,35 @@ void testPhase8PersistentMapsAndSave() {
     auto invalidReference = map; invalidReference.objects[0].initialContents[0].itemId = simulation::DefinitionId{"item.missing"};
     expect(!maps::validateMapData(invalidReference,&validation),
            "MapData rejects unknown item definition references before construction");
+
+    auto edgeDoorMap = map;
+
+    maps::ObjectPlacement edgeDoor;
+    edgeDoor.id = {6};
+    edgeDoor.definitionId =
+        simulation::DefinitionId{"object.door.edge"};
+    edgeDoor.position = {24, 16};
+
+    edgeDoorMap.objects.push_back(
+        edgeDoor);
+
+    expect(
+        maps::validateMapData(
+            edgeDoorMap,
+            &validation).valid,
+        "edge-attached object collision may cross the map boundary while still intersecting gameplay space");
+
+    auto fullyOutsideDoorMap =
+        edgeDoorMap;
+
+    fullyOutsideDoorMap.objects.back()
+        .position = {24, -40};
+
+    expect(
+        !maps::validateMapData(
+            fullyOutsideDoorMap,
+            &validation),
+        "object collision fully outside the map remains invalid");
 
     auto keyedDoorMap = map;
 
@@ -3950,6 +3998,27 @@ void testPhase8PersistentMapsAndSave() {
     maps::RuntimeWorldBuilder builder(validation,enemyFactory,objectFactory,handles,
         runtimeTilesets);
     auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
+
+    const auto edgeRuntime =
+        builder.build(
+            edgeDoorMap,
+            simulation::SpawnId{"entry.start"});
+
+    const auto edgeCollision =
+        edgeRuntime
+            ? edgeRuntime.world->objectCollisionBounds()
+            : std::vector<underworld::world::AabbI>{};
+
+    expect(
+        edgeRuntime &&
+        std::find(
+            edgeCollision.begin(),
+            edgeCollision.end(),
+            underworld::world::AabbI{
+                0, -20, 48, 37
+            }) != edgeCollision.end(),
+        "RuntimeWorldBuilder accepts an edge-attached collision region that intersects the map");
+
     expect(runtime && runtime.world->map().layerCount()==1 && runtime.world->enemies().size()==1 &&
                runtime.world->objects().size()==2 && runtime.world->pickups().size()==2 &&
                runtime.world->spawn().position==underworld::core::WorldPointI{16,24},
