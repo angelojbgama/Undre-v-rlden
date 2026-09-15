@@ -17,8 +17,57 @@ void TilesetCatalog::add(TilesetDefinition definition) {
         definition.columns > std::numeric_limits<std::uint32_t>::max() / definition.rows) {
         throw std::invalid_argument("tileset definition metadata is invalid");
     }
-    if (find(definition.id)) { throw std::logic_error("duplicate tileset definition id"); }
-    definitions_.push_back(std::move(definition));
+    const auto tileCount = definition.tileCount();
+
+    for (std::size_t index = 0;
+         index < definition.tileCollisions.size();
+         ++index) {
+        const auto& collision =
+            definition.tileCollisions[index];
+
+        if (collision.sourceIndex >= tileCount) {
+            throw std::invalid_argument(
+                "tileset tile collision source index is invalid");
+        }
+
+        for (std::size_t previous = 0;
+             previous < index;
+             ++previous) {
+            if (definition.tileCollisions[previous].sourceIndex ==
+                collision.sourceIndex) {
+                throw std::invalid_argument(
+                    "tileset tile collision source index is duplicated");
+            }
+        }
+
+        for (const auto region : collision.regions) {
+            const auto right =
+                static_cast<std::int64_t>(region.x) +
+                region.width;
+
+            const auto bottom =
+                static_cast<std::int64_t>(region.y) +
+                region.height;
+
+            if (region.x < 0 ||
+                region.y < 0 ||
+                region.width <= 0 ||
+                region.height <= 0 ||
+                right > definition.tileSize ||
+                bottom > definition.tileSize) {
+                throw std::invalid_argument(
+                    "tileset tile collision region is outside tile bounds");
+            }
+        }
+    }
+
+    if (find(definition.id)) {
+        throw std::logic_error(
+            "duplicate tileset definition id");
+    }
+
+    definitions_.push_back(
+        std::move(definition));
 }
 
 const TilesetDefinition* TilesetCatalog::find(const simulation::DefinitionId& id) const noexcept {

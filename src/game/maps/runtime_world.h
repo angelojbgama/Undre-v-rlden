@@ -93,6 +93,17 @@ public:
     void updatePressureActivations(core::WorldPointI playerFeet,
                                    simulation::EventBuffer& events) noexcept;
     [[nodiscard]] std::vector<world::AabbI> objectCollisionBounds() const;
+
+    // Physical collision authored by tiles in the tileset.
+    // These bounds are already transformed into world coordinates,
+    // including TileFlags::flipX.
+    [[nodiscard]] const std::vector<world::AabbI>& tileCollisionBounds() const noexcept {
+        return tileCollisionBounds_;
+    }
+
+    // Movement-facing static geometry: authored tiles + live object collision.
+    [[nodiscard]] std::vector<world::AabbI> movementCollisionBounds() const;
+
     [[nodiscard]] const std::vector<RuntimeDoor>& doors() const noexcept { return doors_; }
 
 private:
@@ -106,6 +117,11 @@ private:
     std::vector<PersistentObject> objects_;
     std::vector<DestroyedObjectResidue> destroyedObjectResidues_;
     std::vector<PersistentPickup> pickups_;
+
+    // Immutable while this RuntimeWorld is alive.
+    // Stored separately from object collision because objects may change state.
+    std::vector<world::AabbI> tileCollisionBounds_;
+
     std::vector<RuntimeDoor> doors_;
 };
 

@@ -60,6 +60,193 @@ class QtSmokeTests(unittest.TestCase):
             editor.insert(".edited")
             self.assertEqual("map..editeduntitled", editor.text())
 
+    def test_tileset_pixel_collision_context_menu_and_badge(self) -> None:
+        from tools.content_studio.services.localization import Translator
+        from tools.content_studio.services.tile_collision_service import TileCollisionService
+        from tools.content_studio.ui.tilesets.tile_atlas_widget import PIXEL_COLLISION_ROLE
+        from tools.content_studio.ui.tilesets.tileset_library_widget import TilesetLibraryWidget
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            content = {
+                "format": "dungeon-underworld-content",
+                "version": 5,
+            }
+
+            content.update({
+                category: []
+                for category in CONTENT_CATEGORIES
+            })
+
+            content["tilesets"] = [{
+                "id": "tileset.pixel.collision",
+                "displayName": "Pixel Collision",
+                "relativeAssetPath": "tiles.png",
+                "tileSize": 16,
+                "columns": 2,
+                "rows": 1,
+            }]
+
+            (root / "content.json").write_text(
+                encode_json(content),
+                encoding="utf-8",
+            )
+
+            image = QImage(
+                32,
+                16,
+                QImage.Format.Format_ARGB32,
+            )
+
+            image.fill(
+                QColor(
+                    80,
+                    80,
+                    80,
+                )
+            )
+
+            self.assertTrue(
+                image.save(
+                    str(root / "tiles.png")
+                )
+            )
+
+            workspace = ContentWorkspace.open(
+                root
+            )
+
+            translator = Translator(
+                "pt-BR"
+            )
+
+            widget = TilesetLibraryWidget(
+                workspace,
+                WorldProject.new(),
+                root,
+                translator,
+            )
+
+            self.addCleanup(
+                widget.close
+            )
+
+            widget.atlas.set_tileset(
+                "tileset.pixel.collision"
+            )
+
+            item = widget.atlas.tiles.item(0)
+
+            self.assertIsNotNone(item)
+
+            self.assertFalse(
+                bool(
+                    item.data(
+                        PIXEL_COLLISION_ROLE
+                    )
+                )
+            )
+
+            menu = widget._atlas_tile_context_menu(
+                "tileset.pixel.collision",
+                0,
+            )
+
+            self.addCleanup(
+                menu.close
+            )
+
+            action_texts = [
+                action.text()
+                for action in menu.actions()
+                if not action.isSeparator()
+            ]
+
+            self.assertIn(
+                translator(
+                    "define_tile_pixel_collision"
+                ),
+                action_texts,
+            )
+
+            service = TileCollisionService(
+                workspace
+            )
+
+            # Explicitly configured but empty masks are still authored
+            # Pixel Collision and therefore receive the visual marker.
+            service.set_mask(
+                "tileset.pixel.collision",
+                0,
+                [0] * 256,
+            )
+
+            widget.atlas.refresh()
+
+            item = widget.atlas.tiles.item(0)
+
+            self.assertIsNotNone(item)
+
+            self.assertTrue(
+                bool(
+                    item.data(
+                        PIXEL_COLLISION_ROLE
+                    )
+                )
+            )
+
+            self.assertIn(
+                "Pixel Collision",
+                item.toolTip(),
+            )
+
+            menu = widget._atlas_tile_context_menu(
+                "tileset.pixel.collision",
+                0,
+            )
+
+            self.addCleanup(
+                menu.close
+            )
+
+            action_texts = [
+                action.text()
+                for action in menu.actions()
+                if not action.isSeparator()
+            ]
+
+            self.assertIn(
+                translator(
+                    "edit_tile_pixel_collision"
+                ),
+                action_texts,
+            )
+
+            self.assertIn(
+                translator(
+                    "remove_tile_pixel_collision"
+                ),
+                action_texts,
+            )
+
+            service.remove_mask(
+                "tileset.pixel.collision",
+                0,
+            )
+
+            widget.atlas.refresh()
+
+            item = widget.atlas.tiles.item(0)
+
+            self.assertFalse(
+                bool(
+                    item.data(
+                        PIXEL_COLLISION_ROLE
+                    )
+                )
+            )
+
     def test_map_properties_dialog_is_shared_and_map_browser_has_context_edit(self) -> None:
         from tools.content_studio.model.map_document import MapDocument
         from tools.content_studio.services.localization import Translator
@@ -383,8 +570,14 @@ class QtSmokeTests(unittest.TestCase):
                                 for card in palette.family_cards.values()))
             palette.select_family("terrain.test")
             self.assertTrue(palette.room.isEnabled())
-            self.assertEqual(("floor", False), (palette.selection().role, palette.selection().collision))
-            self.assertIn("bordas com colisão", palette.family_cards["terrain.test"].statusTip())
+            floor_selection = palette.selection()
+            self.assertIsNotNone(floor_selection)
+            self.assertEqual("floor", floor_selection.role)
+            self.assertFalse(hasattr(floor_selection, "collision"))
+            self.assertIn(
+                "Piso + parede",
+                palette.family_cards["terrain.test"].statusTip(),
+            )
             preview_tiles = palette.preview_tiles("terrain.test")
             self.assertEqual(9, len(preview_tiles))
             self.assertTrue(all(tile is not None and not tile.isNull() for tile in preview_tiles))
@@ -393,10 +586,31 @@ class QtSmokeTests(unittest.TestCase):
             self.assertIn("terrain.test", palette.preview.title.text())
             palette.preview.hide()
             palette.select_family("terrain.zz_solid")
-            self.assertEqual(("wall", True), (palette.selection().role, palette.selection().collision))
+            wall_selection = palette.selection()
+            self.assertIsNotNone(wall_selection)
+            self.assertEqual("wall", wall_selection.role)
+            self.assertFalse(hasattr(wall_selection, "collision"))
             palette.select_family("terrain.test")
             room_profile = palette.profile()
-            self.assertEqual((False, True), (room_profile.floor.collision, room_profile.boundary.collision))
+            self.assertEqual(
+                ("floor", "wall"),
+                (
+                    room_profile.floor.role,
+                    room_profile.boundary.role,
+                ),
+            )
+            self.assertFalse(
+                hasattr(
+                    room_profile.floor,
+                    "collision",
+                )
+            )
+            self.assertFalse(
+                hasattr(
+                    room_profile.boundary,
+                    "collision",
+                )
+            )
             self.assertEqual(9, len(rule_dialog.slots))
             self.assertTrue(all(button.minimumWidth() == 42 and button.maximumWidth() == 42
                                 and button.minimumHeight() == 42 and button.maximumHeight() == 42
@@ -443,7 +657,13 @@ class QtSmokeTests(unittest.TestCase):
             tile_menu = widget._atlas_tile_context_menu("tileset.test", 3)
             self.addCleanup(tile_menu.deleteLater)
             self.assertEqual(
-                ["Editar nome e família do tile...", "", "Gerenciar lógica Smart Terrain..."],
+                [
+                    "Editar nome e família do tile...",
+                    "",
+                    "Definir colisão por pixel...",
+                    "",
+                    "Gerenciar lógica Smart Terrain...",
+                ],
                 [action.text() for action in tile_menu.actions()],
             )
             editor.set_selection("tileset.test", 3)

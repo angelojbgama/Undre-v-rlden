@@ -20,6 +20,7 @@ from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
 from ..services.localization import Translator
 from ..services.autosave import autosave
+from ..services.legacy_tile_collision_migration import LegacyTileCollisionMigrationService
 from ..services.preferences import load_preferences, save_preferences
 from ..services.toolchain import CppToolchain, PlaytestService
 from ..services.world_export_service import WorldExportService
@@ -64,6 +65,14 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
         self._build_actions()
         self._build_ui()
+
+        migration = self._migrate_legacy_tile_collision()
+
+        if migration is not None:
+            self.diagnostics.extend(
+                migration.diagnostics
+            )
+
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setInterval(60_000)
         self.autosave_timer.timeout.connect(self._autosave)
@@ -71,6 +80,17 @@ class MainWindow(QMainWindow):
         self._refresh_all()
         self.actions["select"].setChecked(True)
         self.map_canvas.set_tool("select")
+
+        if migration is not None:
+            if migration.changed:
+                self.set_status(
+                    "Legacy tile collision migrated to Pixel Collision "
+                    f"({len(migration.created_masks)} mask(s) created)"
+                )
+            elif not migration.ok:
+                self.set_status(
+                    "Legacy collision needs manual review before playtest"
+                )
 
     def _build_actions(self) -> None:
         file_menu = self.menuBar().addMenu(self.translator("file"))
@@ -90,7 +110,6 @@ class MainWindow(QMainWindow):
         self.actions["redo"] = QAction("Redo", self); self.actions["redo"].setShortcut("Ctrl+Y"); self.actions["redo"].triggered.connect(self.redo); edit_menu.addAction(self.actions["redo"])
         grid = QAction(self.translator("grid"), self, checkable=True, checked=True); grid.triggered.connect(self.map_canvas_grid); view_menu.addAction(grid); self.actions["grid"] = grid
         snap = QAction(self.translator("snap"), self, checkable=True, checked=True); snap.triggered.connect(self.map_canvas_snap); view_menu.addAction(snap); self.actions["snap"] = snap
-        overlays = QAction(self.translator("overlays"), self, checkable=True, checked=False); overlays.triggered.connect(self.map_canvas_overlays); view_menu.addAction(overlays); self.actions["overlays"] = overlays
         frame = QAction("Frame Map", self); frame.setShortcut("Home"); frame.triggered.connect(lambda: self.map_canvas.fit_map()); view_menu.addAction(frame); self.actions["frame"] = frame
         language = view_menu.addMenu(self.translator("language")); self._language_menu = language
         for code, name in (("pt-BR", "Português (Brasil)"), ("en-US", "English")):
@@ -107,7 +126,6 @@ class MainWindow(QMainWindow):
         select = QAction(self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.toggled.connect(self._select_tool_toggled); tool_group.addAction(select); toolbar.addAction(select); self.actions["select"] = select
         toolbar.addAction(self.actions["grid"])
         toolbar.addAction(self.actions["snap"])
-        toolbar.addAction(self.actions["overlays"])
         toolbar.addSeparator()
         toolbar.addAction(self.actions["playtest"])
         erase_tiles = QAction(self.translator("tools_erase"), self)
@@ -116,8 +134,8 @@ class MainWindow(QMainWindow):
         tool_group.addAction(erase_tiles)
         toolbar.addAction(erase_tiles)
         self.actions["erase_tiles"] = erase_tiles
-        self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["overlays"], self.actions["playtest"], erase_tiles]
-        self._tool_keys = ["select", "grid", "snap", "overlays", "playtest_toolbar", "tools_erase"]
+        self.tool_actions = [select, self.actions["grid"], self.actions["snap"], self.actions["playtest"], erase_tiles]
+        self._tool_keys = ["select", "grid", "snap", "playtest_toolbar", "tools_erase"]
         self.mode_tabs = QTabBar()
         self.mode_tabs.setExpanding(False)
         self.mode_tabs.setDrawBase(True)
@@ -303,7 +321,7 @@ class MainWindow(QMainWindow):
         self.command_coordinator.mark("content" if mode_index == 1 else "map")
         map_mode = mode_index == 0
         self._toolbar.setVisible(map_mode)
-        for action_key in ("grid", "snap", "overlays", "frame"):
+        for action_key in ("grid", "snap", "frame"):
             self.actions[action_key].setEnabled(map_mode)
         while self._section_tabs.count():
             self._section_tabs.removeTab(0)
@@ -567,6 +585,15 @@ class MainWindow(QMainWindow):
         self.map_canvas.set_entity_selection(category, definition_id)
         self.set_status(f"Placement active: {definition_id}. Click the map or press Escape.")
 
+    def _migrate_legacy_tile_collision(self):
+        if self.workspace is None:
+            return None
+
+        return LegacyTileCollisionMigrationService().migrate(
+            self.project,
+            self.workspace,
+        )
+
     def _content_changed(self) -> None:
         self.command_coordinator.mark("content")
         self.semantic_catalog.invalidate()
@@ -615,9 +642,6 @@ class MainWindow(QMainWindow):
 
     def map_canvas_snap(self, checked: bool) -> None:
         self.map_canvas.set_snap_enabled(checked)
-
-    def map_canvas_overlays(self, checked: bool) -> None:
-        self.map_canvas.set_collision_overlay(checked)
 
     def import_tileset(self) -> None:
         if self.workspace is None:
@@ -712,8 +736,31 @@ class MainWindow(QMainWindow):
         project, diagnostics = WorldProject.open(Path(path))
         if project is None:
             self._refresh_diagnostics(diagnostics); return
-        self.project = project; self.preferences.last_project = path; save_preferences(self.preferences)
-        self._refresh_all(); self._refresh_diagnostics(diagnostics)
+        self.project = project
+        self.preferences.last_project = path
+        save_preferences(self.preferences)
+
+        migration = self._migrate_legacy_tile_collision()
+
+        self._refresh_all()
+
+        migration_diagnostics = (
+            list(migration.diagnostics)
+            if migration is not None
+            else []
+        )
+
+        self._refresh_diagnostics(
+            [
+                *diagnostics,
+                *migration_diagnostics,
+            ]
+        )
+
+        if migration is not None and migration.changed:
+            self.set_status(
+                "Legacy tile collision migrated to Pixel Collision"
+            )
 
     def save(self) -> None:
         try:
@@ -763,8 +810,24 @@ class MainWindow(QMainWindow):
 
     def export_maps(self) -> None:
         if not self.workspace:
-            self.show_error("Open a project content workspace before exporting")
+            self.show_error(
+                "Open a project content workspace before exporting"
+            )
             return
+
+        migration = self._migrate_legacy_tile_collision()
+
+        if migration is not None and not migration.ok:
+            self._refresh_diagnostics(
+                list(
+                    migration.diagnostics
+                )
+            )
+            self.set_status(
+                "Export blocked: legacy collision requires review"
+            )
+            return
+
         directory = QFileDialog.getExistingDirectory(self, "Export DMAP directory")
         if not directory: return
         result, issues = WorldExportService().export(
@@ -774,9 +837,29 @@ class MainWindow(QMainWindow):
 
     def toggle_playtest(self) -> None:
         if self.playtest.process and self.playtest.process.poll() is None:
-            self.playtest.stop(); self.set_status("Playtest stopped"); return
+            self.playtest.stop()
+            self.set_status("Playtest stopped")
+            return
+
         if not self.workspace:
-            self.show_error("The repository content directory is unavailable"); return
+            self.show_error(
+                "The repository content directory is unavailable"
+            )
+            return
+
+        migration = self._migrate_legacy_tile_collision()
+
+        if migration is not None and not migration.ok:
+            self._refresh_diagnostics(
+                list(
+                    migration.diagnostics
+                )
+            )
+            self.set_status(
+                "Playtest blocked: legacy collision requires review"
+            )
+            return
+
         success, issues = self.playtest.start(self.project, self.workspace, self.asset_root)
         self._refresh_diagnostics(issues); self.set_status("Playtest started" if success else "Playtest failed")
 
@@ -789,10 +872,40 @@ class MainWindow(QMainWindow):
         if changed: self._refresh_all()
 
     def import_map(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import UMAP", "", "Authored Map (*.umap)")
-        if path:
-            try: self.project.import_map(Path(path)); self._refresh_all()
-            except ValueError as error: self.show_error(str(error))
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import UMAP",
+            "",
+            "Authored Map (*.umap)",
+        )
+
+        if not path:
+            return
+
+        try:
+            self.project.import_map(
+                Path(path)
+            )
+
+            migration = self._migrate_legacy_tile_collision()
+
+            self._refresh_all()
+
+            if migration is not None:
+                self._refresh_diagnostics(
+                    list(
+                        migration.diagnostics
+                    )
+                )
+
+                if migration.changed:
+                    self.set_status(
+                        "Imported map collision migrated to Pixel Collision"
+                    )
+        except ValueError as error:
+            self.show_error(
+                str(error)
+            )
 
     def remove_map(self, map_id: str) -> None:
         try:

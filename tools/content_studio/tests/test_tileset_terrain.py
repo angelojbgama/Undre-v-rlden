@@ -17,9 +17,10 @@ from tools.content_studio.model.world_project import WorldProject
 from tools.content_studio.services.autotile_resolver import AutoTileResolver, EAST, NORTH, SOUTH, WEST
 from tools.content_studio.services.import_service import TilesetImportRequest
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
-from tools.content_studio.services.terrain_painting_service import TerrainCollisionPolicy, TerrainPaintingService
+from tools.content_studio.services.terrain_painting_service import TerrainPaintingService
 from tools.content_studio.services.terrain_rule_service import RULE_SLOTS, RULE_SLOT_MASK, TerrainRuleService
 from tools.content_studio.services.tileset_library import BatchTilesetImportRequest, TilesetLibrary, TilesetUsageIndex
+from tools.content_studio.services.tile_collision_service import TileCollisionService
 from tools.content_studio.services.toolchain import find_cpp_tool
 
 
@@ -164,6 +165,245 @@ class TilesetLibraryTests(unittest.TestCase):
             self.assertEqual(8, workspace.find("tilesets", "tileset.properties").data["tileSize"])
 
 
+class TileCollisionServiceTests(unittest.TestCase):
+    def test_mask_lifecycle_keeps_explicit_empty_mask_and_supports_undo(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{
+            "id": "tileset.collision",
+            "displayName": "Collision",
+            "relativeAssetPath": "collision.png",
+            "tileSize": 16,
+            "columns": 2,
+            "rows": 1,
+        }]
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            service = TileCollisionService(workspace)
+
+            self.assertFalse(
+                service.has_mask(
+                    "tileset.collision",
+                    0,
+                )
+            )
+
+            empty = service.empty_mask(
+                "tileset.collision",
+                0,
+            )
+
+            self.assertEqual(
+                (16, 16, 256, False),
+                (
+                    empty.width,
+                    empty.height,
+                    len(empty.cells),
+                    empty.has_solid_pixels,
+                ),
+            )
+
+            saved = service.set_mask(
+                "tileset.collision",
+                0,
+                list(empty.cells),
+            )
+
+            self.assertTrue(
+                service.has_mask(
+                    "tileset.collision",
+                    0,
+                )
+            )
+
+            self.assertFalse(
+                saved.has_solid_pixels
+            )
+
+            definition = workspace.find(
+                "tilesets",
+                "tileset.collision",
+            )
+
+            self.assertIsNotNone(definition)
+
+            entries = definition.data["tileCollisions"]
+
+            self.assertEqual(
+                1,
+                len(entries),
+            )
+
+            self.assertEqual(
+                0,
+                entries[0]["sourceIndex"],
+            )
+
+            self.assertTrue(
+                workspace.undo()
+            )
+
+            self.assertFalse(
+                service.has_mask(
+                    "tileset.collision",
+                    0,
+                )
+            )
+
+    def test_mask_is_binary_exact_tile_size_and_replaceable(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{
+            "id": "tileset.collision",
+            "displayName": "Collision",
+            "relativeAssetPath": "collision.png",
+            "tileSize": 16,
+            "columns": 2,
+            "rows": 1,
+        }]
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            service = TileCollisionService(workspace)
+
+            cells = [0] * 256
+            cells[15] = 1
+            cells[31] = 1
+
+            saved = service.set_mask(
+                "tileset.collision",
+                1,
+                cells,
+            )
+
+            self.assertTrue(
+                saved.has_solid_pixels
+            )
+
+            self.assertEqual(
+                (1, 1),
+                (
+                    saved.cells[15],
+                    saved.cells[31],
+                ),
+            )
+
+            replacement = [0] * 256
+            replacement[255] = 1
+
+            service.set_mask(
+                "tileset.collision",
+                1,
+                replacement,
+            )
+
+            masks = service.masks(
+                "tileset.collision"
+            )
+
+            self.assertEqual(
+                1,
+                len(masks),
+            )
+
+            self.assertEqual(
+                1,
+                masks[0].cells[255],
+            )
+
+            self.assertTrue(
+                service.remove_mask(
+                    "tileset.collision",
+                    1,
+                )
+            )
+
+            self.assertFalse(
+                service.has_mask(
+                    "tileset.collision",
+                    1,
+                )
+            )
+
+            self.assertFalse(
+                service.remove_mask(
+                    "tileset.collision",
+                    1,
+                )
+            )
+
+    def test_invalid_tile_collision_is_rejected_before_workspace_mutation(self) -> None:
+        data = content_root()
+        data["tilesets"] = [{
+            "id": "tileset.collision",
+            "displayName": "Collision",
+            "relativeAssetPath": "collision.png",
+            "tileSize": 16,
+            "columns": 2,
+            "rows": 1,
+        }]
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            service = TileCollisionService(workspace)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "exactly 256 cells",
+            ):
+                service.set_mask(
+                    "tileset.collision",
+                    0,
+                    [0] * 255,
+                )
+
+            invalid = [0] * 256
+            invalid[5] = 2
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "binary",
+            ):
+                service.set_mask(
+                    "tileset.collision",
+                    0,
+                    invalid,
+                )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "outside tileset",
+            ):
+                service.set_mask(
+                    "tileset.collision",
+                    2,
+                    [0] * 256,
+                )
+
+            definition = workspace.find(
+                "tilesets",
+                "tileset.collision",
+            )
+
+            self.assertIsNotNone(definition)
+
+            self.assertNotIn(
+                "tileCollisions",
+                definition.data,
+            )
+
+
 class TerrainRuleTests(unittest.TestCase):
     def test_visual_rule_saves_nine_slots_as_one_semantic_operation(self) -> None:
         data = content_root()
@@ -279,7 +519,7 @@ class TerrainRuleTests(unittest.TestCase):
 
             result = painter.paint_terrain(
                 {(x, y) for y in range(1, 4) for x in range(1, 4)},
-                TerrainSelection("dungeon.hollow", "wall", collision=True),
+                TerrainSelection("dungeon.hollow", "wall"),
             )
 
             cells = document.layers[0]["cells"]
@@ -408,33 +648,86 @@ class SemanticAndAutotileTests(unittest.TestCase):
         self.assertEqual(20, sum(value is not None for value in cells))
         self.assertTrue(document.undo()); self.assertEqual(0, sum(value is not None for value in document.layers[0]["cells"]))
 
-    def test_collision_policy_is_opt_in_and_part_of_the_same_gesture(self) -> None:
-        document = MapDocument.new("map.collision.policy", 4, 4)
-        editing = MapEditingService(document, workspace=self.workspace)
-        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver,
-                                         TerrainCollisionPolicy(frozenset({"wall"})))
-        result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall"))
-        self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
-        self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])
+    def test_smart_terrain_never_authors_legacy_map_collision(self) -> None:
+        document = MapDocument.new(
+            "map.semantic.without.map-collision",
+            4,
+            4,
+        )
 
-    def test_explicit_terrain_collision_override_is_part_of_the_same_gesture(self) -> None:
-        document = MapDocument.new("map.collision.override", 4, 4)
-        editing = MapEditingService(document, workspace=self.workspace)
-        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver)
-        result = painter.paint_terrain([(1, 1), (2, 1)], TerrainSelection("dungeon.stone", "wall", collision=True))
-        self.assertTrue(result.changed); self.assertEqual([1, 1], document.data["collision"][5:7])
-        self.assertTrue(document.undo()); self.assertEqual([0, 0], document.data["collision"][5:7])
+        before_collision = list(
+            document.data["collision"]
+        )
 
-    def test_smart_wall_collision_binding_is_removed_when_wall_is_erased(self) -> None:
-        document = MapDocument.new("map.collision.binding", 4, 4)
-        editing = MapEditingService(document, workspace=self.workspace)
-        painter = TerrainPaintingService(document, self.workspace, editing, self.catalog, self.resolver)
-        selection = TerrainSelection("dungeon.stone", "wall", collision=True)
-        result = painter.paint_terrain([(1, 1)], selection)
-        self.assertTrue(result.changed)
-        self.assertTrue(document.data["collision"][5])
-        self.assertTrue(document.data["collisionBindings"])
-        erased = painter.paint_terrain([(1, 1)], selection, erase=True)
-        self.assertTrue(erased.changed)
-        self.assertEqual(0, document.data["collision"][5])
-        self.assertEqual([], document.data["collisionBindings"])
+        editing = MapEditingService(
+            document,
+            workspace=self.workspace,
+        )
+
+        painter = TerrainPaintingService(
+            document,
+            self.workspace,
+            editing,
+            self.catalog,
+            self.resolver,
+        )
+
+        wall = painter.paint_terrain(
+            [(1, 1), (2, 1)],
+            TerrainSelection(
+                "dungeon.stone",
+                "wall",
+            ),
+        )
+
+        self.assertTrue(
+            wall.changed
+        )
+
+        self.assertEqual(
+            before_collision,
+            document.data["collision"],
+        )
+
+        self.assertEqual(
+            [],
+            document.data.get(
+                "collisionBindings",
+                [],
+            ),
+        )
+
+        profile = TerrainProfile(
+            "dungeon.stone.room",
+            TerrainSelection(
+                "dungeon.stone",
+                "floor",
+            ),
+            TerrainSelection(
+                "dungeon.stone",
+                "wall",
+            ),
+        )
+
+        room = painter.paint_room(
+            (0, 0),
+            (3, 3),
+            profile,
+        )
+
+        self.assertTrue(
+            room.changed
+        )
+
+        self.assertEqual(
+            before_collision,
+            document.data["collision"],
+        )
+
+        self.assertEqual(
+            [],
+            document.data.get(
+                "collisionBindings",
+                [],
+            ),
+        )

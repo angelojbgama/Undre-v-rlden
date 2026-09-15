@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/simulation/definition_id.h"
+#include "engine/world/collision.h"
 #include "engine/world/tile.h"
 
 #include <cstdint>
@@ -16,6 +17,30 @@ namespace underworld::render { class Image; }
 
 namespace underworld::game {
 
+struct TileCollisionDefinition final {
+    std::uint32_t sourceIndex{};
+    std::vector<world::AabbI> regions;
+};
+
+// Collision masks are authored in local tile coordinates.
+// Visual flipX must transform physical collision in the same way.
+[[nodiscard]] constexpr world::AabbI transformTileCollisionRegion(
+    world::AabbI region,
+    int tileSize,
+    world::TileFlags flags) noexcept {
+
+    if (world::hasFlag(
+            flags,
+            world::TileFlags::flipX)) {
+        region.x =
+            tileSize -
+            region.x -
+            region.width;
+    }
+
+    return region;
+}
+
 struct TilesetDefinition final {
     simulation::DefinitionId id{};
     std::string displayName;
@@ -23,8 +48,21 @@ struct TilesetDefinition final {
     std::uint16_t tileSize{};
     std::uint32_t columns{};
     std::uint32_t rows{};
+    std::vector<TileCollisionDefinition> tileCollisions;
 
-    [[nodiscard]] std::uint32_t tileCount() const noexcept { return columns * rows; }
+    [[nodiscard]] std::uint32_t tileCount() const noexcept {
+        return columns * rows;
+    }
+
+    [[nodiscard]] const TileCollisionDefinition* collisionFor(
+        std::uint32_t sourceIndex) const noexcept {
+        for (const auto& collision : tileCollisions) {
+            if (collision.sourceIndex == sourceIndex) {
+                return &collision;
+            }
+        }
+        return nullptr;
+    }
 };
 
 class TilesetCatalog final {

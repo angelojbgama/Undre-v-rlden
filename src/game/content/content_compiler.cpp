@@ -13,7 +13,45 @@
 namespace underworld::game::content {
 namespace {
 
-TilesetDefinition compileTileset(const AuthoredTileset& v) { return {v.id, v.displayName, v.relativeAssetPath, v.tileSize, v.columns, v.rows}; }
+TilesetDefinition compileTileset(const AuthoredTileset& value) {
+    TilesetDefinition result;
+    result.id = value.id;
+    result.displayName = value.displayName;
+    result.relativeAssetPath = value.relativeAssetPath;
+    result.tileSize = value.tileSize;
+    result.columns = value.columns;
+    result.rows = value.rows;
+
+    result.tileCollisions.reserve(
+        value.tileCollisions.size());
+
+    for (const auto& authored : value.tileCollisions) {
+        TileCollisionDefinition compiled;
+        compiled.sourceIndex = authored.sourceIndex;
+
+        const auto boxes = gameplay::compileAttackShapeMask(
+            authored.width,
+            authored.height,
+            authored.cells);
+
+        compiled.regions.reserve(
+            boxes.size());
+
+        for (const auto& box : boxes) {
+            compiled.regions.push_back({
+                box.offsetX,
+                box.offsetY,
+                box.width,
+                box.height
+            });
+        }
+
+        result.tileCollisions.push_back(
+            std::move(compiled));
+    }
+
+    return result;
+}
 gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets}; }
 const AuthoredAnimation* findAnimation(
     const AuthoredContentPack& pack,

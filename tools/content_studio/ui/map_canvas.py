@@ -118,9 +118,6 @@ class MapCanvas(QWidget):
             self.renderer.moving_selection = None
             self.renderer.moving_world = None
         self.interaction.set_tile_erase_mode(tool == "erase")
-        collision_tools = {"collision", "collision_erase", "collision_rectangle", "collision_rectangle_erase", "collision_fill", "collision_fill_erase"}
-        self.interaction.set_collision_overlay(tool in collision_tools)
-        self.interaction.set_collision_fill_solid(tool != "collision_fill_erase")
         if tool not in {"terrain", "room"}:
             self.interaction.set_terrain_selection(None)
             self.interaction.set_room_profile(None)
@@ -147,10 +144,6 @@ class MapCanvas(QWidget):
     def set_snap_enabled(self, enabled: bool) -> None:
         self.camera.snap_enabled = enabled
         self.interaction.snap_enabled = enabled
-
-    def set_collision_overlay(self, enabled: bool) -> None:
-        self.interaction.set_collision_overlay(enabled)
-        self.update()
 
     def set_layer(self, index: int) -> None:
         if self.document and 0 <= index < len(self.document.layers):
@@ -192,7 +185,6 @@ class MapCanvas(QWidget):
         self.interaction.set_tile_erase_mode(False)
         self.interaction.set_terrain_selection(None)
         self.interaction.set_room_profile(None)
-        self.interaction.set_collision_overlay(False)
         self.selected_brush = []
         if not source_indices:
             self.interaction.set_active_payload(None)
@@ -215,7 +207,6 @@ class MapCanvas(QWidget):
             self.interaction.set_terrain_selection(None)
             return
         self.tool = "terrain"
-        self.interaction.set_collision_overlay(False)
         self.selected_entity_category = ""
         self.selected_definition_id = ""
         self.interaction.set_terrain_selection(selection)
@@ -227,7 +218,6 @@ class MapCanvas(QWidget):
             self.interaction.set_room_profile(None)
             return
         self.tool = "room"
-        self.interaction.set_collision_overlay(False)
         self.selected_entity_category = ""
         self.selected_definition_id = ""
         self.interaction.set_room_profile(profile)
@@ -317,11 +307,11 @@ class MapCanvas(QWidget):
         if self.tool == "stamp" and button == "left":
             self._place_stamp(tile)
             return
-        if self.tool in {"erase", "collision_erase"} and button == "left":
+        if self.tool == "erase" and button == "left":
             button = "right"
-        if self.tool in {"fill", "collision_fill", "collision_fill_erase"} and button == "left":
+        if self.tool == "fill" and button == "left":
             modifiers = frozenset((*modifiers, "ctrl"))
-        if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"} and button == "left":
+        if self.tool == "rectangle" and button == "left":
             modifiers = frozenset((*modifiers, "shift"))
         if self.tool == "room" and button == "left":
             modifiers = frozenset((*modifiers, "shift"))
@@ -356,9 +346,9 @@ class MapCanvas(QWidget):
             self.renderer.moving_world = self._snap_world(self.screen_to_world(point))
             self.update()
             return
-        if self.tool in {"erase", "collision_erase"} and "left" in buttons:
+        if self.tool == "erase" and "left" in buttons:
             buttons = frozenset({"right", *[value for value in buttons if value != "left"]})
-        if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"}:
+        if self.tool == "rectangle":
             modifiers = frozenset((*modifiers, "shift"))
         if self.tool == "room":
             modifiers = frozenset((*modifiers, "shift"))
@@ -376,9 +366,9 @@ class MapCanvas(QWidget):
         tile = self.tile_at(point)
         modifiers = self._modifiers(event.modifiers())
         button = self._button_name(event.button())
-        if self.tool in {"erase", "collision_rectangle_erase"} and button == "left":
+        if self.tool == "erase" and button == "left":
             button = "right"
-        if self.tool in {"rectangle", "collision_rectangle", "collision_rectangle_erase"}:
+        if self.tool == "rectangle":
             modifiers = frozenset((*modifiers, "shift"))
         result = self.interaction.release(button, tile, modifiers)
         self._apply_result(result)

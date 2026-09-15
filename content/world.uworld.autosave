@@ -742,18 +742,6 @@
         }
       ],
       "collision": [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
         0,
         0,
         0,
@@ -763,8 +751,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -774,8 +760,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -785,8 +769,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -796,8 +778,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -807,8 +787,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -818,8 +796,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -829,8 +805,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -840,8 +814,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -851,8 +823,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -862,8 +832,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -873,8 +841,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -884,8 +850,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -895,8 +859,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -906,8 +868,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -917,8 +877,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -928,8 +886,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -939,8 +895,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -950,8 +904,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -961,8 +913,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -972,8 +922,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -983,8 +931,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -994,8 +940,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1005,8 +949,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1016,8 +958,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1027,8 +967,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1038,8 +976,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1049,8 +985,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -1060,18 +994,84 @@
         0,
         0,
         0,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ],
       "playerSpawns": [
         {
@@ -1144,632 +1144,7 @@
       "encounters": [],
       "scenes": [],
       "placementOverrides": [],
-      "collisionBindings": [
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 40,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 1,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 2,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 3,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 4,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 5,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 6,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 7,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 8,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 9,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 41,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 42,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 1,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 1,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 2,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 2,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 3,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 3,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 4,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 4,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 5,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 5,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 6,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 6,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 8,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 8,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 9,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 9,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 10,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 10,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 11,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 11,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 12,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 12,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 13,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 13,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 14,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 14,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 15,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 15,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 16,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 16,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 17,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 17,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 18,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 18,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 19,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 19,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 20,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 20,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 21,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 21,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 22,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 22,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 23,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 23,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 24,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 24,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 25,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 25,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 26,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 26,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 27,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 27,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 28,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 59,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 28,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 61,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 0,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 78,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 1,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 2,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 3,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 4,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 5,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 6,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 7,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 8,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 9,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 79,
-          "flags": 0
-        },
-        {
-          "layer": 1,
-          "x": 10,
-          "y": 29,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 80,
-          "flags": 0
-        }
-      ]
+      "collisionBindings": []
     }
   ]
 }

@@ -88,9 +88,6 @@ class TerrainSelection:
     family: str
     role: str = "floor"
     seed: int = 0
-    # Tooling-only override.  ``None`` preserves the map collision state;
-    # explicit values are authored into the map cells by the same gesture.
-    collision: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

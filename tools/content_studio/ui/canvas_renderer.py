@@ -56,7 +56,6 @@ class CanvasRenderer:
         destination = self._point(map_width, map_height, viewport_width, viewport_height)
         painter.fillRect(origin.x(), origin.y(), destination.x() - origin.x(), destination.y() - origin.y(), QColor("#323b42"))
         self._draw_tiles(painter, viewport_width, viewport_height)
-        self._draw_collision(painter, viewport_width, viewport_height)
         self._draw_entities(painter, viewport_width, viewport_height)
         self._draw_spawns(painter, viewport_width, viewport_height)
         self._draw_links(painter, viewport_width, viewport_height)
@@ -140,21 +139,6 @@ class CanvasRenderer:
         tile_size = int(tileset.data.get("tileSize", document.tile_size if document else 16))
         source = image.copy((source_index % columns) * tile_size, (source_index // columns) * tile_size, tile_size, tile_size)
         return source.mirrored(True, False) if int(reference.get("flags", 0)) & 1 else source
-
-    def _draw_collision(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
-        document = self.document
-        assert document is not None
-        collision = document.data.get("collision", [])
-        if not isinstance(collision, list):
-            return
-        size = max(1, round(document.tile_size * self.camera.zoom))
-        left, top, right, bottom = self._visible_tile_bounds(viewport_width, viewport_height)
-        for y in range(top, bottom + 1):
-            for x in range(left, right + 1):
-                index = y * document.width + x
-                if index < len(collision) and collision[index]:
-                    point = self._point(x * document.tile_size, y * document.tile_size, viewport_width, viewport_height)
-                    painter.fillRect(point.x(), point.y(), size, size, QColor(220, 70, 70, 80))
 
     def _draw_entities(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
         document = self.document

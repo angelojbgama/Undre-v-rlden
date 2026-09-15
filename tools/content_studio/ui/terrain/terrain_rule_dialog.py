@@ -57,10 +57,10 @@ class TerrainRuleDialog(QDialog):
 
         self.family = QLineEdit()
         self.role = QComboBox()
-        # Keep the established Content v5 roles internally, but present the
-        # authored gameplay decision directly: whether this rule adds collision.
-        self.role.addItem(self.translate("collision_off"), "floor")
-        self.role.addItem(self.translate("collision_on"), "wall")
+        # Smart Terrain roles are semantic authoring data.
+        # Physical collision is configured independently on each tileset tile.
+        self.role.addItem(self.translate("floor"), "floor")
+        self.role.addItem(self.translate("wall"), "wall")
         # Floor variants are the most common Smart Terrain use case.  Wall
         # topology remains available explicitly in the same compact dialog.
         self.role.setCurrentIndex(0)
@@ -120,7 +120,7 @@ class TerrainRuleDialog(QDialog):
         rule_buttons.addWidget(self.delete_button)
         form.addRow("", rule_buttons)
         form.addRow(self.translate("terrain_rule_family"), self.family)
-        form.addRow(self.translate("terrain_rule_collision"), self.role)
+        form.addRow(self.translate("terrain_rule_role"), self.role)
         variation_controls = QHBoxLayout()
         variation_controls.addWidget(self.variant_weight)
         variation_controls.addWidget(self.clear_slot_button)
@@ -165,9 +165,10 @@ class TerrainRuleDialog(QDialog):
         self.rule_selector.clear()
         self.rule_selector.addItem(self.translate("terrain_rule_none"), None)
         for rule in rules:
-            collision = self.translate("collision_on" if rule.role == "wall" else "collision_off")
-            self.rule_selector.addItem(f"{rule.family} / {collision} ({rule.assigned_slots}/9)",
-                                       (rule.family, rule.role))
+            role_label = self.translate(rule.role)
+            self.rule_selector.addItem(
+                f"{rule.family} / {role_label} ({rule.assigned_slots}/9)",
+                (rule.family, rule.role))
         index = 0
         if selected is not None:
             for candidate in range(self.rule_selector.count()):
@@ -226,7 +227,7 @@ class TerrainRuleDialog(QDialog):
             self, self.translate("terrain_rule_delete"),
             self.translate(
                 "terrain_rule_delete_confirm", family=family,
-                role=self.translate("collision_on" if role == "wall" else "collision_off")),
+                role=self.translate(role)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:

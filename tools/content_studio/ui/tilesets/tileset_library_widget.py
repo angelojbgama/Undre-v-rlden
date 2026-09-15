@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent, QImage
 from PySide6.QtWidgets import (
     QAbstractItemView, QGridLayout, QInputDialog, QLabel, QMenu, QMessageBox, QPushButton,
     QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QLineEdit,
@@ -13,12 +13,14 @@ from ...model.content_workspace import ContentWorkspace
 from ...model.world_project import WorldProject
 from ...services.import_service import SUPPORTED_IMAGE_SUFFIXES
 from ...services.localization import Translator
+from ...services.tile_collision_service import TileCollisionService
 from ...services.tileset_library import TilesetLibrary
 from ..tileset_import_dialog import TilesetImportDialog
 from .tile_atlas_widget import TileAtlasWidget
 from .tileset_properties_dialog import TilesetPropertiesDialog
 from ..terrain.terrain_rule_dialog import TerrainRuleDialog
 from ..terrain.tile_semantic_editor import TileSemanticDialog
+from ..shape_mask_editor import ShapeMaskEditorDialog
 
 _TILESET_MIME = "application/x-dungeon-underworld-tileset-folder"
 _ITEM_KIND_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -317,11 +319,70 @@ class TilesetLibraryWidget(QWidget):
 
     def _atlas_tile_context_menu(self, tileset_id: str, source_index: int) -> QMenu:
         menu = QMenu(self)
-        edit = menu.addAction(self.translate("edit_tile_name_family"))
-        edit.triggered.connect(lambda: self._open_tile_semantic(tileset_id, source_index))
+
+        edit = menu.addAction(
+            self.translate("edit_tile_name_family")
+        )
+        edit.triggered.connect(
+            lambda: self._open_tile_semantic(
+                tileset_id,
+                source_index,
+            )
+        )
+
+        workspace = self.library.workspace
+        has_collision = (
+            TileCollisionService(workspace).has_mask(
+                tileset_id,
+                source_index,
+            )
+            if workspace is not None
+            else False
+        )
+
         menu.addSeparator()
-        manage = menu.addAction(self.translate("configure_terrain_rule"))
-        manage.triggered.connect(lambda: self._open_terrain_rule(tileset_id))
+
+        collision = menu.addAction(
+            self.translate(
+                "edit_tile_pixel_collision"
+                if has_collision
+                else "define_tile_pixel_collision"
+            )
+        )
+
+        collision.triggered.connect(
+            lambda: self._open_tile_collision(
+                tileset_id,
+                source_index,
+            )
+        )
+
+        if has_collision:
+            remove_collision = menu.addAction(
+                self.translate(
+                    "remove_tile_pixel_collision"
+                )
+            )
+
+            remove_collision.triggered.connect(
+                lambda: self._remove_tile_collision(
+                    tileset_id,
+                    source_index,
+                )
+            )
+
+        menu.addSeparator()
+
+        manage = menu.addAction(
+            self.translate("configure_terrain_rule")
+        )
+
+        manage.triggered.connect(
+            lambda: self._open_terrain_rule(
+                tileset_id
+            )
+        )
+
         return menu
 
     def _tileset_context_menu(self, tileset_id: str, current_folder: str = "") -> QMenu:
@@ -459,6 +520,154 @@ class TilesetLibraryWidget(QWidget):
                         break
         self.folder_groups_changed.emit(self.folder_groups())
         self.refresh()
+
+    def _open_tile_collision(self, tileset_id: str, source_index: int) -> None:
+        workspace = self.library.workspace
+
+        if workspace is None:
+            return
+
+        definition = workspace.find(
+            "tilesets",
+            tileset_id,
+        )
+
+        if definition is None:
+            return
+
+        service = TileCollisionService(
+            workspace
+        )
+
+        mask = (
+            service.mask(
+                tileset_id,
+                source_index,
+            )
+            or service.empty_mask(
+                tileset_id,
+                source_index,
+            )
+        )
+
+        tile_image = QImage()
+
+        relative = definition.data.get(
+            "relativeAssetPath"
+        )
+
+        if (
+            self.asset_root is not None
+            and isinstance(relative, str)
+            and relative
+        ):
+            atlas_image = QImage(
+                str(self.asset_root / relative)
+            )
+
+            if not atlas_image.isNull():
+                tile_size = int(
+                    definition.data.get(
+                        "tileSize",
+                        16,
+                    )
+                )
+
+                columns = max(
+                    1,
+                    int(
+                        definition.data.get(
+                            "columns",
+                            1,
+                        )
+                    ),
+                )
+
+                tile_image = atlas_image.copy(
+                    source_index % columns * tile_size,
+                    source_index // columns * tile_size,
+                    tile_size,
+                    tile_size,
+                )
+
+        dialog = ShapeMaskEditorDialog(
+            tile_image,
+            {
+                "width": mask.width,
+                "height": mask.height,
+                "origin": {
+                    "x": 0,
+                    "y": 0,
+                },
+                "cells": list(mask.cells),
+            },
+            self.translate,
+            self,
+            title_key="tile_collision_editor_title",
+        )
+
+        # Tile collision has no actor/sprite anchor.
+        dialog.show_anchor.setChecked(False)
+        dialog.show_anchor.hide()
+        dialog.canvas.show_anchor = False
+        dialog.canvas.update()
+
+        if not dialog.exec():
+            return
+
+        result = dialog.result_mask()
+        cells = result.get(
+            "cells",
+            [],
+        )
+
+        if not isinstance(cells, list):
+            raise ValueError(
+                "tile collision editor returned invalid cells"
+            )
+
+        service.set_mask(
+            tileset_id,
+            source_index,
+            [
+                int(value)
+                for value in cells
+            ],
+        )
+
+        self.atlas.refresh()
+        self.changed.emit()
+
+        self.status_changed.emit(
+            self.translate(
+                "tile_collision_saved"
+            )
+        )
+
+    def _remove_tile_collision(self, tileset_id: str, source_index: int) -> None:
+        workspace = self.library.workspace
+
+        if workspace is None:
+            return
+
+        service = TileCollisionService(
+            workspace
+        )
+
+        if not service.remove_mask(
+            tileset_id,
+            source_index,
+        ):
+            return
+
+        self.atlas.refresh()
+        self.changed.emit()
+
+        self.status_changed.emit(
+            self.translate(
+                "tile_collision_removed"
+            )
+        )
 
     def _open_tileset_properties(self, tileset_id: str) -> None:
         try:

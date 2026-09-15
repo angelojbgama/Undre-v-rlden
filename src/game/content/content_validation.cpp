@@ -475,8 +475,64 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     for (const auto& value : pack.tilesets) {
         if (value.displayName.empty() || value.relativeAssetPath.empty() || value.tileSize == 0 ||
             value.columns == 0 || value.rows == 0 ||
-            value.columns > std::numeric_limits<std::uint32_t>::max() / value.rows)
-            error(report, ContentKind::tileset, value.id, "invalid_value", "tileset dimensions and path must be valid", "tileset");
+            value.columns > std::numeric_limits<std::uint32_t>::max() / value.rows) {
+            error(report, ContentKind::tileset, value.id, "invalid_value",
+                  "tileset dimensions and path must be valid", "tileset");
+            continue;
+        }
+
+        const auto tileCount =
+            static_cast<std::uint64_t>(value.columns) *
+            static_cast<std::uint64_t>(value.rows);
+
+        std::unordered_set<std::uint32_t> collisionIndices;
+
+        for (const auto& collision : value.tileCollisions) {
+            if (collision.sourceIndex >= tileCount) {
+                error(report, ContentKind::tileset, value.id,
+                      "invalid_tile_collision_index",
+                      "tile collision sourceIndex is outside the tileset",
+                      "tileCollisions.sourceIndex");
+            }
+
+            if (!collisionIndices.emplace(collision.sourceIndex).second) {
+                error(report, ContentKind::tileset, value.id,
+                      "duplicate_tile_collision",
+                      "tileset contains duplicate collision definitions for a tile",
+                      "tileCollisions.sourceIndex");
+            }
+
+            const auto expectedCells =
+                collision.width > 0 &&
+                collision.height <=
+                    std::numeric_limits<std::size_t>::max() /
+                    collision.width
+                ? static_cast<std::size_t>(collision.width) *
+                      collision.height
+                : 0;
+
+            if (collision.width != value.tileSize ||
+                collision.height != value.tileSize ||
+                expectedCells == 0 ||
+                collision.cells.size() != expectedCells) {
+                error(report, ContentKind::tileset, value.id,
+                      "invalid_tile_collision_dimensions",
+                      "tile collision mask must exactly match tileSize",
+                      "tileCollisions");
+            }
+
+            if (std::any_of(
+                    collision.cells.begin(),
+                    collision.cells.end(),
+                    [](std::uint8_t cell) {
+                        return cell > 1;
+                    })) {
+                error(report, ContentKind::tileset, value.id,
+                      "invalid_tile_collision_cells",
+                      "tile collision mask must be binary",
+                      "tileCollisions.cells");
+            }
+        }
     }
     for (const auto& value : pack.projectiles) {
         if (value.visualId.empty() || value.speedPixelsPerTick <= 0 || value.lifetimeTicks == 0 ||

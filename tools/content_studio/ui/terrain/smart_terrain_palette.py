@@ -178,10 +178,11 @@ class SmartTerrainPalette(QWidget):
         terrain = self._family(self._selected_family)
         if terrain is None:
             return None
-        collision = "wall" in terrain.roles and "floor" not in terrain.roles
+        wall_only = "wall" in terrain.roles and "floor" not in terrain.roles
         return TerrainSelection(
-            terrain.family, "wall" if collision else "floor",
-            self.seed.value(), collision)
+            terrain.family,
+            "wall" if wall_only else "floor",
+            self.seed.value())
 
     def profile(self) -> TerrainProfile | None:
         terrain = self._family(self._selected_family)
@@ -189,8 +190,8 @@ class SmartTerrainPalette(QWidget):
             return None
         return TerrainProfile(
             f"terrain.{terrain.family}.room",
-            TerrainSelection(terrain.family, "floor", self.seed.value(), False),
-            TerrainSelection(terrain.family, "wall", self.seed.value(), True),
+            TerrainSelection(terrain.family, "floor", self.seed.value()),
+            TerrainSelection(terrain.family, "wall", self.seed.value()),
         )
 
     def preview_tiles(self, family: str) -> list[QPixmap | None]:
@@ -301,8 +302,11 @@ class SmartTerrainPalette(QWidget):
             terrain is not None and {"floor", "wall"}.issubset(terrain.roles))
         if selection:
             self.terrain_selected.emit(selection)
-            status_key = "terrain_active_solid" if selection.collision else "terrain_active_walkable"
-            self.status.setText(self.translate(status_key, family=selection.family))
+            self.status.setText(self.translate(
+                "terrain_active",
+                family=selection.family,
+                role=self.translate(selection.role),
+            ))
         else:
             self.status.setText(self.translate("no_terrain_family"))
 

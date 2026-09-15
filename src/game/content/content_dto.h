@@ -27,7 +27,22 @@ namespace underworld::game::content {
 
 enum class AuthoringCategory { enemy, object, pickup, npc, player, item, rewardProfile, rewardGrant, shop };
 
-struct AuthoredTileset final { simulation::DefinitionId id{}; std::string displayName; std::string relativeAssetPath; std::uint16_t tileSize{}; std::uint32_t columns{}; std::uint32_t rows{}; };
+struct AuthoredTileCollision final {
+    std::uint32_t sourceIndex{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::vector<std::uint8_t> cells;
+};
+
+struct AuthoredTileset final {
+    simulation::DefinitionId id{};
+    std::string displayName;
+    std::string relativeAssetPath;
+    std::uint16_t tileSize{};
+    std::uint32_t columns{};
+    std::uint32_t rows{};
+    std::vector<AuthoredTileCollision> tileCollisions;
+};
 struct AuthoredProjectile final { simulation::DefinitionId id{}; simulation::DefinitionId visualId{}; gameplay::FacingDirection canonicalFacing{gameplay::FacingDirection::up}; int speedPixelsPerTick{}; std::uint32_t lifetimeTicks{}; int hitboxWidth{}; int hitboxHeight{}; gameplay::DirectionalOffsets spawnOffsets{}; };
 struct AuthoredAttackShapeFrame final { std::uint32_t frameIndex{}; std::uint32_t tick{}; std::uint32_t width{}; std::uint32_t height{}; std::vector<std::uint8_t> cells; };
 struct AuthoredDirectionalAttackShape final { gameplay::FacingDirection facing{gameplay::FacingDirection::down}; std::vector<AuthoredAttackShapeFrame> frames; };

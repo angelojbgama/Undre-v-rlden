@@ -4981,10 +4981,12 @@ void testSyntheticMapIntegrationFixture() {
                runtime.world->objects()[1].persistentId.value == 3 &&
                runtime.world->pickups()[0].persistentId.value == 4 &&
                runtime.world->pickups()[1].persistentId.value == 5 &&
-               runtime.world->map().collision().isSolid(3, 0) &&
                runtime.world->enemies()[0].instance.handle() && runtime.world->objects()[0].instance.handle() &&
                runtime.world->pickups()[0].instance.handle(),
            "RuntimeWorldBuilder creates the smoke fixture placements and allocates handles only at runtime");
+
+    expect(runtime && !runtime.world->map().collision().isSolid(3, 0),
+           "synthetic runtime ignores legacy map-cell collision after Pixel Collision migration");
 }
 
 void testOfficialGameplayMapSet() {
@@ -5505,7 +5507,24 @@ void testMultiTilesetAuthoringAndRuntime() {
     const simulation::DefinitionId tilesetA{"tileset.test_a"};
     const simulation::DefinitionId tilesetB{"tileset.test_b"};
     game::TilesetCatalog tilesets;
-    tilesets.add({tilesetA, "Test A", "test_a.png", 16, 2, 1});
+
+    game::TilesetDefinition tilesetADefinition{
+        tilesetA,
+        "Test A",
+        "test_a.png",
+        16,
+        2,
+        1
+    };
+
+    tilesetADefinition.tileCollisions.push_back({
+        1U,
+        {
+            {2, 4, 5, 3}
+        }
+    });
+
+    tilesets.add(std::move(tilesetADefinition));
     tilesets.add({tilesetB, "Test B", "test_b.png", 16, 2, 1});
     expect(tilesets.find(tilesetA) && tilesets.require(tilesetB).tileCount() == 2 &&
                tilesets.definitions().size() == 2,
@@ -5521,7 +5540,9 @@ void testMultiTilesetAuthoringAndRuntime() {
     map.tileReferences = {{tilesetA, 1, underworld::world::TileFlags::flipX},
                           {tilesetB, 0, underworld::world::TileFlags::none}};
     map.layers = {{"ground", true, {0U, 1U}}};
-    map.collision = {0, 0};
+    // Deliberately retain an old solid cell here. Runtime terrain
+    // collision must come from tileset Pixel Collision, not this legacy bit.
+    map.collision = {1, 0};
     auto content = game::content::compileBuiltinContentOrThrow();
     const maps::MapValidationCatalogs validation{
         &content.enemies(), &content.objects(), &content.items(), &tilesets};
@@ -5561,6 +5582,30 @@ void testMultiTilesetAuthoringAndRuntime() {
     expect(!runtime && built && built.world->map().layer(0).cell(0, 0)->definition.tilesetId !=
                built.world->map().layer(0).cell(1, 0)->definition.tilesetId,
            "RuntimeWorldBuilder resolves distinct persistent tileset definitions to distinct runtime IDs");
+
+    if (built) {
+        const auto& tileCollision =
+            built.world->tileCollisionBounds();
+
+        const auto movementCollision =
+            built.world->movementCollisionBounds();
+
+        expect(
+            tileCollision.size() == 1 &&
+                tileCollision.front() ==
+                    underworld::world::AabbI{9, 4, 5, 3},
+            "per-tile Pixel Collision follows flipX and replaces legacy whole-cell terrain collision");
+
+        expect(
+            movementCollision.size() == 1 &&
+                movementCollision.front() ==
+                    underworld::world::AabbI{9, 4, 5, 3},
+            "RuntimeWorld movement blockers include compiled tile Pixel Collision");
+
+        expect(
+            !built.world->map().collision().isSolid(0, 0),
+            "legacy MapData collision does not recreate a full solid terrain cell");
+    }
 
     using underworld::core::ColorRGBA8;
     const std::vector<ColorRGBA8> pixelsA(32U * 16U, ColorRGBA8{240, 20, 20, 255});
@@ -6510,6 +6555,71 @@ void testPhase13AJsonFoundation() {
     expect(!decodeAuthoredContentJson(
                R"({"format":"dungeon-underworld-content","version":1,"objects":[{"id":"object.door.test","visualSetId":"visual.door.test","door":{"initialState":"closed","blockingBounds":{"x":0,"y":0,"width":16,"height":16}}}]})").content,
            "content schema v1 rejects the door capability instead of changing its meaning silently");
+    auto pixelCollisionAuthored =
+        underworld::game::content::makeBuiltinAuthoredContent();
+
+    auto& pixelCollisionTileset =
+        pixelCollisionAuthored.tilesets.front();
+
+    underworld::game::content::AuthoredTileCollision authoredTileCollision;
+    authoredTileCollision.sourceIndex = 0;
+    authoredTileCollision.width = pixelCollisionTileset.tileSize;
+    authoredTileCollision.height = pixelCollisionTileset.tileSize;
+    authoredTileCollision.cells.assign(
+        static_cast<std::size_t>(authoredTileCollision.width) *
+            authoredTileCollision.height,
+        0);
+
+    authoredTileCollision.cells[0] = 1;
+    authoredTileCollision.cells[1] = 1;
+
+    pixelCollisionTileset.tileCollisions.push_back(
+        authoredTileCollision);
+
+    const auto pixelCollisionJson =
+        underworld::game::content::encodeAuthoredContentJson(
+            pixelCollisionAuthored);
+
+    const auto decodedPixelCollision =
+        decodeAuthoredContentJson(
+            pixelCollisionJson);
+
+    expect(
+        decodedPixelCollision.content &&
+            decodedPixelCollision.diagnostics.empty() &&
+            !decodedPixelCollision.content->tilesets.empty() &&
+            decodedPixelCollision.content->tilesets.front().tileCollisions.size() == 1 &&
+            decodedPixelCollision.content->tilesets.front().tileCollisions.front().cells.size() ==
+                static_cast<std::size_t>(pixelCollisionTileset.tileSize) *
+                    pixelCollisionTileset.tileSize,
+        "tile Pixel Collision survives authored content JSON roundtrip");
+
+    if (decodedPixelCollision.content) {
+        const auto compiledPixelCollision =
+            underworld::game::content::compileContent(
+                *decodedPixelCollision.content);
+
+        const auto* compiledTileset =
+            compiledPixelCollision.registry
+                ? compiledPixelCollision.registry->tilesets().find(
+                      pixelCollisionTileset.id)
+                : nullptr;
+
+        const auto* compiledCollision =
+            compiledTileset
+                ? compiledTileset->collisionFor(0)
+                : nullptr;
+
+        expect(
+            compiledPixelCollision &&
+                compiledTileset &&
+                compiledCollision &&
+                compiledCollision->regions.size() == 1 &&
+                compiledCollision->regions.front() ==
+                    underworld::world::AabbI{0, 0, 2, 1},
+            "tile Pixel Collision compiles binary pixels into compact runtime AABBs");
+    }
+
     const std::string invalidUtf8{"{\"x\":\xC0\x80}"};
     expect(parseJson(invalidUtf8).value == nullptr,
            "strict JSON rejects overlong raw UTF-8 sequences");

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
@@ -390,6 +391,251 @@ class MapAuthoringTests(unittest.TestCase):
         self.assertEqual([], workspace.find("dialogues", "dialogue.test").data["nodes"])  # type: ignore[union-attr]
 
 
+class LegacyTileCollisionMigrationTests(unittest.TestCase):
+    @staticmethod
+    def _service():
+        try:
+            module = importlib.import_module(
+                "tools.content_studio.services.legacy_tile_collision_migration"
+            )
+        except ModuleNotFoundError:
+            raise AssertionError(
+                "LegacyTileCollisionMigrationService ainda nao foi implementado"
+            )
+        return module.LegacyTileCollisionMigrationService()
+
+    @staticmethod
+    def _workspace(
+        root: Path,
+        *,
+        existing_mask: bool = False,
+    ) -> ContentWorkspace:
+        custom = [0] * 256
+        custom[17] = 1
+
+        tileset: dict[str, object] = {
+            "id": "tileset.legacy",
+            "displayName": "Legacy",
+            "relativeAssetPath": "legacy.png",
+            "tileSize": 16,
+            "columns": 2,
+            "rows": 1,
+        }
+
+        if existing_mask:
+            tileset["tileCollisions"] = [{
+                "sourceIndex": 0,
+                "width": 16,
+                "height": 16,
+                "cells": custom,
+            }]
+
+        data = content_root(
+            ("tilesets", tileset),
+        )
+
+        (root / "content.json").write_text(
+            encode_json(data),
+            encoding="utf-8",
+        )
+
+        return ContentWorkspace.open(root)
+
+    def test_migration_preserves_explicit_mask_and_promotes_missing_legacy_tile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = self._workspace(
+                root,
+                existing_mask=True,
+            )
+
+            document = MapDocument.new(
+                "map.legacy",
+                2,
+                1,
+            )
+
+            document.set_tile(
+                0,
+                0,
+                0,
+                "tileset.legacy",
+                0,
+            )
+
+            document.set_tile(
+                0,
+                1,
+                0,
+                "tileset.legacy",
+                1,
+            )
+
+            document.set_collision(
+                [(0, 0), (1, 0)],
+                True,
+                0,
+            )
+
+            # Simulate a freshly loaded authored project.
+            document.dirty = False
+            document.history.clear()
+
+            project = WorldProject(
+                [document],
+                document.map_id,
+            )
+
+            result = self._service().migrate(
+                project,
+                workspace,
+            )
+
+            self.assertTrue(
+                result.ok,
+                result.diagnostics,
+            )
+
+            self.assertTrue(
+                result.changed
+            )
+
+            self.assertEqual(
+                (("tileset.legacy", 1),),
+                result.created_masks,
+            )
+
+            self.assertEqual(
+                (("tileset.legacy", 0),),
+                result.preserved_masks,
+            )
+
+            self.assertEqual(
+                ("map.legacy",),
+                result.migrated_maps,
+            )
+
+            tileset = workspace.find(
+                "tilesets",
+                "tileset.legacy",
+            )
+
+            self.assertIsNotNone(tileset)
+
+            entries = {
+                int(value["sourceIndex"]): value
+                for value in tileset.data["tileCollisions"]
+            }
+
+            # Existing custom shape must be untouched.
+            self.assertEqual(
+                1,
+                sum(entries[0]["cells"]),
+            )
+
+            # Missing legacy collision becomes a full-tile mask.
+            self.assertEqual(
+                [1] * 256,
+                entries[1]["cells"],
+            )
+
+            self.assertEqual(
+                [0, 0],
+                document.data["collision"],
+            )
+
+            self.assertEqual(
+                [],
+                document.data["collisionBindings"],
+            )
+
+            self.assertTrue(
+                workspace.dirty
+            )
+
+            self.assertTrue(
+                document.dirty
+            )
+
+    def test_migration_rejects_per_placement_collision_conflict_without_mutating(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = self._workspace(root)
+
+            document = MapDocument.new(
+                "map.conflict",
+                2,
+                1,
+            )
+
+            # Same source tile is solid in one placement and free in another.
+            # Option A cannot represent that without changing gameplay.
+            document.set_tile(
+                0,
+                0,
+                0,
+                "tileset.legacy",
+                0,
+            )
+
+            document.set_tile(
+                0,
+                1,
+                0,
+                "tileset.legacy",
+                0,
+            )
+
+            document.set_collision(
+                [(0, 0)],
+                True,
+                0,
+            )
+
+            document.dirty = False
+            document.history.clear()
+
+            project = WorldProject(
+                [document],
+                document.map_id,
+            )
+
+            before_map = document.snapshot()
+            before_workspace = workspace.snapshot()
+
+            result = self._service().migrate(
+                project,
+                workspace,
+            )
+
+            self.assertFalse(
+                result.ok
+            )
+
+            self.assertFalse(
+                result.changed
+            )
+
+            self.assertTrue(
+                any(
+                    issue.code == "legacy_collision_scope_conflict"
+                    for issue in result.diagnostics
+                )
+            )
+
+            self.assertEqual(
+                before_map,
+                document.data,
+            )
+
+            self.assertEqual(
+                before_workspace,
+                workspace.snapshot(),
+            )
+
+
 class InteractionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.document = MapDocument.new("map.interaction", 5, 4)
@@ -460,65 +706,39 @@ class InteractionTests(unittest.TestCase):
         self.assertTrue(result.changed)
         self.assertEqual({(x, y) for y in range(1, 3) for x in range(1, 4)}, painter.cells)
 
-    def test_collision_is_bound_to_the_tile_layer_and_removed_with_the_tile(self) -> None:
+    def test_map_document_keeps_legacy_collision_readable_for_migration(self) -> None:
         self.document.add_layer("Wall")
-        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
-        self.editing.set_layer(1)
-        self.editing.set_collision([(2, 1)], True)
-        self.assertEqual(1, self.document.data["collision"][7])
-        self.assertEqual([{"layer": 1, "x": 2, "y": 1, "tilesetId": "tileset.wall", "sourceIndex": 7, "flags": 0}],
-                         self.document.data["collisionBindings"])
 
-        self.editing.erase_tiles([(2, 1)])
-        self.assertIsNone(self.document.layers[1]["cells"][7])
-        self.assertEqual(0, self.document.data["collision"][7])
-        self.assertEqual([], self.document.data["collisionBindings"])
+        self.document.set_tile(
+            1,
+            2,
+            1,
+            "tileset.wall",
+            7,
+        )
 
-    def test_collision_binding_follows_layer_reorder_and_layer_removal(self) -> None:
-        self.document.add_layer("Wall")
-        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
-        self.editing.set_layer(1)
-        self.editing.set_collision([(2, 1)], True)
+        self.document.set_collision(
+            [(2, 1)],
+            True,
+            1,
+        )
 
-        self.document.move_layer(1, 0)
-        self.assertEqual(0, self.document.data["collisionBindings"][0]["layer"])
-        self.document.remove_layer(0)
+        self.assertEqual(
+            1,
+            self.document.data["collision"][7],
+        )
 
-        self.assertEqual(0, self.document.data["collision"][7])
-        self.assertEqual([], self.document.data["collisionBindings"])
-
-    def test_clearing_one_layer_keeps_collision_from_another_layer(self) -> None:
-        self.document.add_layer("Wall")
-        self.document.set_tile(0, 2, 1, "tileset.floor", 3)
-        self.document.set_tile(1, 2, 1, "tileset.wall", 7)
-        self.editing.set_layer(0)
-        self.editing.set_collision([(2, 1)], True)
-        self.editing.set_layer(1)
-        self.editing.set_collision([(2, 1)], True)
-        self.editing.set_collision([(2, 1)], False)
-
-        self.assertEqual(1, self.document.data["collision"][7])
-        self.assertEqual(1, len(self.document.data["collisionBindings"]))
-        self.assertEqual(0, self.document.data["collisionBindings"][0]["layer"])
-
-    def test_contextual_collision_left_right_rectangle_and_fill(self) -> None:
-        self.document.set_tiles(0, ((x, y) for y in range(self.document.height)
-                                    for x in range(self.document.width)), "tileset.test", 1)
-        self.controller.set_collision_overlay(True)
-        self.controller.press("left", (0, 0), (0, 0))
-        self.assertEqual(1, self.document.data["collision"][0])
-        self.controller.press("right", (0, 0), (0, 0))
-        self.assertEqual(0, self.document.data["collision"][0])
-        self.controller.press("left", (1, 1), (16, 16), frozenset({"shift"}))
-        self.controller.release("left", (2, 2), frozenset({"shift"}))
-        self.assertEqual(4, sum(self.document.data["collision"]))
-        self.controller.press("left", (0, 0), (0, 0), frozenset({"ctrl"}))
-        self.assertEqual(self.document.width * self.document.height, sum(self.document.data["collision"]))
-
-    def test_collision_paint_on_a_blank_cell_does_not_create_an_orphan(self) -> None:
-        self.document.set_collision([(1, 1)], True, 0)
-        self.assertEqual(0, self.document.data["collision"][6])
-        self.assertEqual([], self.document.data["collisionBindings"])
+        self.assertEqual(
+            [{
+                "layer": 1,
+                "x": 2,
+                "y": 1,
+                "tilesetId": "tileset.wall",
+                "sourceIndex": 7,
+                "flags": 0,
+            }],
+            self.document.data["collisionBindings"],
+        )
 
     def test_content_drop_supports_enemy_npc_object_and_pickup(self) -> None:
         for index, category in enumerate(("enemies", "npcs", "objects", "pickups")):

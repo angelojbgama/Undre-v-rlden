@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QDrag, QIcon, QImage, QMouseEvent, QPixmap
+from PySide6.QtCore import QMimeData, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QIcon, QImage, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QHeaderView, QLabel, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
@@ -11,6 +11,51 @@ from PySide6.QtWidgets import (
 
 from ...model.content_workspace import ContentWorkspace
 from ...interaction.drag_payload import StudioDragPayload
+
+
+PIXEL_COLLISION_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+def _with_collision_badge(source: QPixmap) -> QPixmap:
+    """Return a copy with a compact collision marker in the lower-right corner."""
+    pixmap = QPixmap(source)
+
+    if pixmap.isNull():
+        return pixmap
+
+    painter = QPainter(pixmap)
+
+    size = 11
+    rect = QRect(
+        max(0, pixmap.width() - size),
+        max(0, pixmap.height() - size),
+        size,
+        size,
+    )
+
+    painter.fillRect(
+        rect,
+        QColor(210, 55, 55, 235),
+    )
+
+    painter.setPen(
+        QColor(255, 255, 255),
+    )
+
+    font = painter.font()
+    font.setBold(True)
+    font.setPixelSize(8)
+    painter.setFont(font)
+
+    painter.drawText(
+        rect,
+        Qt.AlignmentFlag.AlignCenter,
+        "C",
+    )
+
+    painter.end()
+
+    return pixmap
 
 
 class TileAtlasListWidget(QTableWidget):
@@ -184,6 +229,22 @@ class TileAtlasWidget(QWidget):
             for value in self.workspace.definitions("tileSemantics")
             if value.data.get("tilesetId") == self.tileset_id
         }
+
+        collision_entries = definition.data.get(
+            "tileCollisions",
+            [],
+        )
+
+        collision_indices = {
+            int(value["sourceIndex"])
+            for value in collision_entries
+            if (
+                isinstance(value, dict)
+                and isinstance(value.get("sourceIndex"), int)
+                and not isinstance(value.get("sourceIndex"), bool)
+            )
+        } if isinstance(collision_entries, list) else set()
+
         for source_index in range(columns * rows):
             item = QTableWidgetItem()
             semantic = semantics.get(source_index)
@@ -196,10 +257,50 @@ class TileAtlasWidget(QWidget):
                     details.append(f"{self.family_label}: {family}")
                 details.append(f"{self.tileset_id} / {source_index}")
                 item.setToolTip("\n".join(details))
-            item.setData(Qt.ItemDataRole.UserRole, source_index)
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                source_index,
+            )
+
+            has_pixel_collision = source_index in collision_indices
+
+            item.setData(
+                PIXEL_COLLISION_ROLE,
+                has_pixel_collision,
+            )
+
+            if has_pixel_collision:
+                tooltip = item.toolTip()
+                item.setToolTip(
+                    f"{tooltip}\nPixel Collision"
+                    if tooltip
+                    else "Pixel Collision"
+                )
+
             if not image.isNull():
-                tile = image.copy(source_index % columns * tile_size, source_index // columns * tile_size, tile_size, tile_size)
-                item.setIcon(QIcon(QPixmap.fromImage(tile).scaled(32, 32, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation)))
+                tile = image.copy(
+                    source_index % columns * tile_size,
+                    source_index // columns * tile_size,
+                    tile_size,
+                    tile_size,
+                )
+
+                pixmap = QPixmap.fromImage(tile).scaled(
+                    32,
+                    32,
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.FastTransformation,
+                )
+
+                if has_pixel_collision:
+                    pixmap = _with_collision_badge(
+                        pixmap
+                    )
+
+                item.setIcon(
+                    QIcon(pixmap)
+                )
+
             self.tiles.set_source_item(source_index, item)
         valid_selection = [index for index in selected_indices if 0 <= index < self.tiles.count()]
         if not valid_selection and self.tiles.count():

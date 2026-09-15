@@ -116,7 +116,158 @@ bool item(const JsonValue& v, std::string_view p, Context& c, AuthoredItem& out)
     if(ok)out=std::move(d);
     return ok;
 }
-bool tileset(const JsonValue&v,std::string_view p,Context&c,AuthoredTileset&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"id","displayName","relativeAssetPath","tileSize","columns","rows"},p,c);AuthoredTileset d{};bool ok=idField(v,*o,"id",p,c,d.id);const auto*a=required(v,*o,"displayName",p,c);const auto*b=required(v,*o,"relativeAssetPath",p,c);ok=a&&stringValue(*a,pathOf(p,"displayName"),c,d.displayName)&&ok;ok=b&&stringValue(*b,pathOf(p,"relativeAssetPath"),c,d.relativeAssetPath)&&ok;ok=unsignedField(v,*o,"tileSize",p,c,d.tileSize)&&ok;ok=unsignedField(v,*o,"columns",p,c,d.columns)&&ok;ok=unsignedField(v,*o,"rows",p,c,d.rows)&&ok;if(ok)out=std::move(d);return ok;}
+bool tileCollision(
+    const JsonValue& v, std::string_view p, Context& c,
+    AuthoredTileCollision& out) {
+    const JsonObject* o = nullptr;
+    if (!object(v, p, c, o)) return false;
+
+    allowed(*o, {"sourceIndex", "width", "height", "cells"}, p, c);
+
+    AuthoredTileCollision decoded{};
+    bool ok = unsignedField(
+        v, *o, "sourceIndex", p, c, decoded.sourceIndex);
+    ok = unsignedField(
+        v, *o, "width", p, c, decoded.width) && ok;
+    ok = unsignedField(
+        v, *o, "height", p, c, decoded.height) && ok;
+
+    const auto* cellsValue = required(v, *o, "cells", p, c);
+    const JsonArray* cells = nullptr;
+
+    if (!cellsValue ||
+        !array(*cellsValue, pathOf(p, "cells"), c, cells)) {
+        ok = false;
+    } else {
+        decoded.cells.reserve(cells->size());
+
+        for (std::size_t index = 0; index < cells->size(); ++index) {
+            std::uint64_t value{};
+            const auto cellPath =
+                pathOf(p, "cells") +
+                "[" + std::to_string(index) + "]";
+
+            if (!u64((*cells)[index], cellPath, c, value)) {
+                ok = false;
+                continue;
+            }
+
+            if (value > 1) {
+                c.error(
+                    (*cells)[index],
+                    cellPath,
+                    "tile collision cells must be binary");
+                ok = false;
+                continue;
+            }
+
+            decoded.cells.push_back(
+                static_cast<std::uint8_t>(value));
+        }
+    }
+
+    if (ok) out = std::move(decoded);
+    return ok;
+}
+
+bool tileset(
+    const JsonValue& v, std::string_view p, Context& c,
+    AuthoredTileset& out) {
+    const JsonObject* o = nullptr;
+    if (!object(v, p, c, o)) return false;
+
+    allowed(
+        *o,
+        {
+            "id",
+            "displayName",
+            "relativeAssetPath",
+            "tileSize",
+            "columns",
+            "rows",
+            "tileCollisions"
+        },
+        p,
+        c);
+
+    AuthoredTileset decoded{};
+
+    bool ok = idField(
+        v, *o, "id", p, c, decoded.id);
+
+    const auto* displayName =
+        required(v, *o, "displayName", p, c);
+
+    const auto* relativeAssetPath =
+        required(v, *o, "relativeAssetPath", p, c);
+
+    ok =
+        displayName &&
+        stringValue(
+            *displayName,
+            pathOf(p, "displayName"),
+            c,
+            decoded.displayName) &&
+        ok;
+
+    ok =
+        relativeAssetPath &&
+        stringValue(
+            *relativeAssetPath,
+            pathOf(p, "relativeAssetPath"),
+            c,
+            decoded.relativeAssetPath) &&
+        ok;
+
+    ok = unsignedField(
+        v, *o, "tileSize", p, c, decoded.tileSize) && ok;
+
+    ok = unsignedField(
+        v, *o, "columns", p, c, decoded.columns) && ok;
+
+    ok = unsignedField(
+        v, *o, "rows", p, c, decoded.rows) && ok;
+
+    if (const auto* values = findField(*o, "tileCollisions");
+        values && !isNull(values)) {
+        const JsonArray* collisions = nullptr;
+
+        if (!array(
+                *values,
+                pathOf(p, "tileCollisions"),
+                c,
+                collisions)) {
+            ok = false;
+        } else {
+            decoded.tileCollisions.reserve(
+                collisions->size());
+
+            for (std::size_t index = 0;
+                 index < collisions->size();
+                 ++index) {
+                AuthoredTileCollision collision{};
+
+                const auto collisionPath =
+                    pathOf(p, "tileCollisions") +
+                    "[" + std::to_string(index) + "]";
+
+                if (tileCollision(
+                        (*collisions)[index],
+                        collisionPath,
+                        c,
+                        collision)) {
+                    decoded.tileCollisions.push_back(
+                        std::move(collision));
+                } else {
+                    ok = false;
+                }
+            }
+        }
+    }
+
+    if (ok) out = std::move(decoded);
+    return ok;
+}
 bool behavior(const JsonValue&v,std::string_view p,Context&c,AuthoredBehaviorProfile&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"id","detectionRangePixels","disengageRangePixels","idleDurationTicks","wanderDurationTicks"},p,c);AuthoredBehaviorProfile d{};bool ok=idField(v,*o,"id",p,c,d.id);ok=signedField(v,*o,"detectionRangePixels",p,c,d.detectionRangePixels)&&ok;ok=signedField(v,*o,"disengageRangePixels",p,c,d.disengageRangePixels)&&ok;ok=unsignedField(v,*o,"idleDurationTicks",p,c,d.idleDurationTicks)&&ok;ok=unsignedField(v,*o,"wanderDurationTicks",p,c,d.wanderDurationTicks)&&ok;if(ok)out=std::move(d);return ok;}
 bool directional(const JsonValue&,std::string_view,Context&,presentation::DirectionalAnimationRef&);
 bool npcVisual(const JsonValue&v,std::string_view p,Context&c,AuthoredNpcVisualSet&out){const JsonObject*o=nullptr;if(!object(v,p,c,o))return false;allowed(*o,{"id","markerColor","idle"},p,c);AuthoredNpcVisualSet d{};bool ok=idField(v,*o,"id",p,c,d.id);const auto*m=required(v,*o,"markerColor",p,c);ok=m&&color(*m,pathOf(p,"markerColor"),c,d.markerColor)&&ok;if(const auto*x=findField(*o,"idle");x&&!isNull(x)){presentation::DirectionalAnimationRef refs{};if(directional(*x,pathOf(p,"idle"),c,refs))d.idle=refs;else ok=false;}if(ok)out=std::move(d);return ok;}

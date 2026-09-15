@@ -25,6 +25,24 @@ std::vector<world::AabbI> RuntimeWorld::objectCollisionBounds() const {
     return result;
 }
 
+std::vector<world::AabbI> RuntimeWorld::movementCollisionBounds() const {
+    std::vector<world::AabbI> result = tileCollisionBounds_;
+
+    const auto objects =
+        objectCollisionBounds();
+
+    result.reserve(
+        result.size() +
+        objects.size());
+
+    result.insert(
+        result.end(),
+        objects.begin(),
+        objects.end());
+
+    return result;
+}
+
 void RuntimeWorld::addDestroyedObjectResidue(
     simulation::PersistentInstanceId persistentId, simulation::DefinitionId visualSetId,
     core::WorldPointI position) {
@@ -132,27 +150,98 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
     }
     std::unique_ptr<RuntimeWorld> result;
     try {
-        world::RuntimeMap runtime(static_cast<int>(data.width), static_cast<int>(data.height),
-                                  static_cast<int>(data.tileSize));
+        world::RuntimeMap runtime(
+            static_cast<int>(data.width),
+            static_cast<int>(data.height),
+            static_cast<int>(data.tileSize));
+
+        std::vector<world::AabbI>
+            tileCollisionBounds;
+
+        const int runtimeTileSize =
+            static_cast<int>(data.tileSize);
+
         for (const auto& sourceLayer : data.layers) {
             auto& layer = runtime.layer(runtime.addLayer(sourceLayer.name, sourceLayer.visible));
             for (std::uint32_t y = 0; y < data.height; ++y) {
                 for (std::uint32_t x = 0; x < data.width; ++x) {
                     const std::size_t index = static_cast<std::size_t>(y) * data.width + x;
                     if (!sourceLayer.cells[index]) { continue; }
-                    const auto& source = data.tileReferences[*sourceLayer.cells[index]];
-                    layer.set(static_cast<int>(x), static_cast<int>(y),
-                        world::TileRef{{tilesets_.requireRuntimeId(source.tilesetId), source.sourceIndex}, source.flags});
+                    const auto& source =
+                        data.tileReferences[
+                            *sourceLayer.cells[index]];
+
+                    const auto runtimeTilesetId =
+                        tilesets_.requireRuntimeId(
+                            source.tilesetId);
+
+                    layer.set(
+                        static_cast<int>(x),
+                        static_cast<int>(y),
+                        world::TileRef{
+                            {
+                                runtimeTilesetId,
+                                source.sourceIndex
+                            },
+                            source.flags
+                        });
+
+                    const auto* tileset =
+                        tilesets_.definition(
+                            runtimeTilesetId);
+
+                    if (tileset == nullptr) {
+                        throw std::logic_error(
+                            "runtime tileset definition is unavailable");
+                    }
+
+                    const auto* collision =
+                        tileset->collisionFor(
+                            source.sourceIndex);
+
+                    if (collision == nullptr) {
+                        continue;
+                    }
+
+                    const int worldX =
+                        static_cast<int>(x) *
+                        runtimeTileSize;
+
+                    const int worldY =
+                        static_cast<int>(y) *
+                        runtimeTileSize;
+
+                    for (auto region : collision->regions) {
+                        region =
+                            transformTileCollisionRegion(
+                                region,
+                                runtimeTileSize,
+                                source.flags);
+
+                        region.x += worldX;
+                        region.y += worldY;
+
+                        tileCollisionBounds.push_back(
+                            region);
+                    }
                 }
             }
         }
-        for (std::uint32_t y = 0; y < data.height; ++y) {
-            for (std::uint32_t x = 0; x < data.width; ++x) {
-                const std::size_t index = static_cast<std::size_t>(y) * data.width + x;
-                runtime.collision().setSolid(static_cast<int>(x), static_cast<int>(y), data.collision[index] != 0);
-            }
-        }
-        result = std::make_unique<RuntimeWorld>(data.id, std::move(runtime), *spawn);
+        // Static tile collision no longer comes from MapData::collision.
+        //
+        // A placed tile is physically solid only where its tileset
+        // Pixel Collision definition contains solid pixels.
+        //
+        // RuntimeMap::collision remains available for world boundaries
+        // and dynamic/legacy cell blockers such as old door content.
+        result = std::make_unique<RuntimeWorld>(
+            data.id,
+            std::move(runtime),
+            *spawn);
+
+        result->tileCollisionBounds_ =
+            std::move(tileCollisionBounds);
+
         result->enemies_.reserve(data.enemies.size());
         for (const auto& placement : data.enemies) {
             result->enemies_.push_back({placement.id, enemyFactory_.create(handles,
