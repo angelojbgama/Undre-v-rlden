@@ -581,23 +581,89 @@ class MapDocument:
 
         self.mutate("Paste Tiles", operation)
 
-    def add_entity(self, category: str, definition_id: str, x: int, y: int, facing: str = "down") -> int:
+    def add_entity(
+            self, category: str, definition_id: str, x: int, y: int,
+            facing: str = "down",
+            definition_data: dict[str, JsonValue] | None = None) -> int:
         if category not in ENTITY_CATEGORIES:
             raise ValueError(f"unknown entity category: {category}")
+
         persistent_id = self.next_persistent_id()
+
         if category in {"enemies", "npcs"}:
-            value: dict[str, JsonValue] = {"id": persistent_id, "definitionId": definition_id, "position": {"x": x, "y": y}, "facing": facing}
+            value: dict[str, JsonValue] = {
+                "id": persistent_id,
+                "definitionId": definition_id,
+                "position": {"x": x, "y": y},
+                "facing": facing,
+            }
         elif category == "objects":
-            value = {"id": persistent_id, "definitionId": definition_id, "position": {"x": x, "y": y}, "initialContents": [], "persistence": "persistent"}
+            value = {
+                "id": persistent_id,
+                "definitionId": definition_id,
+                "position": {"x": x, "y": y},
+                "initialContents": [],
+                "persistence": "persistent",
+            }
         else:
-            value = {"id": persistent_id, "definitionId": definition_id, "visualId": "", "position": {"x": x, "y": y}, "collectionBounds": {"x": 0, "y": 0, "width": 8, "height": 8}, "payload": {"kind": "health", "amount": 1}}
+            if definition_data is None:
+                visual_id = ""
+                collection_bounds: JsonValue = {
+                    "x": 0,
+                    "y": 0,
+                    "width": 8,
+                    "height": 8,
+                }
+                payload: JsonValue = {
+                    "kind": "health",
+                    "amount": 1,
+                }
+            else:
+                raw_visual_id = definition_data.get("visualId")
+                raw_collection_bounds = definition_data.get(
+                    "collectionBounds"
+                )
+                raw_payload = definition_data.get(
+                    "payload"
+                )
+
+                if (
+                    not isinstance(raw_visual_id, str)
+                    or not raw_visual_id
+                    or not isinstance(raw_collection_bounds, dict)
+                    or not isinstance(raw_payload, dict)
+                ):
+                    raise ValueError(
+                        f"pickup definition is invalid: {definition_id}"
+                    )
+
+                visual_id = raw_visual_id
+                collection_bounds = copy.deepcopy(
+                    raw_collection_bounds
+                )
+                payload = copy.deepcopy(
+                    raw_payload
+                )
+
+            value = {
+                "id": persistent_id,
+                "definitionId": definition_id,
+                "visualId": visual_id,
+                "position": {"x": x, "y": y},
+                "collectionBounds": collection_bounds,
+                "payload": payload,
+            }
 
         def operation() -> None:
             values = self.data.setdefault(category, [])
             assert isinstance(values, list)
             values.append(value)
 
-        self.mutate(f"Place {category[:-1].title()}", operation)
+        self.mutate(
+            f"Place {category[:-1].title()}",
+            operation,
+        )
+
         return persistent_id
 
     def entity(self, category: str, persistent_id: int) -> dict[str, JsonValue] | None:

@@ -901,5 +901,105 @@ class ItemVisualServiceTests(unittest.TestCase):
             )
 
 
+
+class ItemPickupPlacementTests(unittest.TestCase):
+    def test_authored_item_pickup_placement_uses_generated_definition(self) -> None:
+        from tools.content_studio.interaction.map_editing_service import (
+            MapEditingService,
+        )
+        from tools.content_studio.model.map_document import (
+            MapDocument,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(
+                Path(directory)
+            )
+
+            service = item_service(
+                workspace
+            )
+
+            service.create_item(
+                "Pocao",
+                "item.potion",
+                "visual.item.a",
+                "consumable",
+            )
+
+            generated = service.pickup_for_item(
+                "item.potion"
+            )
+
+            self.assertIsNotNone(
+                generated
+            )
+
+            document = MapDocument.new(
+                "map.item.pickup",
+                4,
+                4,
+            )
+
+            editing = MapEditingService(
+                document,
+                workspace=workspace,
+            )
+
+            selection = editing.place_entity(
+                "pickups",
+                generated.definition_id,
+                16,
+                32,
+            )
+
+            placed = document.entity(
+                "pickups",
+                int(selection.identifier),
+            )
+
+            self.assertIsNotNone(
+                placed
+            )
+
+            self.assertEqual(
+                generated.definition_id,
+                placed["definitionId"],
+            )
+
+            self.assertEqual(
+                generated.data["visualId"],
+                placed["visualId"],
+            )
+
+            self.assertEqual(
+                generated.data["collectionBounds"],
+                placed["collectionBounds"],
+            )
+
+            self.assertEqual(
+                generated.data["payload"],
+                placed["payload"],
+            )
+
+            self.assertEqual(
+                {
+                    "kind": "item",
+                    "itemId": "item.potion",
+                    "quantity": 1,
+                },
+                placed["payload"],
+            )
+
+            self.assertTrue(
+                document.undo()
+            )
+
+            self.assertEqual(
+                [],
+                document.data["pickups"],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

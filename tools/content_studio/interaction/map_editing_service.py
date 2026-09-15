@@ -122,9 +122,38 @@ class MapEditingService:
     def place_entity(self, category: str, definition_id: str, x: int, y: int,
                      facing: str = "down") -> Selection:
         if category not in ENTITY_CATEGORIES:
-            raise ValueError(f"unknown placeable entity category: {category}")
-        identifier = self._require_document().add_entity(category, definition_id, x, y, facing)
-        return Selection(category, identifier)
+            raise ValueError(
+                f"unknown placeable entity category: {category}"
+            )
+
+        definition_data = None
+
+        if category == "pickups" and self.workspace is not None:
+            definition = self.workspace.find(
+                "pickups",
+                definition_id,
+            )
+
+            if definition is None:
+                raise ValueError(
+                    f"pickup definition does not exist: {definition_id}"
+                )
+
+            definition_data = definition.data
+
+        identifier = self._require_document().add_entity(
+            category,
+            definition_id,
+            x,
+            y,
+            facing,
+            definition_data,
+        )
+
+        return Selection(
+            category,
+            identifier,
+        )
 
     def move_entity(self, category: str, identifier: int, x: int, y: int) -> None:
         self._require_document().move_entity(category, identifier, x, y)
