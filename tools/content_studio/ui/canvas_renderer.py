@@ -215,6 +215,61 @@ class CanvasRenderer:
             definition_id
         )
 
+    def entity_visual_world_bounds(
+        self,
+        category: str,
+        value: dict[str, object],
+    ) -> tuple[int, int, int, int] | None:
+
+        position = value.get(
+            "position"
+        )
+
+        if not isinstance(
+            position,
+            dict,
+        ):
+            return None
+
+        visual = self._entity_visual(
+            category,
+            value,
+        )
+
+        if visual is None:
+            return None
+
+        left = (
+            int(
+                position.get(
+                    "x",
+                    0,
+                )
+            )
+            - visual.anchor_x
+            + visual.draw_offset_x
+        )
+
+        top = (
+            int(
+                position.get(
+                    "y",
+                    0,
+                )
+            )
+            - visual.anchor_y
+            + visual.draw_offset_y
+        )
+
+        return (
+            left,
+            top,
+            left
+            + visual.image.width(),
+            top
+            + visual.image.height(),
+        )
+
     def _draw_visual(
         self,
         painter: QPainter,

@@ -7,6 +7,13 @@ from typing import Callable, Iterable
 
 from ..formats.umap import MAP_FORMAT, MAP_VERSION, decode_map, load_map, new_map, write_map
 from .commands import Command, CommandHistory
+from .fixture_cutout import (
+    FixtureCutout,
+    FixtureCutoutCell,
+    read_fixture_cutout,
+    remove_fixture_cutout,
+    write_fixture_cutout,
+)
 from .scene_timeline import validate_scene
 from .types import Diagnostic, JsonValue
 
@@ -581,6 +588,461 @@ class MapDocument:
 
         self.mutate("Paste Tiles", operation)
 
+    def fixture_cutout(
+            self,
+            persistent_id: int) -> FixtureCutout | None:
+        return read_fixture_cutout(
+            self.data,
+            persistent_id,
+        )
+
+    def _capture_fixture_cutout(
+            self,
+            persistent_id: int,
+            layer: int,
+            opening_cells: Iterable[tuple[int, int]],
+            terrain_role: str = "wall") -> FixtureCutout:
+
+        target = self.layers[
+            layer
+        ].get(
+            "cells",
+            [],
+        )
+
+        references = self.data.get(
+            "tileReferences",
+            [],
+        )
+
+        bindings = self.data.get(
+            "collisionBindings",
+            [],
+        )
+
+        if (
+            not isinstance(
+                target,
+                list,
+            )
+            or not isinstance(
+                references,
+                list,
+            )
+        ):
+            raise ValueError(
+                "fixture cutout layer is unavailable"
+            )
+
+        if not isinstance(
+            bindings,
+            list,
+        ):
+            bindings = []
+
+        cells: list[
+            FixtureCutoutCell
+        ] = []
+
+        for cell_x, cell_y in opening_cells:
+            self._check_tile(
+                cell_x,
+                cell_y,
+            )
+
+            value = target[
+                cell_y
+                * self.width
+                + cell_x
+            ]
+
+            tile_reference = (
+                value
+                if isinstance(
+                    value,
+                    int,
+                )
+                and 0 <= value
+                < len(references)
+                else None
+            )
+
+            solid = any(
+                isinstance(
+                    binding,
+                    dict,
+                )
+                and int(
+                    binding.get(
+                        "layer",
+                        -1,
+                    )
+                )
+                == layer
+                and int(
+                    binding.get(
+                        "x",
+                        -1,
+                    )
+                )
+                == cell_x
+                and int(
+                    binding.get(
+                        "y",
+                        -1,
+                    )
+                )
+                == cell_y
+                for binding
+                in bindings
+            )
+
+            cells.append(
+                FixtureCutoutCell(
+                    x=cell_x,
+                    y=cell_y,
+                    tile_reference=tile_reference,
+                    solid=solid,
+                )
+            )
+
+        return FixtureCutout(
+            owner_id=persistent_id,
+            layer_index=layer,
+            terrain_role=terrain_role,
+            cells=tuple(
+                cells
+            ),
+        )
+
+    def _restore_fixture_cutout(
+            self,
+            cutout: FixtureCutout) -> None:
+
+        if (
+            cutout.layer_index < 0
+            or cutout.layer_index
+            >= len(self.layers)
+        ):
+            raise IndexError(
+                "fixture cutout layer index out of range"
+            )
+
+        target = self.layers[
+            cutout.layer_index
+        ].get(
+            "cells",
+            [],
+        )
+
+        references = self.data.get(
+            "tileReferences",
+            [],
+        )
+
+        if (
+            not isinstance(
+                target,
+                list,
+            )
+            or not isinstance(
+                references,
+                list,
+            )
+        ):
+            raise ValueError(
+                "fixture cutout layer is unavailable"
+            )
+
+        for cell in cutout.cells:
+            self._check_tile(
+                cell.x,
+                cell.y,
+            )
+
+            index = (
+                cell.y
+                * self.width
+                + cell.x
+            )
+
+            target[
+                index
+            ] = (
+                cell.tile_reference
+            )
+
+            reference = None
+
+            if (
+                isinstance(
+                    cell.tile_reference,
+                    int,
+                )
+                and 0
+                <= cell.tile_reference
+                < len(references)
+            ):
+                tile = references[
+                    cell.tile_reference
+                ]
+
+                if isinstance(
+                    tile,
+                    dict,
+                ):
+                    reference = (
+                        str(
+                            tile.get(
+                                "tilesetId",
+                                "",
+                            )
+                        ),
+                        int(
+                            tile.get(
+                                "sourceIndex",
+                                0,
+                            )
+                        ),
+                        int(
+                            tile.get(
+                                "flags",
+                                0,
+                            )
+                        ),
+                    )
+
+            self._set_collision_binding(
+                cutout.layer_index,
+                cell.x,
+                cell.y,
+                reference,
+                (
+                    cell.solid
+                    and reference
+                    is not None
+                ),
+            )
+
+    def delete_object_with_tile_restoration(
+            self,
+            persistent_id: int,
+            fallback_cutout: FixtureCutout | None = None,
+            label: str = "Delete Wall Object") -> None:
+
+        objects = self.data.get(
+            "objects"
+        )
+
+        if not isinstance(
+            objects,
+            list,
+        ):
+            raise ValueError(
+                "objects collection is unavailable"
+            )
+
+        if self.entity(
+            "objects",
+            persistent_id,
+        ) is None:
+            raise ValueError(
+                "entity was not found"
+            )
+
+        cutout = (
+            self.fixture_cutout(
+                persistent_id
+            )
+            or fallback_cutout
+        )
+
+        def operation() -> None:
+            if cutout is not None:
+                self._restore_fixture_cutout(
+                    cutout
+                )
+
+            remove_fixture_cutout(
+                self.data,
+                persistent_id,
+            )
+
+            objects[:] = [
+                value
+                for value in objects
+                if not (
+                    isinstance(
+                        value,
+                        dict,
+                    )
+                    and value.get(
+                        "id"
+                    )
+                    == persistent_id
+                )
+            ]
+
+            overrides = self.data.get(
+                "placementOverrides",
+                [],
+            )
+
+            if isinstance(
+                overrides,
+                list,
+            ):
+                overrides[:] = [
+                    value
+                    for value in overrides
+                    if not (
+                        isinstance(
+                            value,
+                            dict,
+                        )
+                        and value.get(
+                            "instanceId"
+                        )
+                        == persistent_id
+                    )
+                ]
+
+        self.mutate(
+            label,
+            operation,
+        )
+
+    def move_object_with_tile_opening(
+            self,
+            persistent_id: int,
+            x: int,
+            y: int,
+            layer: int,
+            opening_cells: Iterable[tuple[int, int]],
+            fallback_cutout: FixtureCutout | None = None,
+            terrain_role: str = "wall",
+            label: str = "Move Wall Object") -> None:
+
+        if (
+            layer < 0
+            or layer
+            >= len(self.layers)
+        ):
+            raise IndexError(
+                "layer index out of range"
+            )
+
+        coordinates = tuple(
+            sorted({
+                (
+                    int(cell_x),
+                    int(cell_y),
+                )
+                for cell_x, cell_y
+                in opening_cells
+            })
+        )
+
+        if not coordinates:
+            raise ValueError(
+                "wall opening cannot be empty"
+            )
+
+        for cell_x, cell_y in coordinates:
+            self._check_tile(
+                cell_x,
+                cell_y,
+            )
+
+        placement = self.entity(
+            "objects",
+            persistent_id,
+        )
+
+        if placement is None:
+            raise ValueError(
+                "entity was not found"
+            )
+
+        old_cutout = (
+            self.fixture_cutout(
+                persistent_id
+            )
+            or fallback_cutout
+        )
+
+        def operation() -> None:
+            if old_cutout is not None:
+                self._restore_fixture_cutout(
+                    old_cutout
+                )
+
+            remove_fixture_cutout(
+                self.data,
+                persistent_id,
+            )
+
+            new_cutout = (
+                self._capture_fixture_cutout(
+                    persistent_id,
+                    layer,
+                    coordinates,
+                    terrain_role,
+                )
+            )
+
+            target = self.layers[
+                layer
+            ].get(
+                "cells",
+                [],
+            )
+
+            if not isinstance(
+                target,
+                list,
+            ):
+                raise ValueError(
+                    "layer cells do not match map dimensions"
+                )
+
+            for cell_x, cell_y in coordinates:
+                index = (
+                    cell_y
+                    * self.width
+                    + cell_x
+                )
+
+                if target[
+                    index
+                ] is not None:
+                    self._unlink_tile_collision(
+                        layer,
+                        cell_x,
+                        cell_y,
+                    )
+
+                    target[
+                        index
+                    ] = None
+
+            placement[
+                "position"
+            ] = {
+                "x": int(x),
+                "y": int(y),
+            }
+
+            write_fixture_cutout(
+                self.data,
+                new_cutout,
+            )
+
+        self.mutate(
+            label,
+            operation,
+        )
+
     def place_object_with_tile_opening(
             self,
             definition_id: str,
@@ -636,9 +1098,13 @@ class MapDocument:
         )
 
         if (
-            not isinstance(target, list)
+            not isinstance(
+                target,
+                list,
+            )
             or len(target)
-            != self.width * self.height
+            != self.width
+            * self.height
         ):
             raise ValueError(
                 "layer cells do not match map dimensions"
@@ -671,6 +1137,15 @@ class MapDocument:
             "persistence": "persistent",
         }
 
+        cutout = (
+            self._capture_fixture_cutout(
+                persistent_id,
+                layer,
+                coordinates,
+                "wall",
+            )
+        )
+
         def operation() -> None:
             for cell_x, cell_y in coordinates:
                 index = (
@@ -686,10 +1161,17 @@ class MapDocument:
                         cell_y,
                     )
 
-                    target[index] = None
+                    target[
+                        index
+                    ] = None
 
             objects.append(
                 value
+            )
+
+            write_fixture_cutout(
+                self.data,
+                cutout,
             )
 
         self.mutate(

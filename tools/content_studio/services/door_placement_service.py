@@ -3,8 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..model.content_workspace import ContentWorkspace
+from ..model.fixture_cutout import (
+    FixtureCutout,
+    FixtureCutoutCell,
+)
 from ..model.map_document import MapDocument
 from .door_authoring_service import DoorAuthoringService
+from .fixture_reservation_service import (
+    FixtureTerrainReservationService,
+)
 from .tile_semantic_catalog import TileSemanticCatalog
 
 
@@ -284,6 +291,387 @@ class DoorPlacementService:
         return DoorPlacementResult(
             object_id=object_id,
             plan=plan,
+        )
+
+    def is_door_instance(
+        self,
+        persistent_id: int,
+    ) -> bool:
+        placement = self.document.entity(
+            "objects",
+            persistent_id,
+        )
+
+        if placement is None:
+            return False
+
+        definition_id = placement.get(
+            "definitionId"
+        )
+
+        if not isinstance(
+            definition_id,
+            str,
+        ):
+            return False
+
+        definition = self.workspace.find(
+            "objects",
+            definition_id,
+        )
+
+        return bool(
+            definition is not None
+            and isinstance(
+                definition.data.get(
+                    "door"
+                ),
+                dict,
+            )
+        )
+
+    def delete(
+        self,
+        persistent_id: int,
+    ) -> None:
+        if not self.is_door_instance(
+            persistent_id
+        ):
+            raise ValueError(
+                "object is not a door fixture"
+            )
+
+        fallback = (
+            self._legacy_cutout(
+                persistent_id
+            )
+        )
+
+        self.document.delete_object_with_tile_restoration(
+            persistent_id,
+            fallback_cutout=fallback,
+            label="Delete Wall Door",
+        )
+
+    def move(
+        self,
+        persistent_id: int,
+        tile: tuple[int, int],
+        preferred_layer_index: int | None = None,
+        orientation: str | None = None,
+    ) -> DoorPlacementResult:
+
+        placement = self.document.entity(
+            "objects",
+            persistent_id,
+        )
+
+        if (
+            placement is None
+            or not self.is_door_instance(
+                persistent_id
+            )
+        ):
+            raise ValueError(
+                "object is not a door fixture"
+            )
+
+        definition_id = placement.get(
+            "definitionId"
+        )
+
+        if not isinstance(
+            definition_id,
+            str,
+        ):
+            raise ValueError(
+                "door placement has no definition"
+            )
+
+        fallback = (
+            self._legacy_cutout(
+                persistent_id
+            )
+        )
+
+        # Validate against a temporary map where the old fixture has
+        # already restored its cutout. This makes overlapping moves valid.
+        working = MapDocument(
+            self.document.snapshot()
+        )
+
+        working.delete_object_with_tile_restoration(
+            persistent_id,
+            fallback_cutout=fallback,
+            label="Preview Door Move",
+        )
+
+        plan = DoorPlacementService(
+            working,
+            self.workspace,
+        ).plan(
+            definition_id,
+            tile,
+            preferred_layer_index,
+            orientation,
+        )
+
+        self.document.move_object_with_tile_opening(
+            persistent_id,
+            plan.position[0],
+            plan.position[1],
+            plan.layer_index,
+            plan.cells,
+            fallback_cutout=fallback,
+            terrain_role="wall",
+            label="Move Wall Door",
+        )
+
+        return DoorPlacementResult(
+            object_id=persistent_id,
+            plan=plan,
+        )
+
+    def _legacy_cutout(
+        self,
+        persistent_id: int,
+    ) -> FixtureCutout | None:
+        if (
+            self.document.fixture_cutout(
+                persistent_id
+            )
+            is not None
+        ):
+            return None
+
+        reservations = (
+            FixtureTerrainReservationService(
+                self.document,
+                self.workspace,
+            ).reservations(
+                "wall"
+            )
+        )
+
+        reservation = next(
+            (
+                value
+                for value
+                in reservations
+                if value.owner_id
+                == persistent_id
+            ),
+            None,
+        )
+
+        if reservation is None:
+            return None
+
+        reserved = set(
+            reservation.cells
+        )
+
+        neighbors: set[
+            tuple[int, int]
+        ] = set()
+
+        for x, y in reserved:
+            for nx, ny in (
+                (x - 1, y),
+                (x + 1, y),
+                (x, y - 1),
+                (x, y + 1),
+            ):
+                if (
+                    (nx, ny)
+                    not in reserved
+                    and 0 <= nx
+                    < self.document.width
+                    and 0 <= ny
+                    < self.document.height
+                ):
+                    neighbors.add(
+                        (nx, ny)
+                    )
+
+        references = self.document.data.get(
+            "tileReferences",
+            [],
+        )
+
+        if not isinstance(
+            references,
+            list,
+        ):
+            return None
+
+        candidates: dict[
+            tuple[int, int],
+            int,
+        ] = {}
+
+        for layer_index, layer in enumerate(
+            self.document.layers
+        ):
+            cells = layer.get(
+                "cells",
+                [],
+            )
+
+            if not isinstance(
+                cells,
+                list,
+            ):
+                continue
+
+            for nx, ny in neighbors:
+                index = (
+                    ny
+                    * self.document.width
+                    + nx
+                )
+
+                if (
+                    index >= len(cells)
+                    or not isinstance(
+                        cells[index],
+                        int,
+                    )
+                ):
+                    continue
+
+                reference_index = int(
+                    cells[index]
+                )
+
+                if (
+                    reference_index < 0
+                    or reference_index
+                    >= len(references)
+                    or not isinstance(
+                        references[
+                            reference_index
+                        ],
+                        dict,
+                    )
+                ):
+                    continue
+
+                reference = references[
+                    reference_index
+                ]
+
+                semantics = (
+                    self.semantics.by_reference(
+                        str(
+                            reference.get(
+                                "tilesetId",
+                                "",
+                            )
+                        ),
+                        int(
+                            reference.get(
+                                "sourceIndex",
+                                0,
+                            )
+                        ),
+                    )
+                )
+
+                if not any(
+                    semantic.role
+                    in {
+                        "wall",
+                        "corner",
+                    }
+                    for semantic
+                    in semantics
+                ):
+                    continue
+
+                key = (
+                    layer_index,
+                    reference_index,
+                )
+
+                candidates[
+                    key
+                ] = (
+                    candidates.get(
+                        key,
+                        0,
+                    )
+                    + 1
+                )
+
+        if not candidates:
+            return None
+
+        layer_index, reference_index = min(
+            candidates,
+            key=lambda key: (
+                -candidates[key],
+                key[0],
+                key[1],
+            ),
+        )
+
+        bindings = self.document.data.get(
+            "collisionBindings",
+            [],
+        )
+
+        solid = False
+
+        if isinstance(
+            bindings,
+            list,
+        ):
+            solid = any(
+                isinstance(
+                    binding,
+                    dict,
+                )
+                and int(
+                    binding.get(
+                        "layer",
+                        -1,
+                    )
+                )
+                == layer_index
+                and (
+                    int(
+                        binding.get(
+                            "x",
+                            -1,
+                        )
+                    ),
+                    int(
+                        binding.get(
+                            "y",
+                            -1,
+                        )
+                    ),
+                )
+                in neighbors
+                for binding
+                in bindings
+            )
+
+        return FixtureCutout(
+            owner_id=persistent_id,
+            layer_index=layer_index,
+            terrain_role="wall",
+            cells=tuple(
+                FixtureCutoutCell(
+                    x=x,
+                    y=y,
+                    tile_reference=reference_index,
+                    solid=solid,
+                )
+                for x, y
+                in reservation.cells
+            ),
         )
 
     def _find_wall_layer(

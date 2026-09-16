@@ -627,11 +627,36 @@ class MapCanvas(QWidget):
         if selection is None or self.document is None:
             return False
         try:
-            if selection.category in ENTITY_CATEGORIES:
-                self.editing.delete_entity(selection.category, int(selection.identifier))
+            if (
+                selection.category == "objects"
+                and self.workspace is not None
+                and DoorPlacementService(
+                    self.document,
+                    self.workspace,
+                ).is_door_instance(
+                    int(selection.identifier)
+                )
+            ):
+                DoorPlacementService(
+                    self.document,
+                    self.workspace,
+                ).delete(
+                    int(selection.identifier)
+                )
+            elif selection.category in ENTITY_CATEGORIES:
+                self.editing.delete_entity(
+                    selection.category,
+                    int(selection.identifier),
+                )
             else:
-                self.editing.delete_map_element(selection.category, selection.identifier)
-        except (TypeError, ValueError):
+                self.editing.delete_map_element(
+                    selection.category,
+                    selection.identifier,
+                )
+        except (TypeError, ValueError) as error:
+            self._set_status(
+                str(error)
+            )
             return False
         self.selection_controller.clear()
         self.document_changed.emit()
@@ -731,6 +756,57 @@ class MapCanvas(QWidget):
             return None
         best: Selection | None = None
         best_distance = max(12, int(self.document.tile_size * 0.75)) ** 2
+
+        # A visual entity is selected through the real authored sprite
+        # bounds before falling back to the old anchor-radius hit test.
+        for category in reversed(
+            ENTITY_CATEGORIES
+        ):
+            values = self.document.data.get(
+                category,
+                [],
+            )
+
+            if not isinstance(
+                values,
+                list,
+            ):
+                continue
+
+            for value in reversed(
+                values
+            ):
+                if not isinstance(
+                    value,
+                    dict,
+                ):
+                    continue
+
+                bounds = (
+                    self.renderer
+                    .entity_visual_world_bounds(
+                        category,
+                        value,
+                    )
+                )
+
+                if (
+                    bounds is not None
+                    and bounds[0]
+                    <= world[0]
+                    < bounds[2]
+                    and bounds[1]
+                    <= world[1]
+                    < bounds[3]
+                ):
+                    return Selection(
+                        category,
+                        value.get(
+                            "id",
+                            0,
+                        ),
+                    )
+
         for category in ENTITY_CATEGORIES:
             for value in self.document.data.get(category, []):
                 if not isinstance(value, dict) or not isinstance(value.get("position"), dict):
@@ -759,7 +835,30 @@ class MapCanvas(QWidget):
             return
 
         try:
-            if moving.category in ENTITY_CATEGORIES:
+            if (
+                moving.category == "objects"
+                and self.workspace is not None
+                and DoorPlacementService(
+                    self.document,
+                    self.workspace,
+                ).is_door_instance(
+                    int(moving.identifier)
+                )
+            ):
+                DoorPlacementService(
+                    self.document,
+                    self.workspace,
+                ).move(
+                    int(moving.identifier),
+                    (
+                        world[0]
+                        // self.document.tile_size,
+                        world[1]
+                        // self.document.tile_size,
+                    ),
+                    preferred_layer_index=self.layer_index,
+                )
+            elif moving.category in ENTITY_CATEGORIES:
                 self.editing.move_entity(
                     moving.category,
                     int(moving.identifier),
@@ -785,8 +884,10 @@ class MapCanvas(QWidget):
                     )
                 )
 
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as error:
+            self._set_status(
+                str(error)
+            )
 
     def _pick_tile(self, tile: tuple[int, int]) -> None:
         if not self.document or not (0 <= tile[0] < self.document.width and 0 <= tile[1] < self.document.height):
