@@ -203,6 +203,7 @@ class ItemAuthoringService:
         visual_id: str,
         category: str = "misc",
         stack_limit: int | None = None,
+        generated_visual: dict[str, JsonValue] | None = None,
     ) -> ContentDefinition:
         workspace = self._require_workspace()
 
@@ -215,8 +216,11 @@ class ItemAuthoringService:
         normalized_category = self._normalize_category(
             category
         )
-        normalized_visual = self._require_visual(
-            visual_id
+        normalized_visual, visual_entry = (
+            self._resolve_visual_for_bundle(
+                visual_id,
+                generated_visual,
+            )
         )
         normalized_stack = self._normalize_stack_limit(
             normalized_category,
@@ -258,7 +262,18 @@ class ItemAuthoringService:
                 f"pickup already references item: {normalized_id}"
             )
 
-        entries = [
+        entries: list[
+            tuple[str, str, dict[str, JsonValue]]
+        ] = []
+
+        if visual_entry is not None:
+            entries.append((
+                "staticSprites",
+                normalized_visual,
+                visual_entry,
+            ))
+
+        entries.extend([
             (
                 "items",
                 normalized_id,
@@ -286,7 +301,7 @@ class ItemAuthoringService:
                     normalized_name,
                 ),
             ),
-        ]
+        ])
 
         workspace.create_definition_bundle(
             "Create Item",
@@ -313,6 +328,7 @@ class ItemAuthoringService:
         visual_id: str | None = None,
         category: str | None = None,
         stack_limit: int | None = None,
+        generated_visual: dict[str, JsonValue] | None = None,
     ) -> ContentDefinition:
         workspace = self._require_workspace()
         item = self._require_item(
@@ -340,16 +356,19 @@ class ItemAuthoringService:
             "visualId"
         )
 
-        new_visual = self._require_visual(
-            visual_id
-            if visual_id is not None
-            else (
-                old_visual
-                if isinstance(
-                    old_visual,
-                    str,
-                )
-                else ""
+        new_visual, visual_entry = (
+            self._resolve_visual_for_bundle(
+                visual_id
+                if visual_id is not None
+                else (
+                    old_visual
+                    if isinstance(
+                        old_visual,
+                        str,
+                    )
+                    else ""
+                ),
+                generated_visual,
             )
         )
 
@@ -501,25 +520,38 @@ class ItemAuthoringService:
             "tags": descriptor_tags,
         }
 
+        entries: list[
+            tuple[str, str, dict[str, JsonValue]]
+        ] = []
+
+        if visual_entry is not None:
+            entries.append((
+                "staticSprites",
+                new_visual,
+                visual_entry,
+            ))
+
+        entries.extend([
+            (
+                "items",
+                item_id,
+                updated_item,
+            ),
+            (
+                "pickups",
+                pickup_id,
+                updated_pickup,
+            ),
+            (
+                "authoringDescriptors",
+                item_id,
+                updated_descriptor,
+            ),
+        ])
+
         workspace.upsert_definition_bundle(
             "Update Item",
-            [
-                (
-                    "items",
-                    item_id,
-                    updated_item,
-                ),
-                (
-                    "pickups",
-                    pickup_id,
-                    updated_pickup,
-                ),
-                (
-                    "authoringDescriptors",
-                    item_id,
-                    updated_descriptor,
-                ),
-            ],
+            entries,
         )
 
         result = workspace.find(
@@ -764,6 +796,105 @@ class ItemAuthoringService:
             )
 
         return definition
+
+    def _resolve_visual_for_bundle(
+        self,
+        visual_id: str,
+        generated_visual: dict[str, JsonValue] | None,
+    ) -> tuple[
+        str,
+        dict[str, JsonValue] | None,
+    ]:
+        """Resolve an existing visual or validate one pending creation."""
+
+        workspace = self._require_workspace()
+        normalized = visual_id.strip()
+
+        if not normalized:
+            raise ValueError(
+                "item visual is required"
+            )
+
+        existing = workspace.find(
+            "staticSprites",
+            normalized,
+        )
+
+        if generated_visual is None:
+            if existing is None:
+                raise ValueError(
+                    f"item visual does not exist: "
+                    f"{normalized}"
+                )
+
+            return (
+                normalized,
+                None,
+            )
+
+        candidate = copy.deepcopy(
+            generated_visual
+        )
+
+        if candidate.get(
+            "id"
+        ) != normalized:
+            raise ValueError(
+                "generated item visual ID does not "
+                "match the selected visual"
+            )
+
+        if existing is not None:
+            if existing.data != candidate:
+                raise ValueError(
+                    f"generated visual conflict: "
+                    f"{normalized}"
+                )
+
+            return (
+                normalized,
+                None,
+            )
+
+        image_id = candidate.get(
+            "imageId"
+        )
+
+        if (
+            not isinstance(
+                image_id,
+                str,
+            )
+            or not image_id
+            or workspace.find(
+                "visualImages",
+                image_id,
+            ) is None
+        ):
+            raise ValueError(
+                "generated item visual must reference "
+                "an existing visual image"
+            )
+
+        for field in (
+            "source",
+            "anchor",
+        ):
+            if not isinstance(
+                candidate.get(
+                    field
+                ),
+                dict,
+            ):
+                raise ValueError(
+                    f"generated item visual has invalid "
+                    f"{field}"
+                )
+
+        return (
+            normalized,
+            candidate,
+        )
 
     def _require_visual(
         self,

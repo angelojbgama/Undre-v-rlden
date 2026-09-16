@@ -845,18 +845,33 @@ class QtSmokeTests(unittest.TestCase):
                 "visual.item.potion",
             )
 
-            self.assertIsNotNone(
+            self.assertIsNone(
                 created
             )
 
+            selection = (
+                dialog.selected_selection()
+            )
+
+            self.assertIsNotNone(
+                selection
+            )
+
+            assert selection is not None
+
             self.assertEqual(
-                {
-                    "x": 32,
-                    "y": 0,
-                    "width": 16,
-                    "height": 16,
-                },
-                created.data["source"],
+                "animation",
+                selection.kind,
+            )
+
+            self.assertEqual(
+                "animation.items",
+                selection.definition_id,
+            )
+
+            self.assertEqual(
+                1,
+                selection.frame_index,
             )
 
 

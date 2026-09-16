@@ -32,6 +32,10 @@ from ..services.item_authoring_service import (
     ItemAuthoringService,
 )
 from ..services.localization import Translator
+from ..services.item_visual_service import (
+    ItemVisualSelection,
+    ItemVisualService,
+)
 from .item_visual_picker import ItemVisualPickerDialog
 from .widgets import PayloadListWidget
 
@@ -69,6 +73,7 @@ class ItemDefinitionDialog(QDialog):
 
         self.created_item_id = ""
         self._visual_id = ""
+        self._visual_selection: ItemVisualSelection | None = None
         self._loading = True
         self._previous_category = "misc"
 
@@ -340,18 +345,51 @@ class ItemDefinitionDialog(QDialog):
                 )
             )
 
-    def set_visual_id(
+    def _update_visual_label(
         self,
-        visual_id: str,
     ) -> None:
-        self._visual_id = visual_id.strip()
-
         self.visual_label.setText(
             self._visual_id
             or self.translate(
                 "item_visual_none"
             )
         )
+
+    def set_visual_id(
+        self,
+        visual_id: str,
+    ) -> None:
+        self._visual_selection = None
+        self._visual_id = (
+            visual_id.strip()
+        )
+        self._update_visual_label()
+
+    def set_visual_selection(
+        self,
+        selection: ItemVisualSelection | None,
+    ) -> None:
+        if selection is None:
+            self._visual_selection = None
+            return
+
+        item_id = (
+            self.item_id.text().strip()
+        )
+
+        prepared = ItemVisualService(
+            self.workspace
+        ).prepare_selection(
+            item_id,
+            selection,
+        )
+
+        self._visual_selection = selection
+        self._visual_id = (
+            prepared.visual_id
+        )
+
+        self._update_visual_label()
 
     def visual_id(
         self,
@@ -389,12 +427,19 @@ class ItemDefinitionDialog(QDialog):
         ):
             return
 
-        selected = dialog.selected_visual_id()
+        selection = dialog.selected_selection()
 
-        if selected:
-            self.set_visual_id(
-                selected
-            )
+        if selection is not None:
+            try:
+                self.set_visual_selection(
+                    selection
+                )
+            except ValueError as error:
+                QMessageBox.warning(
+                    self,
+                    self.windowTitle(),
+                    str(error),
+                )
 
     def _category_changed(
         self,
@@ -453,28 +498,53 @@ class ItemDefinitionDialog(QDialog):
     ) -> ContentDefinition:
         item_id = self.item_id.text().strip()
 
+        visual_id = self._visual_id
+        generated_visual = None
+
+        if self._visual_selection is not None:
+            prepared = ItemVisualService(
+                self.workspace
+            ).prepare_selection(
+                item_id,
+                self._visual_selection,
+            )
+
+            visual_id = (
+                prepared.visual_id
+            )
+
+            generated_visual = (
+                prepared.generated_data
+            )
+
         if self.definition is None:
             result = self.service.create_item(
                 self.name.text(),
                 item_id,
-                self._visual_id,
+                visual_id,
                 str(
                     self.category.currentData()
                     or "misc"
                 ),
                 self.stack_limit.value(),
+                generated_visual=generated_visual,
             )
         else:
             result = self.service.update_item(
                 self.definition.definition_id,
                 display_name=self.name.text(),
-                visual_id=self._visual_id,
+                visual_id=visual_id,
                 category=str(
                     self.category.currentData()
                     or "misc"
                 ),
                 stack_limit=self.stack_limit.value(),
+                generated_visual=generated_visual,
             )
+
+        self._visual_id = visual_id
+        self._visual_selection = None
+        self._update_visual_label()
 
         self.created_item_id = (
             result.definition_id

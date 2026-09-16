@@ -8,11 +8,15 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QLabel,
+    QMessageBox,
     QVBoxLayout,
 )
 
 from ..model.content_workspace import ContentWorkspace
-from ..services.item_visual_service import ItemVisualService
+from ..services.item_visual_service import (
+    ItemVisualSelection,
+    ItemVisualService,
+)
 
 
 class ItemVisualPickerDialog(QDialog):
@@ -37,6 +41,7 @@ class ItemVisualPickerDialog(QDialog):
         )
 
         self._selected_visual_id = ""
+        self._selected_selection: ItemVisualSelection | None = None
 
         self.setWindowTitle(
             "Selecionar visual do item"
@@ -130,6 +135,8 @@ class ItemVisualPickerDialog(QDialog):
     def commit_selection(
         self,
     ) -> str:
+        """Prepare the selected visual without changing the workspace."""
+
         data = self.visuals.currentData()
 
         if (
@@ -143,32 +150,45 @@ class ItemVisualPickerDialog(QDialog):
         kind, definition_id, frame_index = data
 
         if kind == "static":
-            selected = self.service.select_static_sprite(
-                str(definition_id)
+            selection = ItemVisualSelection(
+                kind="static",
+                definition_id=str(
+                    definition_id
+                ),
             )
 
-            self._selected_visual_id = (
-                selected.definition_id
+        elif kind == "animation":
+            selection = ItemVisualSelection(
+                kind="animation",
+                definition_id=str(
+                    definition_id
+                ),
+                frame_index=int(
+                    frame_index
+                ),
             )
 
-            return self._selected_visual_id
-
-        if kind == "animation":
-            selected = self.service.materialize_animation_frame(
-                self.item_id,
-                str(definition_id),
-                int(frame_index),
+        else:
+            raise ValueError(
+                f"tipo de visual desconhecido: {kind}"
             )
 
-            self._selected_visual_id = (
-                selected.definition_id
-            )
-
-            return self._selected_visual_id
-
-        raise ValueError(
-            f"tipo de visual desconhecido: {kind}"
+        prepared = self.service.prepare_selection(
+            self.item_id,
+            selection,
         )
+
+        self._selected_selection = selection
+        self._selected_visual_id = (
+            prepared.visual_id
+        )
+
+        return self._selected_visual_id
+
+    def selected_selection(
+        self,
+    ) -> ItemVisualSelection | None:
+        return self._selected_selection
 
     def selected_visual_id(
         self,
@@ -178,7 +198,17 @@ class ItemVisualPickerDialog(QDialog):
     def _accept_selection(
         self,
     ) -> None:
-        visual_id = self.commit_selection()
+        try:
+            visual_id = (
+                self.commit_selection()
+            )
+        except ValueError as error:
+            QMessageBox.warning(
+                self,
+                self.windowTitle(),
+                str(error),
+            )
+            return
 
         self.visual_selected.emit(
             visual_id

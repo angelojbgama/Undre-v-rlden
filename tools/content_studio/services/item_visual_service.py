@@ -23,6 +23,23 @@ class AnimationFrameVisual:
     anchor: tuple[int, int]
 
 
+@dataclass(frozen=True, slots=True)
+class ItemVisualSelection:
+    """Side-effect-free visual choice made by the picker."""
+
+    kind: str
+    definition_id: str
+    frame_index: int = -1
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedItemVisual:
+    """Resolved visual plus an optional StaticSprite pending creation."""
+
+    visual_id: str
+    generated_data: dict[str, JsonValue] | None = None
+
+
 class ItemVisualService:
     """Resolve or create the StaticSprite referenced by an Item."""
 
@@ -117,12 +134,42 @@ class ItemVisualService:
             result
         )
 
-    def materialize_animation_frame(
+    def prepare_selection(
+        self,
+        item_id: str,
+        selection: ItemVisualSelection,
+    ) -> PreparedItemVisual:
+        """Resolve a picker choice without mutating authored content."""
+
+        if selection.kind == "static":
+            selected = self.select_static_sprite(
+                selection.definition_id
+            )
+
+            return PreparedItemVisual(
+                visual_id=selected.definition_id,
+            )
+
+        if selection.kind == "animation":
+            return self.prepare_animation_frame(
+                item_id,
+                selection.definition_id,
+                selection.frame_index,
+            )
+
+        raise ValueError(
+            f"unknown item visual selection kind: "
+            f"{selection.kind}"
+        )
+
+    def prepare_animation_frame(
         self,
         item_id: str,
         animation_id: str,
         frame_index: int,
-    ) -> ContentDefinition:
+    ) -> PreparedItemVisual:
+        """Build deterministic StaticSprite data without creating it."""
+
         workspace = self._require_workspace()
 
         visual_id = self.generated_visual_id(
@@ -217,20 +264,46 @@ class ItemVisualService:
                     f"generated visual conflict: {visual_id}"
                 )
 
-            return existing
+            return PreparedItemVisual(
+                visual_id=visual_id,
+            )
 
-        workspace.create_definition_bundle(
-            "Create Item Static Sprite",
-            [(
-                "staticSprites",
-                visual_id,
-                expected,
-            )],
+        return PreparedItemVisual(
+            visual_id=visual_id,
+            generated_data=copy.deepcopy(
+                expected
+            ),
         )
+
+    def materialize_animation_frame(
+        self,
+        item_id: str,
+        animation_id: str,
+        frame_index: int,
+    ) -> ContentDefinition:
+        """Backward-compatible explicit materialization API."""
+
+        workspace = self._require_workspace()
+
+        prepared = self.prepare_animation_frame(
+            item_id,
+            animation_id,
+            frame_index,
+        )
+
+        if prepared.generated_data is not None:
+            workspace.create_definition_bundle(
+                "Create Item Static Sprite",
+                [(
+                    "staticSprites",
+                    prepared.visual_id,
+                    prepared.generated_data,
+                )],
+            )
 
         created = workspace.find(
             "staticSprites",
-            visual_id,
+            prepared.visual_id,
         )
 
         if created is None:
