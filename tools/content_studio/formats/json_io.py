@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,55 @@ def write_atomic(path: Path, value: Any) -> None:
             output.write(encode_json(value))
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temporary, path)
+        # Windows scanners, indexers and file watchers can briefly keep the
+        # destination without FILE_SHARE_DELETE. Preserve atomic replacement
+        # semantics, but tolerate those transient sharing/access locks.
+        retry_delays = (
+            0.02,
+            0.04,
+            0.08,
+            0.12,
+            0.20,
+            0.25,
+            0.30,
+        )
+
+        for attempt in range(
+            len(retry_delays) + 1
+        ):
+            try:
+                os.replace(
+                    temporary,
+                    path,
+                )
+
+                break
+            except PermissionError as error:
+                transient_windows_lock = (
+                    getattr(
+                        error,
+                        "winerror",
+                        None,
+                    )
+                    in {
+                        5,
+                        32,
+                        33,
+                    }
+                )
+
+                if (
+                    not transient_windows_lock
+                    or attempt
+                    >= len(retry_delays)
+                ):
+                    raise
+
+                time.sleep(
+                    retry_delays[
+                        attempt
+                    ]
+                )
     finally:
         if temporary.exists():
             temporary.unlink()
