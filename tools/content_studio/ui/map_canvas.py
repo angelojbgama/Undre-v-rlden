@@ -751,16 +751,38 @@ class MapCanvas(QWidget):
         return best
 
     def _move_selection(self, world: tuple[int, int]) -> None:
-        if not self._moving:
+        moving = self._moving
+
+        if moving is None:
             return
+
         try:
-            if self._moving.category in ENTITY_CATEGORIES:
-                self.editing.move_entity(self._moving.category, int(self._moving.identifier), *world)
+            if moving.category in ENTITY_CATEGORIES:
+                self.editing.move_entity(
+                    moving.category,
+                    int(moving.identifier),
+                    *world,
+                )
             else:
-                self.editing.move_map_element(self._moving.category, self._moving.identifier, *world)
+                self.editing.move_map_element(
+                    moving.category,
+                    moving.identifier,
+                    *world,
+                )
+
+            # document_changed is synchronous. UI refresh callbacks are
+            # allowed to change the active tool and clear self._moving.
+            # The operation that started this move must therefore use the
+            # stable Selection captured above.
             self.document_changed.emit()
-            if self._moving.category == "playerSpawns":
-                self._set_status(self.translate("player_start_moved"))
+
+            if moving.category == "playerSpawns":
+                self._set_status(
+                    self.translate(
+                        "player_start_moved"
+                    )
+                )
+
         except (TypeError, ValueError):
             pass
 
