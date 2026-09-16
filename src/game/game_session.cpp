@@ -796,6 +796,20 @@ void GameSession::interactWithWorld() {
     if (!selected) { return; }
     auto& object = selected->instance;
     bool opened = false;
+
+    // Non-door Transition consumes the interaction and queues the same
+    // PendingMapTransition contract used by map links. Door + Transition is
+    // intentionally deferred until the door-opening timeline can complete.
+    if (selected->transition && !object.isDoor()) {
+        static_cast<void>(
+            mapSession_->requestTransition(
+                maps::PendingMapTransition{
+                    selected->transition->targetMapId,
+                    selected->transition->targetSpawnId
+                }));
+        return;
+    }
+
     if (object.definition().bankAccess) {
         inventoryOverlay_.close();
         bankOverlay_.toggle();

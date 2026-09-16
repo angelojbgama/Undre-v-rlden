@@ -4770,6 +4770,104 @@ void testPhase8PersistentMapsAndSave() {
     expect(session.commitPending().changed&&
                session.world()->id()==map.id&&session.world()->objects().size()==1,
            "Room A to B to A rebuilds original DMAP and reapplies the same SessionWorldState deltas");
+
+    const auto dmapTransition =
+        std::filesystem::temp_directory_path() /
+        "underworld_test_object_transition.dmap";
+
+    std::filesystem::remove(dmapTransition, ec);
+
+    expect(
+        maps::writeDmap(
+            dmapTransition,
+            objectTransitionMap,
+            fileError),
+        "object Transition fixture writes through the normal DMAP boundary");
+
+    maps::MapCatalog transitionCatalog;
+    transitionCatalog.add(
+        objectTransitionMap.id,
+        dmapTransition);
+    transitionCatalog.add(
+        roomB.id,
+        dmapB);
+
+    game::GameSession transitionSession(
+        {0},
+        testProgression());
+
+    transitionSession.configureItems(items);
+
+    std::string transitionError;
+
+    const bool transitionInitialized =
+        transitionSession.initializeMap(
+            transitionCatalog,
+            validation,
+            builder,
+            objectTransitionMap.id,
+            simulation::SpawnId{"entry.start"},
+            transitionError);
+
+    expect(
+        transitionInitialized,
+        "GameSession initializes a map containing a generic object Transition");
+
+    if (transitionInitialized) {
+        const auto transitionObject =
+            std::find_if(
+                transitionSession.world().objects().begin(),
+                transitionSession.world().objects().end(),
+                [](const auto& object) {
+                    return object.transition.has_value();
+                });
+
+        expect(
+            transitionObject !=
+                transitionSession.world().objects().end(),
+            "runtime exposes the interactive object Transition");
+
+        if (transitionObject !=
+            transitionSession.world().objects().end()) {
+            transitionSession.relocatePlayer(
+                transitionObject->instance.position(),
+                gameplay::FacingDirection::down);
+
+            auto interactTransition =
+                movementCommand(900, 0, 0);
+
+            interactTransition.actions.interactPressed =
+                true;
+
+            transitionSession.tick(
+                interactTransition);
+
+            const bool enteredTarget =
+                std::any_of(
+                    transitionSession.events().events().begin(),
+                    transitionSession.events().events().end(),
+                    [&](const auto& event) {
+                        const auto* entered =
+                            std::get_if<
+                                simulation::MapEntered>(
+                                    &event);
+
+                        return entered != nullptr &&
+                            entered->mapId ==
+                                roomB.id;
+                    });
+
+            expect(
+                enteredTarget &&
+                transitionSession.world().id() ==
+                    roomB.id &&
+                transitionSession.player().feetPosition() ==
+                    roomB.playerSpawns.back().position,
+                "interacting with a non-door Transition object changes map through MapSession");
+        }
+    }
+
+    std::filesystem::remove(dmapTransition, ec);
     std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
 
     gameplay::ProjectileSystem transientProjectiles(handles, projectiles);
