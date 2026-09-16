@@ -506,3 +506,30 @@ TRANSLATIONS["en-US"].update({
         "A locked door without a key can still be unlocked by script."
     ),
 })
+
+# object-transition-editor-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "object_transition_title": "Transicao",
+    "object_transition_enabled": "Ativar transicao neste objeto",
+    "object_transition_target_map": "Mapa de destino",
+    "object_transition_target_spawn": "Spawn de destino",
+    "object_transition_apply": "Aplicar transicao",
+    "object_transition_help": (
+        "Transition e uma capacidade generica da instancia. "
+        "Ela pode ser usada por portas, portais, escadas e outros objetos."
+    ),
+    "object_transition_saved": "Transicao do objeto atualizada",
+})
+
+TRANSLATIONS["en-US"].update({
+    "object_transition_title": "Transition",
+    "object_transition_enabled": "Enable transition on this object",
+    "object_transition_target_map": "Target map",
+    "object_transition_target_spawn": "Target spawn",
+    "object_transition_apply": "Apply transition",
+    "object_transition_help": (
+        "Transition is a generic placement capability. "
+        "It can be used by doors, portals, stairs, and other objects."
+    ),
+    "object_transition_saved": "Object transition updated",
+})
