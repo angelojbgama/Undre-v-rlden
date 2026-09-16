@@ -20,6 +20,7 @@ from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
 from ..services.localization import Translator
 from ..services.door_instance_service import DoorInstanceService
+from ..services.object_transition_service import ObjectTransitionService
 from ..services.door_authoring_service import DoorAuthoringService
 from ..services.animation_frame_mask_service import (
     AnimationFrameMaskService,
@@ -42,6 +43,7 @@ from .object_library_widget import ObjectLibraryWidget
 from .door_library_widget import DoorLibraryWidget
 from .animated_collision_editor import AnimatedCollisionEditorDialog
 from .door_instance_editor import DoorInstanceEditor
+from .object_transition_editor import ObjectTransitionEditor
 from .player_library_widget import PlayerLibraryWidget
 from .item_library_widget import ItemLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
@@ -243,6 +245,15 @@ class MainWindow(QMainWindow):
         self.door_instance_editor.status_changed.connect(
             self.set_status)
 
+        self.object_transition_editor = ObjectTransitionEditor(
+            self.translator)
+
+        self.object_transition_editor.configuration_requested.connect(
+            self._configure_selected_object_transition)
+
+        self.object_transition_editor.status_changed.connect(
+            self.set_status)
+
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
         self.delete_map_selection_button.setEnabled(False)
         self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
@@ -250,6 +261,7 @@ class MainWindow(QMainWindow):
         map_inspector_layout = QVBoxLayout(map_inspector_panel)
         map_inspector_layout.setContentsMargins(0, 0, 0, 0)
         map_inspector_layout.addWidget(self.door_instance_editor)
+        map_inspector_layout.addWidget(self.object_transition_editor)
         map_inspector_layout.addWidget(self.map_inspector, 1)
         map_inspector_layout.addWidget(self.delete_map_selection_button)
         self._map_panels = QStackedWidget()
@@ -402,6 +414,7 @@ class MainWindow(QMainWindow):
         self.object_library.retranslate(self.translator)
         self.door_library.retranslate(self.translator)
         self.door_instance_editor.retranslate(self.translator)
+        self.object_transition_editor.retranslate(self.translator)
         self.player_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
@@ -583,6 +596,7 @@ class MainWindow(QMainWindow):
         if not selection:
             self.map_inspector.clear("No selection")
             self.door_instance_editor.clear()
+            self.object_transition_editor.clear()
             self.delete_map_selection_button.setEnabled(False)
             return
 
@@ -623,6 +637,7 @@ class MainWindow(QMainWindow):
 
         if value is None:
             self.door_instance_editor.clear()
+            self.object_transition_editor.clear()
             return
 
         is_door = False
@@ -639,31 +654,52 @@ class MainWindow(QMainWindow):
         else:
             self.door_instance_editor.clear()
 
+        is_object_transition_editable = False
+
+        if category == "objects":
+            is_object_transition_editable = self.object_transition_editor.set_context(
+                self.project,
+                self.project.active_map,
+                int(identifier),
+            )
+        else:
+            self.object_transition_editor.clear()
+
         inspector_value = value
 
         if (
-            is_door
+            (is_door or is_object_transition_editable)
             and isinstance(
                 value,
                 dict,
             )
         ):
-            # Door behavior has a dedicated contextual editor.
-            # Keep generic placement fields available without exposing
-            # duplicate raw door/persistence controls.
             inspector_value = dict(
                 value
             )
 
-            inspector_value.pop(
-                "door",
-                None,
-            )
+            if is_door:
+                # Door behavior has a dedicated contextual editor.
+                # Keep generic placement fields available without exposing
+                # duplicate raw door/persistence controls.
+                inspector_value.pop(
+                    "door",
+                    None,
+                )
 
-            inspector_value.pop(
-                "persistence",
-                None,
-            )
+                inspector_value.pop(
+                    "persistence",
+                    None,
+                )
+
+            if is_object_transition_editable:
+                # Transition is authored by ObjectTransitionEditor; hide
+                # the raw dict from the generic inspector to avoid
+                # duplicate edits of the same capability.
+                inspector_value.pop(
+                    "transition",
+                    None,
+                )
 
         self.map_inspector.set_object(
             f"{category}: {identifier}",
@@ -745,6 +781,82 @@ class MainWindow(QMainWindow):
             self.set_status(
                 self.translator(
                     "door_configuration_saved"
+                )
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            self.set_status(
+                str(error)
+            )
+
+    def _configure_selected_object_transition(
+            self,
+            request: object) -> None:
+        selection = (
+            self.map_canvas.selected_entity
+        )
+
+        if (
+            not selection
+            or not isinstance(
+                request,
+                dict,
+            )
+        ):
+            return
+
+        category, identifier = selection
+
+        if category != "objects":
+            return
+
+        def _optional_str(
+                key: str) -> str | None:
+            value = request.get(
+                key
+            )
+
+            return (
+                value
+                if isinstance(
+                    value,
+                    str,
+                )
+                else None
+            )
+
+        try:
+            ObjectTransitionService(
+                self.project,
+                self.project.active_map,
+            ).configure(
+                int(identifier),
+                enabled=bool(
+                    request.get(
+                        "enabled",
+                        False,
+                    )
+                ),
+                target_map_id=_optional_str(
+                    "target_map_id"
+                ),
+                target_spawn_id=_optional_str(
+                    "target_spawn_id"
+                ),
+            )
+
+            self.command_coordinator.mark(
+                "map"
+            )
+
+            self._refresh_map()
+
+            self.set_status(
+                self.translator(
+                    "object_transition_saved"
                 )
             )
 
