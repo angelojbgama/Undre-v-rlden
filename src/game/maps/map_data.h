@@ -37,6 +37,13 @@ struct ObjectDoorInstanceConfig final {
         const ObjectDoorInstanceConfig&) const noexcept = default;
 };
 
+struct ObjectTransitionInstanceConfig final {
+    simulation::MapId targetMapId{};
+    simulation::SpawnId targetSpawnId{};
+    [[nodiscard]] bool operator==(
+        const ObjectTransitionInstanceConfig&) const noexcept = default;
+};
+
 struct MapLimits final {
     static constexpr std::uint32_t maximumDimension = 4096;
     static constexpr std::uint32_t maximumLayers = 64;
@@ -92,6 +99,7 @@ struct ObjectPlacement final {
     std::vector<gameplay::ItemStack> initialContents;
     ObjectPersistencePolicy persistence{ObjectPersistencePolicy::persistent};
     std::optional<ObjectDoorInstanceConfig> door{};
+    std::optional<ObjectTransitionInstanceConfig> transition{};
 };
 
 struct PickupPlacement final {

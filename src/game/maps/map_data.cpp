@@ -176,6 +176,11 @@ MapValidationResult validateMapData(const MapData& data,
                 }
             }
         }
+        if (object.transition &&
+            (object.transition->targetMapId.empty() ||
+             object.transition->targetSpawnId.empty())) {
+            return failure("object transition target is invalid");
+        }
         if (definition && definition->activation &&
             definition->activation->mode == gameplay::ObjectActivationMode::playerPressure) {
             const auto bounds = *definition->activation->activationBounds;
@@ -616,7 +621,7 @@ bool semanticallyEqual(const MapData& a, const MapData& b) noexcept {
     for (std::size_t i = 0; i < a.objects.size(); ++i) {
         const auto& x = a.objects[i]; const auto& y = b.objects[i];
         if (!(x.id == y.id) || !(x.definitionId == y.definitionId) || !(x.position == y.position) ||
-            x.persistence != y.persistence || x.door != y.door ||
+            x.persistence != y.persistence || x.door != y.door || x.transition != y.transition ||
             x.initialContents.size() != y.initialContents.size()) { return false; }
         for (std::size_t j = 0; j < x.initialContents.size(); ++j) {
             if (!equalStack(x.initialContents[j], y.initialContents[j])) { return false; }

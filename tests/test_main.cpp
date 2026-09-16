@@ -4043,6 +4043,37 @@ void testPhase8PersistentMapsAndSave() {
     expect(!maps::validateMapData(invalidReference,&validation),
            "MapData rejects unknown item definition references before construction");
 
+    auto objectTransitionMap = map;
+    objectTransitionMap.objects[0].transition =
+        maps::ObjectTransitionInstanceConfig{
+            simulation::MapId{"map.test.beta"},
+            simulation::SpawnId{"entry.return"}
+        };
+
+    expect(
+        maps::validateMapData(
+            objectTransitionMap,
+            &validation).valid,
+        "generic object transition does not require Door capability");
+
+    expect(
+        !maps::semanticallyEqual(
+            map,
+            objectTransitionMap),
+        "MapData semantic equality includes object transition configuration");
+
+    auto invalidObjectTransitionMap =
+        objectTransitionMap;
+
+    invalidObjectTransitionMap.objects[0].transition =
+        maps::ObjectTransitionInstanceConfig{};
+
+    expect(
+        !maps::validateMapData(
+            invalidObjectTransitionMap,
+            &validation),
+        "object transition rejects an empty target map or spawn");
+
     auto edgeDoorMap = map;
 
     maps::ObjectPlacement edgeDoor;
