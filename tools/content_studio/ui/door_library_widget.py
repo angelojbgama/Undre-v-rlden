@@ -546,6 +546,7 @@ class DoorLibraryWidget(QWidget):
         self._selection_changed(
             self.doors.currentItem(),
             None,
+            emit_selected=False,
         )
 
         if errors:
@@ -593,6 +594,7 @@ class DoorLibraryWidget(QWidget):
         self,
         current: QListWidgetItem | None,
         unused: QListWidgetItem | None,
+        emit_selected: bool = True,
     ) -> None:
         del unused
 
@@ -618,9 +620,10 @@ class DoorLibraryWidget(QWidget):
             else None
         )
 
-        self.selected.emit(
-            definition
-        )
+        if emit_selected:
+            self.selected.emit(
+                definition
+            )
 
         entry = None
 
