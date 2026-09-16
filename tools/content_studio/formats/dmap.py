@@ -9,7 +9,7 @@ from ..model.types import JsonValue
 
 
 DMAP_MAJOR = 1
-DMAP_MINOR = 6
+DMAP_MINOR = 7
 EMPTY_CELL = 0xFFFFFFFF
 
 FACING = {"down": 0, "up": 1, "left": 2, "right": 3}
@@ -139,6 +139,10 @@ def _collect_strings(map_data: dict[str, JsonValue]) -> list[str]:
         door = item.get("door")
         if isinstance(door, dict):
             add(door.get("requiredItemId"))
+        transition = item.get("transition")
+        if isinstance(transition, dict):
+            add(transition.get("targetMapId"))
+            add(transition.get("targetSpawnId"))
         for stack in _array(item.get("initialContents", []), "objects.initialContents"):
             add(_mapping(stack, "objects.initialContents").get("itemId"))
     for value in _values(map_data, "pickups"):
@@ -363,6 +367,69 @@ def serialize_dmap(map_data: dict[str, JsonValue]) -> bytes:
         elif kind == "item": ents.u8(2); ents.u32(_index(indices, payload.get("itemId"), "pickups.payload.itemId")); ents.u32(_integer(payload.get("quantity"), 1, 0xFFFFFFFF))
         else: raise DmapError(f"pickups[{index}].payload.kind is invalid")
     chunks.append(_chunk(b"ENTS", ents))
+
+    transition_records: list[tuple[int, str, str]] = []
+
+    for index, value in enumerate(objects):
+        item = _mapping(
+            value,
+            f"objects[{index}]",
+        )
+        transition_value = item.get(
+            "transition"
+        )
+
+        if transition_value is None:
+            continue
+
+        transition = _mapping(
+            transition_value,
+            f"objects[{index}].transition",
+        )
+
+        transition_records.append((
+            _integer(
+                item.get("id"),
+                1,
+                0xFFFFFFFFFFFFFFFF,
+            ),
+            _text(
+                transition.get("targetMapId"),
+                f"objects[{index}].transition.targetMapId",
+            ),
+            _text(
+                transition.get("targetSpawnId"),
+                f"objects[{index}].transition.targetSpawnId",
+            ),
+        ))
+
+    if transition_records:
+        otrn = _Writer()
+        otrn.u32(len(transition_records))
+
+        for object_id, target_map, target_spawn in transition_records:
+            otrn.u64(object_id)
+            otrn.u32(
+                _index(
+                    indices,
+                    target_map,
+                    "objects.transition.targetMapId",
+                )
+            )
+            otrn.u32(
+                _index(
+                    indices,
+                    target_spawn,
+                    "objects.transition.targetSpawnId",
+                )
+            )
+
+        chunks.append(
+            _chunk(
+                b"OTRN",
+                otrn,
+            )
+        )
 
     npcs = _Writer(); npcs.u32(len(npcs_values))
     for index, value in enumerate(npcs_values):

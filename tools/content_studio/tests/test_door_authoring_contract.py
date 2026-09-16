@@ -15,6 +15,31 @@ from tools.content_studio.formats.umap import (
 )
 
 
+def transition_map() -> dict:
+    data = new_map(
+        "map.transition.contract",
+        4,
+        4,
+    )
+
+    data["objects"] = [{
+        "id": 7,
+        "definitionId": "object.portal.test",
+        "position": {
+            "x": 16,
+            "y": 16,
+        },
+        "initialContents": [],
+        "persistence": "persistent",
+        "transition": {
+            "targetMapId": "map.destination",
+            "targetSpawnId": "entry.portal",
+        },
+    }]
+
+    return data
+
+
 def door_map() -> dict:
     data = new_map(
         "map.door.contract",
@@ -119,9 +144,9 @@ class DoorPlacementContractTests(unittest.TestCase):
                 data
             )
 
-    def test_python_dmap_writer_emits_minor_6_and_key_reference(self) -> None:
+    def test_python_dmap_writer_emits_minor_7_and_key_reference(self) -> None:
         self.assertEqual(
-            6,
+            7,
             DMAP_MINOR,
         )
 
@@ -146,12 +171,32 @@ class DoorPlacementContractTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            6,
+            7,
             minor,
         )
 
         self.assertIn(
             b"item.key.blue",
+            payload,
+        )
+
+    def test_python_dmap_writer_emits_generic_object_transition_chunk(self) -> None:
+        payload = serialize_dmap(
+            transition_map()
+        )
+
+        self.assertIn(
+            b"OTRN",
+            payload,
+        )
+
+        self.assertIn(
+            b"map.destination",
+            payload,
+        )
+
+        self.assertIn(
+            b"entry.portal",
             payload,
         )
 
