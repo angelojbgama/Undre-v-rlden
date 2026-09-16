@@ -4391,18 +4391,32 @@ void testPhase8PersistentMapsAndSave() {
             objectTransitionMap,
             simulation::SpawnId{"entry.start"});
 
+    // Locate the authored object by persistent id: the map carries more
+    // than one placement and the runtime preserves no ordering contract.
+    const auto transitionedObjectId =
+        objectTransitionMap.objects[0].id;
+
+    const maps::PersistentObject* transitionedObject{};
+
+    if (objectTransitionRuntime) {
+        for (const auto& candidate :
+             objectTransitionRuntime.world->objects()) {
+            if (candidate.persistentId == transitionedObjectId) {
+                transitionedObject = &candidate;
+                break;
+            }
+        }
+    }
+
     expect(
         objectTransitionRuntime &&
-        objectTransitionRuntime.world->objects().size() == 1 &&
-        objectTransitionRuntime.world->objects().front().transition &&
-        objectTransitionRuntime.world->objects().front()
-            .transition->targetMapId ==
+        transitionedObject != nullptr &&
+        transitionedObject->transition &&
+        transitionedObject->transition->targetMapId ==
             simulation::MapId{"map.test.beta"} &&
-        objectTransitionRuntime.world->objects().front()
-            .transition->targetSpawnId ==
+        transitionedObject->transition->targetSpawnId ==
             simulation::SpawnId{"entry.return"} &&
-        !objectTransitionRuntime.world->objects().front()
-            .instance.isDoor(),
+        !transitionedObject->instance.isDoor(),
         "RuntimeWorld carries generic object Transition independently of Door");
 
     auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
