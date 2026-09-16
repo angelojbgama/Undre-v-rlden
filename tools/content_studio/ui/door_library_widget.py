@@ -5,6 +5,8 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -20,6 +22,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..services.door_authoring_service import (
     DoorAuthoringService,
     DoorCatalogEntry,
+    DoorFamilyMetadata,
 )
 from ..services.localization import Translator
 
@@ -190,6 +193,10 @@ class DoorLibraryWidget(QWidget):
         Qt.ItemDataRole.UserRole
     )
 
+    # Authoring-only sentinel for the "no family" filter choice.
+    # Family ids are validated non-empty, so "" cannot collide.
+    no_family_choice = ""
+
     def __init__(
         self,
         workspace: ContentWorkspace | None,
@@ -214,6 +221,14 @@ class DoorLibraryWidget(QWidget):
         self.translate = (
             translator
             or Translator()
+        )
+
+        self.family_label = QLabel()
+
+        self.family_filter = QComboBox()
+
+        self.family_filter.currentIndexChanged.connect(
+            self.refresh
         )
 
         self.search = QLineEdit()
@@ -312,6 +327,21 @@ class DoorLibraryWidget(QWidget):
 
         left_layout = QVBoxLayout(
             left
+        )
+
+        family_row = QHBoxLayout()
+
+        family_row.addWidget(
+            self.family_label
+        )
+
+        family_row.addWidget(
+            self.family_filter,
+            1,
+        )
+
+        left_layout.addLayout(
+            family_row
         )
 
         left_layout.addWidget(
@@ -423,6 +453,12 @@ class DoorLibraryWidget(QWidget):
     ) -> None:
         self.translate = translator
 
+        self.family_label.setText(
+            self.translate(
+                "door_family_filter"
+            )
+        )
+
         self.search.setPlaceholderText(
             self.translate(
                 "search_doors"
@@ -448,23 +484,34 @@ class DoorLibraryWidget(QWidget):
             self._current_id()
         )
 
-        self.doors.blockSignals(
-            True
-        )
-
-        self.doors.clear()
-
         errors: list[str] = []
+
+        visible: list[DoorCatalogEntry] = []
 
         if self.workspace is not None:
             service = DoorAuthoringService(
                 self.workspace
             )
 
+            family_options = (
+                self._family_options(
+                    service,
+                    errors,
+                )
+            )
+
+            self._reload_family_filter(
+                family_options
+            )
+
             query = (
                 self.search.text()
                 .strip()
                 .casefold()
+            )
+
+            family_id = (
+                self.family_filter.currentData()
             )
 
             for definition in self.workspace.definitions(
@@ -495,59 +542,109 @@ class DoorLibraryWidget(QWidget):
                 if entry is None:
                     continue
 
-                searchable = (
-                    f"{entry.display_name} "
-                    f"{entry.definition_id}"
-                ).casefold()
+                if not self._matches_family(
+                    entry,
+                    family_id,
+                ):
+                    continue
 
                 if (
                     query
                     and query
-                    not in searchable
+                    not in self._search_text(
+                        entry
+                    )
                 ):
                     continue
 
-                item = QListWidgetItem(
-                    f"{entry.display_name}  "
-                    f"[{entry.definition_id}]"
-                )
-
-                item.setData(
-                    self.definition_id_role,
-                    entry.definition_id,
-                )
-
-                icon = self._door_icon(
+                visible.append(
                     entry
                 )
 
-                if not icon.isNull():
-                    item.setIcon(
-                        QIcon(
-                            icon
-                        )
-                    )
+            visible.sort(
+                key=self._entry_sort_key
+            )
+        else:
+            self._reload_family_filter(
+                []
+            )
 
-                self.doors.addItem(
-                    item
+        self.doors.blockSignals(
+            True
+        )
+
+        self.doors.clear()
+
+        last_family_id: str | None = None
+        started_family_group = False
+
+        for entry in visible:
+            family = entry.family
+
+            if (
+                family is not None
+                and (
+                    not started_family_group
+                    or family.family_id
+                    != last_family_id
+                )
+            ):
+                started_family_group = True
+                last_family_id = (
+                    family.family_id
                 )
 
-                if (
-                    entry.definition_id
-                    == current_id
-                ):
-                    self.doors.setCurrentItem(
-                        item
+                self.doors.addItem(
+                    self._family_header(
+                        family
                     )
+                )
+
+            item = QListWidgetItem(
+                f"{entry.display_name}  "
+                f"[{entry.definition_id}]"
+            )
+
+            item.setData(
+                self.definition_id_role,
+                entry.definition_id,
+            )
+
+            icon = self._door_icon(
+                entry
+            )
+
+            if not icon.isNull():
+                item.setIcon(
+                    QIcon(
+                        icon
+                    )
+                )
+
+            self.doors.addItem(
+                item
+            )
+
+            if (
+                entry.definition_id
+                == current_id
+            ):
+                self.doors.setCurrentItem(
+                    item
+                )
 
         if (
             self.doors.currentItem()
             is None
-            and self.doors.count()
         ):
-            self.doors.setCurrentRow(
-                0
+            first_door = (
+                self._first_door_item()
             )
+
+            if first_door is not None:
+                self.doors.setCurrentItem(
+                    first_door
+                )
 
         self.doors.blockSignals(
             False
@@ -563,6 +660,183 @@ class DoorLibraryWidget(QWidget):
             self.status_changed.emit(
                 errors[0]
             )
+
+    def _family_options(
+        self,
+        service: DoorAuthoringService,
+        errors: list[str],
+    ) -> list[DoorFamilyMetadata]:
+        # families() cross-checks family metadata between doors and
+        # reports conflicts; the library stays usable by falling back
+        # to the per-door metadata while the conflict is surfaced.
+        try:
+            return service.families(
+                self.tile_size
+            )
+        except ValueError as error:
+            errors.append(
+                str(error)
+            )
+
+            return []
+
+    @staticmethod
+    def _entry_sort_key(
+        entry: DoorCatalogEntry,
+    ) -> tuple[object, ...]:
+        family = entry.family
+
+        family_key = (
+            (
+                0,
+                family.sort_order,
+                family.display_name.casefold(),
+                family.family_id,
+            )
+            if family is not None
+            else (1, 0, "", "")
+        )
+
+        return (
+            family_key,
+            entry.display_name.casefold(),
+            entry.definition_id,
+        )
+
+    def _reload_family_filter(
+        self,
+        families: list[DoorFamilyMetadata],
+    ) -> None:
+        selection = (
+            self.family_filter.currentData()
+        )
+
+        self.family_filter.blockSignals(
+            True
+        )
+
+        self.family_filter.clear()
+
+        self.family_filter.addItem(
+            self.translate(
+                "door_family_all"
+            ),
+            None,
+        )
+
+        for family in families:
+            self.family_filter.addItem(
+                family.display_name,
+                family.family_id,
+            )
+
+        self.family_filter.addItem(
+            self.translate(
+                "door_family_uncategorized"
+            ),
+            self.no_family_choice,
+        )
+
+        index = self.family_filter.findData(
+            selection
+        )
+
+        if index < 0:
+            index = 0
+
+        self.family_filter.setCurrentIndex(
+            index
+        )
+
+        self.family_filter.blockSignals(
+            False
+        )
+
+    @staticmethod
+    def _matches_family(
+        entry: DoorCatalogEntry,
+        family_id: object,
+    ) -> bool:
+        if family_id is None:
+            return True
+
+        if family_id == DoorLibraryWidget.no_family_choice:
+            return entry.family is None
+
+        return (
+            entry.family is not None
+            and entry.family.family_id
+            == family_id
+        )
+
+    @staticmethod
+    def _search_text(
+        entry: DoorCatalogEntry,
+    ) -> str:
+        parts = [
+            entry.display_name,
+            entry.definition_id,
+        ]
+
+        family = entry.family
+
+        if family is not None:
+            parts.extend(
+                (
+                    family.family_id,
+                    family.display_name,
+                    family.description,
+                )
+            )
+
+        return " ".join(
+            parts
+        ).casefold()
+
+    @staticmethod
+    def _family_header(
+        family: DoorFamilyMetadata,
+    ) -> QListWidgetItem:
+        header = QListWidgetItem(
+            family.display_name
+        )
+
+        header.setFlags(
+            header.flags()
+            & ~Qt.ItemFlag.ItemIsSelectable
+        )
+
+        font = header.font()
+
+        font.setBold(
+            True
+        )
+
+        header.setFont(
+            font
+        )
+
+        return header
+
+    def _first_door_item(
+        self,
+    ) -> QListWidgetItem | None:
+        for row in range(
+            self.doors.count()
+        ):
+            item = self.doors.item(
+                row
+            )
+
+            if (
+                item is not None
+                and item.data(
+                    self.definition_id_role
+                )
+            ):
+                return item
+
+        return None
 
     def current_entry(
         self,
@@ -695,10 +969,6 @@ class DoorLibraryWidget(QWidget):
         if item is None:
             return
 
-        self.doors.setCurrentItem(
-            item
-        )
-
         definition_id = str(
             item.data(
                 self.definition_id_role
@@ -706,8 +976,14 @@ class DoorLibraryWidget(QWidget):
             or ""
         )
 
+        # Family headers carry no definition and must never
+        # become the context target.
         if not definition_id:
             return
+
+        self.doors.setCurrentItem(
+            item
+        )
 
         menu = QMenu(
             self
@@ -916,6 +1192,15 @@ class DoorLibraryWidget(QWidget):
                 animation=entry.source_animation_id,
             ),
         ]
+
+        if entry.family is not None:
+            lines.append(
+                self.translate(
+                    "door_family_label"
+                ).format(
+                    name=entry.family.display_name,
+                )
+            )
 
         self.details.setText(
             "\n".join(

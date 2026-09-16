@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
+from typing import Iterable
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
@@ -10,6 +11,8 @@ from ..model.types import ContentDefinition
 DEFAULT_MODE = "wall"
 DEFAULT_ANCHOR = "bottom-center"
 DEFAULT_ORIENTATIONS = ("horizontal",)
+
+DEFAULT_FAMILY_SORT_ORDER = 1000
 
 SUPPORTED_MODES = {
     "wall",
@@ -43,6 +46,39 @@ class DoorPlacementProfile:
     frozen=True,
     slots=True,
 )
+class DoorFamilyMetadata:
+    """Authoring-only grouping for doors derived from descriptor tags.
+
+    Families never reach the runtime: they exist to organize, filter and
+    search the specialized Studio door library.
+    """
+
+    family_id: str
+    display_name: str
+    description: str
+    thumbnail: str | None
+    sort_order: int
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class _RawDoorFamily:
+    """Family fields explicitly provided by one door's tags."""
+
+    definition_id: str
+    family_id: str
+    display_name: str | None
+    description: str | None
+    thumbnail: str | None
+    sort_order: int | None
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class DoorCatalogEntry:
     """Door definition prepared for the specialized Studio library."""
 
@@ -53,6 +89,7 @@ class DoorCatalogEntry:
     frame_width: int
     frame_height: int
     placement: DoorPlacementProfile
+    family: DoorFamilyMetadata | None = None
 
 
 class DoorAuthoringService:
@@ -77,7 +114,12 @@ class DoorAuthoringService:
             tile_size
         )
 
-        result: list[DoorCatalogEntry] = []
+        prepared: list[
+            tuple[
+                ContentDefinition,
+                _RawDoorFamily | None,
+            ]
+        ] = []
 
         for definition in self.workspace.definitions(
             "objects"
@@ -88,21 +130,72 @@ class DoorAuthoringService:
             ):
                 continue
 
-            result.append(
-                self._build_entry(
+            descriptor = self.workspace.find(
+                "authoringDescriptors",
+                definition.definition_id,
+            )
+
+            prepared.append(
+                (
                     definition,
-                    tile_size,
+                    self._parse_family(
+                        definition.definition_id,
+                        self._tags(descriptor),
+                    ),
                 )
             )
 
-        result.sort(
-            key=lambda value: (
-                value.display_name.casefold(),
-                value.definition_id,
+        families = self._resolve_families(
+            raw
+            for _, raw in prepared
+            if raw is not None
+        )
+
+        result = [
+            self._build_entry(
+                definition,
+                tile_size,
+                family=(
+                    families[raw.family_id]
+                    if raw is not None
+                    else None
+                ),
             )
+            for definition, raw in prepared
+        ]
+
+        result.sort(
+            key=self._entry_sort_key
         )
 
         return result
+
+    def families(
+        self,
+        tile_size: int,
+    ) -> list[DoorFamilyMetadata]:
+        resolved: dict[
+            str,
+            DoorFamilyMetadata,
+        ] = {}
+
+        for entry in self.entries(
+            tile_size
+        ):
+            if entry.family is not None:
+                resolved.setdefault(
+                    entry.family.family_id,
+                    entry.family,
+                )
+
+        return sorted(
+            resolved.values(),
+            key=lambda family: (
+                family.sort_order,
+                family.display_name.casefold(),
+                family.family_id,
+            ),
+        )
 
     def entry(
         self,
@@ -127,9 +220,26 @@ class DoorAuthoringService:
         ):
             return None
 
+        descriptor = self.workspace.find(
+            "authoringDescriptors",
+            definition.definition_id,
+        )
+
+        raw_family = self._parse_family(
+            definition.definition_id,
+            self._tags(descriptor),
+        )
+
         return self._build_entry(
             definition,
             tile_size,
+            family=(
+                self._resolve_families(
+                    [raw_family]
+                )[raw_family.family_id]
+                if raw_family is not None
+                else None
+            ),
         )
 
     @staticmethod
@@ -149,6 +259,7 @@ class DoorAuthoringService:
         self,
         definition: ContentDefinition,
         tile_size: int,
+        family: DoorFamilyMetadata | None = None,
     ) -> DoorCatalogEntry:
         descriptor = self.workspace.find(
             "authoringDescriptors",
@@ -268,6 +379,7 @@ class DoorAuthoringService:
                 anchor=anchor,
                 orientations=orientations,
             ),
+            family=family,
         )
 
     def _visual_animation(
@@ -479,4 +591,178 @@ class DoorAuthoringService:
             dict.fromkeys(
                 orientations
             )
+        )
+
+    def _parse_family(
+        self,
+        definition_id: str,
+        tags: tuple[str, ...],
+    ) -> _RawDoorFamily | None:
+        family_id = self._tag(
+            tags,
+            "door-family:",
+        )
+
+        if family_id is None:
+            return None
+
+        if not family_id:
+            raise ValueError(
+                f"{definition_id}: "
+                "door-family tag requires a value"
+            )
+
+        return _RawDoorFamily(
+            definition_id=definition_id,
+            family_id=family_id,
+            display_name=self._tag(
+                tags,
+                "door-family-name:",
+            ),
+            description=self._tag(
+                tags,
+                "door-family-description:",
+            ),
+            thumbnail=self._tag(
+                tags,
+                "door-family-thumbnail:",
+            ),
+            sort_order=self._family_sort_order(
+                definition_id,
+                tags,
+            ),
+        )
+
+    def _family_sort_order(
+        self,
+        definition_id: str,
+        tags: tuple[str, ...],
+    ) -> int | None:
+        raw = self._tag(
+            tags,
+            "door-family-sort-order:",
+        )
+
+        if raw is None:
+            return None
+
+        try:
+            value = int(
+                raw
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{definition_id}: "
+                "door-family-sort-order must be "
+                "a non-negative integer"
+            ) from error
+
+        if value < 0:
+            raise ValueError(
+                f"{definition_id}: "
+                "door-family-sort-order must be "
+                "a non-negative integer"
+            )
+
+        return value
+
+    @staticmethod
+    def _resolve_families(
+        raws: Iterable[_RawDoorFamily],
+    ) -> dict[str, DoorFamilyMetadata]:
+        # Merge per-door family metadata deterministically: explicitly
+        # provided fields must agree across doors of the same family.
+        provided: dict[
+            str,
+            dict[str, object],
+        ] = {}
+
+        for raw in raws:
+            current = provided.setdefault(
+                raw.family_id,
+                {},
+            )
+
+            for field, value in (
+                ("display_name", raw.display_name),
+                ("description", raw.description),
+                ("thumbnail", raw.thumbnail),
+                ("sort_order", raw.sort_order),
+            ):
+                if value is None:
+                    continue
+
+                if (
+                    field in current
+                    and current[field] != value
+                ):
+                    raise ValueError(
+                        "conflicting door family metadata: "
+                        f"{raw.family_id}"
+                    )
+
+                current[field] = value
+
+        resolved: dict[
+            str,
+            DoorFamilyMetadata,
+        ] = {}
+
+        for family_id, current in provided.items():
+            fallback = family_id.rsplit(
+                ".",
+                1,
+            )[-1]
+
+            display_name = (
+                current.get("display_name")
+                or (
+                    fallback[:1].upper()
+                    + fallback[1:]
+                )
+            )
+
+            resolved[family_id] = DoorFamilyMetadata(
+                family_id=family_id,
+                display_name=str(display_name),
+                description=str(
+                    current.get(
+                        "description",
+                        "",
+                    )
+                ),
+                thumbnail=(
+                    current.get("thumbnail")
+                ),
+                sort_order=int(
+                    current.get(
+                        "sort_order",
+                        DEFAULT_FAMILY_SORT_ORDER,
+                    )
+                ),
+            )
+
+        return resolved
+
+    @staticmethod
+    def _entry_sort_key(
+        entry: DoorCatalogEntry,
+    ) -> tuple[object, ...]:
+        family = entry.family
+
+        family_key = (
+            (
+                0,
+                family.sort_order,
+                family.display_name.casefold(),
+                family.family_id,
+            )
+            if family is not None
+            else (1, 0, "", "")
+        )
+
+        return (
+            family_key,
+            entry.display_name.casefold(),
+            entry.definition_id,
         )

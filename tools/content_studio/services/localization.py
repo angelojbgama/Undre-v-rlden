@@ -374,6 +374,10 @@ TRANSLATIONS["pt-BR"].update({
         "genérico dos objetos. A colocação no mapa usa uma operação "
         "especializada de parede."
     ),
+    "door_family_filter": "Família",
+    "door_family_all": "Todas as famílias",
+    "door_family_uncategorized": "Sem família",
+    "door_family_label": "Família: {name}",
 })
 
 TRANSLATIONS["en-US"].update({
@@ -455,6 +459,10 @@ TRANSLATIONS["en-US"].update({
         "the generic object pivot. Map placement uses a specialized "
         "wall operation."
     ),
+    "door_family_filter": "Family",
+    "door_family_all": "All families",
+    "door_family_uncategorized": "No family",
+    "door_family_label": "Family: {name}",
 })
 
 
