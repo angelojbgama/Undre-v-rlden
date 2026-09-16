@@ -98,6 +98,43 @@ class DoorPlacementContractTests(unittest.TestCase):
             decoded.data["objects"][0]["door"]["consumeItem"],
         )
 
+    def test_umap_accepts_generic_transition_without_door(self) -> None:
+        decoded = decode_map(
+            transition_map()
+        )
+
+        self.assertEqual(
+            [],
+            decoded.diagnostics,
+        )
+
+        self.assertEqual(
+            "map.destination",
+            decoded.data["objects"][0]["transition"]["targetMapId"],
+        )
+
+        self.assertEqual(
+            "entry.portal",
+            decoded.data["objects"][0]["transition"]["targetSpawnId"],
+        )
+
+    def test_umap_rejects_invalid_generic_transition_target(self) -> None:
+        data = transition_map()
+        data["objects"][0]["transition"]["targetSpawnId"] = ""
+
+        decoded = decode_map(
+            data
+        )
+
+        self.assertTrue(
+            any(
+                diagnostic.code == "wrong_type"
+                and diagnostic.path
+                == "objects[0].transition.targetSpawnId"
+                for diagnostic in decoded.diagnostics
+            )
+        )
+
     def test_umap_v4_rejects_new_door_instance_schema(self) -> None:
         data = door_map()
         data["version"] = 4

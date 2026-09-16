@@ -62,6 +62,51 @@ def decode_map(value: object, source_path: Path | None = None) -> MapDecode:
             if not isinstance(placement, dict):
                 continue
 
+            transition = placement.get(
+                "transition"
+            )
+
+            if transition is not None:
+                transition_path = (
+                    f"objects[{index}].transition"
+                )
+
+                if not isinstance(
+                    transition,
+                    dict,
+                ):
+                    diagnostics.append(
+                        Diagnostic(
+                            "error",
+                            "transition configuration must be an object",
+                            transition_path,
+                            "wrong_type",
+                            source_path=source_path,
+                        )
+                    )
+                else:
+                    for field_name in (
+                        "targetMapId",
+                        "targetSpawnId",
+                    ):
+                        target = transition.get(
+                            field_name
+                        )
+
+                        if not isinstance(
+                            target,
+                            str,
+                        ) or not target:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    f"transition {field_name} must be a non-empty string",
+                                    f"{transition_path}.{field_name}",
+                                    "wrong_type",
+                                    source_path=source_path,
+                                )
+                            )
+
             door = placement.get("door")
 
             if door is None:
