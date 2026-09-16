@@ -75,6 +75,28 @@ void WorldObjectVisualInstance::update(const gameplay::WorldObjectInstance& obje
     animator_.updateTicks(ticks);
 }
 
+void WorldObjectVisualInstance::synchronizeAuthoritativeFrame(
+    const std::shared_ptr<const render::AnimationClip>& clip,
+    std::size_t frameIndex) {
+    if (!clip) {
+        throw std::invalid_argument(
+            "authoritative object animation requires a clip");
+    }
+
+    if (
+        !animator_.hasClip()
+        || &animator_.clip() != clip.get()
+    ) {
+        animator_.play(clip);
+    }
+
+    // Gameplay owns the clock for an authoritative frame.
+    // Pause the local Animator so presentation cannot drift.
+    animator_.seekFrame(
+        frameIndex,
+        false);
+}
+
 bool WorldObjectVisualInstance::visible() const noexcept {
     if (!initialized_ || state_ != gameplay::WorldObjectState::destroying ||
         destructionDurationTicks_ == 0) {

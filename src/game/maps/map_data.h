@@ -5,6 +5,7 @@
 #include "engine/simulation/persistent_id.h"
 #include "engine/world/collision.h"
 #include "engine/world/tile.h"
+#include "game/gameplay/animation_collision.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/facing_direction.h"
 #include "game/gameplay/items.h"
@@ -15,6 +16,7 @@
 #include "game/gameplay/scenes/scene_definition.h"
 #include "game/tilesets.h"
 #include "game/presentation/presentation_effects.h"
+#include "game/presentation/visual_content.h"
 
 #include <cstdint>
 #include <optional>
@@ -152,6 +154,8 @@ struct MapValidationCatalogs final {
     const gameplay::dialogue::DialogueCatalog* dialogues{};
     const gameplay::rpg::RewardGrantCatalog* rewardGrants{};
     const presentation::PresentationEffectCatalog* presentationEffects{};
+    const gameplay::AnimationCollisionCatalog* animationCollisions{};
+    const presentation::WorldObjectVisualDefinitionCatalog* objectVisuals{};
 };
 
 struct MapValidationResult final {

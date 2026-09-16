@@ -48,6 +48,7 @@ public:
     void updateTicks(std::uint64_t ticks, std::vector<AnimationMarkerEvent>& events);
     void setPlaying(bool playing) noexcept { playing_ = playing && clip_ != nullptr; }
     void stepFrame(int direction) noexcept;
+    void seekFrame(std::size_t frameIndex, bool playing = false);
 
     [[nodiscard]] bool hasClip() const noexcept { return clip_ != nullptr; }
     [[nodiscard]] bool isPlaying() const noexcept { return playing_; }

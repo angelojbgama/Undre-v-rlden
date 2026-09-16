@@ -402,6 +402,21 @@ struct GameRuntime::State final {
             npcVisuals.size() != activeWorld().npcs().size()) {
             throw std::logic_error("runtime and visual actor counts are out of sync");
         }
+
+        synchronizeAuthoritativeObjectFrames();
+    }
+
+    void synchronizeAuthoritativeObjectFrames() {
+        const auto result =
+            synchronizeRuntimeWorldObjectAnimationFrames(
+                activeWorld(),
+                runtimeVisualContent.animations,
+                objectVisuals);
+
+        if (!result) {
+            throw std::runtime_error(
+                result.error);
+        }
     }
 
     void followPlayer() {
@@ -532,6 +547,8 @@ struct GameRuntime::State final {
         for (std::size_t index = 0; index < objectVisuals.size(); ++index) {
             objectVisuals[index].update(activeWorld().objects()[index].instance);
         }
+
+        synchronizeAuthoritativeObjectFrames();
         consumeSimulationEvents();
         effects->update();
         if (debugInput.toggleCollisionPressed) { collisionOverlay = !collisionOverlay; }

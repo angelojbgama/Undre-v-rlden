@@ -28,7 +28,8 @@ maps::MapValidationCatalogs mapValidationCatalogs(
     const GameContentRegistry& content) noexcept {
     return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets(),
             &content.npcs(), &content.dialogues(), &content.rewardGrants(),
-            &content.presentationEffects()};
+            &content.presentationEffects(), &content.animationCollisions(),
+            &content.objectVisuals()};
 }
 
 } // namespace underworld::game

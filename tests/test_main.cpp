@@ -424,6 +424,24 @@ void testAnimationAndSpriteAnchor() {
     animator.updateTicks(20);
     expect(animator.frameIndex() == 1, "paused Animator does not consume ticks");
 
+    animator.seekFrame(2);
+    animator.updateTicks(20);
+    expect(
+        animator.frameIndex() == 2 &&
+        animator.elapsedFrameTicks() == 0 &&
+        !animator.isPlaying(),
+        "authoritative Animator seek holds an exact frame without consuming ticks");
+
+    bool badSeekRejected = false;
+    try {
+        animator.seekFrame(looping->frames().size());
+    } catch (const std::out_of_range&) {
+        badSeekRejected = true;
+    }
+    expect(
+        badSeekRejected,
+        "Animator rejects an authoritative frame index outside the active clip");
+
     using underworld::core::ColorRGBA8;
     auto image = std::make_shared<const underworld::render::Image>(
         makeImageData(4, 1, {{255, 0, 0, 255}, {0, 255, 0, 255},
@@ -1611,6 +1629,85 @@ void testAnimationFrameMaskAuthoringRoundTrip() {
         content::ContentValidator{}.validate(*decoded.content);
     expect(!report.hasErrors(),
            "valid animation frame gameplay mask passes content validation");
+}
+
+void testObjectAnimationCollisionMasksCompileToRuntimeSampler() {
+    namespace content = underworld::game::content;
+    namespace gameplay = underworld::game::gameplay;
+
+    auto authored = content::makeBuiltinAuthoredContent();
+    expect(!authored.animations.empty(),
+           "builtin content has animation for object collision sampler");
+    if (authored.animations.empty()) return;
+
+    auto& animation = authored.animations.front();
+    if (animation.frames.empty()) return;
+    if (animation.frames.size() < 2) {
+        animation.frames.push_back(animation.frames.front());
+    }
+    animation.frames[0].durationTicks = 3;
+    animation.frames[1].durationTicks = 5;
+    std::uint64_t expectedCollisionDuration{};
+    for (const auto& frame : animation.frames) expectedCollisionDuration += frame.durationTicks;
+
+    for (auto& frame : animation.frames) {
+        frame.masks.erase(
+            std::remove_if(frame.masks.begin(), frame.masks.end(),
+                [](const auto& value) {
+                    return value.channel == gameplay::objectCollisionMaskChannel;
+                }),
+            frame.masks.end());
+    }
+
+    const auto& source = animation.frames.front().source;
+    expect(source.width > 0 && source.height > 0,
+           "object collision sampler source frame has positive dimensions");
+    if (source.width <= 0 || source.height <= 0) return;
+
+    content::AuthoredAnimationFrameMask mask;
+    mask.channel = std::string{gameplay::objectCollisionMaskChannel};
+    mask.width = static_cast<std::uint32_t>(source.width);
+    mask.height = static_cast<std::uint32_t>(source.height);
+    mask.origin = {-5, -7};
+    mask.cells.assign(static_cast<std::size_t>(mask.width) * mask.height, 0);
+    mask.cells.front() = 1;
+    animation.frames.front().masks.push_back(mask);
+
+    const auto animationId = animation.id;
+    const auto frameCount = animation.frames.size();
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry.has_value(),
+           "object collision frame masks compile into runtime content");
+    if (!compiled.registry) return;
+
+    const auto& catalog = compiled.registry->animationCollisions();
+    const auto* profile = catalog.find(animationId);
+    expect(profile != nullptr,
+           "runtime animation collision profile is registered");
+    if (profile == nullptr) return;
+
+    expect(profile->frames.size() == frameCount,
+           "runtime collision profile preserves animation frame count");
+    expect(profile->frameDurations.size()==frameCount && profile->durationTicks==expectedCollisionDuration,
+           "runtime collision profile preserves frame durations");
+    expect(catalog.frameIndexAtTick(animationId,0)==std::optional<std::size_t>{0} &&
+           catalog.frameIndexAtTick(animationId,2)==std::optional<std::size_t>{0} &&
+           catalog.frameIndexAtTick(animationId,3)==std::optional<std::size_t>{1} &&
+           catalog.frameIndexAtTick(animationId,7)==std::optional<std::size_t>{1} &&
+           !catalog.frameIndexAtTick(animationId,expectedCollisionDuration),
+           "runtime collision timeline resolves exact frame boundaries");
+
+    const auto* first = catalog.sample(animationId, 0);
+    expect(first != nullptr && first->regions.size() == 1 &&
+               first->regions.front() == underworld::world::AabbI{-5, -7, 1, 1},
+           "objectCollision frame mask compiles to deterministic runtime AABB");
+
+    const auto* second = catalog.sample(animationId, 1);
+    expect(second != nullptr && second->regions.empty(),
+           "missing objectCollision on a frame means explicitly empty collision");
+
+    expect(catalog.sample(animationId, frameCount) == nullptr,
+           "runtime collision sampler rejects out-of-range frame indices");
 }
 
 void testPlayerSwordFrameMasksCompileToCollisionSamples() {
@@ -3768,6 +3865,27 @@ void testBreakableProps() {
     fireVisualInstance.update(fireInstance, 0);
     expect(fireVisualInstance.animator().clip().id() == "fire.active",
            "fire block activation selects the authored active animation");
+
+    const auto authoritativeClip =
+        makeTestClip(
+            "object.authoritative",
+            false);
+
+    fireVisualInstance.synchronizeAuthoritativeFrame(
+        authoritativeClip,
+        2);
+
+    fireVisualInstance.update(
+        fireInstance,
+        20);
+
+    expect(
+        fireVisualInstance.animator().clip().id()
+                == "object.authoritative" &&
+        fireVisualInstance.animator().frameIndex() == 2 &&
+        !fireVisualInstance.animator().isPlaying(),
+        "WorldObject authoritative frame pauses its local visual clock");
+
     static_cast<void>(fireInstance.combatant()->health.applyDamage(2));
     expect(fireInstance.syncDestructionState(), "fire block enters the shared destruction lifecycle");
     fireInstance.advanceDestructionTick();
@@ -3864,6 +3982,25 @@ void testPhase8PersistentMapsAndSave() {
             {},
             false};
     objects.add(std::move(keyedDoorDefinition));
+
+    gameplay::WorldObjectDefinition animatedFallbackDoorDefinition;
+    animatedFallbackDoorDefinition.id =
+        {"object.door.animated_fallback_test"};
+    animatedFallbackDoorDefinition.visualSetId =
+        {"visual.object.door"};
+    animatedFallbackDoorDefinition.interactable =
+        gameplay::ObjectInteractionDefinition{{-8,-8,16,16}};
+    animatedFallbackDoorDefinition.door =
+        gameplay::ObjectDoorDefinition{
+            gameplay::DoorState::closed,
+            {},
+            false};
+    animatedFallbackDoorDefinition.collision =
+        gameplay::ObjectCollisionDefinition{{
+            {10, 10, 4, 4}
+        }};
+    objects.add(
+        std::move(animatedFallbackDoorDefinition));
 
     gameplay::WorldObjectDefinition edgeDoorDefinition;
     edgeDoorDefinition.id =
@@ -4016,6 +4153,208 @@ void testPhase8PersistentMapsAndSave() {
     const game::RuntimeTilesetCatalog runtimeTilesets(tilesets);
     maps::RuntimeWorldBuilder builder(validation,enemyFactory,objectFactory,handles,
         runtimeTilesets);
+
+    gameplay::AnimationCollisionCatalog doorAnimationCollisions;
+    gameplay::AnimationCollisionProfile doorOpeningProfile;
+    doorOpeningProfile.animationId = simulation::DefinitionId{"animation.door.opening"};
+    doorOpeningProfile.frames.resize(2);
+    doorOpeningProfile.frames[0].regions.push_back(
+        {-4, -6, 8, 6});
+    doorOpeningProfile.frameDurations = {2,3};
+    doorAnimationCollisions.add(std::move(doorOpeningProfile));
+    game::presentation::WorldObjectVisualDefinitionCatalog doorVisuals;
+    game::presentation::WorldObjectVisualDefinition doorVisual;
+    doorVisual.id = simulation::DefinitionId{"visual.object.door"};
+    doorVisual.idleAnimationId = simulation::DefinitionId{"animation.door.opening"};
+    doorVisuals.add(std::move(doorVisual));
+    auto animatedValidation = validation;
+    animatedValidation.animationCollisions = &doorAnimationCollisions;
+    animatedValidation.objectVisuals = &doorVisuals;
+    maps::RuntimeWorldBuilder animatedBuilder(animatedValidation,enemyFactory,objectFactory,handles,runtimeTilesets);
+    auto animatedDoorMap = keyedDoorMap;
+    animatedDoorMap.objects.back().definitionId =
+        {"object.door.animated_fallback_test"};
+    animatedDoorMap.objects.back().door = maps::ObjectDoorInstanceConfig{gameplay::DoorState::closed,std::nullopt,false};
+    const auto animatedDoorRuntime = animatedBuilder.build(animatedDoorMap,simulation::SpawnId{"entry.start"});
+    expect(static_cast<bool>(animatedDoorRuntime),"runtime builder binds a unique objectCollision animation to a door");
+    if(animatedDoorRuntime){
+        constexpr simulation::PersistentInstanceId id{6};gameplay::ItemContainer inventory(4,items);
+
+        const underworld::world::AabbI
+            expectedAnimatedDoorCollision{
+                28, 26, 8, 6
+            };
+
+        const underworld::world::AabbI
+            expectedStaticDoorCollision{
+                42, 42, 4, 4
+            };
+
+        const auto closedObjectCollision =
+            animatedDoorRuntime.world
+                ->objectCollisionBounds();
+
+        const auto closedMovementCollision =
+            animatedDoorRuntime.world
+                ->movementCollisionBounds();
+
+        expect(
+            std::find(
+                closedObjectCollision.begin(),
+                closedObjectCollision.end(),
+                expectedAnimatedDoorCollision)
+                    != closedObjectCollision.end()
+            && std::find(
+                closedMovementCollision.begin(),
+                closedMovementCollision.end(),
+                expectedAnimatedDoorCollision)
+                    != closedMovementCollision.end()
+            && std::find(
+                closedObjectCollision.begin(),
+                closedObjectCollision.end(),
+                expectedStaticDoorCollision)
+                    == closedObjectCollision.end()
+            && std::find(
+                closedMovementCollision.begin(),
+                closedMovementCollision.end(),
+                expectedStaticDoorCollision)
+                    == closedMovementCollision.end(),
+            "animated collision owns the closed frame instead of static definition collision");
+        expect(animatedDoorRuntime.world->doorState(id)==gameplay::DoorState::closed && animatedDoorRuntime.world->doorPhysicalState(id)==maps::DoorPhysicalState::closed && animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{0},"animated door starts physically closed");
+        expect(animatedDoorRuntime.world->interactDoor(id,inventory) && animatedDoorRuntime.world->doorState(id)==gameplay::DoorState::closed && animatedDoorRuntime.world->doorPhysicalState(id)==maps::DoorPhysicalState::opening && animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{0},"interaction starts transient opening without persisting open early");
+        expect(!animatedDoorRuntime.world->advanceDoorTransitions(1) && animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{0},"opening remains on frame zero before boundary");
+
+        const auto openingFrameZeroCollision =
+            animatedDoorRuntime.world
+                ->objectCollisionBounds();
+
+        expect(
+            std::find(
+                openingFrameZeroCollision.begin(),
+                openingFrameZeroCollision.end(),
+                expectedAnimatedDoorCollision)
+                    != openingFrameZeroCollision.end(),
+            "opening keeps frame-zero collision until the authored duration boundary");
+        expect(!animatedDoorRuntime.world->advanceDoorTransitions(1) && animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{1},"opening advances at authored boundary");
+
+        const auto openingFrameOneCollision =
+            animatedDoorRuntime.world
+                ->objectCollisionBounds();
+
+        const auto openingFrameOneMovement =
+            animatedDoorRuntime.world
+                ->movementCollisionBounds();
+
+        expect(
+            std::find(
+                openingFrameOneCollision.begin(),
+                openingFrameOneCollision.end(),
+                expectedAnimatedDoorCollision)
+                    == openingFrameOneCollision.end()
+            && std::find(
+                openingFrameOneMovement.begin(),
+                openingFrameOneMovement.end(),
+                expectedAnimatedDoorCollision)
+                    == openingFrameOneMovement.end()
+            && std::find(
+                openingFrameOneCollision.begin(),
+                openingFrameOneCollision.end(),
+                expectedStaticDoorCollision)
+                    == openingFrameOneCollision.end()
+            && std::find(
+                openingFrameOneMovement.begin(),
+                openingFrameOneMovement.end(),
+                expectedStaticDoorCollision)
+                    == openingFrameOneMovement.end(),
+            "empty animated frame does not resurrect static definition collision");
+
+        game::presentation::RuntimeAnimationCatalog
+            authoritativeAnimations;
+
+        const auto authoritativeDoorClip =
+            makeTestClip(
+                "animation.door.opening",
+                false);
+
+        authoritativeAnimations.add(
+            simulation::DefinitionId{
+                "animation.door.opening"},
+            authoritativeDoorClip);
+
+        game::WorldObjectVisualCatalog
+            authoritativeObjectCatalog;
+
+        for (const auto& visualId : {
+                simulation::DefinitionId{"visual.object.chest"},
+                simulation::DefinitionId{"visual.object.crate"},
+                simulation::DefinitionId{"visual.object.door"}
+            }) {
+            game::WorldObjectVisualSet set;
+            set.id = visualId;
+            set.idle = makeTestClip(
+                std::string{visualId.value()} + ".idle",
+                true);
+
+            authoritativeObjectCatalog.add(
+                std::move(set));
+        }
+
+        std::vector<game::WorldObjectVisualInstance>
+            authoritativeObjectVisuals;
+
+        authoritativeObjectVisuals.reserve(
+            animatedDoorRuntime.world->objects().size());
+
+        std::size_t animatedDoorVisualIndex{};
+
+        for (
+            std::size_t index = 0;
+            index < animatedDoorRuntime.world->objects().size();
+            ++index
+        ) {
+            const auto& persistent =
+                animatedDoorRuntime.world->objects()[index];
+
+            authoritativeObjectVisuals.emplace_back(
+                persistent.instance.handle(),
+                authoritativeObjectCatalog.require(
+                    persistent.instance.definition().visualSetId));
+
+            authoritativeObjectVisuals.back().update(
+                persistent.instance,
+                0);
+
+            if (persistent.persistentId == id) {
+                animatedDoorVisualIndex = index;
+            }
+        }
+
+        const auto frameSync =
+            game::synchronizeRuntimeWorldObjectAnimationFrames(
+                *animatedDoorRuntime.world,
+                authoritativeAnimations,
+                authoritativeObjectVisuals);
+
+        expect(
+            frameSync &&
+            authoritativeObjectVisuals[
+                animatedDoorVisualIndex
+            ].animator().clip().id()
+                == "animation.door.opening" &&
+            authoritativeObjectVisuals[
+                animatedDoorVisualIndex
+            ].animator().frameIndex() == 1 &&
+            !authoritativeObjectVisuals[
+                animatedDoorVisualIndex
+            ].animator().isPlaying(),
+            "runtime visual sync consumes the same authoritative door frame as gameplay");
+
+        expect(animatedDoorRuntime.world->advanceDoorTransitions(3) &&
+            animatedDoorRuntime.world->doorState(id)==gameplay::DoorState::open &&
+            animatedDoorRuntime.world->doorPhysicalState(id)==maps::DoorPhysicalState::open &&
+            animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{1},"door commits stable open only after full timeline");
+    }
+
     auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
 
     const auto edgeRuntime =
@@ -4343,15 +4682,43 @@ void testPhase8PersistentMapsAndSave() {
                session.world()->objects().size()==1&&session.world()->pickups().size()==1,
            "MapSession applies in-memory deltas while transactionally activating its initial room");
     session.beginTick();
-    expect(session.requestTransition({56,8,4,4})&&session.pending().has_value(),
-           "map overlap queues a PendingMapTransition instead of mutating world during iteration");
+    expect(
+        session.requestTransition(
+            maps::PendingMapTransition{
+                roomB.id,
+                simulation::SpawnId{"entry.return"}
+            })
+        && session.pending().has_value()
+        && session.pending()->targetMapId == roomB.id
+        && session.pending()->targetSpawnId == simulation::SpawnId{"entry.return"},
+        "explicit transition request queues the same PendingMapTransition contract");
+
+    expect(
+        !session.requestTransition(
+            maps::PendingMapTransition{
+                map.id,
+                simulation::SpawnId{"entry.start"}
+            })
+        && session.pending()->targetMapId == roomB.id,
+        "pending transition cannot be overwritten before commit");
+
     const auto toB=session.commitPending();
     expect(toB.changed&&session.world()->id()==roomB.id&&toB.spawn.id==simulation::SpawnId{"entry.return"},
            "pending transition validates and builds target before swapping to its explicit spawn");
-    expect(!session.requestTransition({56,8,4,4}),
-           "transition latch prevents an immediate return loop on the activation tick");
-    session.beginTick();expect(session.requestTransition({56,8,4,4})&&session.commitPending().changed&&
-                                   session.world()->id()==map.id&&session.world()->objects().size()==1,
+
+    expect(
+        !session.requestTransition(
+            maps::PendingMapTransition{
+                map.id,
+                simulation::SpawnId{"entry.start"}
+            }),
+        "transition latch also protects explicit transition requests");
+
+    session.beginTick();
+    expect(session.requestTransition({56,8,4,4})&&session.pending().has_value(),
+           "map overlap still queues transition through the shared request path");
+    expect(session.commitPending().changed&&
+               session.world()->id()==map.id&&session.world()->objects().size()==1,
            "Room A to B to A rebuilds original DMAP and reapplies the same SessionWorldState deltas");
     std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
 
@@ -9474,6 +9841,7 @@ int main() {
         testPlayerFacingDepenetration();
         testAttackWorldObstructionClipping();
         testAnimationFrameMaskAuthoringRoundTrip();
+        testObjectAnimationCollisionMasksCompileToRuntimeSampler();
         testPlayerSwordFrameMasksCompileToCollisionSamples();
         testLegacyPlayerMovementSideCompatibility();
         testPlayerHurtboxAuthoringRoundTrip();

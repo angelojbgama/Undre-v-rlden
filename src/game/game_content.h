@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/gameplay/attack_definitions.h"
+#include "game/gameplay/animation_collision.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/items.h"
@@ -35,6 +36,9 @@ public:
     GameContentRegistry() = default;
 
     [[nodiscard]] const gameplay::AttackCatalog& attacks() const noexcept { return attacks_; }
+    [[nodiscard]] const gameplay::AnimationCollisionCatalog& animationCollisions() const noexcept {
+        return animationCollisions_;
+    }
     [[nodiscard]] const gameplay::ProjectileCatalog& projectiles() const noexcept {
         return projectiles_;
     }
@@ -92,6 +96,7 @@ public:
 private:
     friend class content::ContentCompiler;
     gameplay::AttackCatalog attacks_;
+    gameplay::AnimationCollisionCatalog animationCollisions_;
     gameplay::ProjectileCatalog projectiles_;
     gameplay::creatures::BehaviorCatalog behaviors_;
     gameplay::creatures::EnemyCatalog enemies_;

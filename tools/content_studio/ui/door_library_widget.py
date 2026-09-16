@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -182,6 +183,7 @@ class DoorLibraryWidget(QWidget):
 
     selected = Signal(object)
     place_requested = Signal(str)
+    animated_collision_requested = Signal(str)
     status_changed = Signal(str)
 
     definition_id_role = (
@@ -228,6 +230,14 @@ class DoorLibraryWidget(QWidget):
 
         self.doors.itemDoubleClicked.connect(
             self._request_place
+        )
+
+        self.doors.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+
+        self.doors.customContextMenuRequested.connect(
+            self._context_menu
         )
 
         self.place_button = QPushButton()
@@ -672,6 +682,76 @@ class DoorLibraryWidget(QWidget):
 
         self.place_requested.emit(
             entry.definition_id
+        )
+
+    def _context_menu(
+        self,
+        position: QPoint,
+    ) -> None:
+        item = self.doors.itemAt(
+            position
+        )
+
+        if item is None:
+            return
+
+        self.doors.setCurrentItem(
+            item
+        )
+
+        definition_id = str(
+            item.data(
+                self.definition_id_role
+            )
+            or ""
+        )
+
+        if not definition_id:
+            return
+
+        menu = QMenu(
+            self
+        )
+
+        animated_collision = menu.addAction(
+            self.translate(
+                "door_edit_animated_collision"
+            )
+        )
+
+        chosen = menu.exec(
+            self.doors.viewport().mapToGlobal(
+                position
+            )
+        )
+
+        if chosen == animated_collision:
+            self._request_animated_collision(
+                definition_id
+            )
+
+    def _request_animated_collision(
+        self,
+        definition_id: str = "",
+    ) -> None:
+        target_id = (
+            definition_id
+            or self._current_id()
+        )
+
+        if not target_id:
+            return
+
+        self.status_changed.emit(
+            self.translate(
+                "door_animated_collision_selected"
+            ).format(
+                definition_id=target_id,
+            )
+        )
+
+        self.animated_collision_requested.emit(
+            target_id
         )
 
     def _show_entry(

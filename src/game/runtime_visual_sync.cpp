@@ -4,6 +4,88 @@
 
 namespace underworld::game {
 
+RuntimeVisualSyncResult
+synchronizeRuntimeWorldObjectAnimationFrames(
+    const maps::RuntimeWorld& world,
+    const presentation::RuntimeAnimationCatalog& animations,
+    std::vector<WorldObjectVisualInstance>& objectVisuals) {
+    if (objectVisuals.size() != world.objects().size()) {
+        return {
+            false,
+            "runtime object visual count mismatch for authoritative animation sync"
+        };
+    }
+
+    try {
+        for (
+            std::size_t index = 0;
+            index < objectVisuals.size();
+            ++index
+        ) {
+            const auto& persistent =
+                world.objects()[index];
+
+            if (
+                objectVisuals[index].handle()
+                != persistent.instance.handle()
+            ) {
+                return {
+                    false,
+                    "runtime object visual identity mismatch for authoritative animation sync"
+                };
+            }
+
+            const auto* door =
+                world.door(
+                    persistent.persistentId);
+
+            if (
+                door == nullptr
+                || !door->openingAnimationId
+            ) {
+                continue;
+            }
+
+            const auto frameIndex =
+                world.doorAnimationFrameIndex(
+                    persistent.persistentId);
+
+            if (!frameIndex) {
+                return {
+                    false,
+                    "door authoritative animation frame is unavailable"
+                };
+            }
+
+            const auto* clip =
+                animations.find(
+                    *door->openingAnimationId);
+
+            if (clip == nullptr || !*clip) {
+                return {
+                    false,
+                    "door authoritative animation clip is unavailable"
+                };
+            }
+
+            objectVisuals[index]
+                .synchronizeAuthoritativeFrame(
+                    *clip,
+                    *frameIndex);
+        }
+
+        return {
+            true,
+            {}
+        };
+    } catch (const std::exception& exception) {
+        return {
+            false,
+            exception.what()
+        };
+    }
+}
+
 RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
     const maps::RuntimeWorld& world, const EnemyVisualCatalog& enemyCatalog,
     std::vector<EnemyVisualInstance>& enemyVisuals,

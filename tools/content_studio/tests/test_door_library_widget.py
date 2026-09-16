@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 os.environ.setdefault(
@@ -11,10 +12,12 @@ os.environ.setdefault(
 )
 
 try:
+    from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QImage
     from PySide6.QtWidgets import QApplication
 except ImportError:  # pragma: no cover
     QApplication = None  # type: ignore[assignment]
+    Qt = None  # type: ignore[assignment]
     QColor = None  # type: ignore[assignment,misc]
     QImage = None  # type: ignore[assignment,misc]
 
@@ -364,6 +367,401 @@ class DoorLibraryWidgetTests(
                 3,
                 window.door_library.current_entry().placement.span_tiles,
             )
+
+
+    def test_animated_collision_action_targets_current_door(
+            self,
+    ) -> None:
+        from tools.content_studio.ui.door_library_widget import (
+            DoorLibraryWidget,
+        )
+
+        assert Qt is not None
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = create_workspace(
+                root
+            )
+
+            widget = DoorLibraryWidget(
+                workspace,
+                root,
+                16,
+            )
+
+            self.addCleanup(
+                widget.close
+            )
+
+            self.assertEqual(
+                Qt.ContextMenuPolicy.CustomContextMenu,
+                widget.doors.contextMenuPolicy(),
+            )
+
+            requested: list[str] = []
+            statuses: list[str] = []
+
+            widget.animated_collision_requested.connect(
+                requested.append
+            )
+
+            widget.status_changed.connect(
+                statuses.append
+            )
+
+            widget.doors.setCurrentRow(
+                0
+            )
+
+            widget._request_animated_collision()
+
+            self.assertEqual(
+                ["object.gate"],
+                requested,
+            )
+
+            self.assertTrue(
+                statuses
+            )
+
+            self.assertIn(
+                "object.gate",
+                statuses[-1],
+            )
+
+
+    def test_animation_frame_mask_service_preserves_other_channels(
+            self,
+    ) -> None:
+        from tools.content_studio.services.animation_frame_mask_service import (
+            AnimationFrameMaskService,
+            OBJECT_COLLISION_MASK_CHANNEL,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = create_workspace(
+                root
+            )
+
+            animation = workspace.find(
+                "animations",
+                "animation.gate",
+            )
+
+            self.assertIsNotNone(
+                animation
+            )
+
+            assert animation is not None
+
+            hurtbox = {
+                "channel": "hurtbox",
+                "width": 48,
+                "height": 48,
+                "origin": {
+                    "x": -24,
+                    "y": -47,
+                },
+                "cells": [1]
+                + [0] * (48 * 48 - 1),
+            }
+
+            frames = animation.data[
+                "frames"
+            ]
+
+            assert isinstance(
+                frames,
+                list,
+            )
+
+            first = frames[0]
+
+            assert isinstance(
+                first,
+                dict,
+            )
+
+            first["masks"] = [
+                hurtbox
+            ]
+
+            object_mask = {
+                "width": 48,
+                "height": 48,
+                "origin": {
+                    "x": -24,
+                    "y": -47,
+                },
+                "cells": [0] * (48 * 48),
+            }
+
+            object_mask["cells"][-1] = 1
+
+            service = AnimationFrameMaskService(
+                workspace
+            )
+
+            service.replace_channel(
+                "animation.gate",
+                OBJECT_COLLISION_MASK_CHANNEL,
+                [
+                    object_mask,
+                    None,
+                ],
+            )
+
+            updated = workspace.find(
+                "animations",
+                "animation.gate",
+            )
+
+            assert updated is not None
+
+            updated_frames = updated.data[
+                "frames"
+            ]
+
+            assert isinstance(
+                updated_frames,
+                list,
+            )
+
+            first_masks = updated_frames[0][
+                "masks"
+            ]
+
+            self.assertEqual(
+                {
+                    "hurtbox",
+                    OBJECT_COLLISION_MASK_CHANNEL,
+                },
+                {
+                    value["channel"]
+                    for value in first_masks
+                },
+            )
+
+            self.assertNotIn(
+                "masks",
+                updated_frames[1],
+            )
+
+            workspace.save_all()
+
+            reopened = ContentWorkspace.open(
+                root
+            )
+
+            stored = AnimationFrameMaskService(
+                reopened
+            ).channel_masks(
+                "animation.gate",
+                OBJECT_COLLISION_MASK_CHANNEL,
+            )
+
+            self.assertEqual(
+                object_mask,
+                stored[0],
+            )
+
+            self.assertIsNone(
+                stored[1]
+            )
+
+    def test_animated_collision_editor_uses_keyframe_inheritance(
+            self,
+    ) -> None:
+        from tools.content_studio.services.localization import Translator
+        from tools.content_studio.ui.animated_collision_editor import (
+            AnimatedCollisionEditorDialog,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = create_workspace(
+                root
+            )
+
+            dialog = AnimatedCollisionEditorDialog(
+                workspace,
+                root,
+                "animation.gate",
+                Translator("pt-BR"),
+            )
+
+            self.addCleanup(
+                dialog.close
+            )
+
+            self.assertEqual(
+                2,
+                dialog.frame_count(),
+            )
+
+            self.assertEqual(
+                {},
+                dialog.keyframes(),
+            )
+
+            authored_mask = {
+                "width": 48,
+                "height": 48,
+                "origin": {
+                    "x": -24,
+                    "y": -47,
+                },
+                "cells": [1]
+                + [0] * (48 * 48 - 1),
+            }
+
+            with patch(
+                "tools.content_studio.ui.animated_collision_editor."
+                "ShapeMaskEditorDialog"
+            ) as editor_type:
+                editor_instance = (
+                    editor_type.return_value
+                )
+
+                editor_instance.exec.return_value = 1
+                editor_instance.result_mask.return_value = (
+                    authored_mask
+                )
+
+                dialog._edit_current_frame()
+
+            self.assertEqual(
+                authored_mask,
+                dialog.effective_mask(0),
+            )
+
+            dialog._next_frame()
+
+            self.assertEqual(
+                authored_mask,
+                dialog.effective_mask(1),
+            )
+
+            self.assertNotIn(
+                1,
+                dialog.keyframes(),
+            )
+
+            dialog._set_current_none()
+
+            self.assertIsNone(
+                dialog.effective_mask(1)
+            )
+
+            self.assertIn(
+                1,
+                dialog.keyframes(),
+            )
+
+            self.assertEqual(
+                [
+                    authored_mask,
+                    None,
+                ],
+                dialog.result_effective_masks(),
+            )
+
+            dialog._inherit_current()
+
+            self.assertEqual(
+                authored_mask,
+                dialog.effective_mask(1),
+            )
+
+    def test_main_window_persists_door_collision_on_animation_frames(
+            self,
+    ) -> None:
+        from tools.content_studio.services.animation_frame_mask_service import (
+            AnimationFrameMaskService,
+            OBJECT_COLLISION_MASK_CHANNEL,
+        )
+        from tools.content_studio.ui.main_window import (
+            MainWindow,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = create_workspace(
+                root
+            )
+
+            project = WorldProject.new()
+
+            window = MainWindow(
+                project,
+                workspace,
+                asset_root=root,
+            )
+
+            self.addCleanup(
+                window.close
+            )
+
+            authored_mask = {
+                "width": 48,
+                "height": 48,
+                "origin": {
+                    "x": -24,
+                    "y": -47,
+                },
+                "cells": [1]
+                + [0] * (48 * 48 - 1),
+            }
+
+            with patch(
+                "tools.content_studio.ui.main_window."
+                "AnimatedCollisionEditorDialog"
+            ) as dialog_type:
+                dialog_instance = (
+                    dialog_type.return_value
+                )
+
+                dialog_instance.exec.return_value = 1
+
+                dialog_instance.result_effective_masks.return_value = [
+                    authored_mask,
+                    None,
+                ]
+
+                window.door_library.animated_collision_requested.emit(
+                    "object.gate"
+                )
+
+                dialog_type.assert_called_once()
+                dialog_instance.exec.assert_called_once_with()
+
+            stored = AnimationFrameMaskService(
+                workspace
+            ).channel_masks(
+                "animation.gate",
+                OBJECT_COLLISION_MASK_CHANNEL,
+            )
+
+            self.assertEqual(
+                authored_mask,
+                stored[0],
+            )
+
+            self.assertIsNone(
+                stored[1]
+            )
+
+            self.assertTrue(
+                workspace.dirty
+            )
+
+            workspace.save_all()
 
 
 if __name__ == "__main__":
