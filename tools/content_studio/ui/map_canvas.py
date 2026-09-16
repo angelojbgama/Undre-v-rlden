@@ -157,6 +157,27 @@ class MapCanvas(QWidget):
             self.update()
 
     def set_entity_selection(self, category: str, definition_id: str) -> None:
+        if (
+            category == "objects"
+            and self.workspace is not None
+        ):
+            definition = self.workspace.find(
+                "objects",
+                definition_id,
+            )
+
+            if (
+                definition is not None
+                and isinstance(
+                    definition.data.get("door"),
+                    dict,
+                )
+            ):
+                self.set_door_selection(
+                    definition_id
+                )
+                return
+
         self.selected_entity_category = category
         self.selected_definition_id = definition_id
         self.tool = "entity"
@@ -312,6 +333,29 @@ class MapCanvas(QWidget):
         return selection
 
     def set_active_payload(self, payload: StudioDragPayload | None) -> None:
+        if (
+            payload is not None
+            and payload.content_reference
+            and payload.category == "objects"
+            and self.workspace is not None
+        ):
+            definition = self.workspace.find(
+                "objects",
+                payload.definition_id,
+            )
+
+            if (
+                definition is not None
+                and isinstance(
+                    definition.data.get("door"),
+                    dict,
+                )
+            ):
+                self.set_door_selection(
+                    payload.definition_id
+                )
+                return
+
         self.interaction.set_tile_erase_mode(False)
         self.interaction.set_active_payload(payload)
         self.interaction.set_terrain_selection(None)

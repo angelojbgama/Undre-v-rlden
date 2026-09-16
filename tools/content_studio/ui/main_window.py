@@ -979,6 +979,19 @@ class MainWindow(QMainWindow):
                 self._refresh_diagnostics(local_issues)
                 self.set_status(f"Cannot place {definition_id}: fix its dependencies first")
                 return
+
+            if (
+                category == "objects"
+                and isinstance(
+                    definition.data.get("door"),
+                    dict,
+                )
+            ):
+                self._place_door_definition(
+                    definition_id
+                )
+                return
+
         self.mode_tabs.setCurrentIndex(0)
         self._clear_toolbar_tools()
         self.map_canvas.set_entity_selection(category, definition_id)

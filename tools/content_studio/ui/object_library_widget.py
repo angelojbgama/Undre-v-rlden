@@ -856,10 +856,40 @@ class ObjectLibraryWidget(QWidget):
         self.refresh(); self._select(object_id)
         self.changed.emit(); self.status_changed.emit(self.translate("object_configured"))
 
+    @staticmethod
+    def _uses_specialized_door_placement(
+            definition: ContentDefinition | None) -> bool:
+        return bool(
+            definition is not None
+            and isinstance(
+                definition.data.get("door"),
+                dict,
+            )
+        )
+
     def place_current(self) -> None:
         object_id = self._current_id()
-        if object_id:
-            self.place_requested.emit("objects", object_id)
+
+        if (
+            not object_id
+            or self.workspace is None
+        ):
+            return
+
+        definition = self.workspace.find(
+            "objects",
+            object_id,
+        )
+
+        if self._uses_specialized_door_placement(
+            definition
+        ):
+            return
+
+        self.place_requested.emit(
+            "objects",
+            object_id,
+        )
 
     def _current_id(self) -> str:
         item = self.objects.currentItem()
@@ -876,7 +906,12 @@ class ObjectLibraryWidget(QWidget):
         del unused
         object_id = str(current.data(Qt.ItemDataRole.UserRole)) if current else ""
         definition = self.workspace.find("objects", object_id) if self.workspace and object_id else None
-        self.place_button.setEnabled(definition is not None)
+        self.place_button.setEnabled(
+            definition is not None
+            and not self._uses_specialized_door_placement(
+                definition
+            )
+        )
         self.configure_button.setEnabled(definition is not None and definition.origin == "project")
         self.selected.emit(definition)
         self._show_object(definition)
@@ -988,6 +1023,9 @@ class ObjectLibraryWidget(QWidget):
         configure = menu.addAction(self.translate("configure_object"))
         configure.setEnabled(self.configure_button.isEnabled())
         place = menu.addAction(self.translate("place_object"))
+        place.setEnabled(
+            self.place_button.isEnabled()
+        )
         chosen = menu.exec(self.objects.viewport().mapToGlobal(position))
         if chosen == configure:
             self.configure_current()
@@ -1003,7 +1041,29 @@ class ObjectLibraryWidget(QWidget):
         return "scenery"
 
     def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
-        if not items:
+        if (
+            not items
+            or self.workspace is None
+        ):
             return None
+
+        object_id = str(
+            items[0].data(
+                Qt.ItemDataRole.UserRole
+            )
+        )
+
+        definition = self.workspace.find(
+            "objects",
+            object_id,
+        )
+
+        if self._uses_specialized_door_placement(
+            definition
+        ):
+            return None
+
         return StudioDragPayload.content(
-            "objects", str(items[0].data(Qt.ItemDataRole.UserRole)))
+            "objects",
+            object_id,
+        )

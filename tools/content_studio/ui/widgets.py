@@ -703,6 +703,18 @@ class ContentBrowser(QWidget):
         self._refresh_actions()
         self.selected.emit(self._selected)
 
+    @staticmethod
+    def _uses_specialized_door_placement(
+            definition: ContentDefinition | None) -> bool:
+        return bool(
+            definition is not None
+            and definition.category == "objects"
+            and isinstance(
+                definition.data.get("door"),
+                dict,
+            )
+        )
+
     def _refresh_actions(self) -> None:
         category_selected = bool(self.category.currentData())
         selected = self._selected
@@ -711,7 +723,21 @@ class ContentBrowser(QWidget):
         self.delete_button.setEnabled(editable)
         self.rename_button.setEnabled(editable)
         self.duplicate_button.setEnabled(selected is not None)
-        self.place_button.setEnabled(bool(selected and selected.category in {"enemies", "npcs", "objects", "pickups"}))
+        self.place_button.setEnabled(
+            bool(
+                selected
+                and selected.category
+                in {
+                    "enemies",
+                    "npcs",
+                    "objects",
+                    "pickups",
+                }
+                and not self._uses_specialized_door_placement(
+                    selected
+                )
+            )
+        )
         self.usages_button.setEnabled(selected is not None)
 
     def _create(self) -> None:
@@ -791,16 +817,71 @@ class ContentBrowser(QWidget):
                 QMessageBox.warning(self, self.translate("rename"), str(error))
 
     def _place(self) -> None:
-        if self._selected and self._selected.category in {"enemies", "npcs", "objects", "pickups"}:
-            self.place_requested.emit(self._selected.category, self._selected.definition_id)
+        if (
+            self._selected
+            and self._selected.category
+            in {
+                "enemies",
+                "npcs",
+                "objects",
+                "pickups",
+            }
+            and not self._uses_specialized_door_placement(
+                self._selected
+            )
+        ):
+            self.place_requested.emit(
+                self._selected.category,
+                self._selected.definition_id,
+            )
 
     def _drag_payload(self, items: list[QListWidgetItem]) -> StudioDragPayload | None:
         if not items:
             return None
-        key = items[0].data(Qt.ItemDataRole.UserRole)
-        if key is None or not hasattr(key, "category") or not hasattr(key, "definition_id"):
+
+        key = items[0].data(
+            Qt.ItemDataRole.UserRole
+        )
+
+        if (
+            key is None
+            or not hasattr(
+                key,
+                "category",
+            )
+            or not hasattr(
+                key,
+                "definition_id",
+            )
+        ):
             return None
-        return StudioDragPayload.content(str(key.category), str(key.definition_id))
+
+        category = str(
+            key.category
+        )
+
+        definition_id = str(
+            key.definition_id
+        )
+
+        definition = (
+            self.workspace.find(
+                category,
+                definition_id,
+            )
+            if self.workspace is not None
+            else None
+        )
+
+        if self._uses_specialized_door_placement(
+            definition
+        ):
+            return None
+
+        return StudioDragPayload.content(
+            category,
+            definition_id,
+        )
 
 
 class TilePalette(QWidget):
