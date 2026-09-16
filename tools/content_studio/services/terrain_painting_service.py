@@ -10,6 +10,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import MapDocument
 from ..model.tile_semantics import TerrainProfile, TerrainSelection
 from .autotile_resolver import AutoTileResolver, EAST, NORTH, SOUTH, WEST
+from .fixture_reservation_service import FixtureTerrainReservationService
 from .tile_semantic_catalog import TileSemanticCatalog
 
 
@@ -30,12 +31,17 @@ class TerrainPaintingService:
     def __init__(self, document: MapDocument | None = None, workspace: ContentWorkspace | None = None,
                  editing: MapEditingService | None = None,
                  catalog: TileSemanticCatalog | None = None,
-                 resolver: AutoTileResolver | None = None) -> None:
+                 resolver: AutoTileResolver | None = None,
+                 reservations: FixtureTerrainReservationService | None = None) -> None:
         self.document = document
         self.workspace = workspace
         self.editing = editing or MapEditingService(document, workspace=workspace)
         self.catalog = catalog or TileSemanticCatalog(workspace)
         self.resolver = resolver or AutoTileResolver(self.catalog)
+        self.reservations = reservations or FixtureTerrainReservationService(
+            document,
+            workspace,
+        )
 
     def set_context(self, document: MapDocument | None, workspace: ContentWorkspace | None) -> None:
         self.document = document
@@ -43,6 +49,10 @@ class TerrainPaintingService:
         self.editing.set_document(document)
         self.editing.set_workspace(workspace)
         self.catalog.set_workspace(workspace)
+        self.reservations.set_context(
+            document,
+            workspace,
+        )
 
     def paint_terrain(self, cells: Iterable[tuple[int, int]], selection: TerrainSelection,
                       layer_index: int | None = None, erase: bool = False,
@@ -56,10 +66,21 @@ class TerrainPaintingService:
         layer = self.editing.layer_index
         old_active = self._active_cells(layer, selection)
         active = set(old_active)
+
         if erase:
             active.difference_update(target)
         else:
             active.update(target)
+
+            # Fixtures are authoritative over semantic terrain. A wall
+            # reservation is treated as a deliberate gap while resolving
+            # both the painted cells and their neighboring autotiles.
+            active.difference_update(
+                self.reservations.reserved_cells(
+                    selection.role
+                )
+            )
+
         affected = set(target)
         if selection.role == "wall":
             for x, y in target:
@@ -112,11 +133,30 @@ class TerrainPaintingService:
         boundary = {cell for cell in rect if cell[0] in {left, right} or cell[1] in {top, bottom}}
         assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
         warnings: list[str] = []
+
+        reserved_boundary = (
+            self.reservations.reserved_cells(
+                profile.boundary.role
+            )
+        )
+
+        room_occupancy = (
+            rect
+            - reserved_boundary
+        )
+
         for position in sorted(boundary, key=lambda value: (value[1], value[0])):
-            # Boundary visuals need the complete room occupancy.  Passing only
+            if position in reserved_boundary:
+                # A fixture-owned wall opening is explicit terrain state.
+                # Smart Room may recalculate its neighbors but cannot close it.
+                assignments[position] = None
+                continue
+
+            # Boundary visuals need the complete room occupancy. Passing only
             # the outline makes top and bottom centers both look like an E/W
             # stroke, so the resolver cannot distinguish their inward side.
-            resolved = self._resolve(profile.boundary, position, rect, document, warnings)
+            # Reserved fixture cells are intentionally absent from occupancy.
+            resolved = self._resolve(profile.boundary, position, room_occupancy, document, warnings)
             if resolved is not None:
                 assignments[position] = (None if resolved.empty else
                                          (resolved.tileset_id, resolved.source_index, resolved.flags))
