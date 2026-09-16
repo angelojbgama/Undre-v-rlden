@@ -8027,6 +8027,12 @@ void testPhase14AuthoredMapFoundation() {
             simulation::DefinitionId{"item.key.blue"},
             false};
 
+    authoredDoor.transition =
+        maps::ObjectTransitionInstanceConfig{
+            simulation::MapId{"map.authored.destination"},
+            simulation::SpawnId{"entry.gate"}
+        };
+
     source.geometry.objects.push_back(
         authoredDoor
     );
@@ -8051,6 +8057,18 @@ void testPhase14AuthoredMapFoundation() {
         !decoded.source->geometry.objects.front()
             .door->consumeItem,
         "UMAP v5 preserves per-instance door configuration");
+
+    expect(
+        decoded.source &&
+        decoded.source->geometry.objects.front().transition &&
+        decoded.source->geometry.objects.front()
+            .transition->targetMapId ==
+            simulation::MapId{"map.authored.destination"} &&
+        decoded.source->geometry.objects.front()
+            .transition->targetSpawnId ==
+            simulation::SpawnId{"entry.gate"} &&
+        json.find("\"transition\"") != std::string::npos,
+        "authored map JSON preserves generic object Transition");
     expect(decoded.source && decoded.source->geometry.collisionBindings.size() == 1 &&
                decoded.source->geometry.collisionBindings.front().layer == 0 &&
                decoded.source->geometry.collisionBindings.front().x == 1 &&

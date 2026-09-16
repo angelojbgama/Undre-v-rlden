@@ -741,6 +741,15 @@ JsonValue encodeObject(const ObjectPlacement& value) {
         put(door, "consumeItem", boolValue(value.door->consumeItem));
         put(objectValue, "door", ::underworld::game::maps::objectValue(std::move(door)));
     }
+    if (value.transition) {
+        JsonObject transition;
+        put(transition, "targetMapId",
+            idValue(value.transition->targetMapId.value()));
+        put(transition, "targetSpawnId",
+            idValue(value.transition->targetSpawnId.value()));
+        put(objectValue, "transition",
+            ::underworld::game::maps::objectValue(std::move(transition)));
+    }
     JsonArray contents;
     for (const auto& stack : value.initialContents) contents.push_back(encodeStack(stack));
     put(objectValue, "initialContents", arrayValue(std::move(contents)));
@@ -752,7 +761,7 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
     const auto* objectValue = object(value, reader, path);
     if (objectValue == nullptr) return false;
     allowed(*objectValue, reader, path,
-            {"id", "definitionId", "position", "persistence", "initialContents", "door"});
+            {"id", "definitionId", "position", "persistence", "initialContents", "door", "transition"});
     const auto* id = required(*objectValue, value, reader, path, "id");
     const auto* definition = required(*objectValue, value, reader, path, "definitionId");
     const auto* position = required(*objectValue, value, reader, path, "position");
@@ -797,6 +806,63 @@ bool decodeObject(const JsonValue& value, Reader& reader, std::string_view path,
                     door.consumeItem) && good;
             }
             output.door = std::move(door);
+        }
+    }
+    if (const auto* transitionValue = field(*objectValue, "transition")) {
+        const auto transitionPath =
+            std::string(path) + ".transition";
+        const auto* transitionObject =
+            object(*transitionValue, reader, transitionPath);
+
+        if (transitionObject == nullptr) {
+            good = false;
+        } else {
+            allowed(
+                *transitionObject,
+                reader,
+                transitionPath,
+                {"targetMapId", "targetSpawnId"});
+
+            ObjectTransitionInstanceConfig transition;
+
+            const auto* targetMap = required(
+                *transitionObject,
+                *transitionValue,
+                reader,
+                transitionPath,
+                "targetMapId");
+
+            const auto* targetSpawn = required(
+                *transitionObject,
+                *transitionValue,
+                reader,
+                transitionPath,
+                "targetSpawnId");
+
+            good = targetMap != nullptr &&
+                readMapId(
+                    *targetMap,
+                    reader,
+                    transitionPath + ".targetMapId",
+                    transition.targetMapId) &&
+                good;
+
+            std::string spawn;
+            const bool spawnGood =
+                targetSpawn != nullptr &&
+                readString(
+                    *targetSpawn,
+                    reader,
+                    transitionPath + ".targetSpawnId",
+                    spawn);
+
+            if (spawnGood && !spawn.empty()) {
+                transition.targetSpawnId =
+                    simulation::SpawnId{std::move(spawn)};
+            }
+
+            good = spawnGood && good;
+            output.transition = std::move(transition);
         }
     }
     const auto* values = contents == nullptr ? nullptr :
