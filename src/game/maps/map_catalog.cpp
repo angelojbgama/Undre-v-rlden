@@ -44,7 +44,26 @@ void suppressCompletedEncounterParticipants(
 
 TransitionResult MapSession::activate(const simulation::MapId& mapId,const simulation::SpawnId& spawnId){return prepareAndSwap(mapId,spawnId);}
 MapSession::~MapSession(){if(world_)destroyRuntimeHandles(*world_);}
-bool MapSession::requestTransition(world::AabbI playerArea){if(!data_||pending_||transitionLatch_>0)return false;const MapLink* selected=nullptr;for(const auto& link:data_->links){if(gameplay::overlaps(playerArea,link.trigger)&&(!selected||link.id<selected->id))selected=&link;}if(!selected)return false;pending_=PendingMapTransition{selected->targetMapId,selected->targetSpawnId};return true;}
+bool MapSession::requestTransition(PendingMapTransition transition){
+    if(!data_||pending_||transitionLatch_>0)return false;
+    if(transition.targetMapId.empty()||transition.targetSpawnId.empty())return false;
+    pending_=std::move(transition);
+    return true;
+}
+bool MapSession::requestTransition(world::AabbI playerArea){
+    if(!data_||pending_||transitionLatch_>0)return false;
+    const MapLink* selected=nullptr;
+    for(const auto& link:data_->links){
+        if(gameplay::overlaps(playerArea,link.trigger)&&(!selected||link.id<selected->id)){
+            selected=&link;
+        }
+    }
+    if(!selected)return false;
+    return requestTransition(PendingMapTransition{
+        selected->targetMapId,
+        selected->targetSpawnId
+    });
+}
 TransitionResult MapSession::commitPending(){if(!pending_)return {};const auto request=*pending_;pending_.reset();return prepareAndSwap(request.targetMapId,request.targetSpawnId);}
 TransitionResult MapSession::restore(const simulation::MapId& mapId,const save::SessionWorldState& restoredState){auto loaded=maps_.load(mapId,&catalogs_);if(!loaded)return {false,{},loaded.error};if(loaded.data.playerSpawns.empty())return {false,{},"saved map has no player spawn"};auto built=builder_.build(loaded.data,handles_,loaded.data.playerSpawns.front().id);if(!built)return {false,{},built.error};std::string applyError;if(!save::applyWorldState(restoredState,*built.world,handles_,*catalogs_.items,applyError)){destroyRuntimeHandles(*built.world);return {false,{},applyError};}suppressCompletedEncounterParticipants(loaded.data,*built.world,handles_,restoredState);const PlayerSpawn spawn=built.world->spawn();if(world_)destroyRuntimeHandles(*world_);state_=restoredState;data_=std::move(loaded.data);world_=std::move(built.world);pending_.reset();transitionLatch_=1;return {true,spawn,{}};}
 TransitionResult MapSession::prepareAndSwap(const simulation::MapId& mapId,const simulation::SpawnId& spawnId){if(world_&&data_)save::captureWorldState(*data_,*world_,state_);auto loaded=maps_.load(mapId,&catalogs_);if(!loaded)return {false,{},loaded.error};auto built=builder_.build(loaded.data,handles_,spawnId);if(!built)return {false,{},built.error};std::string applyError;if(!save::applyWorldState(state_,*built.world,handles_,*catalogs_.items,applyError)){destroyRuntimeHandles(*built.world);return {false,{},applyError};}suppressCompletedEncounterParticipants(loaded.data,*built.world,handles_,state_);const PlayerSpawn spawn=built.world->spawn();if(world_)destroyRuntimeHandles(*world_);data_=std::move(loaded.data);world_=std::move(built.world);transitionLatch_=1;return {true,spawn,{}};}

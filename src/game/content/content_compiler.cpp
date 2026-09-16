@@ -134,6 +134,46 @@ const AuthoredAnimationFrameMask* attackHitboxMask(
     return frameMask(frame, "attackHitbox");
 }
 
+gameplay::ObjectCollisionDefinition compileObjectCollisionMask(
+    std::uint32_t width,
+    std::uint32_t height,
+    const std::vector<std::uint8_t>& cells,
+    core::PointI origin) {
+    gameplay::ObjectCollisionDefinition result;
+    const auto boxes = gameplay::compileAttackShapeMask(
+        width, height, cells, origin.x, origin.y);
+    result.regions.reserve(boxes.size());
+    for (const auto& box : boxes) {
+        result.regions.push_back({box.offsetX, box.offsetY, box.width, box.height});
+    }
+    return result;
+}
+
+std::optional<gameplay::AnimationCollisionProfile> compileAnimationCollision(
+    const AuthoredAnimation& animation) {
+    const bool authored = std::any_of(
+        animation.frames.begin(), animation.frames.end(),
+        [](const auto& frame) {
+            return frameMask(frame, gameplay::objectCollisionMaskChannel) != nullptr;
+        });
+    if (!authored) return std::nullopt;
+
+    gameplay::AnimationCollisionProfile result;
+    result.animationId = animation.id;
+    result.frames.reserve(animation.frames.size());
+    result.frameDurations.reserve(animation.frames.size());
+    for (const auto& frame : animation.frames) {
+        result.frameDurations.push_back(frame.durationTicks);
+        if (const auto* mask = frameMask(frame, gameplay::objectCollisionMaskChannel)) {
+            result.frames.push_back(compileObjectCollisionMask(
+                mask->width, mask->height, mask->cells, mask->origin));
+        } else {
+            result.frames.emplace_back();
+        }
+    }
+    return result;
+}
+
 gameplay::AttackDefinition::CollisionSample& collisionSample(
     std::vector<gameplay::AttackDefinition::CollisionSample>& samples,
     std::uint32_t tick) {
@@ -299,15 +339,9 @@ gameplay::ItemDefinition compileItem(const AuthoredItem& v) {
 gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) {
     std::optional<gameplay::ObjectCollisionDefinition> collision;
     if (v.collision) {
-        gameplay::ObjectCollisionDefinition compiled;
-        const auto boxes = gameplay::compileAttackShapeMask(
-            v.collision->width, v.collision->height, v.collision->cells,
-            v.collision->origin.x, v.collision->origin.y);
-        compiled.regions.reserve(boxes.size());
-        for (const auto& box : boxes) {
-            compiled.regions.push_back({box.offsetX, box.offsetY, box.width, box.height});
-        }
-        collision = std::move(compiled);
+        collision = compileObjectCollisionMask(
+            v.collision->width, v.collision->height,
+            v.collision->cells, v.collision->origin);
     }
     return {v.id, v.visualSetId, v.interactable, v.container, v.destructible,
             v.bankAccess ? std::optional<gameplay::ObjectBankAccessDefinition>{gameplay::ObjectBankAccessDefinition{}}
@@ -578,7 +612,12 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.presentationEffects) registry.presentationEffects_.add(compilePresentationEffect(value));
         for (const auto& value : authored.visualImages) registry.visualImages_.add(compileVisualImage(value));
         for (const auto& value : authored.staticSprites) registry.staticSprites_.add(compileStaticSprite(value));
-        for (const auto& value : authored.animations) registry.animations_.add(compileAnimation(value));
+        for (const auto& value : authored.animations) {
+            registry.animations_.add(compileAnimation(value));
+            if (auto collision = compileAnimationCollision(value)) {
+                registry.animationCollisions_.add(std::move(*collision));
+            }
+        }
         for (const auto& value : authored.enemyVisuals) registry.enemyVisuals_.add(compileEnemyVisual(value));
         for (const auto& value : authored.playerVisuals) registry.playerVisuals_.add(compilePlayerVisual(value));
         for (const auto& value : authored.objectVisuals) registry.objectVisuals_.add(compileObjectVisual(value));

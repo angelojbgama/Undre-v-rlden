@@ -7,21 +7,172 @@
 
 namespace underworld::game::maps {
 
-std::vector<world::AabbI> RuntimeWorld::objectCollisionBounds() const {
-    std::vector<world::AabbI> result;
-    for (const auto& object : objects_) {
-        const auto& definition = object.instance.definition();
-        if (!definition.collision) continue;
-        if (object.instance.isDoor() && object.instance.doorState() == gameplay::DoorState::open) {
-            continue;
+namespace {
+DoorPhysicalState stableDoorPhysicalState(
+    gameplay::DoorState state) noexcept {
+    return state == gameplay::DoorState::open
+        ? DoorPhysicalState::open
+        : DoorPhysicalState::closed;
+}
+std::optional<simulation::DefinitionId> resolveDoorOpeningAnimation(const gameplay::WorldObjectDefinition& def,const MapValidationCatalogs& catalogs) noexcept {
+    if (
+        !catalogs.animationCollisions
+        || !catalogs.objectVisuals
+    ) {
+        return std::nullopt;
+    }
+
+    const auto* v = catalogs.objectVisuals->find(
+        def.visualSetId);
+
+    if (!v) {
+        return std::nullopt;
+    }
+    std::optional<simulation::DefinitionId> selected;
+    bool ambiguous = false;
+    const auto consider = [&](const simulation::DefinitionId& id) {
+        if (!catalogs.animationCollisions->find(id)) {
+            return;
         }
-        result.reserve(result.size() + definition.collision->regions.size());
-        for (const auto& region : definition.collision->regions) {
-            result.push_back({object.instance.position().x + region.x,
-                              object.instance.position().y + region.y,
-                              region.width, region.height});
+
+        if (!selected) {
+            selected = id;
+            return;
+        }
+
+        if (*selected != id) {
+            ambiguous = true;
+        }
+    };
+    consider(v->idleAnimationId);
+
+    for (const auto* c : {
+            &v->doorLockedAnimationId,
+            &v->doorClosedAnimationId,
+            &v->doorOpenAnimationId
+        }) {
+        if (*c) {
+            consider(**c);
         }
     }
+    return ambiguous
+        ? std::nullopt
+        : selected;
+}
+void configureDoorTimeline(RuntimeDoor& door,const gameplay::WorldObjectDefinition& def,const MapValidationCatalogs& catalogs) noexcept {
+    door.physicalState = stableDoorPhysicalState(
+        door.state);
+
+    const auto id = resolveDoorOpeningAnimation(
+        def,
+        catalogs);
+
+    if (!id || !catalogs.animationCollisions) {
+        return;
+    }
+
+    const auto* p = catalogs.animationCollisions->find(
+        *id);
+
+    if (!p || p->durationTicks == 0) {
+        return;
+    }
+
+    door.openingAnimationId = *id;
+    door.openingDurationTicks = p->durationTicks;
+}
+void syncRuntimeDoorObjectState(
+    std::vector<PersistentObject>& objects,
+    simulation::PersistentInstanceId id,
+    gameplay::DoorState state) noexcept {
+    for (auto& o : objects) {
+        if (o.persistentId == id) {
+            static_cast<void>(
+                o.instance.setDoorState(state));
+            return;
+        }
+    }
+}
+} // namespace
+
+std::vector<world::AabbI> RuntimeWorld::objectCollisionBounds() const {
+    std::vector<world::AabbI> result;
+
+    for (const auto& object : objects_) {
+        const auto& definition =
+            object.instance.definition();
+
+        const gameplay::ObjectCollisionDefinition*
+            collision = nullptr;
+
+        bool animatedCollisionOwnsFrame = false;
+
+        if (
+            animationCollisions_ != nullptr
+            && object.instance.isDoor()
+        ) {
+            const auto* runtimeDoor =
+                door(object.persistentId);
+
+            if (
+                runtimeDoor != nullptr
+                && runtimeDoor->openingAnimationId
+                && animationCollisions_->find(
+                    *runtimeDoor->openingAnimationId) != nullptr
+            ) {
+                // Profile existence means the authored animation owns collision.
+                // An empty sampled frame is therefore intentional "no collision",
+                // not a reason to fall back to definition.collision.
+                animatedCollisionOwnsFrame = true;
+
+                const auto frameIndex =
+                    doorAnimationFrameIndex(
+                        object.persistentId);
+
+                if (frameIndex) {
+                    collision =
+                        animationCollisions_->sample(
+                            *runtimeDoor->openingAnimationId,
+                            *frameIndex);
+                }
+            }
+        }
+
+        if (!animatedCollisionOwnsFrame) {
+            if (!definition.collision) {
+                continue;
+            }
+
+            if (
+                object.instance.isDoor()
+                && object.instance.doorState()
+                    == gameplay::DoorState::open
+            ) {
+                continue;
+            }
+
+            collision =
+                &*definition.collision;
+        }
+
+        if (collision == nullptr) {
+            continue;
+        }
+
+        result.reserve(
+            result.size()
+            + collision->regions.size());
+
+        for (const auto& region : collision->regions) {
+            result.push_back({
+                object.instance.position().x + region.x,
+                object.instance.position().y + region.y,
+                region.width,
+                region.height
+            });
+        }
+    }
+
     return result;
 }
 
@@ -63,18 +214,33 @@ void RuntimeWorld::addDestroyedObjectResidue(
 
 bool RuntimeWorld::setDoorState(simulation::PersistentInstanceId id,
                                 gameplay::DoorState state) noexcept {
-    const auto found = std::find_if(doors_.begin(), doors_.end(),
-        [&](const RuntimeDoor& door) { return door.id == id; });
-    if (found == doors_.end()) return false;
-    if (found->state == state) return true;
+    const auto found = std::find_if(
+        doors_.begin(),
+        doors_.end(),
+        [&](const RuntimeDoor& door) {
+            return door.id == id;
+        });
+
+    if (found == doors_.end()) {
+        return false;
+    }
     found->state = state;
+    found->physicalState = stableDoorPhysicalState(
+        state);
+    found->openingTick = 0;
     for (const auto& cell : found->cells) {
-        map_.collision().setSolid(cell.x, cell.y,
-            state == gameplay::DoorState::open ? cell.baseSolid : true);
+        map_.collision().setSolid(
+            cell.x,
+            cell.y,
+            state == gameplay::DoorState::open
+                ? cell.baseSolid
+                : true);
     }
-    for (auto& object : objects_) {
-        if (object.persistentId == id) static_cast<void>(object.instance.setDoorState(state));
-    }
+    syncRuntimeDoorObjectState(
+        objects_,
+        id,
+        state);
+
     return true;
 }
 
@@ -101,41 +267,131 @@ std::optional<gameplay::DoorState> RuntimeWorld::doorState(
         : std::optional{runtimeDoor->state};
 }
 
+std::optional<DoorPhysicalState> RuntimeWorld::doorPhysicalState(
+    simulation::PersistentInstanceId id) const noexcept {
+    const auto* d = door(id);
+    return d
+        ? std::optional{d->physicalState}
+        : std::nullopt;
+}
+std::optional<std::size_t> RuntimeWorld::doorAnimationFrameIndex(simulation::PersistentInstanceId id) const noexcept {
+    const auto* d = door(id);
+
+    if (
+        !d
+        || !d->openingAnimationId
+        || !animationCollisions_
+    ) {
+        return std::nullopt;
+    }
+
+    const auto* p = animationCollisions_->find(
+        *d->openingAnimationId);
+
+    if (!p || p->frames.empty()) {
+        return std::nullopt;
+    }
+    if (d->physicalState == DoorPhysicalState::closed) {
+        return std::size_t{0};
+    }
+
+    if (d->physicalState == DoorPhysicalState::open) {
+        return p->frames.size() - 1;
+    }
+
+    return animationCollisions_->frameIndexAtTick(
+        *d->openingAnimationId,
+        d->openingTick);
+}
+
 bool RuntimeWorld::interactDoor(
     simulation::PersistentInstanceId id,
     gameplay::ItemContainer& inventory) noexcept {
-    const auto found =
-        std::find_if(
-            doors_.begin(),
-            doors_.end(),
-            [&](const RuntimeDoor& candidate) {
-                return candidate.id == id;
-            });
-
-    if (found == doors_.end()) {
+    const auto found = std::find_if(
+        doors_.begin(),
+        doors_.end(),
+        [&](const RuntimeDoor& d) {
+            return d.id == id;
+        });
+    if (
+        found == doors_.end()
+        || found->state == gameplay::DoorState::open
+        || found->physicalState == DoorPhysicalState::opening
+    ) {
         return false;
     }
-
     if (found->state == gameplay::DoorState::locked) {
-        if (!found->requiredItemId) {
+        if (
+            !found->requiredItemId
+            || inventory.count(*found->requiredItemId) == 0
+        ) {
             return false;
         }
 
-        if (inventory.count(
-                *found->requiredItemId) == 0) {
+        if (
+            found->consumeItem
+            && !inventory.consume(*found->requiredItemId)
+        ) {
             return false;
         }
 
-        if (found->consumeItem &&
-            !inventory.consume(
-                *found->requiredItemId)) {
-            return false;
-        }
+        found->state = gameplay::DoorState::closed;
+        syncRuntimeDoorObjectState(
+            objects_,
+            id,
+            gameplay::DoorState::closed);
     }
-
+    if (
+        found->openingAnimationId
+        && found->openingDurationTicks > 0
+    ) {
+        found->physicalState = DoorPhysicalState::opening;
+        found->openingTick = 0;
+        return true;
+    }
     return setDoorState(
         id,
         gameplay::DoorState::open);
+}
+
+bool RuntimeWorld::advanceDoorTransitions(std::uint64_t ticks) noexcept {
+    if (ticks == 0) {
+        return false;
+    }
+
+    bool completed = false;
+    for (auto& d : doors_) {
+        if (d.physicalState != DoorPhysicalState::opening) {
+            continue;
+        }
+
+        const auto remaining =
+            d.openingDurationTicks > d.openingTick
+                ? d.openingDurationTicks - d.openingTick
+                : 0;
+        if (remaining == 0 || ticks >= remaining) {
+            d.openingTick = d.openingDurationTicks;
+            d.physicalState = DoorPhysicalState::open;
+            d.state = gameplay::DoorState::open;
+
+            for (const auto& cell : d.cells) {
+                map_.collision().setSolid(
+                    cell.x,
+                    cell.y,
+                    cell.baseSolid);
+            }
+
+            syncRuntimeDoorObjectState(
+                objects_,
+                d.id,
+                gameplay::DoorState::open);
+
+            completed = true;
+        } else {
+            d.openingTick += ticks;
+        }
+    }
+    return completed;
 }
 
 bool RuntimeWorld::setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept {
@@ -286,6 +542,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
             std::move(runtime),
             *spawn);
 
+        result->animationCollisions_ = catalogs_.animationCollisions;
         result->tileCollisionBounds_ =
             std::move(tileCollisionBounds);
 
@@ -361,7 +618,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                     consumeItem,
                     {}
                 });
-
+                configureDoorTimeline(result->doors_.back(), *definition, catalogs_);
                 continue;
             }
             const auto bounds = definition->door->blockingBounds;
@@ -401,6 +658,7 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                 }
             }
             result->doors_.push_back(std::move(door));
+            configureDoorTimeline(result->doors_.back(), *definition, catalogs_);
             const auto& added = result->doors_.back();
             for (const auto& cell : added.cells) {
                 result->map_.collision().setSolid(cell.x, cell.y,

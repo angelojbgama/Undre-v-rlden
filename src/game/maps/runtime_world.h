@@ -45,6 +45,7 @@ struct RuntimeDoorCell final {
     int y{};
     bool baseSolid{};
 };
+enum class DoorPhysicalState { closed, opening, open };
 struct RuntimeDoor final {
     simulation::PersistentInstanceId id{};
     gameplay::DoorState initialState{gameplay::DoorState::closed};
@@ -52,6 +53,10 @@ struct RuntimeDoor final {
     std::optional<simulation::DefinitionId> requiredItemId{};
     bool consumeItem{};
     std::vector<RuntimeDoorCell> cells;
+    DoorPhysicalState physicalState{DoorPhysicalState::closed};
+    std::optional<simulation::DefinitionId> openingAnimationId{};
+    std::uint64_t openingTick{};
+    std::uint64_t openingDurationTicks{};
 };
 
 class RuntimeWorld final {
@@ -90,9 +95,14 @@ public:
         simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] std::optional<gameplay::DoorState> doorState(
         simulation::PersistentInstanceId id) const noexcept;
+    [[nodiscard]] std::optional<DoorPhysicalState> doorPhysicalState(
+        simulation::PersistentInstanceId id) const noexcept;
+    [[nodiscard]] std::optional<std::size_t> doorAnimationFrameIndex(
+        simulation::PersistentInstanceId id) const noexcept;
     [[nodiscard]] bool interactDoor(
         simulation::PersistentInstanceId id,
         gameplay::ItemContainer& inventory) noexcept;
+    [[nodiscard]] bool advanceDoorTransitions(std::uint64_t ticks = 1) noexcept;
     [[nodiscard]] bool setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept;
     [[nodiscard]] std::optional<bool> objectActivation(
         simulation::PersistentInstanceId id) const noexcept;
@@ -130,6 +140,7 @@ private:
     std::vector<world::AabbI> tileCollisionBounds_;
 
     std::vector<RuntimeDoor> doors_;
+    const gameplay::AnimationCollisionCatalog* animationCollisions_{};
 };
 
 struct RuntimeWorldBuildResult final {

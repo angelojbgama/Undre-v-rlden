@@ -44,6 +44,9 @@ public:
     WorldObjectVisualInstance(simulation::EntityHandle handle,
                               const WorldObjectVisualSet& set);
     void update(const gameplay::WorldObjectInstance& object, std::uint64_t ticks = 1);
+    void synchronizeAuthoritativeFrame(
+        const std::shared_ptr<const render::AnimationClip>& clip,
+        std::size_t frameIndex);
     [[nodiscard]] simulation::EntityHandle handle() const noexcept { return handle_; }
     [[nodiscard]] const simulation::DefinitionId& visualSetId() const noexcept {
         return set_->id;

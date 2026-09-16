@@ -20,6 +20,11 @@ from ..interaction.drag_payload import StudioDragPayload
 from ..services.import_service import ImportService
 from ..services.localization import Translator
 from ..services.door_instance_service import DoorInstanceService
+from ..services.door_authoring_service import DoorAuthoringService
+from ..services.animation_frame_mask_service import (
+    AnimationFrameMaskService,
+    OBJECT_COLLISION_MASK_CHANNEL,
+)
 from ..services.item_authoring_service import ItemAuthoringService
 from ..services.autosave import autosave
 from ..services.legacy_tile_collision_migration import LegacyTileCollisionMigrationService
@@ -35,6 +40,7 @@ from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .object_library_widget import ObjectLibraryWidget
 from .door_library_widget import DoorLibraryWidget
+from .animated_collision_editor import AnimatedCollisionEditorDialog
 from .door_instance_editor import DoorInstanceEditor
 from .player_library_widget import PlayerLibraryWidget
 from .item_library_widget import ItemLibraryWidget
@@ -185,6 +191,8 @@ class MainWindow(QMainWindow):
         self.door_library.selected.connect(self._entity_selected)
         self.door_library.place_requested.connect(
             self._place_door_definition)
+        self.door_library.animated_collision_requested.connect(
+            self._edit_door_animated_collision)
         self.door_library.status_changed.connect(self.set_status)
         self.player_library = PlayerLibraryWidget(
             self.workspace, self.asset_root, self.translator)
@@ -913,6 +921,87 @@ class MainWindow(QMainWindow):
             self.set_status(
                 str(error)
             )
+
+    def _edit_door_animated_collision(
+            self,
+            definition_id: str) -> None:
+        if self.workspace is None:
+            self.set_status(
+                self.translator(
+                    "door_workspace_required"
+                )
+            )
+            return
+
+        try:
+            definition = self.workspace.find(
+                "objects",
+                definition_id,
+            )
+
+            entry = DoorAuthoringService(
+                self.workspace
+            ).entry(
+                definition_id,
+                self.project.active_map.tile_size,
+            )
+
+            if (
+                definition is None
+                or entry is None
+            ):
+                raise ValueError(
+                    self.translator(
+                        "door_definition_invalid"
+                    ).format(
+                        definition_id=definition_id,
+                    )
+                )
+
+            static_collision = definition.data.get(
+                "collision"
+            )
+
+            dialog = AnimatedCollisionEditorDialog(
+                self.workspace,
+                self.asset_root,
+                entry.source_animation_id,
+                self.translator,
+                self,
+                channel=OBJECT_COLLISION_MASK_CHANNEL,
+                fallback_mask=(
+                    static_collision
+                    if isinstance(static_collision, dict)
+                    else None
+                ),
+            )
+
+            if not dialog.exec():
+                return
+
+            AnimationFrameMaskService(
+                self.workspace
+            ).replace_channel(
+                entry.source_animation_id,
+                OBJECT_COLLISION_MASK_CHANNEL,
+                dialog.result_effective_masks(),
+            )
+
+        except ValueError as error:
+            self.set_status(
+                str(error)
+            )
+            return
+
+        self._content_changed()
+
+        self.set_status(
+            self.translator(
+                "animated_collision_saved"
+            ).format(
+                definition_id=definition_id,
+            )
+        )
 
     def _place_door_definition(
             self,

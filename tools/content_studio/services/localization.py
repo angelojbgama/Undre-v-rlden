@@ -299,6 +299,55 @@ TRANSLATIONS["pt-BR"].update({
     "doors_tab": "Portas",
     "search_doors": "Procurar portas",
     "door_place_button": "Colocar no mapa",
+    "door_edit_animated_collision": "Definir colisão por frame...",
+    "door_animated_collision_selected": (
+        "Editor de colisão por frame: {definition_id}"
+    ),
+    "animated_collision_editor_title": "Colisão por frame",
+    "animated_collision_animation": "Animação: {animation}",
+    "animated_collision_frame": "Frame {current} de {total}",
+    "animated_collision_previous": "Frame anterior",
+    "animated_collision_next": "Próximo frame",
+    "animated_collision_edit_frame": "Editar colisão deste frame...",
+    "animated_collision_clear_frame": "Limpar colisão deste frame",
+    "animated_collision_no_draft": "Nenhuma colisão definida neste frame.",
+    "animated_collision_draft_summary": (
+        "Colisão em memória: {cells} pixels bloqueados"
+    ),
+    "animated_collision_memory_only": (
+        "As alterações são salvas na animação usando máscaras por frame."
+    ),
+    "animated_collision_persistence_help": (
+        "A colisão pertence à animação do objeto. Frames sem um novo "
+        "keyframe herdam o estado anterior no editor; ao salvar, o estado "
+        "efetivo é materializado nas máscaras dos frames."
+    ),
+    "animated_collision_set_none": "Sem colisão a partir deste frame",
+    "animated_collision_inherit_previous": "Herdar frame anterior",
+    "animated_collision_status_defined": "Colisão definida neste frame.",
+    "animated_collision_status_none": "Sem colisão.",
+    "animated_collision_status_none_keyframe": (
+        "Keyframe: sem colisão a partir deste frame."
+    ),
+    "animated_collision_status_inherited": (
+        "Colisão herdada do frame {frame}."
+    ),
+    "animated_collision_status_inherited_none": (
+        "Sem colisão, herdado do frame {frame}."
+    ),
+    "animated_collision_saved": (
+        "Colisão por frame salva para {definition_id}."
+    ),
+    "animated_collision_frame_mask_title": "Colisão do frame",
+    "animated_collision_animation_missing": (
+        "Animação não encontrada: {animation}"
+    ),
+    "animated_collision_frames_missing": (
+        "A animação não possui frames editáveis: {animation}"
+    ),
+    "animated_collision_image_missing": (
+        "Imagem da animação indisponível: {animation}"
+    ),
     "door_placement_active": (
         "Colocacao de porta ativa: {definition_id}. "
         "Passe o mouse sobre uma parede e clique para colocar. "
@@ -331,6 +380,55 @@ TRANSLATIONS["en-US"].update({
     "doors_tab": "Doors",
     "search_doors": "Search doors",
     "door_place_button": "Place on map",
+    "door_edit_animated_collision": "Define collision by frame...",
+    "door_animated_collision_selected": (
+        "Frame collision editor: {definition_id}"
+    ),
+    "animated_collision_editor_title": "Collision by frame",
+    "animated_collision_animation": "Animation: {animation}",
+    "animated_collision_frame": "Frame {current} of {total}",
+    "animated_collision_previous": "Previous frame",
+    "animated_collision_next": "Next frame",
+    "animated_collision_edit_frame": "Edit collision for this frame...",
+    "animated_collision_clear_frame": "Clear collision for this frame",
+    "animated_collision_no_draft": "No collision defined for this frame.",
+    "animated_collision_draft_summary": (
+        "In-memory collision: {cells} blocked pixels"
+    ),
+    "animated_collision_memory_only": (
+        "Changes are saved on the animation using per-frame masks."
+    ),
+    "animated_collision_persistence_help": (
+        "Collision belongs to the object's animation. Frames without a new "
+        "keyframe inherit the previous state in the editor; on save, the "
+        "effective state is materialized into frame masks."
+    ),
+    "animated_collision_set_none": "No collision from this frame",
+    "animated_collision_inherit_previous": "Inherit previous frame",
+    "animated_collision_status_defined": "Collision defined on this frame.",
+    "animated_collision_status_none": "No collision.",
+    "animated_collision_status_none_keyframe": (
+        "Keyframe: no collision from this frame."
+    ),
+    "animated_collision_status_inherited": (
+        "Collision inherited from frame {frame}."
+    ),
+    "animated_collision_status_inherited_none": (
+        "No collision, inherited from frame {frame}."
+    ),
+    "animated_collision_saved": (
+        "Frame collision saved for {definition_id}."
+    ),
+    "animated_collision_frame_mask_title": "Frame collision",
+    "animated_collision_animation_missing": (
+        "Animation not found: {animation}"
+    ),
+    "animated_collision_frames_missing": (
+        "Animation has no editable frames: {animation}"
+    ),
+    "animated_collision_image_missing": (
+        "Animation image unavailable: {animation}"
+    ),
     "door_placement_active": (
         "Door placement active: {definition_id}. "
         "Move over a wall and click to place. "

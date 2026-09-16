@@ -1007,6 +1007,9 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
             static_cast<std::size_t>(command.actions.quickSlotPressed), *itemCatalog_,
             player_.health()));
     }
+    if (mapSession_->world()->advanceDoorTransitions()) {
+        captureWorldState();
+    }
     const auto& map = mapSession_->world()->map();
     const auto movementCollisions = mapSession_->world()->movementCollisionBounds();
     const auto previousAction = player_.actionState();

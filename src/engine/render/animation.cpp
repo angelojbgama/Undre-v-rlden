@@ -91,6 +91,24 @@ void Animator::stepFrame(int direction) noexcept {
     playing_ = false;
 }
 
+void Animator::seekFrame(
+    std::size_t frameIndex,
+    bool playing) {
+    if (!clip_) {
+        throw std::logic_error(
+            "animator cannot seek without a clip");
+    }
+
+    if (frameIndex >= clip_->frames().size()) {
+        throw std::out_of_range(
+            "animator frame index is out of range");
+    }
+
+    frameIndex_ = frameIndex;
+    elapsedFrameTicks_ = 0;
+    playing_ = playing;
+}
+
 const AnimationClip& Animator::clip() const {
     if (!clip_) {
         throw std::logic_error("animator has no clip");

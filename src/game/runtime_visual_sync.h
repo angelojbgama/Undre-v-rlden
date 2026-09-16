@@ -16,6 +16,12 @@ struct RuntimeVisualSyncResult final {
     [[nodiscard]] explicit operator bool() const noexcept { return success; }
 };
 
+[[nodiscard]] RuntimeVisualSyncResult
+synchronizeRuntimeWorldObjectAnimationFrames(
+    const maps::RuntimeWorld& world,
+    const presentation::RuntimeAnimationCatalog& animations,
+    std::vector<WorldObjectVisualInstance>& objectVisuals);
+
 [[nodiscard]] RuntimeVisualSyncResult synchronizeRuntimeWorldVisuals(
     const maps::RuntimeWorld& world, const EnemyVisualCatalog& enemyCatalog,
     std::vector<EnemyVisualInstance>& enemyVisuals,

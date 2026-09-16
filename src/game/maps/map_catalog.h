@@ -46,6 +46,7 @@ public:
     [[nodiscard]] TransitionResult activate(const simulation::MapId& mapId,
                                             const simulation::SpawnId& spawnId);
     [[nodiscard]] bool requestTransition(world::AabbI playerArea);
+    [[nodiscard]] bool requestTransition(PendingMapTransition transition);
     [[nodiscard]] TransitionResult commitPending();
     [[nodiscard]] TransitionResult restore(const simulation::MapId& mapId,
                                            const save::SessionWorldState& state);
