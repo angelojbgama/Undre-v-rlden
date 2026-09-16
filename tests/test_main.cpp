@@ -4868,6 +4868,156 @@ void testPhase8PersistentMapsAndSave() {
     }
 
     std::filesystem::remove(dmapTransition, ec);
+
+    auto doorTransitionMap =
+        animatedDoorMap;
+
+    doorTransitionMap.objects.back().transition =
+        maps::ObjectTransitionInstanceConfig{
+            roomB.id,
+            simulation::SpawnId{"entry.return"}
+        };
+
+    const auto dmapDoorTransition =
+        std::filesystem::temp_directory_path() /
+        "underworld_test_door_transition.dmap";
+
+    std::filesystem::remove(
+        dmapDoorTransition,
+        ec);
+
+    expect(
+        maps::writeDmap(
+            dmapDoorTransition,
+            doorTransitionMap,
+            fileError),
+        "Door Transition fixture writes through the normal DMAP boundary");
+
+    maps::MapCatalog doorTransitionCatalog;
+
+    doorTransitionCatalog.add(
+        doorTransitionMap.id,
+        dmapDoorTransition);
+
+    doorTransitionCatalog.add(
+        roomB.id,
+        dmapB);
+
+    game::GameSession doorTransitionSession(
+        {0},
+        testProgression());
+
+    doorTransitionSession.configureItems(items);
+
+    std::string doorTransitionError;
+
+    const bool doorTransitionInitialized =
+        doorTransitionSession.initializeMap(
+            doorTransitionCatalog,
+            animatedValidation,
+            animatedBuilder,
+            doorTransitionMap.id,
+            simulation::SpawnId{"entry.start"},
+            doorTransitionError);
+
+    expect(
+        doorTransitionInitialized,
+        "GameSession initializes animated Door plus Transition");
+
+    if (doorTransitionInitialized) {
+        const auto doorObject =
+            std::find_if(
+                doorTransitionSession.world().objects().begin(),
+                doorTransitionSession.world().objects().end(),
+                [](const auto& object) {
+                    return object.persistentId ==
+                        simulation::PersistentInstanceId{6};
+                });
+
+        expect(
+            doorObject !=
+                doorTransitionSession.world().objects().end() &&
+            doorObject->transition,
+            "runtime exposes Transition on the animated Door");
+
+        if (doorObject !=
+            doorTransitionSession.world().objects().end()) {
+            doorTransitionSession.relocatePlayer(
+                doorObject->instance.position(),
+                gameplay::FacingDirection::down);
+
+            auto interactDoorTransition =
+                movementCommand(910, 0, 0);
+
+            interactDoorTransition.actions.interactPressed =
+                true;
+
+            doorTransitionSession.tick(
+                interactDoorTransition);
+
+            expect(
+                doorTransitionSession.world().id() ==
+                    doorTransitionMap.id &&
+                doorTransitionSession.world()
+                    .doorPhysicalState(
+                        simulation::PersistentInstanceId{6}) ==
+                    maps::DoorPhysicalState::opening,
+                "Door Transition waits while opening animation is active");
+
+            for (std::uint32_t tick = 911;
+                 tick <= 914;
+                 ++tick) {
+                doorTransitionSession.tick(
+                    movementCommand(
+                        tick,
+                        0,
+                        0));
+            }
+
+            expect(
+                doorTransitionSession.world().id() ==
+                    doorTransitionMap.id &&
+                doorTransitionSession.world()
+                    .doorPhysicalState(
+                        simulation::PersistentInstanceId{6}) ==
+                    maps::DoorPhysicalState::opening,
+                "Door Transition does not fire before the final animation tick");
+
+            doorTransitionSession.tick(
+                movementCommand(
+                    915,
+                    0,
+                    0));
+
+            const bool enteredDoorTarget =
+                std::any_of(
+                    doorTransitionSession.events().events().begin(),
+                    doorTransitionSession.events().events().end(),
+                    [&](const auto& event) {
+                        const auto* entered =
+                            std::get_if<
+                                simulation::MapEntered>(
+                                    &event);
+
+                        return entered != nullptr &&
+                            entered->mapId ==
+                                roomB.id;
+                    });
+
+            expect(
+                enteredDoorTarget &&
+                doorTransitionSession.world().id() ==
+                    roomB.id &&
+                doorTransitionSession.player().feetPosition() ==
+                    roomB.playerSpawns.back().position,
+                "Door Transition fires only after the authoritative opening timeline completes");
+        }
+    }
+
+    std::filesystem::remove(
+        dmapDoorTransition,
+        ec);
+
     std::filesystem::remove(dmapA,ec);std::filesystem::remove(dmapB,ec);
 
     gameplay::ProjectileSystem transientProjectiles(handles, projectiles);

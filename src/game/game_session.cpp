@@ -832,6 +832,11 @@ void GameSession::interactWithWorld() {
         }
         // Doors have their own state transition and must not masquerade as
         // container/object-open events for quests or world rules.
+        if (selected->transition) {
+            pendingDoorTransitionObjectId_ =
+                selected->persistentId;
+            requestCompletedDoorTransition();
+        }
     } else if (!object.open()) {
         return;
     } else {
@@ -852,6 +857,53 @@ void GameSession::interactWithWorld() {
             selected->persistentId, mapSession_->world()->id()});
     }
     captureWorldState();
+}
+
+void GameSession::requestCompletedDoorTransition() {
+    if (!pendingDoorTransitionObjectId_ ||
+        !mapSession_ ||
+        !mapSession_->world()) {
+        return;
+    }
+
+    const auto id =
+        *pendingDoorTransitionObjectId_;
+
+    const auto physicalState =
+        mapSession_->world()->doorPhysicalState(id);
+
+    if (!physicalState) {
+        pendingDoorTransitionObjectId_.reset();
+        return;
+    }
+
+    if (*physicalState !=
+        maps::DoorPhysicalState::open) {
+        return;
+    }
+
+    const auto object =
+        std::find_if(
+            mapSession_->world()->objects().begin(),
+            mapSession_->world()->objects().end(),
+            [&](const auto& candidate) {
+                return candidate.persistentId == id;
+            });
+
+    if (object ==
+            mapSession_->world()->objects().end() ||
+        !object->transition) {
+        pendingDoorTransitionObjectId_.reset();
+        return;
+    }
+
+    if (mapSession_->requestTransition(
+            maps::PendingMapTransition{
+                object->transition->targetMapId,
+                object->transition->targetSpawnId
+            })) {
+        pendingDoorTransitionObjectId_.reset();
+    }
 }
 
 bool GameSession::handleDialogueCommand(const simulation::PlayerCommand& command) {
@@ -964,6 +1016,7 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
     const auto activated = candidate->activate(mapId, spawnId);
     if (!activated.changed) { error = activated.error; return false; }
     pendingSceneId_.reset();
+    pendingDoorTransitionObjectId_.reset();
     player_.relocate(activated.spawn.position, activated.spawn.facing);
     mapSession_ = std::move(candidate);
     mapEnteredPending_ = true;
@@ -1024,6 +1077,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (mapSession_->world()->advanceDoorTransitions()) {
         captureWorldState();
     }
+    requestCompletedDoorTransition();
     const auto& map = mapSession_->world()->map();
     const auto movementCollisions = mapSession_->world()->movementCollisionBounds();
     const auto previousAction = player_.actionState();
@@ -1078,6 +1132,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         const auto transition = mapSession_->commitPending();
         if (transition.changed) {
             if (sceneController_.active()) sceneController_.abort(events_, "scene aborted by map transition");
+            pendingDoorTransitionObjectId_.reset();
             clearCombatTransients();
             closeDialogue();
             player_.relocate(transition.spawn.position, transition.spawn.facing);
@@ -1184,6 +1239,7 @@ bool GameSession::restoreMap(const simulation::MapId& mapId,
     const auto restored = mapSession_->restore(mapId, state);
     if (!restored.changed) { error = restored.error; return false; }
     pendingSceneId_.reset();
+    pendingDoorTransitionObjectId_.reset();
     clearCombatTransients();
     closeDialogue();
     player_.relocate(restored.spawn.position, restored.spawn.facing);

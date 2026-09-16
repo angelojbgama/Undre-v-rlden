@@ -138,6 +138,7 @@ private:
     void collectNearbyPickups();
     void updateObjects();
     void interactWithWorld();
+    void requestCompletedDoorTransition();
     void captureWorldState();
     void clearCombatTransients() noexcept;
     void closeDialogue() noexcept;
@@ -197,6 +198,8 @@ private:
     gameplay::rpg::ShopTransactionService shopTransactionService_;
     gameplay::scenes::SceneController sceneController_;
     std::optional<simulation::DefinitionId> pendingSceneId_;
+    std::optional<simulation::PersistentInstanceId>
+        pendingDoorTransitionObjectId_;
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;
