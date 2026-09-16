@@ -150,6 +150,10 @@ private:
     void consumeWorldLogic();
     void resolvePendingQuestRewards();
     void resolveEncounterRewards();
+    void resolveDoorAttacks(const world::AabbI& attackRegion);
+    void resolveDoorProjectileImpacts();
+    void resolveEncounterDoors();
+    void emitDoorOpened(simulation::PersistentInstanceId id);
     [[nodiscard]] bool requestScene(const simulation::DefinitionId& sceneId);
     [[nodiscard]] bool startPendingScene();
     [[nodiscard]] bool startScene(const simulation::DefinitionId& sceneId);

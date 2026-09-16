@@ -35,6 +35,10 @@ struct ProjectileImpact final {
     EntityHandle projectile{};
     core::WorldPointI position{};
     ProjectileImpactKind kind{ProjectileImpactKind::tile};
+    // Attack definition that spawned the projectile; empty when the
+    // spawner could not identify it. Lets consumers react to specific
+    // attacks (e.g. authored door open conditions) without extra state.
+    DefinitionId attackDefinitionId{};
 };
 
 enum class PickupPayloadKind { health, currency, item };

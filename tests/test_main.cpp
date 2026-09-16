@@ -4153,6 +4153,51 @@ void testPhase8PersistentMapsAndSave() {
             &validation),
         "consumeItem requires requiredItemId");
 
+    auto conditionedDoorMap = keyedDoorMap;
+
+    conditionedDoorMap.objects.back().persistence =
+        maps::ObjectPersistencePolicy::persistent;
+    conditionedDoorMap.objects.back().door->initialState =
+        gameplay::DoorState::closed;
+    conditionedDoorMap.objects.back().door->requiredItemId.reset();
+    conditionedDoorMap.objects.back().door->openOnAttackId =
+        simulation::DefinitionId{"attack.bash"};
+    conditionedDoorMap.objects.back().door->encounterId =
+        simulation::DefinitionId{"encounter.gate"};
+    conditionedDoorMap.encounters.push_back(
+        {simulation::DefinitionId{"encounter.gate"},
+         {simulation::PersistentInstanceId{1}}});
+
+    expect(
+        maps::validateMapData(
+            conditionedDoorMap,
+            &validation).valid,
+        "MapData accepts door open conditions for attack and encounter");
+
+    auto unknownEncounterDoor = conditionedDoorMap;
+
+    unknownEncounterDoor.objects.back()
+        .door->encounterId =
+        simulation::DefinitionId{"encounter.missing"};
+
+    expect(
+        !maps::validateMapData(
+            unknownEncounterDoor,
+            &validation),
+        "door references an unknown encounter");
+
+    auto emptyAttackDoor = conditionedDoorMap;
+
+    emptyAttackDoor.objects.back()
+        .door->openOnAttackId =
+        simulation::DefinitionId{};
+
+    expect(
+        !maps::validateMapData(
+            emptyAttackDoor,
+            &validation),
+        "door openOnAttackId is empty");
+
     auto invalidDimensions = map; invalidDimensions.width = 0;
     expect(!maps::validateMapData(invalidDimensions), "MapData rejects zero dimensions before allocation");
 
@@ -4524,6 +4569,140 @@ void testPhase8PersistentMapsAndSave() {
                 simulation::DefinitionId{"item.key.blue"}) == 0,
             "consumeItem door consumes one matching key and opens");
     }
+
+    const auto conditionedDoorRuntime =
+        builder.build(
+            conditionedDoorMap,
+            simulation::SpawnId{"entry.start"});
+
+    expect(
+        static_cast<bool>(conditionedDoorRuntime),
+        "runtime builder accepts door open conditions");
+
+    if (conditionedDoorRuntime) {
+        const auto* conditionedDoor =
+            conditionedDoorRuntime.world->door(
+                simulation::PersistentInstanceId{6});
+
+        expect(
+            conditionedDoor != nullptr &&
+            conditionedDoor->openOnAttackId ==
+                simulation::DefinitionId{"attack.bash"} &&
+            conditionedDoor->encounterId ==
+                simulation::DefinitionId{"encounter.gate"},
+            "RuntimeDoor carries authored open conditions");
+
+        gameplay::ItemContainer bareInventory(
+            4,
+            items);
+
+        expect(
+            !conditionedDoorRuntime.world->interactDoor(
+                simulation::PersistentInstanceId{6},
+                bareInventory) &&
+            conditionedDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::closed,
+            "door with an open condition ignores plain interaction");
+
+        expect(
+            !conditionedDoorRuntime.world->attackDoor(
+                simulation::PersistentInstanceId{6},
+                simulation::DefinitionId{"attack.sword"}) &&
+            conditionedDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::closed,
+            "door open condition ignores a non-matching attack");
+
+        expect(
+            conditionedDoorRuntime.world->attackDoor(
+                simulation::PersistentInstanceId{6},
+                simulation::DefinitionId{"attack.bash"}) &&
+            conditionedDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::open,
+            "attackDoor opens the door authored for the matching attack");
+
+        expect(
+            !conditionedDoorRuntime.world->attackDoor(
+                simulation::PersistentInstanceId{6},
+                simulation::DefinitionId{"attack.bash"}),
+            "attackDoor ignores an already open door");
+    }
+
+    auto lockedConditionedDoorMap = conditionedDoorMap;
+
+    lockedConditionedDoorMap.objects.back().door->initialState =
+        gameplay::DoorState::locked;
+    lockedConditionedDoorMap.objects.back().door->requiredItemId =
+        simulation::DefinitionId{"item.key.blue"};
+
+    const auto lockedConditionedRuntime =
+        builder.build(
+            lockedConditionedDoorMap,
+            simulation::SpawnId{"entry.start"});
+
+    expect(
+        static_cast<bool>(lockedConditionedRuntime),
+        "runtime builder accepts a locked door with an open condition");
+
+    if (lockedConditionedRuntime) {
+        expect(
+            lockedConditionedRuntime.world->attackDoor(
+                simulation::PersistentInstanceId{6},
+                simulation::DefinitionId{"attack.bash"}) &&
+            lockedConditionedRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::open,
+            "attack open condition opens even a locked door");
+    }
+
+    auto encounterDoorMap = conditionedDoorMap;
+
+    encounterDoorMap.objects.back().door->openOnAttackId.reset();
+
+    const auto encounterDoorRuntime =
+        builder.build(
+            encounterDoorMap,
+            simulation::SpawnId{"entry.start"});
+
+    expect(
+        static_cast<bool>(encounterDoorRuntime),
+        "runtime builder accepts an encounter-conditioned door");
+
+    if (encounterDoorRuntime) {
+        const auto unmatched =
+            encounterDoorRuntime.world->openDoorsForEncounter(
+                simulation::DefinitionId{"encounter.other"});
+
+        expect(
+            unmatched.empty() &&
+            encounterDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::closed,
+            "openDoorsForEncounter ignores non-matching encounters");
+
+        const auto opened =
+            encounterDoorRuntime.world->openDoorsForEncounter(
+                simulation::DefinitionId{"encounter.gate"});
+
+        expect(
+            opened.size() == 1 &&
+            opened[0] == simulation::PersistentInstanceId{6} &&
+            encounterDoorRuntime.world->doorState(
+                simulation::PersistentInstanceId{6}) ==
+                gameplay::DoorState::open,
+            "openDoorsForEncounter opens doors authored for the completed encounter");
+    }
+
+    const auto conditionedEncoded = maps::serializeDmap(conditionedDoorMap);
+    const auto conditionedDecoded = maps::deserializeDmap(conditionedEncoded,&validation);
+    expect(conditionedDecoded && maps::semanticallyEqual(conditionedDoorMap,conditionedDecoded.data),
+           "DMAP v1.8 roundtrip carries door open conditions");
+    expect(conditionedEncoded == maps::serializeDmap(conditionedDecoded.data),
+           "DMAP door open condition output is deterministic after roundtrip");
+    expect(conditionedEncoded[4] == maps::dmapMajorVersion && conditionedEncoded[6] == maps::dmapMinorVersion,
+           "DMAP header declares the version that encodes door open conditions");
 
     auto persistentDoorMap =
         keyedDoorMap;

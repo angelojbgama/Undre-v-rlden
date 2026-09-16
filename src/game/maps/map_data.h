@@ -33,8 +33,17 @@ struct ObjectDoorInstanceConfig final {
     gameplay::DoorState initialState{gameplay::DoorState::closed};
     std::optional<simulation::DefinitionId> requiredItemId{};
     bool consumeItem{};
+    // Optional open conditions. When either is set the door no longer
+    // opens through plain interaction: the matching attack opens it on
+    // hit and a completed encounter opens it, in both cases even from
+    // the locked state.
+    std::optional<simulation::DefinitionId> openOnAttackId{};
+    std::optional<simulation::DefinitionId> encounterId{};
     [[nodiscard]] bool operator==(
         const ObjectDoorInstanceConfig&) const noexcept = default;
+    [[nodiscard]] bool hasOpenCondition() const noexcept {
+        return openOnAttackId.has_value() || encounterId.has_value();
+    }
 };
 
 struct ObjectTransitionInstanceConfig final {

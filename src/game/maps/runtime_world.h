@@ -58,6 +58,12 @@ struct RuntimeDoor final {
     std::optional<simulation::DefinitionId> openingAnimationId{};
     std::uint64_t openingTick{};
     std::uint64_t openingDurationTicks{};
+    // Optional open conditions (see ObjectDoorInstanceConfig).
+    std::optional<simulation::DefinitionId> openOnAttackId{};
+    std::optional<simulation::DefinitionId> encounterId{};
+    [[nodiscard]] bool hasOpenCondition() const noexcept {
+        return openOnAttackId.has_value() || encounterId.has_value();
+    }
 };
 
 class RuntimeWorld final {
@@ -103,6 +109,18 @@ public:
     [[nodiscard]] bool interactDoor(
         simulation::PersistentInstanceId id,
         gameplay::ItemContainer& inventory) noexcept;
+    // Opens a door whose authored openOnAttackId matches the attack that
+    // reached it. Works from the locked state; no inventory involved.
+    [[nodiscard]] bool attackDoor(
+        simulation::PersistentInstanceId id,
+        const simulation::DefinitionId& attackDefinitionId) noexcept;
+    // Opens every door authored to open when the given encounter
+    // completes. Returns the persistent ids of doors that began opening.
+    [[nodiscard]] std::vector<simulation::PersistentInstanceId> openDoorsForEncounter(
+        const simulation::DefinitionId& encounterId) noexcept;
+    // World-space collision bounds of one door, empty once it is open.
+    [[nodiscard]] std::vector<world::AabbI> doorCollisionBounds(
+        simulation::PersistentInstanceId id) const;
     [[nodiscard]] bool advanceDoorTransitions(std::uint64_t ticks = 1) noexcept;
     [[nodiscard]] bool setObjectActivation(simulation::PersistentInstanceId id, bool active) noexcept;
     [[nodiscard]] std::optional<bool> objectActivation(
@@ -126,6 +144,9 @@ public:
 
 private:
     friend class RuntimeWorldBuilder;
+    void appendObjectCollisionBounds(
+        const PersistentObject& object,
+        std::vector<world::AabbI>& result) const;
     simulation::MapId id_;
     world::RuntimeMap map_;
     PlayerSpawn spawn_;

@@ -17,7 +17,9 @@ inline constexpr std::uint16_t dmapMajorVersion = 1;
 // persistence policies, map-authored scenes, and the startScene world action.
 // Minor 6 adds optional per-instance door configuration to object placements.
 // Minor 7 adds optional generic object Transition records in the OTRN chunk.
-inline constexpr std::uint16_t dmapMinorVersion = 7;
+// Minor 8 adds optional door open conditions (openOnAttackId, encounterId)
+// to the per-instance door configuration.
+inline constexpr std::uint16_t dmapMinorVersion = 8;
 
 struct DmapLoadResult final {
     bool success{};

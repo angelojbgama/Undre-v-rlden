@@ -24,6 +24,7 @@ struct Projectile final {
     FacingDirection direction{FacingDirection::up};
     DamageSpec damage{};
     std::uint32_t remainingTicks{};
+    simulation::DefinitionId attackDefinitionId{};
 
     [[nodiscard]] world::AabbI hitbox() const noexcept;
 };
@@ -38,7 +39,8 @@ public:
 
     [[nodiscard]] simulation::EntityHandle spawn(
         AttackKey attack, Faction faction, const simulation::DefinitionId& definitionId,
-        core::WorldPointI position, FacingDirection direction, DamageSpec damage);
+        core::WorldPointI position, FacingDirection direction, DamageSpec damage,
+        const simulation::DefinitionId& attackDefinitionId = {});
     void update(const world::CollisionGrid& collision, int tileSize,
                 std::span<CombatTargetRef> targets, CombatSystem& combat,
                 simulation::EventBuffer& events,

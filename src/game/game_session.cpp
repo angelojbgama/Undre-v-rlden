@@ -380,7 +380,8 @@ void GameSession::advancePlayerAttack() {
                 playerAttack_->key, gameplay::Faction::player, definition.id,
                 gameplay::addOffset(player_.feetPosition(), offset),
                 playerAttack_->lockedFacing,
-                effectivePlayerDamage(playerAttack_->definition->damage)));
+                effectivePlayerDamage(playerAttack_->definition->damage),
+                playerAttack_->definition->id));
         }
     }
     if (playerAttack_->finished) {
@@ -511,6 +512,8 @@ void GameSession::resolvePlayerSword() {
                 object.instance.combatTarget(), events_));
         }
 
+        resolveDoorAttacks(*tileVisible);
+
         // Enemies behind any solid object are occluded by that object.
         const auto actorVisible =
             gameplay::clipAttackRegionAgainstSolidWorld(
@@ -637,7 +640,8 @@ void GameSession::updateEnemies() {
             static_cast<void>(projectiles_->spawn(
                 active.key, enemy.combatant().faction, definition.id,
                 gameplay::addOffset(enemy.feetPosition(), offset),
-                active.lockedFacing, active.definition->damage));
+                active.lockedFacing, active.definition->damage,
+                active.definition->id));
         }
         if (active.meleeHitboxActive) {
             const auto direction = gameplay::directionVector(active.lockedFacing);
@@ -965,6 +969,111 @@ void GameSession::resolvePendingQuestRewards() {
     }
 }
 
+void GameSession::resolveDoorAttacks(const world::AabbI& attackRegion) {
+    if (!mapSession_ || !mapSession_->world()) return;
+    const auto& attackDefinitionId =
+        playerAttack_ ? playerAttack_->definition->id : swordDefinition_->id;
+
+    bool anyAttackDoor = false;
+    for (const auto& runtimeDoor : mapSession_->world()->doors()) {
+        if (runtimeDoor.openOnAttackId) { anyAttackDoor = true; break; }
+    }
+    if (!anyAttackDoor) return;
+
+    const auto& map = mapSession_->world()->map();
+    const int tileSize = map.tileSize();
+    const auto direction = playerAttack_
+        ? playerAttack_->lockedFacing
+        : player_.facing();
+    const auto blockerBase =
+        mapSession_->world()->movementCollisionBounds();
+
+    for (const auto& runtimeDoor : mapSession_->world()->doors()) {
+        if (!runtimeDoor.openOnAttackId || *runtimeDoor.openOnAttackId != attackDefinitionId) continue;
+        const auto doorBounds =
+            mapSession_->world()->doorCollisionBounds(runtimeDoor.id);
+        if (doorBounds.empty()) continue;
+
+        // The target door must be able to receive the blow that reaches its
+        // own blocker; other solid geometry still occludes it.
+        auto blockers = blockerBase;
+        for (const auto& bound : doorBounds) {
+            blockers.erase(
+                std::remove(blockers.begin(), blockers.end(), bound),
+                blockers.end());
+        }
+        const auto visibleToDoor = gameplay::clipAttackRegionAgainstSolidWorld(
+            map.collision(), attackRegion, direction, tileSize, blockers);
+        if (!visibleToDoor) continue;
+        const bool reaches = std::any_of(
+            doorBounds.begin(), doorBounds.end(),
+            [&](const world::AabbI& bound) {
+                return gameplay::overlaps(*visibleToDoor, bound);
+            });
+        if (!reaches) continue;
+
+        if (mapSession_->world()->attackDoor(runtimeDoor.id, attackDefinitionId)) {
+            captureWorldState();
+            emitDoorOpened(runtimeDoor.id);
+        }
+    }
+}
+
+void GameSession::resolveDoorProjectileImpacts() {
+    if (!mapSession_ || !mapSession_->world()) return;
+    const auto eventSnapshot = events_.events();
+    for (const auto& event : eventSnapshot) {
+        const auto* impact = std::get_if<simulation::ProjectileImpact>(&event);
+        if (!impact || impact->attackDefinitionId.empty()) continue;
+        for (const auto& runtimeDoor : mapSession_->world()->doors()) {
+            if (!runtimeDoor.openOnAttackId ||
+                *runtimeDoor.openOnAttackId != impact->attackDefinitionId) continue;
+            const auto doorBounds =
+                mapSession_->world()->doorCollisionBounds(runtimeDoor.id);
+            const bool containsImpact = std::any_of(
+                doorBounds.begin(), doorBounds.end(),
+                [&](const world::AabbI& bound) {
+                    return impact->position.x >= bound.x &&
+                           impact->position.x < bound.x + bound.width &&
+                           impact->position.y >= bound.y &&
+                           impact->position.y < bound.y + bound.height;
+                });
+            if (!containsImpact) continue;
+            if (mapSession_->world()->attackDoor(runtimeDoor.id, impact->attackDefinitionId)) {
+                captureWorldState();
+                emitDoorOpened(runtimeDoor.id);
+            }
+        }
+    }
+}
+
+void GameSession::resolveEncounterDoors() {
+    if (!mapSession_ || !mapSession_->world()) return;
+    const auto eventSnapshot = events_.events();
+    for (const auto& event : eventSnapshot) {
+        const auto* completed = std::get_if<simulation::EncounterCompleted>(&event);
+        if (!completed || completed->mapId != mapSession_->world()->id()) continue;
+        const auto opened =
+            mapSession_->world()->openDoorsForEncounter(completed->encounterId);
+        if (opened.empty()) continue;
+        captureWorldState();
+        for (const auto& id : opened) {
+            emitDoorOpened(id);
+        }
+    }
+}
+
+void GameSession::emitDoorOpened(simulation::PersistentInstanceId id) {
+    if (!mapSession_ || !mapSession_->world()) return;
+    const auto& objects = mapSession_->world()->objects();
+    const auto found = std::find_if(objects.begin(), objects.end(),
+        [&](const maps::PersistentObject& object) { return object.persistentId == id; });
+    if (found == objects.end()) return;
+    events_.emit(simulation::ObjectOpened{
+        player_.entityHandle(), found->instance.handle(), found->instance.definition().id,
+        id, mapSession_->world()->id()});
+}
+
 void GameSession::resolveEncounterRewards() {
     if (!rewardGrantCatalog_ || !playerItems_ || !mapSession_ || !mapSession_->world()) return;
     // Granting experience can append an ExperienceGranted event.  Consume a
@@ -1103,6 +1212,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         projectiles_->update(map.collision(), map.tileSize(), targets, combat_, events_, resolutions,
                              movementCollisions);
         for (const auto& resolution : resolutions) { applyResolution(resolution); }
+        resolveDoorProjectileImpacts();
         resolveDefeatRewards();
         removeDefeatedEnemies();
     }
@@ -1117,6 +1227,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     }
     encounters_.evaluate(mapSession_->data()->encounters, mapSession_->world()->id(),
                          aliveParticipants, worldState_.encounters, events_);
+    resolveEncounterDoors();
     consumeWorldLogic();
     static_cast<void>(startPendingScene());
     consumeWorldLogic();

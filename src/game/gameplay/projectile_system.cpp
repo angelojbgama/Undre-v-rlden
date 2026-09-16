@@ -21,11 +21,12 @@ world::AabbI Projectile::hitbox() const noexcept {
 
 simulation::EntityHandle ProjectileSystem::spawn(
     AttackKey attack, Faction faction, const simulation::DefinitionId& definitionId,
-    core::WorldPointI position, FacingDirection direction, DamageSpec damage) {
+    core::WorldPointI position, FacingDirection direction, DamageSpec damage,
+    const simulation::DefinitionId& attackDefinitionId) {
     const ProjectileDefinition& definition = definitions_.require(definitionId);
     const simulation::EntityHandle handle = handles_.create();
     projectiles_.push_back({handle, attack, faction, &definition, position,
-                            direction, damage, definition.lifetimeTicks});
+                            direction, damage, definition.lifetimeTicks, attackDefinitionId});
     return handle;
 }
 
@@ -45,7 +46,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
             if (world::querySolidTiles(collision, projectile.hitbox(), tileSize).collides) {
                 events.emit(simulation::ProjectileImpact{
                     projectile.handle, projectile.position,
-                    simulation::ProjectileImpactKind::tile});
+                    simulation::ProjectileImpactKind::tile,
+                    projectile.attackDefinitionId});
                 destroyed = true;
                 break;
             }
@@ -65,7 +67,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     }
                     events.emit(simulation::ProjectileImpact{
                         projectile.handle, projectile.position,
-                        simulation::ProjectileImpactKind::target});
+                        simulation::ProjectileImpactKind::target,
+                        projectile.attackDefinitionId});
                     destroyed = true;
                     break;
                 }
@@ -76,7 +79,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     collision, projectile.hitbox(), tileSize, staticObstacles).collides) {
                 events.emit(simulation::ProjectileImpact{
                     projectile.handle, projectile.position,
-                    simulation::ProjectileImpactKind::worldObject});
+                    simulation::ProjectileImpactKind::worldObject,
+                    projectile.attackDefinitionId});
                 destroyed = true;
             }
         }
@@ -86,7 +90,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
         if (!destroyed && projectile.remainingTicks == 0) {
             events.emit(simulation::ProjectileImpact{
                 projectile.handle, projectile.position,
-                simulation::ProjectileImpactKind::expired});
+                simulation::ProjectileImpactKind::expired,
+                projectile.attackDefinitionId});
             destroyed = true;
         }
         if (destroyed) {

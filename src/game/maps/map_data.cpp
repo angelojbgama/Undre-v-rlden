@@ -175,6 +175,21 @@ MapValidationResult validateMapData(const MapData& data,
                     }
                 }
             }
+            if (object.door->openOnAttackId && object.door->openOnAttackId->empty()) {
+                return failure("door openOnAttackId is empty");
+            }
+            if (object.door->encounterId) {
+                if (object.door->encounterId->empty()) {
+                    return failure("door encounterId is empty");
+                }
+                const auto encounter = std::find_if(data.encounters.begin(),
+                    data.encounters.end(), [&](const auto& value) {
+                        return value.id == *object.door->encounterId;
+                    });
+                if (encounter == data.encounters.end()) {
+                    return failure("door references an unknown encounter");
+                }
+            }
         }
         if (object.transition &&
             (object.transition->targetMapId.empty() ||

@@ -43,6 +43,12 @@ StringTable collectStrings(const MapData& data) {
         if (object.door && object.door->requiredItemId) {
             addString(table.values, object.door->requiredItemId->value());
         }
+        if (object.door && object.door->openOnAttackId) {
+            addString(table.values, object.door->openOnAttackId->value());
+        }
+        if (object.door && object.door->encounterId) {
+            addString(table.values, object.door->encounterId->value());
+        }
         if (object.transition) {
             addString(table.values, object.transition->targetMapId.value());
             addString(table.values, object.transition->targetSpawnId.value());
@@ -203,6 +209,14 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
                 ents.writeU32(strings.index(object.door->requiredItemId->value()));
             }
             ents.writeU8(object.door->consumeItem ? 1 : 0);
+            ents.writeU8(object.door->openOnAttackId ? 1 : 0);
+            if (object.door->openOnAttackId) {
+                ents.writeU32(strings.index(object.door->openOnAttackId->value()));
+            }
+            ents.writeU8(object.door->encounterId ? 1 : 0);
+            if (object.door->encounterId) {
+                ents.writeU32(strings.index(object.door->encounterId->value()));
+            }
         }
         ents.writeU32(static_cast<std::uint32_t>(object.initialContents.size()));
         for (const auto& stack : object.initialContents) {
@@ -502,6 +516,30 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
                         return fail("invalid object door consume flag");
                     }
                     config.consumeItem = consumeItem != 0;
+                    if (minor >= 8) {
+                        std::uint8_t hasOpenOnAttack{};
+                        if (!in.readU8(hasOpenOnAttack) || hasOpenOnAttack > 1) {
+                            return fail("invalid object door open condition");
+                        }
+                        if (hasOpenOnAttack != 0) {
+                            simulation::DefinitionId attackId;
+                            if (!readId(in, strings, attackId)) {
+                                return fail("invalid object door open attack");
+                            }
+                            config.openOnAttackId = std::move(attackId);
+                        }
+                        std::uint8_t hasEncounter{};
+                        if (!in.readU8(hasEncounter) || hasEncounter > 1) {
+                            return fail("invalid object door open condition");
+                        }
+                        if (hasEncounter != 0) {
+                            simulation::DefinitionId encounterId;
+                            if (!readId(in, strings, encounterId)) {
+                                return fail("invalid object door open encounter");
+                            }
+                            config.encounterId = std::move(encounterId);
+                        }
+                    }
                     door = std::move(config);
                 }
             }

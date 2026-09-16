@@ -93,84 +93,103 @@ void syncRuntimeDoorObjectState(
         }
     }
 }
+bool beginDoorOpening(RuntimeDoor& door) noexcept {
+    if (
+        door.openingAnimationId
+        && door.openingDurationTicks > 0
+    ) {
+        door.physicalState = DoorPhysicalState::opening;
+        door.openingTick = 0;
+        return true;
+    }
+    return false;
+}
 } // namespace
+
+void RuntimeWorld::appendObjectCollisionBounds(
+    const PersistentObject& object,
+    std::vector<world::AabbI>& result) const {
+    const auto& definition =
+        object.instance.definition();
+
+    const gameplay::ObjectCollisionDefinition*
+        collision = nullptr;
+
+    bool animatedCollisionOwnsFrame = false;
+
+    if (
+        animationCollisions_ != nullptr
+        && object.instance.isDoor()
+    ) {
+        const auto* runtimeDoor =
+            door(object.persistentId);
+
+        if (
+            runtimeDoor != nullptr
+            && runtimeDoor->openingAnimationId
+            && animationCollisions_->find(
+                *runtimeDoor->openingAnimationId) != nullptr
+        ) {
+            // Profile existence means the authored animation owns collision.
+            // An empty sampled frame is therefore intentional "no collision",
+            // not a reason to fall back to definition.collision.
+            animatedCollisionOwnsFrame = true;
+
+            const auto frameIndex =
+                doorAnimationFrameIndex(
+                    object.persistentId);
+
+            if (frameIndex) {
+                collision =
+                    animationCollisions_->sample(
+                        *runtimeDoor->openingAnimationId,
+                        *frameIndex);
+            }
+        }
+    }
+
+    if (!animatedCollisionOwnsFrame) {
+        if (!definition.collision) {
+            return;
+        }
+
+        if (
+            object.instance.isDoor()
+            && object.instance.doorState()
+                == gameplay::DoorState::open
+        ) {
+            return;
+        }
+
+        collision =
+            &*definition.collision;
+    }
+
+    if (collision == nullptr) {
+        return;
+    }
+
+    result.reserve(
+        result.size()
+        + collision->regions.size());
+
+    for (const auto& region : collision->regions) {
+        result.push_back({
+            object.instance.position().x + region.x,
+            object.instance.position().y + region.y,
+            region.width,
+            region.height
+        });
+    }
+}
 
 std::vector<world::AabbI> RuntimeWorld::objectCollisionBounds() const {
     std::vector<world::AabbI> result;
 
     for (const auto& object : objects_) {
-        const auto& definition =
-            object.instance.definition();
-
-        const gameplay::ObjectCollisionDefinition*
-            collision = nullptr;
-
-        bool animatedCollisionOwnsFrame = false;
-
-        if (
-            animationCollisions_ != nullptr
-            && object.instance.isDoor()
-        ) {
-            const auto* runtimeDoor =
-                door(object.persistentId);
-
-            if (
-                runtimeDoor != nullptr
-                && runtimeDoor->openingAnimationId
-                && animationCollisions_->find(
-                    *runtimeDoor->openingAnimationId) != nullptr
-            ) {
-                // Profile existence means the authored animation owns collision.
-                // An empty sampled frame is therefore intentional "no collision",
-                // not a reason to fall back to definition.collision.
-                animatedCollisionOwnsFrame = true;
-
-                const auto frameIndex =
-                    doorAnimationFrameIndex(
-                        object.persistentId);
-
-                if (frameIndex) {
-                    collision =
-                        animationCollisions_->sample(
-                            *runtimeDoor->openingAnimationId,
-                            *frameIndex);
-                }
-            }
-        }
-
-        if (!animatedCollisionOwnsFrame) {
-            if (!definition.collision) {
-                continue;
-            }
-
-            if (
-                object.instance.isDoor()
-                && object.instance.doorState()
-                    == gameplay::DoorState::open
-            ) {
-                continue;
-            }
-
-            collision =
-                &*definition.collision;
-        }
-
-        if (collision == nullptr) {
-            continue;
-        }
-
-        result.reserve(
-            result.size()
-            + collision->regions.size());
-
-        for (const auto& region : collision->regions) {
-            result.push_back({
-                object.instance.position().x + region.x,
-                object.instance.position().y + region.y,
-                region.width,
-                region.height
-            });
-        }
+        appendObjectCollisionBounds(
+            object,
+            result);
     }
 
     return result;
@@ -340,18 +359,108 @@ bool RuntimeWorld::interactDoor(
             objects_,
             id,
             gameplay::DoorState::closed);
+
+        // A door with an authored open condition unlocks with its key
+        // but only opens through that condition.
+        if (found->hasOpenCondition()) {
+            return true;
+        }
     }
-    if (
-        found->openingAnimationId
-        && found->openingDurationTicks > 0
-    ) {
-        found->physicalState = DoorPhysicalState::opening;
-        found->openingTick = 0;
+    if (found->hasOpenCondition()) {
+        // Attack/encounter-opened doors never open through plain
+        // interaction, even when unlocked.
+        return false;
+    }
+    if (beginDoorOpening(
+            *found)) {
         return true;
     }
     return setDoorState(
         id,
         gameplay::DoorState::open);
+}
+
+bool RuntimeWorld::attackDoor(
+    simulation::PersistentInstanceId id,
+    const simulation::DefinitionId& attackDefinitionId) noexcept {
+    const auto found = std::find_if(
+        doors_.begin(),
+        doors_.end(),
+        [&](const RuntimeDoor& d) {
+            return d.id == id;
+        });
+
+    if (
+        found == doors_.end()
+        || !found->openOnAttackId
+        || *found->openOnAttackId != attackDefinitionId
+        || found->state == gameplay::DoorState::open
+        || found->physicalState == DoorPhysicalState::opening
+    ) {
+        return false;
+    }
+
+    if (beginDoorOpening(
+            *found)) {
+        return true;
+    }
+
+    return setDoorState(
+        id,
+        gameplay::DoorState::open);
+}
+
+std::vector<simulation::PersistentInstanceId> RuntimeWorld::openDoorsForEncounter(
+    const simulation::DefinitionId& encounterId) noexcept {
+    std::vector<simulation::PersistentInstanceId> opened;
+
+    for (auto& candidate : doors_) {
+        if (
+            !candidate.encounterId
+            || *candidate.encounterId != encounterId
+            || candidate.state == gameplay::DoorState::open
+            || candidate.physicalState == DoorPhysicalState::opening
+        ) {
+            continue;
+        }
+
+        if (beginDoorOpening(
+                candidate)) {
+            opened.push_back(
+                candidate.id);
+
+            continue;
+        }
+
+        if (setDoorState(
+                candidate.id,
+                gameplay::DoorState::open)) {
+            opened.push_back(
+                candidate.id);
+        }
+    }
+
+    return opened;
+}
+
+std::vector<world::AabbI> RuntimeWorld::doorCollisionBounds(
+    simulation::PersistentInstanceId id) const {
+    std::vector<world::AabbI> result;
+
+    const auto found = std::find_if(
+        objects_.begin(),
+        objects_.end(),
+        [&](const PersistentObject& object) {
+            return object.persistentId == id;
+        });
+
+    if (found != objects_.end()) {
+        appendObjectCollisionBounds(
+            *found,
+            result);
+    }
+
+    return result;
 }
 
 bool RuntimeWorld::advanceDoorTransitions(std::uint64_t ticks) noexcept {
@@ -594,6 +703,16 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                 placement.door &&
                 placement.door->consumeItem;
 
+            const auto openOnAttackId =
+                placement.door
+                    ? placement.door->openOnAttackId
+                    : std::optional<simulation::DefinitionId>{};
+
+            const auto encounterId =
+                placement.door
+                    ? placement.door->encounterId
+                    : std::optional<simulation::DefinitionId>{};
+
             const auto runtimeObject =
                 std::find_if(
                     result->objects_.begin(),
@@ -623,7 +742,13 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                     initialState,
                     requiredItemId,
                     consumeItem,
-                    {}
+                    {},
+                    DoorPhysicalState::closed,
+                    {},
+                    0,
+                    0,
+                    openOnAttackId,
+                    encounterId
                 });
                 configureDoorTimeline(result->doors_.back(), *definition, catalogs_);
                 continue;
@@ -648,7 +773,13 @@ RuntimeWorldBuildResult RuntimeWorldBuilder::build(
                 initialState,
                 requiredItemId,
                 consumeItem,
-                {}
+                {},
+                DoorPhysicalState::closed,
+                {},
+                0,
+                0,
+                openOnAttackId,
+                encounterId
             };
             for (auto y = firstY; y <= lastY; ++y) {
                 for (auto x = firstX; x <= lastX; ++x) {
