@@ -488,9 +488,52 @@ class MapCanvas(QWidget):
 
         if self.tool == "door":
             if button == "left":
-                self.place_door_at(
-                    tile
+                existing = self._hit_selection(
+                    self.screen_to_world(point)
                 )
+
+                if (
+                    existing is not None
+                    and existing.category == "objects"
+                    and self.workspace is not None
+                    and DoorPlacementService(
+                        self.document,
+                        self.workspace,
+                    ).is_door_instance(
+                        int(existing.identifier)
+                    )
+                ):
+                    # Existing fixtures take priority over placing another
+                    # fixture at the same cursor position. Switching to
+                    # Select here allows this same press/drag gesture to move
+                    # the authored Door immediately.
+                    self.set_tool(
+                        "select"
+                    )
+
+                    self._moving = existing
+
+                    self.selection_controller.select_value(
+                        existing
+                    )
+
+                    self.renderer.moving_selection = (
+                        existing.as_tuple()
+                    )
+
+                    self.renderer.moving_world = (
+                        self._snap_world(
+                            self.screen_to_world(
+                                point
+                            )
+                        )
+                    )
+
+                    self.update()
+                else:
+                    self.place_door_at(
+                        tile
+                    )
             elif button == "right":
                 self.cancel_placement()
             return

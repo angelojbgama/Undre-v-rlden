@@ -67,19 +67,36 @@ class TerrainPaintingService:
         old_active = self._active_cells(layer, selection)
         active = set(old_active)
 
-        if erase:
-            active.difference_update(target)
-        else:
-            active.update(target)
-
-            # Fixtures are authoritative over semantic terrain. A wall
-            # reservation is treated as a deliberate gap while resolving
-            # both the painted cells and their neighboring autotiles.
-            active.difference_update(
-                self.reservations.reserved_cells(
-                    selection.role
-                )
+        reserved = (
+            self.reservations.reserved_cells(
+                selection.role
             )
+        )
+
+        if erase:
+            active.difference_update(
+                target
+            )
+        else:
+            active.update(
+                target
+            )
+
+        # Fixture reservations have two independent meanings:
+        #
+        # - they own the actual authored cells, so Smart Terrain must
+        #   never write a tile underneath the fixture;
+        # - they are virtual members of the terrain topology, so the
+        #   autotiler sees a continuous wall through a Door rather than
+        #   wrapping/cornering around the opening.
+        active.difference_update(
+            reserved
+        )
+
+        topology_active = (
+            set(active)
+            | reserved
+        )
 
         affected = set(target)
         if selection.role == "wall":
@@ -89,11 +106,23 @@ class TerrainPaintingService:
         assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
         warnings: list[str] = []
         for position in sorted(affected, key=lambda value: (value[1], value[0])):
+            if position in reserved:
+                if position in target:
+                    assignments[position] = None
+                continue
+
             if position not in active:
                 if position in target:
                     assignments[position] = None
                 continue
-            resolved = self._resolve(selection, position, active, document, warnings)
+
+            resolved = self._resolve(
+                selection,
+                position,
+                topology_active,
+                document,
+                warnings,
+            )
             if resolved is not None:
                 assignments[position] = (None if resolved.empty else
                                          (resolved.tileset_id, resolved.source_index, resolved.flags))
@@ -140,9 +169,11 @@ class TerrainPaintingService:
             )
         )
 
-        room_occupancy = (
+        # Reserved boundary cells stay physically empty for the
+        # fixture but are virtual wall members for topology. Neighboring
+        # wall tiles therefore remain part of one straight boundary.
+        room_occupancy = set(
             rect
-            - reserved_boundary
         )
 
         for position in sorted(boundary, key=lambda value: (value[1], value[0])):

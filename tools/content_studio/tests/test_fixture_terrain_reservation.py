@@ -301,6 +301,215 @@ class FixtureTerrainReservationTests(
                 wall[5]
             )
 
+    def test_gate_reservation_is_virtual_wall_for_autotile_topology(
+        self,
+    ) -> None:
+        class RecordingResolver:
+            def __init__(
+                self,
+            ) -> None:
+                self.calls = []
+
+            def resolve(
+                self,
+                family,
+                role,
+                position,
+                active,
+                map_id,
+                seed=0,
+                tile_size=16,
+            ):
+                self.calls.append(
+                    (
+                        position,
+                        set(active),
+                    )
+                )
+
+                return SimpleNamespace(
+                    tileset_id="tileset.test",
+                    source_index=0,
+                    flags=0,
+                    empty=False,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace, document = make_context(
+                Path(directory)
+            )
+
+            place_gate(
+                document,
+                workspace,
+            )
+
+            editing = MapEditingService(
+                document,
+                workspace=workspace,
+            )
+
+            editing.set_layer(
+                1
+            )
+
+            resolver = RecordingResolver()
+
+            painter = TerrainPaintingService(
+                document=document,
+                workspace=workspace,
+                editing=editing,
+                catalog=TileSemanticCatalog(
+                    workspace
+                ),
+                resolver=resolver,
+            )
+
+            painter.paint_terrain(
+                {
+                    (1, 0),
+                    (2, 0),
+                    (3, 0),
+                    (4, 0),
+                    (5, 0),
+                },
+                WALL,
+                layer_index=1,
+            )
+
+            topology = next(
+                active
+                for position, active
+                in resolver.calls
+                if position
+                == (1, 0)
+            )
+
+            self.assertTrue(
+                {
+                    (2, 0),
+                    (3, 0),
+                    (4, 0),
+                }.issubset(
+                    topology
+                )
+            )
+
+            for x in (
+                2,
+                3,
+                4,
+            ):
+                self.assertIsNone(
+                    document.layers[
+                        1
+                    ]["cells"][x]
+                )
+
+    def test_room_gate_reservation_is_virtual_boundary_for_topology(
+        self,
+    ) -> None:
+        class RecordingResolver(
+            PredictableResolver
+        ):
+            def __init__(
+                self,
+            ) -> None:
+                self.calls = []
+
+            def resolve(
+                self,
+                family,
+                role,
+                position,
+                active,
+                map_id,
+                seed=0,
+                tile_size=16,
+            ):
+                self.calls.append(
+                    (
+                        role,
+                        position,
+                        set(active),
+                    )
+                )
+
+                return super().resolve(
+                    family,
+                    role,
+                    position,
+                    active,
+                    map_id,
+                    seed,
+                    tile_size,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace, document = make_context(
+                Path(directory)
+            )
+
+            place_gate(
+                document,
+                workspace,
+            )
+
+            editing = MapEditingService(
+                document,
+                workspace=workspace,
+            )
+
+            editing.set_layer(
+                1
+            )
+
+            resolver = RecordingResolver()
+
+            painter = TerrainPaintingService(
+                document=document,
+                workspace=workspace,
+                editing=editing,
+                catalog=TileSemanticCatalog(
+                    workspace
+                ),
+                resolver=resolver,
+            )
+
+            profile = TerrainProfile(
+                "terrain.test.room",
+                FLOOR,
+                WALL,
+            )
+
+            painter.paint_room(
+                (0, 0),
+                (
+                    document.width - 1,
+                    document.height - 1,
+                ),
+                profile,
+                layer_index=1,
+            )
+
+            topology = next(
+                active
+                for role, position, active
+                in resolver.calls
+                if role == "wall"
+                and position == (1, 0)
+            )
+
+            self.assertTrue(
+                {
+                    (2, 0),
+                    (3, 0),
+                    (4, 0),
+                }.issubset(
+                    topology
+                )
+            )
+
     def test_fill_wall_respects_gate_reservation(
         self,
     ) -> None:

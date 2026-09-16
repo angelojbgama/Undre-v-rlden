@@ -698,6 +698,127 @@ class DoorFixtureLifecycleCanvasTests(
                     ]["cells"][x]
                 )
 
+    def test_door_tool_click_existing_gate_enters_select_and_drags(
+        self,
+    ) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from tools.content_studio.ui.map_canvas import (
+            MapCanvas,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            workspace = visual_workspace(
+                root
+            )
+
+            document = wall_document()
+
+            placed = DoorPlacementService(
+                document,
+                workspace,
+            ).place(
+                "object.gate",
+                (3, 0),
+                preferred_layer_index=1,
+            )
+
+            canvas = MapCanvas()
+
+            self.addCleanup(
+                canvas.close
+            )
+
+            canvas.resize(
+                500,
+                400,
+            )
+
+            canvas.set_context(
+                document,
+                workspace,
+                root,
+            )
+
+            canvas.set_door_selection(
+                "object.gate"
+            )
+
+            canvas.show()
+
+            self.application.processEvents()
+
+            start = canvas.world_to_screen(
+                56,
+                0,
+            )
+
+            QTest.mousePress(
+                canvas,
+                Qt.MouseButton.LeftButton,
+                pos=start,
+            )
+
+            self.application.processEvents()
+
+            self.assertEqual(
+                "select",
+                canvas.tool,
+            )
+
+            self.assertEqual(
+                Selection(
+                    "objects",
+                    placed.object_id,
+                ),
+                canvas.selection_controller.current,
+            )
+
+            self.assertEqual(
+                Selection(
+                    "objects",
+                    placed.object_id,
+                ),
+                canvas._moving,
+            )
+
+            destination = (
+                canvas.world_to_screen(
+                    64,
+                    0,
+                )
+            )
+
+            QTest.mouseMove(
+                canvas,
+                destination,
+            )
+
+            QTest.mouseRelease(
+                canvas,
+                Qt.MouseButton.LeftButton,
+                pos=destination,
+            )
+
+            self.application.processEvents()
+
+            placement = document.entity(
+                "objects",
+                placed.object_id,
+            )
+
+            assert placement is not None
+
+            self.assertEqual(
+                {
+                    "x": 72,
+                    "y": 16,
+                },
+                placement["position"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
