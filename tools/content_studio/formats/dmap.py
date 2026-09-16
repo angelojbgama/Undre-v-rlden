@@ -9,7 +9,9 @@ from ..model.types import JsonValue
 
 
 DMAP_MAJOR = 1
-DMAP_MINOR = 7
+# Minor 8 adds optional door open conditions (openOnAttackId,
+# encounterId) to the per-instance door configuration.
+DMAP_MINOR = 8
 EMPTY_CELL = 0xFFFFFFFF
 
 FACING = {"down": 0, "up": 1, "left": 2, "right": 3}
@@ -139,6 +141,8 @@ def _collect_strings(map_data: dict[str, JsonValue]) -> list[str]:
         door = item.get("door")
         if isinstance(door, dict):
             add(door.get("requiredItemId"))
+            add(door.get("openOnAttackId"))
+            add(door.get("encounterId"))
         transition = item.get("transition")
         if isinstance(transition, dict):
             add(transition.get("targetMapId"))
@@ -330,6 +334,26 @@ def serialize_dmap(map_data: dict[str, JsonValue]) -> bytes:
                     f"objects[{index}].door.consumeItem requires requiredItemId"
                 )
 
+            open_on_attack = door.get(
+                "openOnAttackId"
+            )
+
+            if open_on_attack is not None:
+                open_on_attack = _text(
+                    open_on_attack,
+                    f"objects[{index}].door.openOnAttackId",
+                )
+
+            door_encounter = door.get(
+                "encounterId"
+            )
+
+            if door_encounter is not None:
+                door_encounter = _text(
+                    door_encounter,
+                    f"objects[{index}].door.encounterId",
+                )
+
             ents.u8(1)
             ents.u8(initial_state)
             ents.u8(
@@ -352,6 +376,36 @@ def serialize_dmap(map_data: dict[str, JsonValue]) -> bytes:
                 if consume_item
                 else 0
             )
+
+            ents.u8(
+                1
+                if open_on_attack
+                else 0
+            )
+
+            if open_on_attack:
+                ents.u32(
+                    _index(
+                        indices,
+                        open_on_attack,
+                        f"objects[{index}].door.openOnAttackId",
+                    )
+                )
+
+            ents.u8(
+                1
+                if door_encounter
+                else 0
+            )
+
+            if door_encounter:
+                ents.u32(
+                    _index(
+                        indices,
+                        door_encounter,
+                        f"objects[{index}].door.encounterId",
+                    )
+                )
 
         stacks = _array(item.get("initialContents", []), "objects.initialContents"); ents.u32(len(stacks))
         for stack_value in stacks:

@@ -729,6 +729,10 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            def _optional_str(key: str) -> str | None:
+                value = request.get(key)
+                return value if isinstance(value, str) else None
+
             DoorInstanceService(
                 self.project.active_map,
                 self.workspace,
@@ -769,6 +773,12 @@ class MainWindow(QMainWindow):
                         "persistence",
                         "persistent",
                     )
+                ),
+                open_attack_id=_optional_str(
+                    "open_attack_id"
+                ),
+                encounter_id=_optional_str(
+                    "encounter_id"
                 ),
             )
 

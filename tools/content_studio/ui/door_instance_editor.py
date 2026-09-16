@@ -42,6 +42,8 @@ class DoorInstanceEditor(QGroupBox):
         self.key_label = QLabel()
         self.consume_label = QLabel()
         self.persistence_label = QLabel()
+        self.open_attack_label = QLabel()
+        self.open_encounter_label = QLabel()
 
         self.mode = QComboBox()
         self.mode.setObjectName(
@@ -66,6 +68,16 @@ class DoorInstanceEditor(QGroupBox):
         self.persistence = QComboBox()
         self.persistence.setObjectName(
             "doorPersistence"
+        )
+
+        self.open_attack = QComboBox()
+        self.open_attack.setObjectName(
+            "doorOpenAttack"
+        )
+
+        self.open_encounter = QComboBox()
+        self.open_encounter.setObjectName(
+            "doorOpenEncounter"
         )
 
         self.apply_button = QPushButton()
@@ -103,6 +115,16 @@ class DoorInstanceEditor(QGroupBox):
         form.addRow(
             self.persistence_label,
             self.persistence,
+        )
+
+        form.addRow(
+            self.open_attack_label,
+            self.open_attack,
+        )
+
+        form.addRow(
+            self.open_encounter_label,
+            self.open_encounter,
         )
 
         layout = QVBoxLayout(
@@ -186,6 +208,16 @@ class DoorInstanceEditor(QGroupBox):
             config.required_item_id,
         )
 
+        self._reload_open_attack(
+            service,
+            config.open_attack_id,
+        )
+
+        self._reload_open_encounter(
+            service,
+            config.encounter_id,
+        )
+
         self._set_data(
             self.mode,
             (
@@ -261,6 +293,18 @@ class DoorInstanceEditor(QGroupBox):
         self.persistence_label.setText(
             self.translate(
                 "door_persistence"
+            )
+        )
+
+        self.open_attack_label.setText(
+            self.translate(
+                "door_open_attack"
+            )
+        )
+
+        self.open_encounter_label.setText(
+            self.translate(
+                "door_open_encounter"
             )
         )
 
@@ -388,24 +432,100 @@ class DoorInstanceEditor(QGroupBox):
             and self.object_id is not None
         ):
             try:
-                config = DoorInstanceService(
+                service = DoorInstanceService(
                     self.document,
                     self.workspace,
-                ).configuration(
+                )
+
+                config = service.configuration(
                     self.object_id
                 )
 
                 self._reload_keys(
-                    DoorInstanceService(
-                        self.document,
-                        self.workspace,
-                    ),
+                    service,
                     config.required_item_id,
+                )
+
+                self._reload_open_attack(
+                    service,
+                    config.open_attack_id,
+                )
+
+                self._reload_open_encounter(
+                    service,
+                    config.encounter_id,
                 )
             except ValueError:
                 pass
 
         self._sync_enabled()
+
+    def _reload_open_attack(
+        self,
+        service: DoorInstanceService,
+        selected: str | None,
+    ) -> None:
+        self.open_attack.blockSignals(
+            True
+        )
+
+        self.open_attack.clear()
+
+        self.open_attack.addItem(
+            self.translate(
+                "door_open_condition_none"
+            ),
+            None,
+        )
+
+        for definition in service.available_attacks():
+            self.open_attack.addItem(
+                f"{definition.display_name} "
+                f"[{definition.definition_id}]",
+                definition.definition_id,
+            )
+
+        self._set_data(
+            self.open_attack,
+            selected,
+        )
+
+        self.open_attack.blockSignals(
+            False
+        )
+
+    def _reload_open_encounter(
+        self,
+        service: DoorInstanceService,
+        selected: str | None,
+    ) -> None:
+        self.open_encounter.blockSignals(
+            True
+        )
+
+        self.open_encounter.clear()
+
+        self.open_encounter.addItem(
+            self.translate(
+                "door_open_condition_none"
+            ),
+            None,
+        )
+
+        for encounter_id in service.available_encounters():
+            self.open_encounter.addItem(
+                encounter_id,
+                encounter_id,
+            )
+
+        self._set_data(
+            self.open_encounter,
+            selected,
+        )
+
+        self.open_encounter.blockSignals(
+            False
+        )
 
     def _reload_keys(
         self,
@@ -548,6 +668,15 @@ class DoorInstanceEditor(QGroupBox):
             and has_key
         )
 
+        # Open conditions belong to the placement, not the lock state.
+        self.open_attack.setEnabled(
+            custom
+        )
+
+        self.open_encounter.setEnabled(
+            custom
+        )
+
         # Persistence belongs to the placement, not to the definition.
         self.persistence.setEnabled(
             True
@@ -594,10 +723,32 @@ class DoorInstanceEditor(QGroupBox):
             or "persistent"
         )
 
+        open_attack_id = (
+            self.open_attack.currentData()
+            if not uses_defaults
+            else None
+        )
+
+        encounter_id = (
+            self.open_encounter.currentData()
+            if not uses_defaults
+            else None
+        )
+
         self.configuration_requested.emit({
             "uses_definition_defaults": uses_defaults,
             "initial_state": initial_state,
             "required_item_id": required_item_id,
             "consume_item": consume_item,
             "persistence": persistence,
+            "open_attack_id": (
+                open_attack_id
+                if isinstance(open_attack_id, str)
+                else None
+            ),
+            "encounter_id": (
+                encounter_id
+                if isinstance(encounter_id, str)
+                else None
+            ),
         })

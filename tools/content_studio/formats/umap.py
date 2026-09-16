@@ -7,7 +7,9 @@ from ..model.types import Diagnostic, JsonValue
 from .json_io import DuplicateKeyError, decode_json, load_json, write_atomic
 
 MAP_FORMAT = "dungeon-underworld-map-source"
-MAP_VERSION = 5
+# Version 6 adds optional door open conditions (openOnAttackId,
+# encounterId) to the per-instance door configuration.
+MAP_VERSION = 6
 
 
 @dataclass(slots=True)
@@ -204,6 +206,45 @@ def decode_map(value: object, source_path: Path | None = None) -> MapDecode:
                         source_path=source_path,
                     )
                 )
+
+            for field_name in (
+                "openOnAttackId",
+                "encounterId",
+            ):
+                field_value = door.get(
+                    field_name
+                )
+
+                if field_value is None:
+                    continue
+
+                if (
+                    isinstance(version, int)
+                    and version < 6
+                ):
+                    diagnostics.append(
+                        Diagnostic(
+                            "error",
+                            "door open conditions require map schema version 6",
+                            f"{door_path}.{field_name}",
+                            "unsupported_version",
+                            source_path=source_path,
+                        )
+                    )
+
+                if (
+                    not isinstance(field_value, str)
+                    or not field_value
+                ):
+                    diagnostics.append(
+                        Diagnostic(
+                            "error",
+                            f"door {field_name} must be a non-empty string",
+                            f"{door_path}.{field_name}",
+                            "wrong_type",
+                            source_path=source_path,
+                        )
+                    )
 
     return MapDecode(value, diagnostics)
 

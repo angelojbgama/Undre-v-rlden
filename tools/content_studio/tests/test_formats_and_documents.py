@@ -132,6 +132,67 @@ class FormatTests(unittest.TestCase):
         self.assertIsNotNone(decoded.data)
         self.assertTrue(any(issue.code == "missing_field" for issue in decoded.diagnostics))
 
+    def test_umap_v6_round_trip_keeps_door_open_conditions(self) -> None:
+        from tools.content_studio.formats.umap import MAP_VERSION
+
+        self.assertEqual(6, MAP_VERSION)
+        data = new_map("map.door.open", 4, 4)
+        data["objects"].append({  # type: ignore[union-attr]
+            "id": 2,
+            "definitionId": "object.gate",
+            "position": {"x": 32, "y": 32},
+            "door": {
+                "initialState": "closed",
+                "openOnAttackId": "attack.bash",
+                "encounterId": "encounter.gate",
+            },
+        })  # type: ignore[union-attr]
+        decoded = decode_map(data)
+        self.assertFalse([issue for issue in decoded.diagnostics if issue.is_error])
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "door.umap"
+            write_map(target, data)
+            self.assertEqual(data, json.loads(target.read_text(encoding="utf-8")))
+
+    def test_umap_door_open_conditions_require_v6(self) -> None:
+        data = new_map("map.door.old", 4, 4)
+        data["version"] = 5
+        data["objects"].append({  # type: ignore[union-attr]
+            "id": 2,
+            "definitionId": "object.gate",
+            "position": {"x": 32, "y": 32},
+            "door": {
+                "initialState": "closed",
+                "openOnAttackId": "attack.bash",
+            },
+        })  # type: ignore[union-attr]
+        decoded = decode_map(data)
+        self.assertTrue(any(
+            issue.code == "unsupported_version" and "open conditions" in issue.message
+            for issue in decoded.diagnostics
+        ))
+
+    def test_dmap_export_declares_minor_version_8_for_open_conditions(self) -> None:
+        data = new_map("map.door.dmap", 4, 4)
+        data["objects"].append({  # type: ignore[union-attr]
+            "id": 2,
+            "definitionId": "object.gate",
+            "position": {"x": 32, "y": 32},
+            "door": {
+                "initialState": "closed",
+                "openOnAttackId": "attack.bash",
+                "encounterId": "encounter.gate",
+            },
+        })  # type: ignore[union-attr]
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "door.dmap"
+            write_dmap(target, data)
+            encoded = target.read_bytes()
+        self.assertEqual(b"DMAP", encoded[:4])
+        # Header: u16 major, u16 minor (little-endian).
+        self.assertEqual(1, encoded[4] | (encoded[5] << 8))
+        self.assertEqual(8, encoded[6] | (encoded[7] << 8))
+
 
 class ContentAuthoringTests(unittest.TestCase):
     def make_workspace(self, data: dict[str, object]) -> tuple[tempfile.TemporaryDirectory[str], ContentWorkspace]:

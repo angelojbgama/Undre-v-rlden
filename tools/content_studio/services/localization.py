@@ -378,6 +378,9 @@ TRANSLATIONS["pt-BR"].update({
     "door_family_all": "Todas as famílias",
     "door_family_uncategorized": "Sem família",
     "door_family_label": "Família: {name}",
+    "door_open_attack": "Abre com ataque",
+    "door_open_encounter": "Abre quando encounter completar",
+    "door_open_condition_none": "Nenhuma",
 })
 
 TRANSLATIONS["en-US"].update({
@@ -463,6 +466,9 @@ TRANSLATIONS["en-US"].update({
     "door_family_all": "All families",
     "door_family_uncategorized": "No family",
     "door_family_label": "Family: {name}",
+    "door_open_attack": "Opens with attack",
+    "door_open_encounter": "Opens when encounter completes",
+    "door_open_condition_none": "None",
 })
 
 

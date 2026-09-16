@@ -197,7 +197,7 @@ class DoorInstanceServiceTests(
             )
 
             self.assertEqual(
-                5,
+                6,
                 document.data["version"],
             )
 
@@ -483,6 +483,180 @@ class DoorInstanceServiceTests(
                 ).configuration(
                     object_id
                 )
+
+    def test_open_conditions_round_trip_through_placement(
+            self,
+    ) -> None:
+        data = door_instance_content()
+
+        data["attacks"] = [
+            {
+                "id": "attack.bash",
+                "kind": "meleeHitbox",
+                "damage": {
+                    "amount": 1,
+                    "knockbackPixels": 0,
+                },
+                "totalTicks": 1,
+                "cooldownTicks": 1,
+                "minimumRangePixels": 0,
+                "maximumRangePixels": 16,
+                "visualActionId": "",
+                "meleeHitboxes": None,
+                "projectileDefinitionId": None,
+                "timeline": [],
+                "shapes": [],
+            },
+        ]
+
+        document, object_id = (
+            door_document()
+        )
+
+        document.data["version"] = 6
+
+        document.data["encounters"].append(
+            {
+                "id": "encounter.gate",
+                "participants": [],
+            }
+        )
+
+        from tools.content_studio.services.door_instance_service import (
+            DoorInstanceService,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            service = DoorInstanceService(
+                document,
+                workspace,
+            )
+
+            self.assertIn(
+                "attack.bash",
+                [
+                    definition.definition_id
+                    for definition in service.available_attacks()
+                ],
+            )
+
+            self.assertIn(
+                "encounter.gate",
+                service.available_encounters(),
+            )
+
+            config = service.configure(
+                object_id,
+                uses_definition_defaults=False,
+                initial_state="closed",
+                required_item_id=None,
+                consume_item=False,
+                persistence="persistent",
+                open_attack_id="attack.bash",
+                encounter_id="encounter.gate",
+            )
+
+            self.assertEqual(
+                "attack.bash",
+                config.open_attack_id,
+            )
+
+            self.assertEqual(
+                "encounter.gate",
+                config.encounter_id,
+            )
+
+            placement = document.entity(
+                "objects",
+                object_id,
+            )
+
+            assert placement is not None
+
+            door = placement["door"]
+
+            assert isinstance(door, dict)
+
+            self.assertEqual(
+                "attack.bash",
+                door["openOnAttackId"],
+            )
+
+            self.assertEqual(
+                "encounter.gate",
+                door["encounterId"],
+            )
+
+    def test_open_conditions_reject_unknown_references(
+            self,
+    ) -> None:
+        data = door_instance_content()
+
+        document, object_id = (
+            door_document()
+        )
+
+        document.data["version"] = 6
+
+        from tools.content_studio.services.door_instance_service import (
+            DoorInstanceService,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            service = DoorInstanceService(
+                document,
+                workspace,
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "unknown door open attack",
+            ):
+                service.configure(
+                    object_id,
+                    uses_definition_defaults=False,
+                    initial_state="closed",
+                    required_item_id=None,
+                    consume_item=False,
+                    persistence="persistent",
+                    open_attack_id="attack.missing",
+                )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "unknown door open encounter",
+            ):
+                service.configure(
+                    object_id,
+                    uses_definition_defaults=False,
+                    initial_state="closed",
+                    required_item_id=None,
+                    consume_item=False,
+                    persistence="persistent",
+                    encounter_id="encounter.missing",
+                )
+
+            placement = document.entity(
+                "objects",
+                object_id,
+            )
+
+            assert placement is not None
+
+            self.assertNotIn(
+                "door",
+                placement,
+            )
 
 
 if __name__ == "__main__":

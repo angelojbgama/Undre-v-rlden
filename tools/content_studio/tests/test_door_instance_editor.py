@@ -222,8 +222,131 @@ class DoorInstanceEditorTests(
                     "required_item_id": "item.key.castle",
                     "consume_item": True,
                     "persistence": "resetOnMapEnter",
+                    "open_attack_id": None,
+                    "encounter_id": None,
                 },
                 request,
+            )
+
+    def test_open_conditions_load_and_apply(
+            self,
+    ) -> None:
+        from tools.content_studio.services.door_instance_service import (
+            DoorInstanceService,
+        )
+        from tools.content_studio.ui.door_instance_editor import (
+            DoorInstanceEditor,
+        )
+
+        data = door_instance_content()
+
+        data["attacks"] = [
+            {
+                "id": "attack.bash",
+                "kind": "meleeHitbox",
+                "damage": {
+                    "amount": 1,
+                    "knockbackPixels": 0,
+                },
+                "totalTicks": 1,
+                "cooldownTicks": 1,
+                "minimumRangePixels": 0,
+                "maximumRangePixels": 16,
+                "visualActionId": "",
+                "meleeHitboxes": None,
+                "projectileDefinitionId": None,
+                "timeline": [],
+                "shapes": [],
+            },
+        ]
+
+        document, object_id = (
+            door_document()
+        )
+
+        document.data["version"] = 6
+
+        document.data["encounters"].append(
+            {
+                "id": "encounter.gate",
+                "participants": [],
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = workspace_from(
+                data,
+                Path(directory),
+            )
+
+            DoorInstanceService(
+                document,
+                workspace,
+            ).configure(
+                object_id,
+                uses_definition_defaults=False,
+                initial_state="closed",
+                required_item_id=None,
+                consume_item=False,
+                persistence="persistent",
+                open_attack_id="attack.bash",
+                encounter_id="encounter.gate",
+            )
+
+            editor = DoorInstanceEditor(
+                Translator("en-US")
+            )
+
+            self.addCleanup(
+                editor.close
+            )
+
+            self.assertTrue(
+                editor.set_context(
+                    document,
+                    workspace,
+                    object_id,
+                )
+            )
+
+            self.assertEqual(
+                "attack.bash",
+                editor.open_attack.currentData(),
+            )
+
+            self.assertEqual(
+                "encounter.gate",
+                editor.open_encounter.currentData(),
+            )
+
+            requests: list[object] = []
+
+            editor.configuration_requested.connect(
+                requests.append
+            )
+
+            editor.apply_button.click()
+
+            self.assertEqual(
+                1,
+                len(requests),
+            )
+
+            request = requests[0]
+
+            assert isinstance(
+                request,
+                dict,
+            )
+
+            self.assertEqual(
+                "attack.bash",
+                request["open_attack_id"],
+            )
+
+            self.assertEqual(
+                "encounter.gate",
+                request["encounter_id"],
             )
 
     def test_non_locked_state_clears_key_and_consume(
@@ -433,7 +556,7 @@ class DoorInstanceEditorTests(
             )
 
             self.assertEqual(
-                5,
+                6,
                 document.data["version"],
             )
 

@@ -31,6 +31,8 @@ class DoorInstanceConfiguration:
     required_item_id: str | None
     consume_item: bool
     persistence: str
+    open_attack_id: str | None = None
+    encounter_id: str | None = None
 
 
 class DoorInstanceService:
@@ -106,6 +108,8 @@ class DoorInstanceService:
 
             required_item_id = None
             consume_item = False
+            open_attack_id = None
+            encounter_id = None
 
         else:
             assert isinstance(
@@ -144,6 +148,22 @@ class DoorInstanceService:
                 )
             )
 
+            open_attack_id = (
+                self._optional_id(
+                    authored.get(
+                        "openOnAttackId"
+                    )
+                )
+            )
+
+            encounter_id = (
+                self._optional_id(
+                    authored.get(
+                        "encounterId"
+                    )
+                )
+            )
+
         persistence = str(
             placement.get(
                 "persistence",
@@ -161,6 +181,66 @@ class DoorInstanceService:
             required_item_id=required_item_id,
             consume_item=consume_item,
             persistence=persistence,
+            open_attack_id=open_attack_id,
+            encounter_id=encounter_id,
+        )
+
+    @staticmethod
+    def _optional_id(
+        value: object,
+    ) -> str | None:
+        return (
+            value
+            if isinstance(
+                value,
+                str,
+            )
+            and value
+            else None
+        )
+
+    def available_attacks(
+        self,
+    ) -> tuple[ContentDefinition, ...]:
+        attacks = list(
+            self.workspace.definitions(
+                "attacks"
+            )
+        )
+
+        attacks.sort(
+            key=lambda value: (
+                value.display_name.casefold(),
+                value.definition_id,
+            )
+        )
+
+        return tuple(
+            attacks
+        )
+
+    def available_encounters(
+        self,
+    ) -> tuple[str, ...]:
+        values = self.document.data.get(
+            "encounters",
+            [],
+        )
+
+        if not isinstance(
+            values,
+            list,
+        ):
+            return ()
+
+        return tuple(
+            str(value["id"])
+            for value in values
+            if (
+                isinstance(value, dict)
+                and isinstance(value.get("id"), str)
+                and value["id"]
+            )
         )
 
     def configure(
@@ -172,6 +252,8 @@ class DoorInstanceService:
         required_item_id: str | None,
         consume_item: bool,
         persistence: str,
+        open_attack_id: str | None = None,
+        encounter_id: str | None = None,
     ) -> DoorInstanceConfiguration:
         placement, unused_definition = (
             self._door_placement(
@@ -247,6 +329,43 @@ class DoorInstanceService:
                     "category key"
                 )
 
+        normalized_attack = (
+            open_attack_id.strip()
+            if isinstance(
+                open_attack_id,
+                str,
+            )
+            else ""
+        )
+
+        if normalized_attack and self.workspace.find(
+            "attacks",
+            normalized_attack,
+        ) is None:
+            raise ValueError(
+                f"unknown door open attack: "
+                f"{normalized_attack}"
+            )
+
+        normalized_encounter = (
+            encounter_id.strip()
+            if isinstance(
+                encounter_id,
+                str,
+            )
+            else ""
+        )
+
+        if (
+            normalized_encounter
+            and normalized_encounter
+            not in self.available_encounters()
+        ):
+            raise ValueError(
+                f"unknown door open encounter: "
+                f"{normalized_encounter}"
+            )
+
         door: dict[str, object] = {
             "initialState": initial_state,
             "consumeItem": bool(
@@ -257,6 +376,16 @@ class DoorInstanceService:
         if normalized_required:
             door["requiredItemId"] = (
                 normalized_required
+            )
+
+        if normalized_attack:
+            door["openOnAttackId"] = (
+                normalized_attack
+            )
+
+        if normalized_encounter:
+            door["encounterId"] = (
+                normalized_encounter
             )
 
         self.document.set_object_door_configuration(
