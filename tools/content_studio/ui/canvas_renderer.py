@@ -10,7 +10,10 @@ from ..model.map_document import ENTITY_CATEGORIES, MapDocument
 from ..interaction.selection_controller import SelectionController
 from ..services.assets import AssetCatalog
 from .canvas_camera import CanvasCamera
-from .preview import load_definition_image
+from .studio_visual_resolver import (
+    ResolvedStudioVisual,
+    StudioVisualResolver,
+)
 
 
 class CanvasRenderer:
@@ -20,6 +23,11 @@ class CanvasRenderer:
         self.camera = camera
         self.selection = selection
         self.assets = AssetCatalog()
+        self.visuals = StudioVisualResolver()
+        self._asset_catalog_context: tuple[
+            Path | None,
+            Path | None,
+        ] | None = None
         self.document: MapDocument | None = None
         self.workspace: ContentWorkspace | None = None
         self.asset_root: Path | None = None
@@ -35,13 +43,39 @@ class CanvasRenderer:
         self.door_preview_world: tuple[int, int] | None = None
         self.door_preview_valid = False
         self.door_preview_error = ""
+        self.door_preview_definition_id = ""
 
     def set_context(self, document: MapDocument | None, workspace: ContentWorkspace | None,
                     asset_root: Path | None) -> None:
         self.document = document
         self.workspace = workspace
         self.asset_root = asset_root
-        self.assets.refresh(asset_root, workspace.root if workspace else None)
+
+        content_root = (
+            workspace.root
+            if workspace is not None
+            else None
+        )
+
+        context = (
+            asset_root,
+            content_root,
+        )
+
+        if context != self._asset_catalog_context:
+            self.assets.refresh(
+                asset_root,
+                content_root,
+            )
+
+            self._asset_catalog_context = (
+                context
+            )
+
+        self.visuals.set_context(
+            workspace,
+            asset_root,
+        )
 
     def set_grid_visible(self, visible: bool) -> None:
         self.grid_visible = visible
@@ -118,53 +152,328 @@ class CanvasRenderer:
                     else:
                         painter.drawImage(target.x(), target.y(), image.scaled(size, size, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation))
 
-    def _tile_image(self, reference: dict[str, object], index: int) -> QImage | None:
+    def _tile_image(
+        self,
+        reference: dict[str, object],
+        index: int,
+    ) -> QImage | None:
         document = self.document
-        if not self.workspace:
-            return None
-        tileset_id = reference.get("tilesetId")
-        if not isinstance(tileset_id, str):
-            return None
-        tileset = self.workspace.find("tilesets", tileset_id)
-        if not tileset:
-            return None
-        relative = tileset.data.get("relativeAssetPath")
-        if not isinstance(relative, str):
-            return None
-        # Authored tilesets intentionally have no per-definition asset root;
-        # the C++ contract resolves every relativeAssetPath below assetRoot.
-        root = self.asset_root
-        if root is None:
-            return None
-        image = QImage(str(root / relative))
-        if image.isNull():
-            return None
-        columns = max(1, int(tileset.data.get("columns", 1)))
-        source_index = int(reference.get("sourceIndex", index))
-        tile_size = int(tileset.data.get("tileSize", document.tile_size if document else 16))
-        source = image.copy((source_index % columns) * tile_size, (source_index // columns) * tile_size, tile_size, tile_size)
-        return source.mirrored(True, False) if int(reference.get("flags", 0)) & 1 else source
 
-    def _draw_entities(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
+        if document is None:
+            return None
+
+        return self.visuals.resolve_tile(
+            reference,
+            fallback_index=index,
+            default_tile_size=document.tile_size,
+        )
+
+    def _entity_visual(
+        self,
+        category: str,
+        value: dict[str, object],
+    ) -> ResolvedStudioVisual | None:
+        if (
+            category != "objects"
+            or self.workspace is None
+        ):
+            return None
+
+        definition_id = value.get(
+            "definitionId"
+        )
+
+        if not isinstance(
+            definition_id,
+            str,
+        ):
+            return None
+
+        definition = self.workspace.find(
+            "objects",
+            definition_id,
+        )
+
+        if (
+            definition is None
+            or not isinstance(
+                definition.data.get("door"),
+                dict,
+            )
+        ):
+            return None
+
+        return self.visuals.resolve_object(
+            definition_id
+        )
+
+    def _draw_visual(
+        self,
+        painter: QPainter,
+        visual: ResolvedStudioVisual,
+        world: tuple[int, int],
+        viewport_width: int,
+        viewport_height: int,
+        opacity: float = 1.0,
+    ) -> tuple[int, int, int, int]:
+        world_x = (
+            int(world[0])
+            - visual.anchor_x
+            + visual.draw_offset_x
+        )
+
+        world_y = (
+            int(world[1])
+            - visual.anchor_y
+            + visual.draw_offset_y
+        )
+
+        point = self._point(
+            world_x,
+            world_y,
+            viewport_width,
+            viewport_height,
+        )
+
+        width = max(
+            1,
+            round(
+                visual.image.width()
+                * self.camera.zoom
+            ),
+        )
+
+        height = max(
+            1,
+            round(
+                visual.image.height()
+                * self.camera.zoom
+            ),
+        )
+
+        image = visual.image.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+
+        old_opacity = (
+            painter.opacity()
+        )
+
+        painter.setOpacity(
+            opacity
+        )
+
+        painter.drawImage(
+            point.x(),
+            point.y(),
+            image,
+        )
+
+        painter.setOpacity(
+            old_opacity
+        )
+
+        return (
+            point.x(),
+            point.y(),
+            width,
+            height,
+        )
+
+    def _draw_entities(
+        self,
+        painter: QPainter,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> None:
         document = self.document
         assert document is not None
-        colors = {"enemies": QColor("#ed6a5a"), "npcs": QColor("#6ac5ed"), "objects": QColor("#edc35a"), "pickups": QColor("#9be564")}
+
+        colors = {
+            "enemies": QColor("#ed6a5a"),
+            "npcs": QColor("#6ac5ed"),
+            "objects": QColor("#edc35a"),
+            "pickups": QColor("#9be564"),
+        }
+
         for category in ENTITY_CATEGORIES:
-            values = document.data.get(category, [])
-            if not isinstance(values, list):
+            values = document.data.get(
+                category,
+                [],
+            )
+
+            if not isinstance(
+                values,
+                list,
+            ):
                 continue
+
             for value in values:
-                if not isinstance(value, dict) or not isinstance(value.get("position"), dict):
+                if (
+                    not isinstance(
+                        value,
+                        dict,
+                    )
+                    or not isinstance(
+                        value.get("position"),
+                        dict,
+                    )
+                ):
                     continue
-                position = value["position"]
-                point = self._point(int(position.get("x", 0)), int(position.get("y", 0)), viewport_width, viewport_height)
-                radius = max(3, round(5 * self.camera.zoom))
-                color = colors[category]
-                identifier = value.get("id")
-                if self.selection.matches(category, identifier):
-                    painter.setPen(QPen(QColor("white"), 2)); painter.drawEllipse(point, radius + 3, radius + 3)
-                painter.setBrush(color); painter.setPen(QPen(color.darker(140), 1)); painter.drawEllipse(point, radius, radius)
-                painter.setPen(QColor("#f5f5f5")); painter.drawText(point + QPoint(radius + 3, 4), str(value.get("definitionId", "")))
+
+                position = value[
+                    "position"
+                ]
+
+                identifier = value.get(
+                    "id"
+                )
+
+                world = (
+                    int(
+                        position.get(
+                            "x",
+                            0,
+                        )
+                    ),
+                    int(
+                        position.get(
+                            "y",
+                            0,
+                        )
+                    ),
+                )
+
+                if (
+                    self.moving_selection
+                    == (
+                        category,
+                        identifier,
+                    )
+                    and self.moving_world
+                    is not None
+                ):
+                    world = (
+                        self.moving_world
+                    )
+
+                visual = self._entity_visual(
+                    category,
+                    value,
+                )
+
+                if visual is not None:
+                    bounds = self._draw_visual(
+                        painter,
+                        visual,
+                        world,
+                        viewport_width,
+                        viewport_height,
+                    )
+
+                    if self.selection.matches(
+                        category,
+                        identifier,
+                    ):
+                        painter.setBrush(
+                            Qt.BrushStyle.NoBrush
+                        )
+
+                        painter.setPen(
+                            QPen(
+                                QColor("white"),
+                                2,
+                            )
+                        )
+
+                        painter.drawRect(
+                            bounds[0],
+                            bounds[1],
+                            max(
+                                1,
+                                bounds[2] - 1,
+                            ),
+                            max(
+                                1,
+                                bounds[3] - 1,
+                            ),
+                        )
+
+                    continue
+
+                point = self._point(
+                    world[0],
+                    world[1],
+                    viewport_width,
+                    viewport_height,
+                )
+
+                radius = max(
+                    3,
+                    round(
+                        5
+                        * self.camera.zoom
+                    ),
+                )
+
+                color = colors[
+                    category
+                ]
+
+                if self.selection.matches(
+                    category,
+                    identifier,
+                ):
+                    painter.setPen(
+                        QPen(
+                            QColor("white"),
+                            2,
+                        )
+                    )
+
+                    painter.drawEllipse(
+                        point,
+                        radius + 3,
+                        radius + 3,
+                    )
+
+                painter.setBrush(
+                    color
+                )
+
+                painter.setPen(
+                    QPen(
+                        color.darker(140),
+                        1,
+                    )
+                )
+
+                painter.drawEllipse(
+                    point,
+                    radius,
+                    radius,
+                )
+
+                painter.setPen(
+                    QColor("#f5f5f5")
+                )
+
+                painter.drawText(
+                    point
+                    + QPoint(
+                        radius + 3,
+                        4,
+                    ),
+                    str(
+                        value.get(
+                            "definitionId",
+                            "",
+                        )
+                    ),
+                )
 
     def _draw_spawns(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
         document = self.document
@@ -242,15 +551,22 @@ class CanvasRenderer:
         world: tuple[int, int] | None,
         valid: bool,
         error: str = "",
+        definition_id: str = "",
     ) -> None:
         self.door_preview_cells = tuple(
             cells
         )
+
         self.door_preview_world = world
         self.door_preview_valid = bool(
             valid
         )
+
         self.door_preview_error = error
+
+        self.door_preview_definition_id = (
+            definition_id
+        )
 
     def clear_door_preview(
         self,
@@ -259,6 +575,17 @@ class CanvasRenderer:
         self.door_preview_world = None
         self.door_preview_valid = False
         self.door_preview_error = ""
+        self.door_preview_definition_id = ""
+
+    def door_preview_visual(
+        self,
+    ) -> ResolvedStudioVisual | None:
+        if not self.door_preview_definition_id:
+            return None
+
+        return self.visuals.resolve_object(
+            self.door_preview_definition_id
+        )
 
     def _draw_door_preview(
         self,
@@ -279,6 +606,89 @@ class CanvasRenderer:
             if self.door_preview_valid
             else QColor("#ff6b6b")
         )
+
+        visual = (
+            self.door_preview_visual()
+        )
+
+        if (
+            visual is not None
+            and self.door_preview_world
+            is not None
+        ):
+            bounds = self._draw_visual(
+                painter,
+                visual,
+                self.door_preview_world,
+                viewport_width,
+                viewport_height,
+                opacity=0.55,
+            )
+
+            painter.setBrush(
+                Qt.BrushStyle.NoBrush
+            )
+
+            painter.setPen(
+                QPen(
+                    border,
+                    2,
+                    Qt.PenStyle.DashLine,
+                )
+            )
+
+            painter.drawRect(
+                bounds[0],
+                bounds[1],
+                max(
+                    1,
+                    bounds[2] - 1,
+                ),
+                max(
+                    1,
+                    bounds[3] - 1,
+                ),
+            )
+
+            cell_border = QColor(
+                border
+            )
+
+            cell_border.setAlpha(
+                90
+            )
+
+            painter.setPen(
+                QPen(
+                    cell_border,
+                    1,
+                    Qt.PenStyle.DotLine,
+                )
+            )
+
+            for x, y in self.door_preview_cells:
+                start = self._point(
+                    x * document.tile_size,
+                    y * document.tile_size,
+                    viewport_width,
+                    viewport_height,
+                )
+
+                end = self._point(
+                    (x + 1) * document.tile_size,
+                    (y + 1) * document.tile_size,
+                    viewport_width,
+                    viewport_height,
+                )
+
+                painter.drawRect(
+                    start.x(),
+                    start.y(),
+                    end.x() - start.x(),
+                    end.y() - start.y(),
+                )
+
+            return
 
         fill = (
             QColor(95, 220, 120, 70)

@@ -266,6 +266,7 @@ class MapCanvas(QWidget):
                 None,
                 False,
                 str(error),
+                definition_id=self.selected_door_definition_id,
             )
             return False
 
@@ -274,6 +275,7 @@ class MapCanvas(QWidget):
             preview.position,
             preview.valid,
             preview.error,
+            definition_id=self.selected_door_definition_id,
         )
 
         return preview.valid
