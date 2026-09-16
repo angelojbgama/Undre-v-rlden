@@ -147,7 +147,7 @@ class MainWindow(QMainWindow):
         self.map_canvas = MapCanvas()
         self.map_canvas.set_translator(self.translator)
         self.map_canvas.selection_changed.connect(self._map_selection_changed)
-        self.map_canvas.document_changed.connect(self._map_changed)
+        self.map_canvas.document_changed.connect(self._map_content_changed)
         self.map_canvas.status_changed.connect(self.set_status)
         self.map_canvas.map_properties_requested.connect(
             lambda: self.edit_map(self.project.active_map.map_id))
@@ -460,6 +460,18 @@ class MainWindow(QMainWindow):
             self._map_folders())
         if self.map_canvas.selected_entity:
             self._map_selection_changed(self.map_canvas.selected_entity)
+
+    def _refresh_map_content(self) -> None:
+        self.map_canvas.update()
+
+        if self.map_canvas.selected_entity:
+            self._map_selection_changed(
+                self.map_canvas.selected_entity
+            )
+
+    def _map_content_changed(self) -> None:
+        self.command_coordinator.mark("map")
+        self._refresh_map_content()
 
     def _map_changed(self) -> None:
         self.command_coordinator.mark("map")

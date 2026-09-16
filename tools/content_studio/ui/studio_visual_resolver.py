@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 
 from ..model.content_workspace import ContentWorkspace
@@ -54,6 +55,11 @@ class StudioVisualResolver:
             QImage | None,
         ] = {}
 
+        self._scaled_tile_frames: dict[
+            tuple[int, int],
+            QImage,
+        ] = {}
+
     def set_context(
         self,
         workspace: ContentWorkspace | None,
@@ -79,6 +85,7 @@ class StudioVisualResolver:
         self._source_images.clear()
         self._animation_frames.clear()
         self._tile_frames.clear()
+        self._scaled_tile_frames.clear()
 
     def resolve_object(
         self,
@@ -468,6 +475,56 @@ class StudioVisualResolver:
         ] = result
 
         return result
+
+    def resolve_scaled_tile(
+        self,
+        reference: dict[str, object],
+        fallback_index: int,
+        default_tile_size: int,
+        display_size: int,
+    ) -> QImage | None:
+        if display_size <= 0:
+            return None
+
+        image = self.resolve_tile(
+            reference,
+            fallback_index,
+            default_tile_size,
+        )
+
+        if image is None:
+            return None
+
+        if (
+            image.width() == display_size
+            and image.height() == display_size
+        ):
+            return image
+
+        cache_key = (
+            id(image),
+            int(display_size),
+        )
+
+        cached = self._scaled_tile_frames.get(
+            cache_key
+        )
+
+        if cached is not None:
+            return cached
+
+        scaled = image.scaled(
+            display_size,
+            display_size,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+
+        self._scaled_tile_frames[
+            cache_key
+        ] = scaled
+
+        return scaled
 
     def _visual_image_path(
         self,

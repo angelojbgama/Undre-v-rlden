@@ -126,6 +126,11 @@ class CanvasRenderer:
         document = self.document
         assert document is not None
         left, top, right, bottom = self._visible_tile_bounds(viewport_width, viewport_height)
+        references = document.data.get("tileReferences", [])
+        if not isinstance(references, list):
+            references = []
+        size = max(1, round(document.tile_size * self.camera.zoom))
+
         for layer_index, layer in enumerate(document.layers):
             if not layer.get("visible", True):
                 continue
@@ -139,18 +144,21 @@ class CanvasRenderer:
                     index = cells[cell_index] if cell_index < len(cells) else None
                     if not isinstance(index, int):
                         continue
-                    references = document.data.get("tileReferences", [])
-                    reference = references[index] if isinstance(references, list) and index < len(references) else None
+                    reference = references[index] if index < len(references) else None
                     if not isinstance(reference, dict):
                         continue
                     color = QColor.fromHsv((index * 47 + layer_index * 83) % 360, 110, 185, alpha)
-                    image = self._tile_image(reference, index)
+                    image = self.visuals.resolve_scaled_tile(
+                        reference,
+                        fallback_index=index,
+                        default_tile_size=document.tile_size,
+                        display_size=size,
+                    )
                     target = self._point(x * document.tile_size, y * document.tile_size, viewport_width, viewport_height)
-                    size = max(1, round(document.tile_size * self.camera.zoom))
                     if image is None:
                         painter.fillRect(target.x(), target.y(), size, size, color)
                     else:
-                        painter.drawImage(target.x(), target.y(), image.scaled(size, size, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation))
+                        painter.drawImage(target.x(), target.y(), image)
 
     def _tile_image(
         self,
@@ -299,6 +307,12 @@ class CanvasRenderer:
             "pickups": QColor("#9be564"),
         }
 
+        visible_bounds = self._visible_world_bounds(
+            viewport_width,
+            viewport_height,
+            margin=max(64, document.tile_size * 4),
+        )
+
         for category in ENTITY_CATEGORIES:
             values = document.data.get(
                 category,
@@ -359,6 +373,12 @@ class CanvasRenderer:
                     world = (
                         self.moving_world
                     )
+
+                if not self._world_point_visible(
+                    world,
+                    visible_bounds,
+                ):
+                    continue
 
                 visual = self._entity_visual(
                     category,
@@ -481,6 +501,11 @@ class CanvasRenderer:
         spawns = document.data.get("playerSpawns", [])
         if not isinstance(spawns, list):
             return
+        visible_bounds = self._visible_world_bounds(
+            viewport_width,
+            viewport_height,
+            margin=max(64, document.tile_size * 4),
+        )
         for value in spawns:
             if not isinstance(value, dict) or not isinstance(value.get("position"), dict):
                 continue
@@ -489,6 +514,8 @@ class CanvasRenderer:
             if (self.moving_selection == ("playerSpawns", value.get("id"))
                     and self.moving_world is not None):
                 world = self.moving_world
+            if not self._world_point_visible(world, visible_bounds):
+                continue
             point = self._point(*world, viewport_width, viewport_height)
             radius = max(5, round(7 * self.camera.zoom))
             painter.setPen(QPen(QColor("#ffec99") if self.selection.matches("playerSpawns", value.get("id")) else QColor("#ffffff"), 3 if self.selection.matches("playerSpawns", value.get("id")) else 2))
@@ -501,10 +528,17 @@ class CanvasRenderer:
         links = document.data.get("links", [])
         if not isinstance(links, list):
             return
+        visible_bounds = self._visible_world_bounds(
+            viewport_width,
+            viewport_height,
+            margin=document.tile_size,
+        )
         for link in links:
             if not isinstance(link, dict) or not isinstance(link.get("trigger"), dict):
                 continue
             bounds = link["trigger"]
+            if not self._world_rect_visible(bounds, visible_bounds):
+                continue
             start = self._point(int(bounds.get("x", 0)), int(bounds.get("y", 0)), viewport_width, viewport_height)
             end = self._point(int(bounds.get("x", 0)) + int(bounds.get("width", 0)), int(bounds.get("y", 0)) + int(bounds.get("height", 0)), viewport_width, viewport_height)
             painter.setBrush(QColor(245, 184, 75, 45)); painter.setPen(QPen(QColor("#ffffff") if self.selection.matches("links", link.get("id")) else QColor("#f0b35b"), 3 if self.selection.matches("links", link.get("id")) else 2, Qt.PenStyle.DotLine))
@@ -517,10 +551,17 @@ class CanvasRenderer:
         regions = document.data.get("regions", [])
         if not isinstance(regions, list):
             return
+        visible_bounds = self._visible_world_bounds(
+            viewport_width,
+            viewport_height,
+            margin=document.tile_size,
+        )
         for region in regions:
             if not isinstance(region, dict) or not isinstance(region.get("bounds"), dict):
                 continue
             bounds = region["bounds"]
+            if not self._world_rect_visible(bounds, visible_bounds):
+                continue
             start = self._point(int(bounds.get("x", 0)), int(bounds.get("y", 0)), viewport_width, viewport_height)
             end = self._point(int(bounds.get("x", 0)) + int(bounds.get("width", 0)), int(bounds.get("y", 0)) + int(bounds.get("height", 0)), viewport_width, viewport_height)
             selected = self.selection.matches("regions", region.get("id"))
@@ -744,19 +785,106 @@ class CanvasRenderer:
                 height,
             )
 
+    def _visible_world_bounds(
+        self,
+        viewport_width: int,
+        viewport_height: int,
+        margin: int = 0,
+    ) -> tuple[int, int, int, int]:
+        first = self._world(
+            QPoint(0, 0),
+            viewport_width,
+            viewport_height,
+        )
+
+        last = self._world(
+            QPoint(viewport_width, viewport_height),
+            viewport_width,
+            viewport_height,
+        )
+
+        return (
+            min(first[0], last[0]) - margin,
+            min(first[1], last[1]) - margin,
+            max(first[0], last[0]) + margin,
+            max(first[1], last[1]) + margin,
+        )
+
+    @staticmethod
+    def _world_point_visible(
+        world: tuple[int, int],
+        bounds: tuple[int, int, int, int],
+    ) -> bool:
+        return (
+            bounds[0] <= world[0] <= bounds[2]
+            and bounds[1] <= world[1] <= bounds[3]
+        )
+
+    @staticmethod
+    def _world_rect_visible(
+        rectangle: dict[str, object],
+        bounds: tuple[int, int, int, int],
+    ) -> bool:
+        x = int(
+            rectangle.get(
+                "x",
+                0,
+            )
+        )
+
+        y = int(
+            rectangle.get(
+                "y",
+                0,
+            )
+        )
+
+        width = max(
+            0,
+            int(
+                rectangle.get(
+                    "width",
+                    0,
+                )
+            ),
+        )
+
+        height = max(
+            0,
+            int(
+                rectangle.get(
+                    "height",
+                    0,
+                )
+            ),
+        )
+
+        return not (
+            x + width < bounds[0]
+            or x > bounds[2]
+            or y + height < bounds[1]
+            or y > bounds[3]
+        )
+
     def _draw_grid(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
         document = self.document
         assert document is not None
         size = max(1, round(document.tile_size * self.camera.zoom))
         if size < 4:
             return
+        left, top, right, bottom = self._visible_tile_bounds(
+            viewport_width,
+            viewport_height,
+        )
         origin = self._point(0, 0, viewport_width, viewport_height)
         end = self._point(document.width * document.tile_size, document.height * document.tile_size, viewport_width, viewport_height)
         painter.setPen(QPen(QColor(255, 255, 255, 28), 1))
-        for x in range(document.width + 1):
-            point = self._point(x * document.tile_size, 0, viewport_width, viewport_height); painter.drawLine(point.x(), origin.y(), point.x(), end.y())
-        for y in range(document.height + 1):
-            point = self._point(0, y * document.tile_size, viewport_width, viewport_height); painter.drawLine(origin.x(), point.y(), end.x(), point.y())
+        for x in range(left, min(document.width, right + 1) + 1):
+            point = self._point(x * document.tile_size, 0, viewport_width, viewport_height)
+            painter.drawLine(point.x(), origin.y(), point.x(), end.y())
+        for y in range(top, min(document.height, bottom + 1) + 1):
+            point = self._point(0, y * document.tile_size, viewport_width, viewport_height)
+            painter.drawLine(origin.x(), point.y(), end.x(), point.y())
 
     def _visible_tile_bounds(self, viewport_width: int, viewport_height: int) -> tuple[int, int, int, int]:
         document = self.document
