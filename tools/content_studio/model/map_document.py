@@ -1181,6 +1181,87 @@ class MapDocument:
 
         return persistent_id
 
+    def set_object_transition_configuration(
+            self,
+            persistent_id: int,
+            transition: dict[str, JsonValue] | None,
+            label: str = "Edit Object Transition") -> None:
+        # Update one object placement Transition as a single undo step.
+
+        placement = self.entity(
+            "objects",
+            persistent_id,
+        )
+
+        if placement is None:
+            raise ValueError(
+                "object placement was not found"
+            )
+
+        transition_copy = None
+
+        if transition is not None:
+            target_map_id = transition.get(
+                "targetMapId"
+            )
+            target_spawn_id = transition.get(
+                "targetSpawnId"
+            )
+
+            if (
+                not isinstance(target_map_id, str)
+                or not target_map_id.strip()
+            ):
+                raise ValueError(
+                    "transition targetMapId must be a non-empty string"
+                )
+
+            if (
+                not isinstance(target_spawn_id, str)
+                or not target_spawn_id.strip()
+            ):
+                raise ValueError(
+                    "transition targetSpawnId must be a non-empty string"
+                )
+
+            transition_copy = {
+                "targetMapId": target_map_id.strip(),
+                "targetSpawnId": target_spawn_id.strip(),
+            }
+
+        def operation() -> None:
+            if transition_copy is None:
+                placement.pop(
+                    "transition",
+                    None,
+                )
+                return
+
+            placement["transition"] = copy.deepcopy(
+                transition_copy
+            )
+
+            current_version = self.data.get(
+                "version",
+                1,
+            )
+
+            if (
+                not isinstance(current_version, int)
+                or isinstance(current_version, bool)
+            ):
+                current_version = 1
+
+            self.data["version"] = max(
+                current_version,
+                MAP_VERSION,
+            )
+
+        self.mutate(
+            label,
+            operation,
+        )
+
     def set_object_door_configuration(
             self,
             persistent_id: int,
