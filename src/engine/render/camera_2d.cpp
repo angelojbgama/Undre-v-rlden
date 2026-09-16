@@ -35,14 +35,18 @@ void Camera2D::centerOn(core::WorldPointI target) noexcept {
 }
 
 void Camera2D::clampToWorld(int worldWidthPixels, int worldHeightPixels) noexcept {
-    const int maximumX = worldWidthPixels > viewportWidth_
-                             ? worldWidthPixels - viewportWidth_
-                             : 0;
-    const int maximumY = worldHeightPixels > viewportHeight_
-                             ? worldHeightPixels - viewportHeight_
-                             : 0;
-    position_.x = std::clamp(position_.x, 0, maximumX);
-    position_.y = std::clamp(position_.y, 0, maximumY);
+    const auto clampAxis = [](int position, int worldExtent, int viewportExtent) noexcept {
+        if (worldExtent <= 0) {
+            return 0;
+        }
+        if (worldExtent <= viewportExtent) {
+            return -((viewportExtent - worldExtent) / 2);
+        }
+        return std::clamp(position, 0, worldExtent - viewportExtent);
+    };
+
+    position_.x = clampAxis(position_.x, worldWidthPixels, viewportWidth_);
+    position_.y = clampAxis(position_.y, worldHeightPixels, viewportHeight_);
 }
 
 core::LogicalPointI Camera2D::worldToLogical(core::WorldPointI world) const noexcept {

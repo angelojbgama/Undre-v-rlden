@@ -750,10 +750,29 @@ void testCameraAndCulling() {
     camera.clampToWorld(1024, 768);
     expect(camera.position() == underworld::core::WorldPointI{752, 544},
            "camera clamps right and bottom boundaries");
-    camera.setPosition({100, 100});
-    camera.clampToWorld(100, 100);
-    expect(camera.position() == underworld::core::WorldPointI{0, 0},
-           "map smaller than viewport deterministically fixes camera at origin");
+    camera.centerOn({120, 64});
+    camera.clampToWorld(240, 128);
+    expect(camera.position() == underworld::core::WorldPointI{-16, -48},
+           "map smaller than viewport centers independently on both axes");
+    expect(camera.worldToLogical({0, 0}) == underworld::core::LogicalPointI{16, 48},
+           "centered small map receives symmetric logical padding");
+    expect(camera.visibleTiles(15, 8, 16) == VisibleTileRange{0, 0, 14, 7},
+           "negative centered camera still culls strictly inside a small map");
+
+    camera.centerOn({120, 240});
+    camera.clampToWorld(240, 480);
+    expect(camera.position() == underworld::core::WorldPointI{-16, 128},
+           "narrow map centers horizontally while camera follows vertically");
+
+    camera.centerOn({320, 64});
+    camera.clampToWorld(640, 128);
+    expect(camera.position() == underworld::core::WorldPointI{184, -48},
+           "short map centers vertically while camera follows horizontally");
+
+    camera.centerOn({320, 240});
+    camera.clampToWorld(640, 480);
+    expect(camera.position() == underworld::core::WorldPointI{184, 128},
+           "large map continues following the target on both axes");
 
     camera.setPosition({0, 0});
     expect(camera.visibleTiles(1000, 1000, 16) == VisibleTileRange{0, 0, 16, 13},
