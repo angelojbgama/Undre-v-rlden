@@ -27,6 +27,7 @@ using PersistentNpc = PersistentRuntimeInstance<gameplay::npcs::NpcInstance>;
 struct PersistentObject final {
     simulation::PersistentInstanceId persistentId{};
     ObjectPersistencePolicy persistence{ObjectPersistencePolicy::persistent};
+    std::optional<ObjectTransitionInstanceConfig> transition{};
     gameplay::WorldObjectInstance instance;
 };
 struct DestroyedObjectResidue final {

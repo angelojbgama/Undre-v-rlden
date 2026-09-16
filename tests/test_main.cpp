@@ -4386,6 +4386,25 @@ void testPhase8PersistentMapsAndSave() {
             animatedDoorRuntime.world->doorAnimationFrameIndex(id)==std::optional<std::size_t>{1},"door commits stable open only after full timeline");
     }
 
+    const auto objectTransitionRuntime =
+        builder.build(
+            objectTransitionMap,
+            simulation::SpawnId{"entry.start"});
+
+    expect(
+        objectTransitionRuntime &&
+        objectTransitionRuntime.world->objects().size() == 1 &&
+        objectTransitionRuntime.world->objects().front().transition &&
+        objectTransitionRuntime.world->objects().front()
+            .transition->targetMapId ==
+            simulation::MapId{"map.test.beta"} &&
+        objectTransitionRuntime.world->objects().front()
+            .transition->targetSpawnId ==
+            simulation::SpawnId{"entry.return"} &&
+        !objectTransitionRuntime.world->objects().front()
+            .instance.isDoor(),
+        "RuntimeWorld carries generic object Transition independently of Door");
+
     auto runtime=builder.build(decoded.data,simulation::SpawnId{"entry.start"});
 
     const auto edgeRuntime =
