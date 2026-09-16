@@ -43,6 +43,10 @@ StringTable collectStrings(const MapData& data) {
         if (object.door && object.door->requiredItemId) {
             addString(table.values, object.door->requiredItemId->value());
         }
+        if (object.transition) {
+            addString(table.values, object.transition->targetMapId.value());
+            addString(table.values, object.transition->targetSpawnId.value());
+        }
         for (const auto& stack : object.initialContents) { addString(table.values, stack.itemId.value()); }
     }
     for (const auto& pickup : data.pickups) {
@@ -220,6 +224,37 @@ std::vector<std::uint8_t> serializeDmap(const MapData& data) {
         }
     }
     appendChunk(chunks, {'E','N','T','S'}, std::move(ents));
+    const auto transitionCount = static_cast<std::uint32_t>(
+        std::count_if(
+            data.objects.begin(),
+            data.objects.end(),
+            [](const auto& object) {
+                return object.transition.has_value();
+            }));
+
+    if (transitionCount != 0) {
+        ByteWriter transitions;
+        transitions.writeU32(transitionCount);
+
+        for (const auto& object : data.objects) {
+            if (!object.transition) {
+                continue;
+            }
+
+            transitions.writeU64(object.id.value);
+            transitions.writeU32(
+                strings.index(
+                    object.transition->targetMapId.value()));
+            transitions.writeU32(
+                strings.index(
+                    object.transition->targetSpawnId.value()));
+        }
+
+        appendChunk(
+            chunks,
+            {'O','T','R','N'},
+            std::move(transitions));
+    }
     ByteWriter npcs; npcs.writeU32(static_cast<std::uint32_t>(data.npcs.size()));
     for (const auto& npc : data.npcs) {
         npcs.writeU64(npc.id.value); npcs.writeU32(strings.index(npc.definitionId.value()));
@@ -363,11 +398,14 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
         const bool known = tag == "META" || tag == "STRS" || tag == "TREF" || tag == "LAYR" ||
                            tag == "COLL" || tag == "SPWN" || tag == "ENTS" || tag == "NPCS" ||
                            tag == "LINK" || tag == "REGN" || tag == "WRLD" || tag == "ENCT" ||
-                           tag == "SCNE";
+                           tag == "SCNE" || tag == "OTRN";
         if (known && !chunks.emplace(tag, payload).second) return fail("duplicate singleton DMAP chunk");
     }
     if (minor == 0 && chunks.contains("NPCS")) {
         return fail("NPCS chunk requires DMAP minor version 1");
+    }
+    if (minor < 7 && chunks.contains("OTRN")) {
+        return fail("OTRN chunk requires DMAP minor version 7");
     }
     for (const char* required : {"META","STRS","TREF","LAYR","COLL","SPWN","ENTS","LINK"}) {
         if (!chunks.contains(required)) return fail(std::string("missing required DMAP chunk ") + required);
@@ -494,6 +532,58 @@ DmapLoadResult deserializeDmap(std::span<const std::uint8_t> bytes,
             else return fail("unknown pickup payload kind");
             data.pickups.push_back({{id},std::move(def),std::move(visual),point,area,std::move(payload)});}
         if(in.remaining()!=0)return fail("trailing ENTS data");
+    }
+    if (const auto found = chunks.find("OTRN"); found != chunks.end()) {
+        ByteReader in(found->second);
+        std::uint32_t count{};
+
+        if (!readCount(
+                in,
+                MapLimits::maximumPlacements,
+                count)) {
+            return fail("invalid OTRN count");
+        }
+
+        for (std::uint32_t index = 0;
+             index < count;
+             ++index) {
+            std::uint64_t objectId{};
+            simulation::MapId targetMap;
+            simulation::SpawnId targetSpawn;
+
+            if (!in.readU64(objectId) ||
+                !readId(in, strings, targetMap) ||
+                !readId(in, strings, targetSpawn)) {
+                return fail("invalid OTRN record");
+            }
+
+            const auto object = std::find_if(
+                data.objects.begin(),
+                data.objects.end(),
+                [&](const auto& value) {
+                    return value.id.value == objectId;
+                });
+
+            if (object == data.objects.end()) {
+                return fail(
+                    "OTRN references unknown object");
+            }
+
+            if (object->transition) {
+                return fail(
+                    "duplicate OTRN object transition");
+            }
+
+            object->transition =
+                ObjectTransitionInstanceConfig{
+                    std::move(targetMap),
+                    std::move(targetSpawn)
+                };
+        }
+
+        if (in.remaining() != 0) {
+            return fail("trailing OTRN data");
+        }
     }
     if (const auto found = chunks.find("NPCS"); found != chunks.end()) {
         ByteReader in(found->second); std::uint32_t count{};

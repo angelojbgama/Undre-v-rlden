@@ -16,7 +16,8 @@ inline constexpr std::uint16_t dmapMajorVersion = 1;
 // adds interactive-object world-rule kinds; minor 5 adds object placement
 // persistence policies, map-authored scenes, and the startScene world action.
 // Minor 6 adds optional per-instance door configuration to object placements.
-inline constexpr std::uint16_t dmapMinorVersion = 6;
+// Minor 7 adds optional generic object Transition records in the OTRN chunk.
+inline constexpr std::uint16_t dmapMinorVersion = 7;
 
 struct DmapLoadResult final {
     bool success{};

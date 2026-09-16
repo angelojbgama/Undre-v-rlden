@@ -8096,7 +8096,18 @@ void testPhase14AuthoredMapFoundation() {
             simulation::DefinitionId{"item.key.blue"} &&
         !dmap.data.objects.front()
             .door->consumeItem,
-        "DMAP 1.6 preserves per-instance door configuration");
+        "DMAP 1.7 preserves per-instance door configuration");
+
+    expect(
+        dmap &&
+        dmap.data.objects.front().transition &&
+        dmap.data.objects.front()
+            .transition->targetMapId ==
+            simulation::MapId{"map.authored.destination"} &&
+        dmap.data.objects.front()
+            .transition->targetSpawnId ==
+            simulation::SpawnId{"entry.gate"},
+        "DMAP 1.7 preserves generic object Transition");
 
     simulation::EventBuffer events;
     maps::RegionTracker tracker;
