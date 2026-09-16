@@ -114,14 +114,55 @@ class WorldProject:
                 self.entry_map_id = new_map_id
             for other in self.maps:
                 links = other.data.get("links", [])
-                if not isinstance(links, list):
-                    continue
-                matching = [link for link in links if isinstance(link, dict) and link.get("targetMapId") == map_id]
-                if matching:
-                    def rename_links(values: list[dict[str, JsonValue]] = matching) -> None:
-                        for value in values:
+                objects = other.data.get("objects", [])
+
+                matching_links = (
+                    [
+                        link
+                        for link in links
+                        if (
+                            isinstance(link, dict)
+                            and link.get("targetMapId") == map_id
+                        )
+                    ]
+                    if isinstance(links, list)
+                    else []
+                )
+
+                matching_transitions = []
+
+                if isinstance(objects, list):
+                    for placement in objects:
+                        if not isinstance(placement, dict):
+                            continue
+
+                        transition = placement.get(
+                            "transition"
+                        )
+
+                        if (
+                            isinstance(transition, dict)
+                            and transition.get("targetMapId") == map_id
+                        ):
+                            matching_transitions.append(
+                                transition
+                            )
+
+                if matching_links or matching_transitions:
+                    def rename_references(
+                            link_values: list[dict[str, JsonValue]] = matching_links,
+                            transition_values: list[dict[str, JsonValue]] = matching_transitions,
+                    ) -> None:
+                        for value in link_values:
                             value["targetMapId"] = new_map_id
-                    other.mutate("Rename Map References", rename_links)
+
+                        for value in transition_values:
+                            value["targetMapId"] = new_map_id
+
+                    other.mutate(
+                        "Rename Map References",
+                        rename_references,
+                    )
         self.dirty = True
 
     def validate_cross_map(self) -> list[Diagnostic]:
@@ -147,6 +188,80 @@ class WorldProject:
                     issues.append(Diagnostic("error", f"link target map does not exist: {target_map}", f"maps[{document.map_id}].links[{index}].targetMapId", "missing_target_map", map_id=document.map_id, source_path=document.path))
                 elif str(link.get("targetSpawnId", "")) not in {str(value.get("id")) for value in (self.map_by_id(target_map).data.get("playerSpawns", []) if self.map_by_id(target_map) else []) if isinstance(value, dict)}:
                     issues.append(Diagnostic("error", "link target spawn does not exist", f"maps[{document.map_id}].links[{index}].targetSpawnId", "missing_target_spawn", map_id=document.map_id, source_path=document.path))
+
+            objects = document.data.get(
+                "objects",
+                [],
+            )
+
+            if isinstance(objects, list):
+                for index, placement in enumerate(objects):
+                    if not isinstance(placement, dict):
+                        continue
+
+                    transition = placement.get(
+                        "transition"
+                    )
+
+                    if not isinstance(transition, dict):
+                        continue
+
+                    target_map = str(
+                        transition.get(
+                            "targetMapId",
+                            "",
+                        )
+                    )
+
+                    target_spawn = str(
+                        transition.get(
+                            "targetSpawnId",
+                            "",
+                        )
+                    )
+
+                    target_document = self.map_by_id(
+                        target_map
+                    )
+
+                    transition_path = (
+                        f"maps[{document.map_id}]"
+                        f".objects[{index}].transition"
+                    )
+
+                    if target_document is None:
+                        issues.append(
+                            Diagnostic(
+                                "error",
+                                f"object transition target map does not exist: {target_map}",
+                                f"{transition_path}.targetMapId",
+                                "missing_target_map",
+                                map_id=document.map_id,
+                                source_path=document.path,
+                            )
+                        )
+                        continue
+
+                    target_spawns = {
+                        str(value.get("id"))
+                        for value in target_document.data.get(
+                            "playerSpawns",
+                            [],
+                        )
+                        if isinstance(value, dict)
+                    }
+
+                    if target_spawn not in target_spawns:
+                        issues.append(
+                            Diagnostic(
+                                "error",
+                                "object transition target spawn does not exist",
+                                f"{transition_path}.targetSpawnId",
+                                "missing_target_spawn",
+                                map_id=document.map_id,
+                                source_path=document.path,
+                            )
+                        )
         return issues
 
     def authored_data(self) -> dict[str, JsonValue]:
