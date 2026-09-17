@@ -277,7 +277,6 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.object_library)
         self._map_panels.addWidget(self.door_library)
         self._map_panels.addWidget(self.player_library)
-        self._map_panels.addWidget(self.attack_library)
         self._map_panels.addWidget(self.item_library)
         self._map_panels.addWidget(self.smart_terrain)
         self._map_panels.addWidget(self.semantic_editor)
@@ -367,7 +366,7 @@ class MainWindow(QMainWindow):
         if mode_index == 0:
             return tuple(self.translator(key) for key in (
                 "maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-                "doors_tab", "players_tab", "attacks_tab", "items_tab", "smart_terrain", "semantic_editor",
+                "doors_tab", "players_tab", "items_tab", "smart_terrain", "semantic_editor",
                 "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
             ))
         return (self.translator("definitions"), self.translator("assets"))
