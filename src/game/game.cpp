@@ -252,12 +252,16 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
     const auto assetRoot = options.assetRoot.value_or(findLicensedAssetRoot(executableDirectory));
     platform.log(platform::LogLevel::info, "startup: asset root=" + assetRoot.string());
     content::ContentSourceSelection selection;
+    selection.kind = content::ContentSourceKind::workspaceDirectory;
     if (options.contentRoot) {
-        selection.kind = content::ContentSourceKind::workspaceDirectory;
         selection.workspaceRoot = *options.contentRoot;
     } else if (const auto projectContent = findProjectContentRoot(executableDirectory)) {
-        selection.kind = content::ContentSourceKind::workspaceDirectory;
         selection.workspaceRoot = *projectContent;
+    } else {
+        platform.log(platform::LogLevel::error,
+                     "startup: no content workspace found; authored content is "
+                     "required (builtin-only content is no longer supported)");
+        return 1;
     }
     platform.log(platform::LogLevel::info, "startup: loading content source");
     const auto source = content::loadContentSource(selection);
@@ -269,14 +273,10 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         return 1;
     }
     platform.log(platform::LogLevel::info, "startup: content source loaded");
-    if (source.content->sourceKind == content::ContentSourceKind::builtin) {
-        platform.log(platform::LogLevel::info, "content source: builtin");
-    } else {
-        platform.log(platform::LogLevel::info,
-                     "content source: workspace root=" +
-                     source.content->sourceRoot.string() + " files=" +
-                     std::to_string(source.content->sourceFileCount));
-    }
+    platform.log(platform::LogLevel::info,
+                 "content source: workspace root=" +
+                 source.content->sourceRoot.string() + " files=" +
+                 std::to_string(source.content->sourceFileCount));
     platform.log(platform::LogLevel::info, "startup: validating runtime requirements");
     const auto runtimeRequirements =
         content::validateCurrentRuntimeContentRequirements(source.content->registry);
@@ -291,9 +291,7 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
     platform.log(platform::LogLevel::info, "startup: constructing game runtime");
     GameRuntime runtime(platform.imageDecoder(),
                     assetRoot, executableDirectory, std::move(source.content->registry), options,
-                    source.content->sourceKind == content::ContentSourceKind::workspaceDirectory
-                        ? std::optional<std::filesystem::path>{source.content->sourceRoot}
-                        : std::nullopt);
+                    std::optional<std::filesystem::path>{source.content->sourceRoot});
     platform.log(platform::LogLevel::info, "startup: game runtime constructed");
     core::FixedStepAccumulator accumulator(fixedStepConfig);
 

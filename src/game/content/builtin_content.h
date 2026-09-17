@@ -5,7 +5,9 @@
 
 namespace underworld::game::content {
 
+// Fallback base layer for non-combat content (tiles, enemies, behaviors,
+// visuals, dialogs, quests). Concrete attacks and projectiles are authored
+// content and must come from a workspace overlay.
 [[nodiscard]] AuthoredContentPack makeBuiltinAuthoredContent();
-[[nodiscard]] GameContentRegistry compileBuiltinContentOrThrow();
 
 } // namespace underworld::game::content

@@ -93,15 +93,14 @@ ContentSourceLoadResult loadContentSource(const ContentSourceSelection& selectio
                 {}};
     }
 
-    const auto authored = makeBuiltinAuthoredContent();
-    const auto compiled = compileContent(authored);
-    if (!compiled.registry) {
-        ContentSourceLoadResult result;
-        addCompileDiagnostics(result, compiled.report);
-        return result;
-    }
-    return {LoadedContentBundle{ContentSourceKind::builtin, {}, 0, authored,
-                                std::move(*compiled.registry), {}}, {}};
+    // The builtin-only content source no longer exists: concrete attacks and
+    // projectiles are authored content, so a workspace is always required.
+    ContentSourceLoadResult result;
+    result.diagnostics.push_back({ContentWorkspaceDiagnosticStage::io, {}, {}, 0, 0, {},
+                                  "builtin_source_unsupported", {}, {},
+                                  "builtin-only content is no longer supported; "
+                                  "a content workspace is required"});
+    return result;
 }
 
 std::string formatContentWorkspaceDiagnostic(

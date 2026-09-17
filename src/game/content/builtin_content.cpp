@@ -1,21 +1,11 @@
 #include "game/content/builtin_content.h"
 
-#include "game/content/content_compiler.h"
-
-#include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 namespace underworld::game::content {
 namespace {
-
-using gameplay::AttackKind;
-using gameplay::AttackTimelineEventKind;
-using gameplay::FacingDirection;
-
-gameplay::DirectionalBoxes swordBoxes() { return {{{{-10, -1, 20, 18}, {-10, -27, 20, 19}, {-27, -18, 21, 18}, {6, -18, 21, 18}}}}; }
-gameplay::DirectionalOffsets arrowOffsets() { return {{{{0, 3}, {0, -20}, {-12, -10}, {12, -10}}}}; }
 
 struct DungeonTileSeed { int x; int y; const char* name; authoring::TileRole role; authoring::TileTopology topology; const char* family; };
 constexpr DungeonTileSeed dungeonTiles[] = {
@@ -97,16 +87,6 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
         pack.animations.push_back(std::move(value));
     };
 
-    image("image.enemy.soldier.idle", "Characters/Enemies/Evil_soldier/idle/evil_soldier_idle.png");
-    image("image.enemy.soldier.walk", "Characters/Enemies/Evil_soldier/walking/evil_soldier_walking.png");
-    image("image.enemy.soldier.attack", "Characters/Enemies/Evil_soldier/attacking/evil_soldier_attacking.png");
-    image("image.enemy.soldier.death", "Characters/Enemies/Evil_soldier/death/evil_soldier_death.png");
-    image("image.enemy.skull.idle", "Characters/Enemies/Skull/idle/skull_idle.png");
-    image("image.enemy.skull.walk", "Characters/Enemies/Skull/walking/skull_walking.png");
-    image("image.enemy.skull.attack", "Characters/Enemies/Skull/attacking/skull_attacking.png");
-    image("image.enemy.skull.death", "Characters/Enemies/Skull/death/skull_death.png");
-    image("image.projectile.player.arrow", "Characters/Player/attacking/arrow.png");
-    image("image.projectile.skull.arrow", "Characters/Enemies/Skull/attacking/arrow.png");
     image("image.pickup.heart", "Objects/heart.png");
     image("image.pickup.money", "Objects/money.png");
     image("image.item.potion", "Objects/life_potion.png");
@@ -125,28 +105,11 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     const auto addStatic = [&](const char* id, const char* imageId, core::PointI anchor) {
         pack.staticSprites.push_back({{id}, {imageId}, std::nullopt, anchor});
     };
-    addStatic("visual.projectile.player.arrow", "image.projectile.player.arrow", {8, 8});
-    addStatic("visual.projectile.skull.arrow", "image.projectile.skull.arrow", {8, 8});
     addStatic("visual.pickup.heart", "image.pickup.heart", {8, 8});
     addStatic("visual.pickup.money", "image.pickup.money", {8, 8});
     addStatic("visual.item.life_potion", "image.item.potion", {8, 8});
     addStatic("visual.item.training_armor", "image.item.potion", {8, 8});
     addStatic("visual.item.power_charm", "image.item.potion", {8, 8});
-
-    const auto soldierIdle = directional("anim.enemy.soldier.idle", "image.enemy.soldier.idle", 32, 32, 2, 30, {16, 31}, true);
-    const auto soldierWalk = directional("anim.enemy.soldier.walk", "image.enemy.soldier.walk", 32, 32, 4, 8, {16, 31}, true);
-    const auto soldierDeath = directional("anim.enemy.soldier.death", "image.enemy.soldier.death", 32, 32, 2, 8, {16, 31}, false);
-    const auto soldierAttack = directional("anim.enemy.soldier.attack", "image.enemy.soldier.attack", 48, 48, 4, 6, {24, 31}, false);
-    const auto skullIdle = directional("anim.enemy.skull.idle", "image.enemy.skull.idle", 32, 32, 2, 30, {16, 31}, true);
-    const auto skullWalk = directional("anim.enemy.skull.walk", "image.enemy.skull.walk", 32, 32, 4, 8, {16, 31}, true);
-    const auto skullDeath = directional("anim.enemy.skull.death", "image.enemy.skull.death", 32, 32, 2, 8, {16, 31}, false);
-    const auto skullAttack = directional("anim.enemy.skull.attack", "image.enemy.skull.attack", 32, 32, 2, 8, {16, 31}, false);
-    pack.enemyVisuals.push_back({{"visual.enemy.evil_soldier"}, soldierIdle, soldierWalk,
-                                 std::nullopt, soldierDeath, std::nullopt,
-                                 {{{"visual.action.soldier.sword"}, soldierAttack}}});
-    pack.enemyVisuals.push_back({{"visual.enemy.skull"}, skullIdle, skullWalk,
-                                 std::nullopt, skullDeath, std::nullopt,
-                                 {{{"visual.action.skull.arrow"}, skullAttack}}});
 
     objectAnimation("anim.object.chest.idle", "image.object.chest", 16, 32, 1, 1, {8, 31}, true);
     objectAnimation("anim.object.chest.opened", "image.object.chest", 16, 32, 5, 4, {8, 31}, false);
@@ -221,18 +184,9 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.playerProgressions.push_back({{"progression.player.default"}, {5}, {0, 100, 250}});
     pack.players.push_back({{"player.hero"}, {"visual.player.hero"},
                             {"progression.player.default"}, std::nullopt});
-    pack.projectiles = {
-        {{"projectile.player.arrow"}, {"visual.projectile.player.arrow"}, FacingDirection::up, 4, 120, 6, 6, arrowOffsets()},
-        {{"projectile.skull.arrow"}, {"visual.projectile.skull.arrow"}, FacingDirection::right, 4, 120, 6, 6, arrowOffsets()}};
-    pack.attacks = {
-        {{"attack.player.sword"}, AttackKind::meleeHitbox, {1, 32}, 24, 0, 0, 27, {"visual.player.sword"}, swordBoxes(), std::nullopt, {{6, AttackTimelineEventKind::activateHitbox}, {18, AttackTimelineEventKind::deactivateHitbox}}},
-        {{"attack.player.bow"}, AttackKind::projectile, {1, 32}, 16, 0, 0, 512, {"visual.player.bow"}, std::nullopt, {"projectile.player.arrow"}, {{8, AttackTimelineEventKind::spawnProjectile}}},
-        {{"attack.soldier.sword"}, AttackKind::meleeHitbox, {1, 7}, 24, 45, 0, 27, {"visual.action.soldier.sword"}, swordBoxes(), std::nullopt, {{6, AttackTimelineEventKind::activateHitbox}, {18, AttackTimelineEventKind::deactivateHitbox}}},
-        {{"attack.skull.arrow"}, AttackKind::projectile, {1, 5}, 16, 60, 0, 120, {"visual.action.skull.arrow"}, std::nullopt, {"projectile.skull.arrow"}, {{8, AttackTimelineEventKind::spawnProjectile}}}};
-    pack.behaviors = {{{"behavior.soldier.melee"}, 100, 132, 60, 90}, {{"behavior.skull.ranged"}, 150, 184, 75, 90}};
-    pack.enemies = {
-        {{"enemy.evil_soldier"}, {"visual.enemy.evil_soldier"}, {"behavior.soldier.melee"}, gameplay::Faction::enemy, 3, 256, {-5, -8, 10, 8}, {-7, -22, 14, 22}, {{"attack.soldier.sword"}}, {{"reward.enemy.evil_soldier"}}},
-        {{"enemy.skull"}, {"visual.enemy.skull"}, {"behavior.skull.ranged"}, gameplay::Faction::enemy, 3, 192, {-5, -8, 10, 8}, {-7, -22, 14, 22}, {{"attack.skull.arrow"}}, {{"reward.enemy.skull"}}}};
+    // Combat content (attacks, projectiles, enemies, behaviors, enemy
+    // visuals, combat quests) is authored content. The fallback base layer
+    // stays self-consistent without it.
     pack.items = {{{"item.life_potion"}, {"visual.item.life_potion"}, gameplay::ItemCategory::consumable, 66, gameplay::ItemUseDefinition{gameplay::ItemUseKind::restoreHealth, 2}}};
     pack.items.push_back({{"item.training_armor"}, {"visual.item.training_armor"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::armor, {2, 0}}});
     pack.items.push_back({{"item.power_charm"}, {"visual.item.power_charm"}, gameplay::ItemCategory::equipment, 1, std::nullopt, AuthoredEquipment{AuthoredEquipmentSlot::accessory, {0, 1}}});
@@ -250,9 +204,6 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"pickup.life_potion"}, {"visual.item.life_potion"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.life_potion"}, 1}},
         {{"pickup.training_armor"}, {"visual.item.training_armor"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.training_armor"}, 1}},
         {{"pickup.power_charm"}, {"visual.item.power_charm"}, {-5, -5, 10, 10}, AuthoredItemPickup{{"item.power_charm"}, 1}}};
-    pack.rewardProfiles = {
-        {{"reward.enemy.evil_soldier"}, 60, {{{"pickup.money"}, 10000, 1, 2}, {{"pickup.life_potion"}, 2000, 1, 1}}},
-        {{"reward.enemy.skull"}, 40, {{{"pickup.money"}, 10000, 1, 1}, {{"pickup.heart"}, 2500, 1, 1}}}};
     pack.rewardGrants = {{{"reward.quest.scholar.path"}, 40, 25, {{{"item.life_potion"}, 2}, {{"item.training_armor"}, 1}}}};
     pack.shops = {{{"shop.development.general"}, {{{"item.life_potion"}, 25, 10}, {{"item.training_armor"}, 150, 60}, {{"item.power_charm"}, 200, 80}}}};
     pack.presentationEffects = {
@@ -280,13 +231,8 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.dialogues.push_back(std::move(guardDialogue));
     AuthoredDialogue scholarDialogue;
     scholarDialogue.id = {"dialogue.scholar.greeting"}; scholarDialogue.entryNodeId = {"scholar.entry"};
-    AuthoredDialogueChoice ask;
-    ask.label = "Ask about the dungeon"; ask.targetNodeId = {"scholar.left"};
-    ask.actions.push_back({gameplay::dialogue::DialogueActionKind::setFlag, {"dialogue.scholar.asked"}});
-    ask.actions.push_back({gameplay::dialogue::DialogueActionKind::startQuest, {"quest.scholar.path"}});
-    AuthoredDialogueChoice farewell{"Say farewell", {"scholar.right"}, {{gameplay::dialogue::DialogueConditionKind::flagNotSet, {"dialogue.scholar.asked"}}}, {}};
-    AuthoredDialogueChoice recall{"Recall the lesson", {"scholar.left"}, {{gameplay::dialogue::DialogueConditionKind::flagSet, {"dialogue.scholar.asked"}}}, {}};
-    scholarDialogue.nodes.push_back({{"scholar.entry"}, "Scholar", {"The old stones remember every footstep."}, {}, {std::move(ask), std::move(farewell), std::move(recall)}});
+    AuthoredDialogueChoice farewell{"Say farewell", {"scholar.right"}, {}, {}};
+    scholarDialogue.nodes.push_back({{"scholar.entry"}, "Scholar", {"The old stones remember every footstep."}, {}, {std::move(farewell)}});
     scholarDialogue.nodes.push_back({{"scholar.left"}, "Scholar", {"Study the walls, but trust the path beneath your feet."}, {}, {}});
     scholarDialogue.nodes.push_back({{"scholar.right"}, "Scholar", {"Then walk carefully, friend."}, {}, {}});
     pack.dialogues.push_back(std::move(scholarDialogue));
@@ -300,13 +246,11 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     pack.dialogues.push_back(std::move(merchantDialogue));
     AuthoredQuest scholarQuest;
     scholarQuest.id = {"quest.scholar.path"}; scholarQuest.title = "The Scholar's Path";
-    scholarQuest.objectives.push_back({{"quest.scholar.kill"}, gameplay::quests::QuestObjectiveKind::kill, {"enemy.evil_soldier"}, 1, "Defeat an evil soldier."});
     scholarQuest.objectives.push_back({{"quest.scholar.pickup"}, gameplay::quests::QuestObjectiveKind::pickup, {"pickup.heart"}, 1, "Find a heart pickup."});
     scholarQuest.tags = {"story", "scholar"};
     scholarQuest.rewardGrantId = {"reward.quest.scholar.path"};
     pack.quests.push_back(std::move(scholarQuest));
     pack.authoringDescriptors = {
-        {{"enemy.evil_soldier"}, "Evil Soldier", AuthoringCategory::enemy, {"melee", "hostile"}}, {{"enemy.skull"}, "Skull", AuthoringCategory::enemy, {"ranged", "hostile"}},
         {{"object.chest"}, "Chest", AuthoringCategory::object, {"container", "interactable"}}, {{"object.crate"}, "Crate", AuthoringCategory::object, {"destructible", "prop"}},
         {{"object.vase"}, "Vase", AuthoringCategory::object, {"destructible", "prop"}},
         {{"object.stone_block"}, "Stone Block", AuthoringCategory::object, {"destructible", "prop", "stone"}},
@@ -314,8 +258,6 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"object.fire_block"}, "Fire Block", AuthoringCategory::object, {"destructible", "prop", "fire"}},
         {{"pickup.heart"}, "Heart", AuthoringCategory::pickup, {"health"}}, {{"pickup.money"}, "Money", AuthoringCategory::pickup, {"currency"}}, {{"pickup.life_potion"}, "Life Potion", AuthoringCategory::pickup, {"item", "consumable"}},
         {{"npc.guard"}, "Guard", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.scholar"}, "Scholar", AuthoringCategory::npc, {"npc", "dialogue"}}, {{"npc.merchant"}, "Merchant", AuthoringCategory::npc, {"npc", "merchant", "shop"}},
-        {{"reward.enemy.evil_soldier"}, "Evil Soldier Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
-        {{"reward.enemy.skull"}, "Skull Reward", AuthoringCategory::rewardProfile, {"reward", "enemy"}},
         {{"reward.quest.scholar.path"}, "Scholar Quest Reward", AuthoringCategory::rewardGrant, {"reward", "quest"}},
         {{"shop.development.general"}, "Development General Shop", AuthoringCategory::shop, {"shop", "development", "general"}},
         {{"item.life_potion"}, "Life Potion", AuthoringCategory::item, {"item", "consumable"}},
@@ -325,16 +267,6 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     addBuiltinDungeonSemantics(pack);
     addBuiltinVisualContent(pack);
     return pack;
-}
-
-GameContentRegistry compileBuiltinContentOrThrow() {
-    const auto result = compileContent(makeBuiltinAuthoredContent());
-    if (!result) {
-        std::string message = "builtin content compilation failed";
-        for (const auto& diagnostic : result.report.diagnostics) if (diagnostic.severity == ContentDiagnosticSeverity::error) message += " [" + diagnostic.code + "] " + diagnostic.message;
-        throw std::runtime_error(message);
-    }
-    return *result.registry;
 }
 
 } // namespace underworld::game::content
