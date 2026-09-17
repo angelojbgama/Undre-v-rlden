@@ -381,6 +381,8 @@ TRANSLATIONS["pt-BR"].update({
     "door_open_attack": "Abre com ataque",
     "door_open_encounter": "Abre quando encounter completar",
     "door_open_condition_none": "Nenhuma",
+    "door_open_attack_sword": "Espada do jogador",
+    "door_open_attack_bow": "Arco do jogador",
 })
 
 TRANSLATIONS["en-US"].update({
@@ -469,6 +471,8 @@ TRANSLATIONS["en-US"].update({
     "door_open_attack": "Opens with attack",
     "door_open_encounter": "Opens when encounter completes",
     "door_open_condition_none": "None",
+    "door_open_attack_sword": "Player sword",
+    "door_open_attack_bow": "Player bow",
 })
 
 

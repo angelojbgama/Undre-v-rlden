@@ -538,10 +538,18 @@ class DoorInstanceServiceTests(
             )
 
             self.assertIn(
+                "attack.player.sword",
+                [
+                    option.definition_id
+                    for option in service.available_attacks()
+                ],
+            )
+
+            self.assertIn(
                 "attack.bash",
                 [
-                    definition.definition_id
-                    for definition in service.available_attacks()
+                    option.definition_id
+                    for option in service.available_attacks()
                 ],
             )
 
@@ -557,12 +565,12 @@ class DoorInstanceServiceTests(
                 required_item_id=None,
                 consume_item=False,
                 persistence="persistent",
-                open_attack_id="attack.bash",
+                open_attack_id="attack.player.sword",
                 encounter_id="encounter.gate",
             )
 
             self.assertEqual(
-                "attack.bash",
+                "attack.player.sword",
                 config.open_attack_id,
             )
 
@@ -583,7 +591,7 @@ class DoorInstanceServiceTests(
             assert isinstance(door, dict)
 
             self.assertEqual(
-                "attack.bash",
+                "attack.player.sword",
                 door["openOnAttackId"],
             )
 

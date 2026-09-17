@@ -18,6 +18,29 @@ PERSISTENCE_POLICIES = (
     "resetOnMapEnter",
 )
 
+# Player attacks are builtin runtime content (not authored through the
+# Studio workspace), so they must be offered explicitly. Ids are stable
+# and must match src/game/content/builtin_content.cpp.
+BUILTIN_ATTACKS = (
+    ("attack.player.sword", "door_open_attack_sword"),
+    ("attack.player.bow", "door_open_attack_bow"),
+)
+
+BUILTIN_ATTACK_IDS = frozenset(
+    attack_id
+    for attack_id, _ in BUILTIN_ATTACKS
+)
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class AttackOption:
+    definition_id: str
+    display_name: str | None = None
+    label_key: str | None = None
+
 
 @dataclass(
     frozen=True,
@@ -199,24 +222,63 @@ class DoorInstanceService:
             else None
         )
 
+    def _known_attack(
+        self,
+        attack_id: str,
+    ) -> bool:
+        if attack_id in BUILTIN_ATTACK_IDS:
+            return True
+
+        return self.workspace.find(
+            "attacks",
+            attack_id,
+        ) is not None
+
     def available_attacks(
         self,
-    ) -> tuple[ContentDefinition, ...]:
-        attacks = list(
-            self.workspace.definitions(
+    ) -> tuple[AttackOption, ...]:
+        entries: list[AttackOption] = []
+
+        offered: set[str] = set()
+
+        for attack_id, label_key in BUILTIN_ATTACKS:
+            entries.append(
+                AttackOption(
+                    definition_id=attack_id,
+                    label_key=label_key,
+                )
+            )
+
+            offered.add(
+                attack_id
+            )
+
+        authored = [
+            definition
+            for definition in self.workspace.definitions(
                 "attacks"
             )
-        )
+            if definition.definition_id
+            not in offered
+        ]
 
-        attacks.sort(
+        authored.sort(
             key=lambda value: (
                 value.display_name.casefold(),
                 value.definition_id,
             )
         )
 
+        entries.extend(
+            AttackOption(
+                definition_id=definition.definition_id,
+                display_name=definition.display_name,
+            )
+            for definition in authored
+        )
+
         return tuple(
-            attacks
+            entries
         )
 
     def available_encounters(
@@ -338,10 +400,9 @@ class DoorInstanceService:
             else ""
         )
 
-        if normalized_attack and self.workspace.find(
-            "attacks",
+        if normalized_attack and not self._known_attack(
             normalized_attack,
-        ) is None:
+        ):
             raise ValueError(
                 f"unknown door open attack: "
                 f"{normalized_attack}"

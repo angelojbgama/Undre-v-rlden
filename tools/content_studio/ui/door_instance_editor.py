@@ -478,11 +478,19 @@ class DoorInstanceEditor(QGroupBox):
             None,
         )
 
-        for definition in service.available_attacks():
+        for option in service.available_attacks():
+            label = (
+                self.translate(
+                    option.label_key
+                )
+                if option.label_key
+                else option.display_name
+            )
+
             self.open_attack.addItem(
-                f"{definition.display_name} "
-                f"[{definition.definition_id}]",
-                definition.definition_id,
+                f"{label} "
+                f"[{option.definition_id}]",
+                option.definition_id,
             )
 
         self._set_data(

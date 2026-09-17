@@ -314,6 +314,14 @@ class DoorInstanceEditorTests(
                 editor.open_attack.currentData(),
             )
 
+            self.assertIn(
+                "attack.player.sword",
+                [
+                    editor.open_attack.itemData(index)
+                    for index in range(editor.open_attack.count())
+                ],
+            )
+
             self.assertEqual(
                 "encounter.gate",
                 editor.open_encounter.currentData(),
