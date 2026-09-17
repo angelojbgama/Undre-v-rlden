@@ -551,3 +551,85 @@ TRANSLATIONS["en-US"].update({
     ),
     "object_transition_saved": "Object transition updated",
 })
+
+
+# attack-library-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "attacks_tab": "Ataques",
+    "attack_search": "Procurar ataques...",
+    "attack_new": "Novo ataque",
+    "attack_edit": "Editar",
+    "attack_delete": "Excluir",
+    "attack_new_title": "Novo ataque",
+    "attack_id": "Id",
+    "attack_kind": "Tipo",
+    "attack_damage": "Dano",
+    "attack_knockback": "Knockback",
+    "attack_total_ticks": "Duração (ticks)",
+    "attack_cooldown": "Cooldown (ticks)",
+    "attack_min_range": "Alcance mínimo",
+    "attack_max_range": "Alcance máximo",
+    "attack_visual_action": "Visual action",
+    "attack_melee_hitboxes": "Hitboxes corpo a corpo",
+    "attack_projectile": "Projétil",
+    "attack_timeline": "Linha de tempo",
+    "attack_event_tick": "Tick",
+    "attack_event_add": "Adicionar",
+    "attack_event_remove": "Remover",
+    "attack_save": "Salvar",
+    "attack_cancel": "Cancelar",
+    "attack_offsetX": "offsetX",
+    "attack_offsetY": "offsetY",
+    "attack_width": "largura",
+    "attack_height": "altura",
+    "attack_status_builtin": "builtin",
+    "attack_status_override": "sobrescrito",
+    "attack_status_authored": "autoral",
+    "attack_saved": "Ataque salvo: {definition_id}",
+    "attack_deleted": "Ataque excluído: {definition_id}",
+    "attack_library_help": (
+        "Ataques builtin mostram os valores do runtime e podem ser "
+        "sobrescritos com o mesmo id. Excluir um override volta ao "
+        "builtin; excluir um ataque referenciado por inimigos é bloqueado."
+    ),
+})
+
+TRANSLATIONS["en-US"].update({
+    "attacks_tab": "Attacks",
+    "attack_search": "Search attacks...",
+    "attack_new": "New attack",
+    "attack_edit": "Edit",
+    "attack_delete": "Delete",
+    "attack_new_title": "New attack",
+    "attack_id": "Id",
+    "attack_kind": "Kind",
+    "attack_damage": "Damage",
+    "attack_knockback": "Knockback",
+    "attack_total_ticks": "Duration (ticks)",
+    "attack_cooldown": "Cooldown (ticks)",
+    "attack_min_range": "Minimum range",
+    "attack_max_range": "Maximum range",
+    "attack_visual_action": "Visual action",
+    "attack_melee_hitboxes": "Melee hitboxes",
+    "attack_projectile": "Projectile",
+    "attack_timeline": "Timeline",
+    "attack_event_tick": "Tick",
+    "attack_event_add": "Add",
+    "attack_event_remove": "Remove",
+    "attack_save": "Save",
+    "attack_cancel": "Cancel",
+    "attack_offsetX": "offsetX",
+    "attack_offsetY": "offsetY",
+    "attack_width": "width",
+    "attack_height": "height",
+    "attack_status_builtin": "builtin",
+    "attack_status_override": "overridden",
+    "attack_status_authored": "authored",
+    "attack_saved": "Attack saved: {definition_id}",
+    "attack_deleted": "Attack deleted: {definition_id}",
+    "attack_library_help": (
+        "Builtin attacks show runtime values and can be overridden with "
+        "the same id. Deleting an override reverts to the builtin; "
+        "deleting an attack referenced by enemies is blocked."
+    ),
+})
