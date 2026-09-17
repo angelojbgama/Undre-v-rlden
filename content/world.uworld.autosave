@@ -400,8 +400,8 @@
           "id": 2,
           "definitionId": "object.breaking_vase",
           "position": {
-            "x": 144,
-            "y": 400
+            "x": 72,
+            "y": 96
           },
           "initialContents": [],
           "persistence": "persistent"
