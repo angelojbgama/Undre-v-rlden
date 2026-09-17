@@ -98,6 +98,87 @@ class AtomicSaveRetryTests(
                 sleep.call_count,
             )
 
+    def test_write_atomic_clears_windows_readonly_target(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = (
+                Path(directory)
+                / "content.json"
+            )
+
+            target.write_text(
+                '{"old": true}\n',
+                encoding="utf-8",
+            )
+
+            real_replace = (
+                json_io.os.replace
+            )
+
+            attempts = 0
+
+            def flaky_replace(
+                source,
+                destination,
+            ):
+                nonlocal attempts
+
+                attempts += 1
+
+                if attempts == 1:
+                    raise windows_error(
+                        5
+                    )
+
+                return real_replace(
+                    source,
+                    destination,
+                )
+
+            readonly_states = iter(
+                (
+                    True,
+                    False,
+                )
+            )
+
+            with (
+                patch.object(
+                    json_io.os,
+                    "replace",
+                    side_effect=flaky_replace,
+                ),
+                patch.object(
+                    json_io,
+                    "_is_windows_readonly",
+                    side_effect=lambda path: next(
+                        readonly_states
+                    ),
+                ),
+                patch.object(
+                    json_io.os,
+                    "chmod",
+                ) as chmod,
+            ):
+                json_io.write_atomic(
+                    target,
+                    {
+                        "value": 11,
+                    },
+                )
+
+            chmod.assert_called_once()
+
+            self.assertEqual(
+                {
+                    "value": 11,
+                },
+                json_io.load_json(
+                    target
+                ),
+            )
+
     def test_write_atomic_does_not_retry_unrelated_replace_error(
         self,
     ) -> None:

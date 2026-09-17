@@ -457,7 +457,7 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root,
             self.project.active_map.tile_size)
         self.player_library.set_context(self.workspace, self.asset_root)
-        self.attack_library.set_context(self.workspace)
+        self.attack_library.set_context(self.workspace, self.asset_root)
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)
         self.semantic_palette.set_workspace(self.workspace)

@@ -1189,6 +1189,7 @@ class PlayerLibraryWidget(QWidget):
             self.workspace,
             self.translate,
             self,
+            self.asset_root,
         )
 
         dialog.changed.connect(self.changed)

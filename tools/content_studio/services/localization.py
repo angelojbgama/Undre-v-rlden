@@ -582,9 +582,53 @@ TRANSLATIONS["pt-BR"].update({
     "attack_min_range": "Alcance mínimo",
     "attack_max_range": "Alcance máximo",
     "attack_visual_action": "Visual action",
+    "attack_kind_info": (
+        "Corpo a corpo usa hitbox em cada direção. "
+        "Projétil cria um projétil durante o ataque."
+    ),
+    "attack_damage_info": (
+        "Dano aplicado quando a hitbox ou o projétil acerta um alvo válido."
+    ),
+    "attack_knockback_info": (
+        "Distância do empurrão em pixels. A seta amarela no preview mostra a direção."
+    ),
+    "attack_total_ticks_info": (
+        "Duração do ataque em ticks. O jogo roda a 60 ticks por segundo."
+    ),
+    "attack_cooldown_info": (
+        "Ticks de espera após o ataque antes de outro ataque poder começar."
+    ),
+    "attack_min_range_info": (
+        "Alcance mínimo útil em pixels. Serve como guia de conteúdo e seleção da IA."
+    ),
+    "attack_max_range_info": (
+        "Alcance máximo em pixels. A linha azul tracejada mostra esse limite."
+    ),
+    "attack_visual_action_info": (
+        "Id que conecta o ataque à animação de ação do player ou inimigo."
+    ),
+    "attack_facing_info": (
+        "Direção usada no preview e na caixa de hitbox exibida."
+    ),
+    "attack_melee_hitboxes_info": (
+        "Offsets são relativos ao ponto dos pés. Largura e altura precisam ser maiores que zero."
+    ),
+    "attack_projectile_info": (
+        "Projétil criado no evento spawnProjectile da linha do tempo."
+    ),
+    "attack_timeline_info": (
+        "Cada faixa é um frame da animação e os círculos são eventos. Clique para inspecionar um tick."
+    ),
     "attack_melee_hitboxes": "Hitboxes corpo a corpo",
     "attack_projectile": "Projétil",
     "attack_timeline": "Linha de tempo",
+    "attack_timeline_play": "Reproduzir",
+    "attack_timeline_pause": "Pausar",
+    "attack_facing": "Direção",
+    "attack_timeline_hint": (
+        "Clique na linha do tempo para ver o frame daquele tick. "
+        "Cada faixa é um frame da animação e os círculos são eventos de ataque."
+    ),
     "attack_event_tick": "Tick",
     "attack_event_add": "Adicionar",
     "attack_event_remove": "Remover",
@@ -622,9 +666,52 @@ TRANSLATIONS["en-US"].update({
     "attack_min_range": "Minimum range",
     "attack_max_range": "Maximum range",
     "attack_visual_action": "Visual action",
+    "attack_kind_info": (
+        "Melee uses a hitbox per facing. Projectile spawns a projectile during the attack."
+    ),
+    "attack_damage_info": (
+        "Damage applied when the hitbox or projectile hits a valid target."
+    ),
+    "attack_knockback_info": (
+        "Push distance in pixels. The yellow arrow in the preview shows the direction."
+    ),
+    "attack_total_ticks_info": (
+        "Attack duration in ticks. The game runs at 60 ticks per second."
+    ),
+    "attack_cooldown_info": (
+        "Waiting ticks after an attack before another attack may start."
+    ),
+    "attack_min_range_info": (
+        "Minimum useful range in pixels. It guides content authoring and AI selection."
+    ),
+    "attack_max_range_info": (
+        "Maximum range in pixels. The dashed blue line shows this limit."
+    ),
+    "attack_visual_action_info": (
+        "ID linking the attack to a player or enemy action animation."
+    ),
+    "attack_facing_info": (
+        "Facing used by the preview and by the displayed hitbox."
+    ),
+    "attack_melee_hitboxes_info": (
+        "Offsets are relative to the feet point. Width and height must be greater than zero."
+    ),
+    "attack_projectile_info": (
+        "Projectile created by the timeline's spawnProjectile event."
+    ),
+    "attack_timeline_info": (
+        "Each span is an animation frame and circles are events. Click to inspect a tick."
+    ),
     "attack_melee_hitboxes": "Melee hitboxes",
     "attack_projectile": "Projectile",
     "attack_timeline": "Timeline",
+    "attack_timeline_play": "Play",
+    "attack_timeline_pause": "Pause",
+    "attack_facing": "Facing",
+    "attack_timeline_hint": (
+        "Click the timeline to preview the frame at that tick. "
+        "Each span is one animation frame; circles are attack events."
+    ),
     "attack_event_tick": "Tick",
     "attack_event_add": "Add",
     "attack_event_remove": "Remove",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 import time
 from pathlib import Path
@@ -31,6 +32,29 @@ def decode_json(text: str) -> Any:
 
 def encode_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, separators=(",", ": ")) + "\n"
+
+
+def _is_windows_readonly(path: Path) -> bool:
+    try:
+        attributes = getattr(path.stat(), "st_file_attributes", 0)
+    except OSError:
+        return False
+
+    readonly = getattr(stat, "FILE_ATTRIBUTE_READONLY", 0x0001)
+
+    return bool(attributes & readonly)
+
+
+def _clear_windows_readonly(path: Path) -> bool:
+    if not path.exists() or not _is_windows_readonly(path):
+        return False
+
+    try:
+        os.chmod(path, stat.S_IWRITE)
+    except OSError:
+        return False
+
+    return not _is_windows_readonly(path)
 
 
 def write_atomic(path: Path, value: Any) -> None:
@@ -85,6 +109,9 @@ def write_atomic(path: Path, value: Any) -> None:
                     >= len(retry_delays)
                 ):
                     raise
+
+                if error.winerror == 5:
+                    _clear_windows_readonly(path)
 
                 time.sleep(
                     retry_delays[
