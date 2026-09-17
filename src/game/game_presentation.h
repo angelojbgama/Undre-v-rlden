@@ -10,6 +10,7 @@
 #include "game/game_view_model.h"
 #include "game/player_visual.h"
 #include "game/gameplay/dialogue/dialogue_session.h"
+#include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/projectile_system.h"
 #include "game/gameplay/world_objects.h"
@@ -77,7 +78,8 @@ private:
     void renderActors(render::Renderer2D& renderer, const GamePresentationFrame& frame,
                       core::WorldPointI cameraPosition) const;
     void renderProjectiles(render::Renderer2D& renderer, const GamePresentationFrame& frame,
-                           core::WorldPointI cameraPosition) const;
+                           core::WorldPointI cameraPosition,
+                           gameplay::ProjectileRenderLayer layer) const;
     void renderEffects(render::Renderer2D& renderer, const GamePresentationFrame& frame,
                        core::WorldPointI cameraPosition) const;
     void renderDebug(render::Renderer2D& renderer, const GamePresentationFrame& frame,

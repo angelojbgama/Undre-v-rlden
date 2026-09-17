@@ -283,9 +283,11 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
 
 void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
                                          const GamePresentationFrame& frame,
-                                         core::WorldPointI cameraPosition) const {
+                                         core::WorldPointI cameraPosition,
+                                         gameplay::ProjectileRenderLayer layer) const {
     for (const auto& projectile : frame.projectiles.projectiles()) {
         if (!projectile.definition) { continue; }
+        if (projectile.definition->renderLayer != layer) { continue; }
         const auto& sprite = frame.staticSprites.require(projectile.definition->visualId);
         const auto rotation = projectileRotation(projectile.definition->canonicalFacing,
                                                   projectile.direction);
@@ -578,8 +580,11 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
     }
     if (groundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(groundLayer), visible, frame.tilesetVisuals, cameraPosition); }
     for (const auto layer : lowLayers) { renderLayer(renderer, map, map.layer(layer), visible, frame.tilesetVisuals, cameraPosition); }
+    renderProjectiles(renderer, frame, cameraPosition,
+                      gameplay::ProjectileRenderLayer::world);
     renderActors(renderer, frame, cameraPosition);
-    renderProjectiles(renderer, frame, cameraPosition);
+    renderProjectiles(renderer, frame, cameraPosition,
+                      gameplay::ProjectileRenderLayer::actor);
     if (foregroundLayer < map.layerCount()) { renderLayer(renderer, map, map.layer(foregroundLayer), visible, frame.tilesetVisuals, cameraPosition); }
     renderEffects(renderer, frame, cameraPosition);
     const auto playerLogical = toLogical(frame.player.feetPosition(), cameraPosition);

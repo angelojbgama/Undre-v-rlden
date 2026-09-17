@@ -442,6 +442,10 @@ struct GameRuntime::State final {
                 if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);
                 }
+            } else if (const auto* playback = std::get_if<simulation::EffectPlayback>(&event)) {
+                if (const auto* clip = runtimeVisualContent.animations.find(playback->animationId)) {
+                    effects->spawnAnimation(playback->position, *clip);
+                }
             } else if (const auto* pickup = std::get_if<simulation::PickupCollected>(&event)) {
                 lastEvent = "PICKUP " + std::to_string(pickup->amount);
             } else if (std::holds_alternative<simulation::NpcTalked>(event)) {

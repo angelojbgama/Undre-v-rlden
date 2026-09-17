@@ -14,8 +14,16 @@ EffectSystem::EffectSystem(std::shared_ptr<const render::AnimationClip> impactCl
 }
 
 void EffectSystem::spawnImpact(core::WorldPointI position) {
+    spawnAnimation(position, impactClip_);
+}
+
+void EffectSystem::spawnAnimation(core::WorldPointI position,
+                                  std::shared_ptr<const render::AnimationClip> clip) {
+    if (!clip) {
+        return;
+    }
     EffectInstance effect{position, {}};
-    effect.animator.play(impactClip_);
+    effect.animator.play(std::move(clip));
     effects_.push_back(std::move(effect));
 }
 

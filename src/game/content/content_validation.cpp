@@ -78,7 +78,9 @@ void validateDirectional(const presentation::DirectionalAnimationRef& clips,
         error(report, kind, id, "missing_binding", "directional animation requires at least one binding", std::string(field));
 }
 
-void validateAttack(const AuthoredAttack& value, ContentValidationReport& report) {
+void validateAttack(const AuthoredAttack& value,
+                    const std::unordered_set<std::string>& animations,
+                    ContentValidationReport& report) {
     if (value.visualActionId.empty() || value.damage.amount <= 0 || value.damage.knockbackPixels < 0)
         error(report, ContentKind::attack, value.id, "invalid_value", "attack visual and damage values are invalid", "definition");
     if (value.totalTicks == 0) error(report, ContentKind::attack, value.id, "invalid_value", "total ticks must be positive", "totalTicks");
@@ -89,6 +91,9 @@ void validateAttack(const AuthoredAttack& value, ContentValidationReport& report
     for (const auto& event : value.timeline) {
         if (event.tick >= value.totalTicks || (!first && event.tick < previous))
             error(report, ContentKind::attack, value.id, "invalid_timeline", "timeline must be ordered and inside totalTicks", "timeline");
+        if (event.kind == gameplay::AttackTimelineEventKind::playEffect &&
+            (event.effectAnimationId.empty() || !contains(animations, event.effectAnimationId)))
+            error(report, ContentKind::attack, value.id, "unknown_reference", "playEffect timeline event requires an existing animation", "animationId");
         previous = event.tick;
         first = false;
     }
@@ -542,7 +547,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile static sprite does not exist", "visualId");
     }
     for (const auto& value : pack.attacks) {
-        validateAttack(value, report);
+        validateAttack(value, animations, report);
         if (value.projectileDefinitionId && !contains(projectiles, *value.projectileDefinitionId))
             error(report, ContentKind::attack, value.id, "unknown_reference", "projectile definition does not exist", "projectileDefinitionId");
     }

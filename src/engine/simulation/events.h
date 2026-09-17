@@ -67,6 +67,13 @@ struct RegionExited final { MapId mapId{}; DefinitionId regionId{}; };
 struct EncounterStarted final { MapId mapId{}; DefinitionId encounterId{}; };
 struct EncounterCompleted final { MapId mapId{}; DefinitionId encounterId{}; };
 struct PresentationEffectRequested final { MapId mapId{}; DefinitionId effectId{}; };
+
+// World-space VFX request: play an authored animation at a world position
+// (e.g. an attack timeline playEffect event anchored to the caster).
+struct EffectPlayback final {
+    DefinitionId animationId{};
+    core::WorldPointI position{};
+};
 struct SceneStarted final { MapId mapId{}; DefinitionId sceneId{}; };
 struct SceneCompleted final { MapId mapId{}; DefinitionId sceneId{}; };
 struct SceneAborted final { MapId mapId{}; DefinitionId sceneId{}; std::string reason; };
@@ -104,6 +111,7 @@ using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileIm
                                      RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
                                      ObjectActivationChanged,
                                      ItemDelivered, ExperienceGranted, PresentationEffectRequested,
+                                     EffectPlayback,
                                      SceneStarted, SceneCompleted, SceneAborted>;
 
 class EventBuffer final {

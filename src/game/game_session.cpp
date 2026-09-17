@@ -382,6 +382,10 @@ void GameSession::advancePlayerAttack() {
                 playerAttack_->lockedFacing,
                 effectivePlayerDamage(playerAttack_->definition->damage),
                 playerAttack_->definition->id));
+        } else if (event.kind == gameplay::AttackTimelineEventKind::playEffect) {
+            events_.emit(simulation::EffectPlayback{
+                event.effectAnimationId,
+                gameplay::addOffset(player_.feetPosition(), event.effectOffset)});
         }
     }
     if (playerAttack_->finished) {

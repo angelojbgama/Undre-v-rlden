@@ -18,6 +18,8 @@ public:
     explicit EffectSystem(std::shared_ptr<const render::AnimationClip> impactClip);
 
     void spawnImpact(core::WorldPointI position);
+    void spawnAnimation(core::WorldPointI position,
+                        std::shared_ptr<const render::AnimationClip> clip);
     void update(std::uint64_t ticks = 1);
     void clear() noexcept { effects_.clear(); }
     [[nodiscard]] const std::vector<EffectInstance>& effects() const noexcept { return effects_; }

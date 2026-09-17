@@ -39,12 +39,22 @@ enum class AttackTimelineEventKind {
     activateHitbox,
     deactivateHitbox,
     spawnProjectile,
+    playEffect,
 };
 
 struct AttackTimelineEvent final {
     std::uint32_t tick{};
     AttackTimelineEventKind kind{AttackTimelineEventKind::activateHitbox};
+    // playEffect payload: authored animation to play and the offset from
+    // the caster's feet point. Ignored by other event kinds.
+    simulation::DefinitionId effectAnimationId{};
+    core::WorldPointI effectOffset{};
     [[nodiscard]] constexpr bool operator==(const AttackTimelineEvent&) const noexcept = default;
+};
+
+enum class ProjectileRenderLayer {
+    world, // drawn behind actors (below the player sprite)
+    actor, // drawn in front of actors (default)
 };
 
 struct ProjectileDefinition final {
@@ -56,6 +66,7 @@ struct ProjectileDefinition final {
     int hitboxWidth{};
     int hitboxHeight{};
     DirectionalOffsets spawnOffsets{};
+    ProjectileRenderLayer renderLayer{ProjectileRenderLayer::actor};
 };
 
 struct AttackDefinition final {
