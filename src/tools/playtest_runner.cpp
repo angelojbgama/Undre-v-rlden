@@ -1,3 +1,4 @@
+#include "../../tests/support/combat_fixture.h"
 #include "engine/platform/headless/headless_audit_platform.h"
 #include "engine/core/game_metrics.h"
 #include "engine/core/image_data.h"
@@ -191,7 +192,7 @@ public:
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
-        game::GameContentRegistry content = game::content::compileBuiltinContentOrThrow();
+        game::GameContentRegistry content = game::content::compileCombatContentOrThrow();
         if (scenario_ == "world_logic" || scenario_ == "interactive_world") {
             const auto fixture = scenario_ == "world_logic"
                 ? makeWorldLogicFixture(root_)
@@ -499,7 +500,7 @@ PointTarget linkCenter(const world::AabbI& area) {
 }
 
 WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
-    auto authored = game::content::makeBuiltinAuthoredContent();
+    auto authored = game::content::makeCombatAuthoredContent();
     for (auto& behavior : authored.behaviors) {
         // The scenario is about authored world orchestration. Keep the real
         // combat path, but prevent the participants from attacking while the
@@ -581,7 +582,7 @@ WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
 }
 
 WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root) {
-    auto authored = game::content::makeBuiltinAuthoredContent();
+    auto authored = game::content::makeCombatAuthoredContent();
     const auto addToggle = [&](std::string id) {
         game::content::AuthoredWorldObject object;
         object.id = simulation::DefinitionId{std::move(id)};
@@ -799,7 +800,7 @@ bool runPresentationFeedback(ScenarioContext& context) {
     namespace maps = game::maps;
     namespace gameplay = game::gameplay;
     if (!runBaseline(context)) { return false; }
-    const auto compiled = game::content::compileContent(game::content::makeBuiltinAuthoredContent());
+    const auto compiled = game::content::compileContent(game::content::makeCombatAuthoredContent());
     if (!context.require(compiled.registry.has_value(), "builtin presentation content did not compile")) {
         return false;
     }
@@ -852,7 +853,7 @@ bool runVisualContent(ScenarioContext& context) {
     namespace simulation = underworld::simulation;
     if (!runBaseline(context)) { return false; }
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
     authored.visualImages.push_back({{"image.playtest.external"},
                                       presentation::VisualAssetRoot::contentWorkspace,
                                       "assets/playtest-character.png"});

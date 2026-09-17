@@ -1,0 +1,2466 @@
+{
+  "format": "dungeon-underworld-content",
+  "version": 5,
+  "tilesets": [],
+  "projectiles": [
+    {
+      "id": "projectile.player.arrow",
+      "visualId": "visual.projectile.player.arrow",
+      "canonicalFacing": "up",
+      "speedPixelsPerTick": 4,
+      "lifetimeTicks": 120,
+      "hitboxWidth": 6,
+      "hitboxHeight": 6,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 3
+        },
+        "up": {
+          "x": 0,
+          "y": -20
+        },
+        "left": {
+          "x": -12,
+          "y": -10
+        },
+        "right": {
+          "x": 12,
+          "y": -10
+        }
+      }
+    },
+    {
+      "id": "projectile.skull.arrow",
+      "visualId": "visual.projectile.skull.arrow",
+      "canonicalFacing": "right",
+      "speedPixelsPerTick": 4,
+      "lifetimeTicks": 120,
+      "hitboxWidth": 6,
+      "hitboxHeight": 6,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 3
+        },
+        "up": {
+          "x": 0,
+          "y": -20
+        },
+        "left": {
+          "x": -12,
+          "y": -10
+        },
+        "right": {
+          "x": 12,
+          "y": -10
+        }
+      }
+    }
+  ],
+  "attacks": [
+    {
+      "id": "attack.player.bow",
+      "kind": "projectile",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 32
+      },
+      "totalTicks": 16,
+      "cooldownTicks": 0,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 512,
+      "visualActionId": "visual.player.bow",
+      "projectileDefinitionId": "projectile.player.arrow",
+      "timeline": [
+        {
+          "tick": 8,
+          "kind": "spawnProjectile"
+        }
+      ]
+    },
+    {
+      "id": "attack.player.sword",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 32
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 0,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 27,
+      "visualActionId": "visual.player.sword",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -10,
+          "offsetY": -1,
+          "width": 20,
+          "height": 18
+        },
+        "up": {
+          "offsetX": -10,
+          "offsetY": -27,
+          "width": 20,
+          "height": 19
+        },
+        "left": {
+          "offsetX": -27,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        },
+        "right": {
+          "offsetX": 6,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 18,
+          "kind": "deactivateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.soldier.sword",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 7
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 45,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 27,
+      "visualActionId": "visual.action.soldier.sword",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -10,
+          "offsetY": -1,
+          "width": 20,
+          "height": 18
+        },
+        "up": {
+          "offsetX": -10,
+          "offsetY": -27,
+          "width": 20,
+          "height": 19
+        },
+        "left": {
+          "offsetX": -27,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        },
+        "right": {
+          "offsetX": 6,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 18,
+          "kind": "deactivateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.skull.arrow",
+      "kind": "projectile",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 5
+      },
+      "totalTicks": 16,
+      "cooldownTicks": 60,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 120,
+      "visualActionId": "visual.action.skull.arrow",
+      "projectileDefinitionId": "projectile.skull.arrow",
+      "timeline": [
+        {
+          "tick": 8,
+          "kind": "spawnProjectile"
+        }
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "behavior.soldier.melee",
+      "detectionRangePixels": 100,
+      "disengageRangePixels": 132,
+      "idleDurationTicks": 60,
+      "wanderDurationTicks": 90
+    },
+    {
+      "id": "behavior.skull.ranged",
+      "detectionRangePixels": 150,
+      "disengageRangePixels": 184,
+      "idleDurationTicks": 75,
+      "wanderDurationTicks": 90
+    }
+  ],
+  "enemies": [
+    {
+      "id": "enemy.evil_soldier",
+      "visualSetId": "visual.enemy.evil_soldier",
+      "behaviorProfileId": "behavior.soldier.melee",
+      "faction": "enemy",
+      "maximumHealth": 3,
+      "movementSpeedSubpixelsPerTick": 256,
+      "collisionBody": {
+        "offsetX": -5,
+        "offsetY": -8,
+        "width": 10,
+        "height": 8
+      },
+      "hurtbox": {
+        "offsetX": -7,
+        "offsetY": -22,
+        "width": 14,
+        "height": 22
+      },
+      "attackIds": [
+        "attack.soldier.sword"
+      ],
+      "rewardProfileId": "reward.enemy.evil_soldier"
+    },
+    {
+      "id": "enemy.skull",
+      "visualSetId": "visual.enemy.skull",
+      "behaviorProfileId": "behavior.skull.ranged",
+      "faction": "enemy",
+      "maximumHealth": 3,
+      "movementSpeedSubpixelsPerTick": 192,
+      "collisionBody": {
+        "offsetX": -5,
+        "offsetY": -8,
+        "width": 10,
+        "height": 8
+      },
+      "hurtbox": {
+        "offsetX": -7,
+        "offsetY": -22,
+        "width": 14,
+        "height": 22
+      },
+      "attackIds": [
+        "attack.skull.arrow"
+      ],
+      "rewardProfileId": "reward.enemy.skull"
+    }
+  ],
+  "items": [],
+  "objects": [],
+  "pickups": [],
+  "npcVisuals": [],
+  "npcs": [],
+  "dialogues": [
+    {
+      "id": "dialogue.scholar.greeting",
+      "entryNodeId": "scholar.entry",
+      "nodes": [
+        {
+          "id": "scholar.entry",
+          "speaker": "Scholar",
+          "pages": [
+            "The old stones remember every footstep."
+          ],
+          "nextNodeId": "",
+          "choices": [
+            {
+              "label": "Ask about the dungeon",
+              "targetNodeId": "scholar.left",
+              "conditions": [],
+              "actions": [
+                {
+                  "kind": "setFlag",
+                  "targetId": "dialogue.scholar.asked"
+                },
+                {
+                  "kind": "startQuest",
+                  "targetId": "quest.scholar.path"
+                }
+              ]
+            },
+            {
+              "label": "Say farewell",
+              "targetNodeId": "scholar.right",
+              "conditions": [
+                {
+                  "kind": "flagNotSet",
+                  "flagId": "dialogue.scholar.asked"
+                }
+              ],
+              "actions": []
+            },
+            {
+              "label": "Recall the lesson",
+              "targetNodeId": "scholar.left",
+              "conditions": [
+                {
+                  "kind": "flagSet",
+                  "flagId": "dialogue.scholar.asked"
+                }
+              ],
+              "actions": []
+            }
+          ]
+        },
+        {
+          "id": "scholar.left",
+          "speaker": "Scholar",
+          "pages": [
+            "Study the walls, but trust the path beneath your feet."
+          ],
+          "nextNodeId": "",
+          "choices": []
+        },
+        {
+          "id": "scholar.right",
+          "speaker": "Scholar",
+          "pages": [
+            "Then walk carefully, friend."
+          ],
+          "nextNodeId": "",
+          "choices": []
+        }
+      ]
+    }
+  ],
+  "quests": [
+    {
+      "id": "quest.scholar.path",
+      "title": "The Scholar's Path",
+      "objectives": [
+        {
+          "id": "quest.scholar.kill",
+          "kind": "kill",
+          "targetId": "enemy.evil_soldier",
+          "requiredCount": 1,
+          "description": "Defeat an evil soldier."
+        },
+        {
+          "id": "quest.scholar.pickup",
+          "kind": "pickup",
+          "targetId": "pickup.heart",
+          "requiredCount": 1,
+          "description": "Find a heart pickup."
+        }
+      ],
+      "tags": [
+        "story",
+        "scholar"
+      ],
+      "rewardGrantId": "reward.quest.scholar.path"
+    }
+  ],
+  "players": [],
+  "playerProgressions": [],
+  "rewardProfiles": [
+    {
+      "id": "reward.enemy.evil_soldier",
+      "experience": 60,
+      "loot": [
+        {
+          "pickupDefinitionId": "pickup.money",
+          "chanceBasisPoints": 10000,
+          "minimumCount": 1,
+          "maximumCount": 2
+        },
+        {
+          "pickupDefinitionId": "pickup.life_potion",
+          "chanceBasisPoints": 2000,
+          "minimumCount": 1,
+          "maximumCount": 1
+        }
+      ]
+    },
+    {
+      "id": "reward.enemy.skull",
+      "experience": 40,
+      "loot": [
+        {
+          "pickupDefinitionId": "pickup.money",
+          "chanceBasisPoints": 10000,
+          "minimumCount": 1,
+          "maximumCount": 1
+        },
+        {
+          "pickupDefinitionId": "pickup.heart",
+          "chanceBasisPoints": 2500,
+          "minimumCount": 1,
+          "maximumCount": 1
+        }
+      ]
+    }
+  ],
+  "rewardGrants": [],
+  "shops": [],
+  "authoringDescriptors": [],
+  "tileSemantics": [],
+  "stamps": [],
+  "presentationEffects": [],
+  "visualImages": [
+    {
+      "id": "image.projectile.player.arrow",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/attacking/arrow.png"
+    },
+    {
+      "id": "image.projectile.skull.arrow",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/attacking/arrow.png"
+    },
+    {
+      "id": "image.enemy.soldier.idle",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Evil_soldier/idle/evil_soldier_idle.png"
+    },
+    {
+      "id": "image.enemy.soldier.walk",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Evil_soldier/walking/evil_soldier_walking.png"
+    },
+    {
+      "id": "image.enemy.soldier.attack",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Evil_soldier/attacking/evil_soldier_attacking.png"
+    },
+    {
+      "id": "image.enemy.soldier.death",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Evil_soldier/death/evil_soldier_death.png"
+    },
+    {
+      "id": "image.enemy.skull.idle",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/idle/skull_idle.png"
+    },
+    {
+      "id": "image.enemy.skull.walk",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/walking/skull_walking.png"
+    },
+    {
+      "id": "image.enemy.skull.attack",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/attacking/skull_attacking.png"
+    },
+    {
+      "id": "image.enemy.skull.death",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/death/skull_death.png"
+    }
+  ],
+  "staticSprites": [
+    {
+      "id": "visual.projectile.player.arrow",
+      "imageId": "image.projectile.player.arrow",
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": "visual.projectile.skull.arrow",
+      "imageId": "image.projectile.skull.arrow",
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    }
+  ],
+  "animations": [
+    {
+      "id": "anim.enemy.soldier.idle.down",
+      "imageId": "image.enemy.soldier.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.idle.up",
+      "imageId": "image.enemy.soldier.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.idle.left",
+      "imageId": "image.enemy.soldier.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.idle.right",
+      "imageId": "image.enemy.soldier.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.walk.down",
+      "imageId": "image.enemy.soldier.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.walk.up",
+      "imageId": "image.enemy.soldier.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.walk.left",
+      "imageId": "image.enemy.soldier.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.walk.right",
+      "imageId": "image.enemy.soldier.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.death.down",
+      "imageId": "image.enemy.soldier.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.death.up",
+      "imageId": "image.enemy.soldier.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.death.left",
+      "imageId": "image.enemy.soldier.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.death.right",
+      "imageId": "image.enemy.soldier.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.attack.down",
+      "imageId": "image.enemy.soldier.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.attack.up",
+      "imageId": "image.enemy.soldier.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 48,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.attack.left",
+      "imageId": "image.enemy.soldier.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.attack.right",
+      "imageId": "image.enemy.soldier.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 96,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 31
+          },
+          "durationTicks": 6,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.idle.down",
+      "imageId": "image.enemy.skull.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.idle.up",
+      "imageId": "image.enemy.skull.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.idle.left",
+      "imageId": "image.enemy.skull.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.idle.right",
+      "imageId": "image.enemy.skull.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 30,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.walk.down",
+      "imageId": "image.enemy.skull.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.walk.up",
+      "imageId": "image.enemy.skull.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.walk.left",
+      "imageId": "image.enemy.skull.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.walk.right",
+      "imageId": "image.enemy.skull.walk",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.death.down",
+      "imageId": "image.enemy.skull.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.death.up",
+      "imageId": "image.enemy.skull.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.death.left",
+      "imageId": "image.enemy.skull.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.death.right",
+      "imageId": "image.enemy.skull.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.attack.down",
+      "imageId": "image.enemy.skull.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.attack.up",
+      "imageId": "image.enemy.skull.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.attack.left",
+      "imageId": "image.enemy.skull.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": false,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.attack.right",
+      "imageId": "image.enemy.skull.attack",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "durationTicks": 8,
+          "flipX": true,
+          "markers": [],
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  ],
+  "enemyVisuals": [
+    {
+      "id": "visual.enemy.evil_soldier",
+      "idle": {
+        "down": "anim.enemy.soldier.idle.down",
+        "up": "anim.enemy.soldier.idle.up",
+        "left": "anim.enemy.soldier.idle.left",
+        "right": "anim.enemy.soldier.idle.right"
+      },
+      "move": {
+        "down": "anim.enemy.soldier.walk.down",
+        "up": "anim.enemy.soldier.walk.up",
+        "left": "anim.enemy.soldier.walk.left",
+        "right": "anim.enemy.soldier.walk.right"
+      },
+      "death": {
+        "down": "anim.enemy.soldier.death.down",
+        "up": "anim.enemy.soldier.death.up",
+        "left": "anim.enemy.soldier.death.left",
+        "right": "anim.enemy.soldier.death.right"
+      },
+      "actions": [
+        {
+          "visualActionId": "visual.action.soldier.sword",
+          "clips": {
+            "down": "anim.enemy.soldier.attack.down",
+            "up": "anim.enemy.soldier.attack.up",
+            "left": "anim.enemy.soldier.attack.left",
+            "right": "anim.enemy.soldier.attack.right"
+          }
+        }
+      ]
+    },
+    {
+      "id": "visual.enemy.skull",
+      "idle": {
+        "down": "anim.enemy.skull.idle.down",
+        "up": "anim.enemy.skull.idle.up",
+        "left": "anim.enemy.skull.idle.left",
+        "right": "anim.enemy.skull.idle.right"
+      },
+      "move": {
+        "down": "anim.enemy.skull.walk.down",
+        "up": "anim.enemy.skull.walk.up",
+        "left": "anim.enemy.skull.walk.left",
+        "right": "anim.enemy.skull.walk.right"
+      },
+      "death": {
+        "down": "anim.enemy.skull.death.down",
+        "up": "anim.enemy.skull.death.up",
+        "left": "anim.enemy.skull.death.left",
+        "right": "anim.enemy.skull.death.right"
+      },
+      "actions": [
+        {
+          "visualActionId": "visual.action.skull.arrow",
+          "clips": {
+            "down": "anim.enemy.skull.attack.down",
+            "up": "anim.enemy.skull.attack.up",
+            "left": "anim.enemy.skull.attack.left",
+            "right": "anim.enemy.skull.attack.right"
+          }
+        }
+      ]
+    }
+  ],
+  "objectVisuals": [],
+  "playerVisuals": []
+}

@@ -1,3 +1,4 @@
+#include "support/combat_fixture.h"
 #include "engine/core/color_rgba8.h"
 #include "engine/core/coordinates.h"
 #include "engine/core/fixed_timestep.h"
@@ -1254,7 +1255,7 @@ void testPlayerHurtboxFrameProfileCompilation() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
 
     const auto player = std::find_if(
         authored.players.begin(), authored.players.end(),
@@ -1404,7 +1405,7 @@ void testPlayerAuthoredBaseHurtboxRuntime() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
     const auto playerDef = std::find_if(
         authored.players.begin(), authored.players.end(),
         [](const auto& value) {
@@ -1585,7 +1586,7 @@ void testAttackWorldObstructionClipping() {
 void testAnimationFrameMaskAuthoringRoundTrip() {
     namespace content = underworld::game::content;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
     expect(!authored.animations.empty() &&
                !authored.animations.front().frames.empty(),
            "builtin content has an animation for frame mask round trip");
@@ -1635,7 +1636,7 @@ void testObjectAnimationCollisionMasksCompileToRuntimeSampler() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
     expect(!authored.animations.empty(),
            "builtin content has animation for object collision sampler");
     if (authored.animations.empty()) return;
@@ -1714,7 +1715,7 @@ void testPlayerSwordFrameMasksCompileToCollisionSamples() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
 
     const auto player = std::find_if(
         authored.players.begin(), authored.players.end(),
@@ -1867,7 +1868,7 @@ void testPlayerHurtboxAuthoringRoundTrip() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
     auto player = std::find_if(
         authored.players.begin(), authored.players.end(),
         [](const auto& value) {
@@ -1926,7 +1927,7 @@ void testAuthoredPlayerVisualPipeline() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
 
-    const auto authored = content::makeBuiltinAuthoredContent();
+    const auto authored = content::makeCombatAuthoredContent();
     const auto compiled = content::compileContent(authored);
     expect(static_cast<bool>(compiled),
            "builtin authored Player visual content compiles");
@@ -3699,7 +3700,7 @@ void testBreakableProps() {
     namespace simulation = underworld::simulation;
     namespace world = underworld::world;
 
-    const auto authored = content::makeBuiltinAuthoredContent();
+    const auto authored = content::makeCombatAuthoredContent();
     const auto findObject = [&](std::string_view id) {
         return std::find_if(authored.objects.begin(), authored.objects.end(),
             [&](const auto& value) { return value.id.value() == id; });
@@ -3791,7 +3792,7 @@ void testBreakableProps() {
                }),
            "content validation rejects an unknown generic destroyed visual reference");
 
-    const auto compiled = content::compileBuiltinContentOrThrow();
+    const auto compiled = content::compileCombatContentOrThrow();
     const auto& objects = compiled.objects();
     expect(objects.require({"object.vase"}).destructible->maximumHealth == 1 &&
                objects.require({"object.stone_block"}).destructible->maximumHealth == 2 &&
@@ -5611,7 +5612,7 @@ void testPhase10NpcFoundation() {
     namespace npcs = underworld::game::gameplay::npcs;
     namespace simulation = underworld::simulation;
 
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     expect(content.npcs().find(npcs::guardNpcId()) &&
                content.npcs().find(npcs::scholarNpcId()) &&
                content.npcVisuals().find(simulation::DefinitionId{"visual.npc.guard"}) &&
@@ -5666,7 +5667,7 @@ void testPhase10DialogueDataModel() {
     namespace dialogue = underworld::game::gameplay::dialogue;
     namespace game = underworld::game;
 
-    const auto content = game::content::compileBuiltinContentOrThrow();
+    const auto content = game::content::compileCombatContentOrThrow();
     const auto& guard = content.dialogues().require(dialogue::guardDialogueId());
     const auto& scholar = content.dialogues().require(dialogue::scholarDialogueId());
     expect(content.dialogues().size() == 3 &&
@@ -5727,7 +5728,7 @@ void testPhase10DialogueSession() {
     namespace dialogue = underworld::game::gameplay::dialogue;
     namespace simulation = underworld::simulation;
 
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     dialogue::DialogueFlagSet flags;
     dialogue::DialogueSession session(content.dialogues(), flags);
     std::string error;
@@ -5793,7 +5794,7 @@ void testPhase11QuestDefinitions() {
     namespace quests = underworld::game::gameplay::quests;
     namespace simulation = underworld::simulation;
 
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     const auto& scholarQuest = content.quests().require(quests::scholarQuestId());
     expect(content.quests().size() == 1 && scholarQuest.title == "The Scholar's Path" &&
                scholarQuest.objectives.size() == 2 &&
@@ -5871,7 +5872,7 @@ void testPhase11QuestState() {
     namespace quests = underworld::game::gameplay::quests;
     namespace simulation = underworld::simulation;
 
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     const auto& definition = content.quests().require(quests::scholarQuestId());
     quests::QuestStateStore state;
 
@@ -5967,7 +5968,7 @@ void testPhase11QuestPersistence() {
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
 
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     const auto& definition = content.quests().require(quests::scholarQuestId());
     quests::QuestStateStore state;
     expect(state.start(definition) &&
@@ -6123,12 +6124,12 @@ void testPhase12AProgressionFoundation() {
                saturated.totalExperience() == std::numeric_limits<std::uint64_t>::max(),
            "experience accumulation saturates instead of overflowing");
 
-    const auto compiled = content::compileBuiltinContentOrThrow();
+    const auto compiled = content::compileCombatContentOrThrow();
     const auto& builtin = compiled.progressions().require(rpg::defaultPlayerProgressionId());
     expect(builtin.baseStats.maximumHealth == 5 &&
                builtin.cumulativeExperienceThresholds == std::vector<std::uint64_t>{0, 100, 250},
            "builtin player progression preserves the provisional health and curve");
-    auto invalid = content::makeBuiltinAuthoredContent();
+    auto invalid = content::makeCombatAuthoredContent();
     invalid.playerProgressions.front().cumulativeExperienceThresholds = {0, 100, 100};
     const auto invalidResult = content::compileContent(invalid);
     expect(!invalidResult && std::any_of(invalidResult.report.diagnostics.begin(),
@@ -6142,17 +6143,17 @@ void testPhase12AProgressionFoundation() {
 void testPhase12D2BankInterface() {
     using namespace underworld;
     using namespace game::gameplay;
-    const auto content = game::content::compileBuiltinContentOrThrow();
+    const auto content = game::content::compileCombatContentOrThrow();
     const auto& bankObject = content.objects().require({"object.bank_access"});
     expect(bankObject.bankAccess && bankObject.interactable && !bankObject.container &&
                !bankObject.destructible, "builtin bank access is an interactable capability");
 
-    auto authored = game::content::makeBuiltinAuthoredContent();
+    auto authored = game::content::makeCombatAuthoredContent();
     auto& authoredBank = authored.objects.back();
     authoredBank.interactable.reset();
     expect(game::content::ContentValidator{}.validate(authored).hasErrors(),
            "bank access without interaction is rejected by content validation");
-    authored = game::content::makeBuiltinAuthoredContent();
+    authored = game::content::makeCombatAuthoredContent();
     authored.objects.back().container = ObjectContainerDefinition{1};
     expect(game::content::ContentValidator{}.validate(authored).hasErrors(),
            "bank access combined with a container is rejected");
@@ -6204,7 +6205,7 @@ void testSyntheticMapIntegrationFixture() {
     namespace simulation = underworld::simulation;
 
     const auto source = makeSyntheticMap("map.test.editor", "map.test.editor");
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     expect(source.id == simulation::MapId{"map.test.editor"} && source.width == 4 && source.height == 3 &&
                source.tileSize == 16 && source.layers.size() >= 1 &&
@@ -6272,7 +6273,7 @@ void testOfficialGameplayMapSet() {
     namespace save = underworld::game::save;
     namespace simulation = underworld::simulation;
 
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     const auto manifest = maps::officialGameplayMaps();
     bool completeFixture = true;
@@ -6720,7 +6721,7 @@ void testRuntimeVisualSynchronization() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     const auto validation = game::mapValidationCatalogs(content);
     simulation::EntityHandlePool handles;
     const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
@@ -6815,7 +6816,7 @@ void testMultiTilesetAuthoringAndRuntime() {
     // Deliberately retain an old solid cell here. Runtime terrain
     // collision must come from tileset Pixel Collision, not this legacy bit.
     map.collision = {1, 0};
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     const maps::MapValidationCatalogs validation{
         &content.enemies(), &content.objects(), &content.items(), &tilesets};
     expect(static_cast<bool>(maps::validateMapData(map, &validation)),
@@ -6905,7 +6906,7 @@ void testMultiTilesetAuthoringAndRuntime() {
 void testSemanticAuthoringFoundation() {
     using namespace underworld;
     namespace maps = game::maps;
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     const auto& semantics = content.authoringSemantics();
     expect(semantics.tiles().size() == 72, "all 72 visible Dungeon atlas cells have semantic definitions");
     expect(semantics.stamps().size() == 8, "confirmed Dungeon visual stamps are cataloged");
@@ -6997,7 +6998,7 @@ void testMapCompositionFoundation() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
 
-    auto content = game::content::compileBuiltinContentOrThrow();
+    auto content = game::content::compileCombatContentOrThrow();
     maps::MapBlueprint blueprint;
     blueprint.id = simulation::MapId{"map.composition.basic"};
     blueprint.room.width = 10;
@@ -7406,7 +7407,7 @@ void testAuthoredContentBoundary() {
     static_assert(!std::is_same_v<content::AuthoredQuest,
                                   underworld::game::gameplay::quests::QuestDefinition>);
 
-    const content::AuthoredContentPack builtin = content::makeBuiltinAuthoredContent();
+    const content::AuthoredContentPack builtin = content::makeCombatAuthoredContent();
     expect(builtin.tileSemantics.size() == 72 && builtin.stamps.size() == 8,
            "builtin authored content carries dungeon semantics before compilation");
     const auto compiled = content::compileContent(builtin);
@@ -7454,7 +7455,7 @@ void testAuthoredContentBoundary() {
 void testPhase12BRewards() {
     using RewardProfileDefinition = underworld::game::gameplay::rpg::RewardProfileDefinition;
     using RewardResolver = underworld::game::gameplay::rpg::RewardResolver;
-    const auto builtin = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto builtin = underworld::game::content::compileCombatContentOrThrow();
     const auto& soldier = builtin.rewards().require({"reward.enemy.evil_soldier"});
     const auto& skull = builtin.rewards().require({"reward.enemy.skull"});
     expect(soldier.experience == 60 && skull.experience == 40 && soldier.loot.size() == 2,
@@ -7478,7 +7479,7 @@ void testPhase12BRewards() {
     const RewardProfileDefinition xpOnly{{"reward.xp_only"}, 50, {}};
     expect(resolver.resolve(xpOnly, {map, enemy}).loot.empty(),
            "XP-only reward produces no loot");
-    auto invalid = underworld::game::content::makeBuiltinAuthoredContent();
+    auto invalid = underworld::game::content::makeCombatAuthoredContent();
     invalid.rewardProfiles.front().loot.front().chanceBasisPoints = 10001;
     const auto invalidResult = underworld::game::content::compileContent(invalid);
     expect(!invalidResult && std::any_of(invalidResult.report.diagnostics.begin(),
@@ -7558,7 +7559,7 @@ void testPhase12C1Equipment() {
     using namespace game::content;
     using namespace game::gameplay::rpg;
     static_assert(!std::is_same_v<AuthoredEquipment, EquipmentDefinition>);
-    const auto content = compileBuiltinContentOrThrow();
+    const auto content = compileCombatContentOrThrow();
     const auto& armor = content.items().require(simulation::DefinitionId{"item.training_armor"});
     const auto& charm = content.items().require(simulation::DefinitionId{"item.power_charm"});
     expect(armor.equipment && armor.equipment->modifiers.maximumHealthBonus == 2 &&
@@ -7646,7 +7647,7 @@ void testPhase12DBank() {
 } // namespace
 
 void testPhase12E1RewardGrants() {
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     static_assert(!std::is_same_v<underworld::game::content::AuthoredRewardGrant, underworld::game::gameplay::rpg::RewardGrantDefinition>);
     const auto& grant = content.rewardGrants().require({"reward.quest.scholar.path"});
     expect(grant.experience == 40 && grant.gold == 25 && grant.items.size() == 2,
@@ -7693,7 +7694,7 @@ void testPhase12E1RewardGrants() {
 }
 
 void testPhase12E2Shops() {
-    const auto content = underworld::game::content::compileBuiltinContentOrThrow();
+    const auto content = underworld::game::content::compileCombatContentOrThrow();
     static_assert(!std::is_same_v<underworld::game::content::AuthoredShop, underworld::game::gameplay::rpg::ShopDefinition>);
     const auto& shop = content.shops().require({"shop.development.general"});
     const auto& potion = *underworld::game::gameplay::rpg::findOffer(shop, {"item.life_potion"});
@@ -7735,7 +7736,7 @@ void testPhase12E2Shops() {
                rich.wallet().gold() == std::numeric_limits<std::uint64_t>::max() - 5,
            "wallet saturation rejects sale without removing the item");
 
-    auto invalid = underworld::game::content::makeBuiltinAuthoredContent();
+    auto invalid = underworld::game::content::makeCombatAuthoredContent();
     invalid.shops.front().offers.front().playerBuyPrice.reset();
     invalid.shops.front().offers.front().playerSellPrice.reset();
     const auto invalidResult = underworld::game::content::compileContent(invalid);
@@ -7746,7 +7747,7 @@ void testPhase12E3ShopInterface() {
     namespace game = underworld::game;
     namespace gameplay = underworld::game::gameplay;
     namespace simulation = underworld::simulation;
-    const auto content = game::content::compileBuiltinContentOrThrow();
+    const auto content = game::content::compileCombatContentOrThrow();
     const auto& shop = content.shops().require({"shop.development.general"});
     const auto& merchant = content.npcs().require({"npc.merchant"});
     const auto& dialogue = content.dialogues().require({"dialogue.merchant.greeting"});
@@ -7828,7 +7829,7 @@ void testPhase13AJsonFoundation() {
                R"({"format":"dungeon-underworld-content","version":1,"objects":[{"id":"object.door.test","visualSetId":"visual.door.test","door":{"initialState":"closed","blockingBounds":{"x":0,"y":0,"width":16,"height":16}}}]})").content,
            "content schema v1 rejects the door capability instead of changing its meaning silently");
     auto pixelCollisionAuthored =
-        underworld::game::content::makeBuiltinAuthoredContent();
+        underworld::game::content::makeCombatAuthoredContent();
 
     auto& pixelCollisionTileset =
         pixelCollisionAuthored.tilesets.front();
@@ -8132,7 +8133,7 @@ void testPhase13A3JsonDecoders() {
                invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":1,"atomic":false,"confidence":"unverified"})", "stamps[0].flipXAllowed") &&
                invalidPath("stamps", R"({"id":"s","displayName":"s","width":1,"height":1,"cells":[],"anchor":{"x":0,"y":0},"flipXAllowed":false,"atomic":1,"confidence":"unverified"})", "stamps[0].atomic"),
            "13A3 stamp dimensions, nested shapes and flags are strict");
-    const auto builtin = makeBuiltinAuthoredContent();
+    const auto builtin = makeCombatAuthoredContent();
     const auto json1 = encodeAuthoredContentJson(builtin);
     const auto decoded = decodeAuthoredContentJson(json1);
     expect(decoded.content.has_value() && decoded.diagnostics.empty(), "full builtin JSON decodes through the public decoder");
@@ -8223,7 +8224,7 @@ void testContentJsonAtomicWriter() {
     temporary += ".tmp";
     auto backup = path;
     backup += ".bak";
-    const content::AuthoredContentPack original = content::makeBuiltinAuthoredContent();
+    const content::AuthoredContentPack original = content::makeCombatAuthoredContent();
     content::AuthoredContentPack replacement = original;
     replacement.tilesets.front().displayName = "Atomic replacement";
     std::string error = "previous error";
@@ -8255,7 +8256,7 @@ void testContentJsonAtomicWriter() {
 void testPhase13B1ContentWorkspace() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
-    const auto builtin = content::makeBuiltinAuthoredContent();
+    const auto builtin = content::makeCombatAuthoredContent();
     const auto root = std::filesystem::temp_directory_path() / "undre_content_workspace_13b1";
     std::filesystem::create_directories(root);
     const auto write = [](const std::filesystem::path& path, const content::AuthoredContentPack& pack) {
@@ -8401,8 +8402,9 @@ void testPhase13B1ContentWorkspace() {
                emptyDirectory.diagnostics[0].code == "empty_workspace",
            "13B2 rejects directories without JSON sources");
     const auto builtinSource = content::loadContentSource({content::ContentSourceKind::builtin, {}});
-    expect(builtinSource && builtinSource.content->sourceKind == content::ContentSourceKind::builtin,
-           "13B3 loads builtin content through the shared source bootstrap");
+    expect(!builtinSource && !builtinSource.diagnostics.empty() &&
+               builtinSource.diagnostics[0].code == "builtin_source_unsupported",
+           "13B3 builtin-only source is rejected; authored workspace is required");
     auto changed = builtin;
     changed.items.front().stackLimit += 1;
     const auto changedRoot = root / "changed";
@@ -8611,7 +8613,7 @@ void testPhase14WorldClosure() {
     namespace maps = underworld::game::maps;
     namespace simulation = underworld::simulation;
     namespace save = underworld::game::save;
-    const auto compiledContent = content::compileBuiltinContentOrThrow();
+    const auto compiledContent = content::compileCombatContentOrThrow();
 
     auto map = makeSyntheticMap("map.phase14.codec", "map.phase14.codec");
     map.npcs.push_back({{6}, gameplay::npcs::guardNpcId(), {24, 24}, gameplay::FacingDirection::up});
@@ -8898,7 +8900,7 @@ void testPhase14WorldClosure() {
     expect(events.size() == beforeLoadedRuleEvents,
            "once world rule state loaded from DSAV remains fired after re-entry");
 
-    auto authoredDoorContent = content::makeBuiltinAuthoredContent();
+    auto authoredDoorContent = content::makeCombatAuthoredContent();
     const auto doorDefinition = std::find_if(authoredDoorContent.objects.begin(),
         authoredDoorContent.objects.end(), [](const auto& value) {
             return value.id == simulation::DefinitionId{"object.crate"};
@@ -8949,7 +8951,7 @@ void testPhase14WorldClosure() {
     expect(!maps::validateMapData(overlappingDoors, &doorCatalogs),
            "map validation rejects overlapping dynamic door collision cells");
 
-    auto arenaAuthoredContent = content::makeBuiltinAuthoredContent();
+    auto arenaAuthoredContent = content::makeCombatAuthoredContent();
     for (auto& behavior : arenaAuthoredContent.behaviors) {
         if (behavior.id == gameplay::creatures::soldierBehaviorId()) {
             behavior.detectionRangePixels = 1;
@@ -9271,7 +9273,7 @@ void testPhase15PresentationFeedback() {
                layerBuffer.pixels()[1] == core::ColorRGBA8{255, 0, 0, 255},
            "world and final presentation layers compose around HUD timing");
 
-    auto builtin = content::makeBuiltinAuthoredContent();
+    auto builtin = content::makeCombatAuthoredContent();
     const auto builtinJson = content::encodeAuthoredContentJson(builtin);
     const auto decodedBuiltin = content::decodeAuthoredContentJson(builtinJson);
     expect(decodedBuiltin.content && decodedBuiltin.content->presentationEffects.size() ==
@@ -9448,7 +9450,7 @@ underworld::game::content::AuthoredContentPack makePhase16Content() {
     namespace content = underworld::game::content;
     namespace gameplay = underworld::game::gameplay;
     namespace world = underworld::world;
-    auto authored = content::makeBuiltinAuthoredContent();
+    auto authored = content::makeCombatAuthoredContent();
 
     content::AuthoredWorldObject leverA;
     leverA.id = {"object.phase16.lever.a"};
