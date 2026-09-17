@@ -1,0 +1,288 @@
+from __future__ import annotations
+
+import copy
+from dataclasses import dataclass
+
+from ..model.content_workspace import ContentWorkspace
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectileCatalogEntry:
+    definition_id: str
+    visual_id: str
+    status: str
+
+
+class ProjectileAuthoringService:
+    """Author projectile definitions."""
+
+    def __init__(self, workspace: ContentWorkspace) -> None:
+        self.workspace = workspace
+
+    def entries(self) -> list[ProjectileCatalogEntry]:
+        result = [
+            self._entry(
+                definition.definition_id,
+                definition.data,
+                "authored",
+            )
+            for definition in self.workspace.definitions("projectiles")
+        ]
+        result = [
+            entry
+            for entry in result
+            if self._has_visual(entry.visual_id)
+        ]
+        result.sort(key=lambda entry: entry.definition_id)
+        return result
+
+    def animation_ids(self) -> list[str]:
+        return sorted(
+            definition.definition_id
+            for definition in self.workspace.definitions("animations")
+            if definition.data.get("frames")
+        )
+
+    def definition_data(
+        self,
+        definition_id: str,
+    ) -> dict[str, object] | None:
+        authored = self.workspace.find(
+            "projectiles",
+            definition_id,
+        )
+
+        return copy.deepcopy(authored.data) if authored else None
+
+    def update_spawn_offsets(
+        self,
+        definition_id: str,
+        offsets: dict[str, dict[str, int]],
+        canonical_facing: str | None = None,
+        render_layer: str | None = None,
+    ) -> None:
+        data = self.definition_data(definition_id)
+
+        if data is None:
+            raise ValueError(
+                f"unknown projectile: {definition_id}"
+            )
+
+        data["spawnOffsets"] = {
+            direction: {
+                "x": int(offsets[direction]["x"]),
+                "y": int(offsets[direction]["y"]),
+            }
+            for direction in ("down", "up", "left", "right")
+        }
+
+        if canonical_facing is not None:
+            if canonical_facing not in (
+                "down",
+                "up",
+                "left",
+                "right",
+            ):
+                raise ValueError(
+                    "canonicalFacing must be one of "
+                    "down/up/left/right"
+                )
+
+            data["canonicalFacing"] = canonical_facing
+
+        if render_layer is not None:
+            if render_layer not in ("actor", "world"):
+                raise ValueError(
+                    "renderLayer must be actor or world"
+                )
+
+            data["renderLayer"] = render_layer
+
+        self.workspace.upsert_definition_bundle(
+            "Update Projectile Spawn Offsets",
+            [("projectiles", definition_id, data)],
+        )
+
+    def create_from_animation(
+        self,
+        definition_id: str,
+        animation_id: str,
+    ) -> str:
+        normalized_id = definition_id.strip()
+        normalized_animation = animation_id.strip()
+
+        if not normalized_id:
+            raise ValueError("projectile id is required")
+        if self.workspace.find("projectiles", normalized_id) is not None:
+            raise ValueError(
+                f"projectile already exists: {normalized_id}"
+            )
+
+        animation = self.workspace.find(
+            "animations",
+            normalized_animation,
+        )
+
+        if animation is None:
+            raise ValueError(
+                f"unknown animation: {normalized_animation}"
+            )
+
+        frames = animation.data.get("frames")
+
+        if not isinstance(frames, list) or not frames:
+            raise ValueError(
+                "projectile animation requires at least one frame"
+            )
+
+        frame = frames[0]
+
+        if not isinstance(frame, dict):
+            raise ValueError(
+                "projectile animation frame is invalid"
+            )
+
+        image_id = animation.data.get("imageId")
+        source = frame.get("source")
+        anchor = frame.get("anchor")
+
+        if not isinstance(image_id, str) or not image_id:
+            raise ValueError(
+                "projectile animation requires imageId"
+            )
+        if self.workspace.find("visualImages", image_id) is None:
+            raise ValueError(
+                f"unknown animation image: {image_id}"
+            )
+        if not isinstance(source, dict):
+            raise ValueError(
+                "projectile animation frame requires source"
+            )
+        if not isinstance(anchor, dict):
+            source_width = int(source.get("width", 16))
+            source_height = int(source.get("height", 16))
+            anchor = {
+                "x": source_width // 2,
+                "y": max(0, source_height - 1),
+            }
+
+        width = max(1, int(source.get("width", 16)))
+        height = max(1, int(source.get("height", 16)))
+        hitbox = max(4, min(width, height) // 2)
+        visual_id = self._visual_id(normalized_id)
+        expected_sprite = {
+            "id": visual_id,
+            "imageId": image_id,
+            "source": copy.deepcopy(source),
+            "anchor": copy.deepcopy(anchor),
+        }
+        entries: list[tuple[str, str, dict[str, object]]] = []
+        existing_sprite = self.workspace.find(
+            "staticSprites",
+            visual_id,
+        )
+
+        if existing_sprite is None:
+            entries.append(
+                (
+                    "staticSprites",
+                    visual_id,
+                    expected_sprite,
+                )
+            )
+        elif not self._same_sprite(
+            existing_sprite.data,
+            expected_sprite,
+        ):
+            raise ValueError(
+                f"generated visual conflict: {visual_id}"
+            )
+
+        entries.append(
+            (
+                "projectiles",
+                normalized_id,
+                {
+                    "id": normalized_id,
+                    "visualId": visual_id,
+                    "canonicalFacing": (
+                        "right" if width >= height else "up"
+                    ),
+                    "speedPixelsPerTick": 4,
+                    "lifetimeTicks": 120,
+                    "hitboxWidth": hitbox,
+                    "hitboxHeight": hitbox,
+                    "spawnOffsets": {
+                        "down": {"x": 0, "y": 0},
+                        "up": {"x": 0, "y": 0},
+                        "left": {"x": 0, "y": 0},
+                        "right": {"x": 0, "y": 0},
+                    },
+                    "renderLayer": "actor",
+                },
+            )
+        )
+        self.workspace.create_definition_bundle(
+            "Create Projectile",
+            entries,
+        )
+        return normalized_id
+
+    def _has_visual(self, visual_id: str) -> bool:
+        if not visual_id:
+            return False
+
+        sprite = self.workspace.find("staticSprites", visual_id)
+
+        if sprite is None:
+            return False
+
+        image_id = sprite.data.get("imageId")
+
+        if not isinstance(image_id, str) or not image_id:
+            return False
+
+        return (
+            self.workspace.find("visualImages", image_id)
+            is not None
+        )
+
+    def _entry(
+        self,
+        definition_id: str,
+        data: dict[str, object],
+        status: str,
+    ) -> ProjectileCatalogEntry:
+        visual_id = data.get("visualId")
+
+        return ProjectileCatalogEntry(
+            definition_id=definition_id,
+            visual_id=visual_id if isinstance(visual_id, str) else "",
+            status=status,
+        )
+
+    @staticmethod
+    def _visual_id(definition_id: str) -> str:
+        if definition_id.startswith("projectile."):
+            return f"visual.{definition_id[len('projectile.'):]}"
+
+        safe_id = definition_id.replace(".", "_")
+
+        return f"visual.projectile.{safe_id}"
+
+    @staticmethod
+    def _same_sprite(
+        current: object,
+        expected: dict[str, object],
+    ) -> bool:
+        if not isinstance(current, dict):
+            return False
+
+        if current.get("imageId") != expected["imageId"]:
+            return False
+        if current.get("anchor") != expected["anchor"]:
+            return False
+
+        source = current.get("source")
+
+        return source == expected["source"]

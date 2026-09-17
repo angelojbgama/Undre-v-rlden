@@ -442,6 +442,17 @@ class ContentWorkspace:
             elif category == "npcVisuals":
                 for key, value in _directional_values(data):
                     require("animations", value, f"{prefix}.{key}")
+            elif category == "attacks":
+                projectile_id = data.get("projectileDefinitionId")
+                if (
+                        isinstance(projectile_id, str)
+                        and projectile_id
+                        and self.find("projectiles", projectile_id) is None):
+                    issues.append(Diagnostic(
+                        "error", f"missing dependency: {projectile_id}",
+                        f"{prefix}.projectileDefinitionId", "missing_dependency",
+                        definition.definition_id, definition.source_path,
+                    ))
             elif category in {"rewardProfiles", "rewardGrants", "shops"}:
                 for key, value in _walk_key_values(data):
                     if key == "pickupDefinitionId":
@@ -577,7 +588,7 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
     empty_box: JsonValue = {"x": 0, "y": 0, "width": 16, "height": 16}
     defaults: dict[str, dict[str, JsonValue]] = {
         "tilesets": {"id": definition_id, "displayName": definition_id, "relativeAssetPath": "", "tileSize": 16, "columns": 1, "rows": 1},
-        "projectiles": {"id": definition_id, "visualId": "", "canonicalFacing": "up", "speedPixelsPerTick": 1, "lifetimeTicks": 60, "hitboxWidth": 4, "hitboxHeight": 4, "spawnOffsets": {"down": {"x": 0, "y": 0}, "up": {"x": 0, "y": 0}, "left": {"x": 0, "y": 0}, "right": {"x": 0, "y": 0}}},
+        "projectiles": {"id": definition_id, "visualId": "", "canonicalFacing": "up", "speedPixelsPerTick": 1, "lifetimeTicks": 60, "hitboxWidth": 4, "hitboxHeight": 4, "spawnOffsets": {"down": {"x": 0, "y": 0}, "up": {"x": 0, "y": 0}, "left": {"x": 0, "y": 0}, "right": {"x": 0, "y": 0}}, "renderLayer": "actor"},
         "attacks": {"id": definition_id, "kind": "meleeHitbox", "damage": {"amount": 1, "knockbackPixels": 0}, "totalTicks": 1, "cooldownTicks": 1, "minimumRangePixels": 0, "maximumRangePixels": 16, "visualActionId": "", "meleeHitboxes": None, "projectileDefinitionId": None, "timeline": [], "shapes": []},
         "behaviors": {"id": definition_id, "detectionRangePixels": 64, "disengageRangePixels": 96, "idleDurationTicks": 60, "wanderDurationTicks": 60},
         "enemies": {"id": definition_id, "visualSetId": "", "behaviorProfileId": "", "faction": "enemy", "maximumHealth": 1, "movementSpeedSubpixelsPerTick": 0, "collisionBody": {"offsetX": -4, "offsetY": -4, "width": 8, "height": 8}, "hurtbox": {"offsetX": -6, "offsetY": -12, "width": 12, "height": 12}, "attackIds": [], "rewardProfileId": None},
