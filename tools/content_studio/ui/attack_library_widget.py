@@ -2516,7 +2516,7 @@ class AttackDefinitionDialog(QDialog):
         )
 
         self.facing.currentIndexChanged.connect(
-            self._update_preview
+            self._refresh_visual
         )
 
         self.play_timer = QTimer(self)
