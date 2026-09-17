@@ -293,6 +293,8 @@ class AnimationFrameAlignmentDialog(QDialog):
                 "x": int(offset.get("x", 0)) if isinstance(offset, dict) else 0,
                 "y": int(offset.get("y", 0)) if isinstance(offset, dict) else 0,
             }
+            frame["durationTicks"] = max(
+                1, int(frame.get("durationTicks", 1) or 1))
             source = frame.get("source", {})
             source_width = (
                 int(source.get("width", 1))
@@ -356,6 +358,8 @@ class AnimationFrameAlignmentDialog(QDialog):
         self.offset_x = self._offset_spin(); self.offset_y = self._offset_spin()
         self.offset_x.valueChanged.connect(self._offset_controls_changed)
         self.offset_y.valueChanged.connect(self._offset_controls_changed)
+        self.frame_duration = QSpinBox(); self.frame_duration.setRange(1, 9999)
+        self.frame_duration.valueChanged.connect(self._duration_changed)
         form = QFormLayout(); form.addRow(self.translate("animation_frame"), frame_row)
         form.addRow(
             self.translate("frame_reference_animation"),
@@ -394,6 +398,7 @@ class AnimationFrameAlignmentDialog(QDialog):
         form.addRow(self.translate("frame_anchor_y"), self.anchor_y)
         form.addRow(self.translate("frame_offset_x"), self.offset_x)
         form.addRow(self.translate("frame_offset_y"), self.offset_y)
+        form.addRow(self.translate("frame_duration"), self.frame_duration)
         self.move_all = QCheckBox(self.translate("move_all_frames"))
         form.addRow(self.move_all)
 
@@ -614,9 +619,13 @@ class AnimationFrameAlignmentDialog(QDialog):
             if isinstance(anchor, dict)
             else max(0, source.height() - 1))
 
+        duration = (
+            max(1, int(frame.get("durationTicks", 1) or 1)) if frame else 1)
+
         for control, value in (
                 (self.offset_x, x), (self.offset_y, y),
-                (self.anchor_x, anchor_x), (self.anchor_y, anchor_y)):
+                (self.anchor_x, anchor_x), (self.anchor_y, anchor_y),
+                (self.frame_duration, duration)):
             control.blockSignals(True)
             control.setValue(value)
             control.blockSignals(False)
@@ -689,6 +698,14 @@ class AnimationFrameAlignmentDialog(QDialog):
             return
         frame["anchor"] = {"x": int(x), "y": int(y)}
         self._show_frame()
+
+    def _duration_changed(self, unused: object = None) -> None:
+        del unused
+        frame = self._current_frame()
+        if frame is None:
+            return
+        frame["durationTicks"] = max(
+            1, int(self.frame_duration.value()))
 
     def _apply_anchor_to_all_frames(self) -> None:
         frame = self._current_frame()
