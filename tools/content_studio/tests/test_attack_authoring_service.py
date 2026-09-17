@@ -114,7 +114,7 @@ def make_workspace(data: dict[str, object]) -> tuple[tempfile.TemporaryDirectory
 
 
 class AttackAuthoringServiceTests(unittest.TestCase):
-    def test_entries_merge_builtin_and_authored_with_status(self) -> None:
+    def test_entries_list_authored_attacks(self) -> None:
         from tools.content_studio.services.attack_authoring_service import (
             AttackAuthoringService,
         )
@@ -132,13 +132,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
             }
 
             self.assertEqual(
-                {
-                    "attack.player.sword": "builtin",
-                    "attack.player.bow": "builtin",
-                    "attack.soldier.sword": "builtin",
-                    "attack.skull.arrow": "builtin",
-                    "attack.slime.bounce": "authored",
-                },
+                {"attack.slime.bounce": "authored"},
                 {
                     definition_id: entry.status
                     for definition_id, entry in by_id.items()
@@ -152,7 +146,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
-    def test_configuration_prefills_builtin_sword_defaults(self) -> None:
+    def test_configuration_rejects_unknown_attack(self) -> None:
         from tools.content_studio.services.attack_authoring_service import (
             AttackAuthoringService,
         )
@@ -160,35 +154,16 @@ class AttackAuthoringServiceTests(unittest.TestCase):
         temporary, workspace = make_workspace(attack_content())
 
         try:
-            data = AttackAuthoringService(
-                workspace
-            ).configuration(
-                "attack.player.sword"
-            )
-
-            self.assertEqual(
-                "meleeHitbox",
-                data["kind"],
-            )
-
-            self.assertEqual(
-                {"amount": 1, "knockbackPixels": 32},
-                data["damage"],
-            )
-
-            self.assertEqual(
-                24,
-                data["totalTicks"],
-            )
-
-            self.assertEqual(
-                "visual.player.sword",
-                data["visualActionId"],
-            )
+            with self.assertRaises(ValueError):
+                AttackAuthoringService(
+                    workspace
+                ).configuration(
+                    "attack.player.sword"
+                )
         finally:
             temporary.cleanup()
 
-    def test_configure_builtin_creates_override_and_delete_reverts(self) -> None:
+    def test_configure_updates_authored_and_delete_removes(self) -> None:
         from tools.content_studio.services.attack_authoring_service import (
             AttackAuthoringService,
         )
@@ -199,19 +174,19 @@ class AttackAuthoringServiceTests(unittest.TestCase):
             service = AttackAuthoringService(workspace)
 
             data = service.configuration(
-                "attack.player.sword"
+                "attack.slime.bounce"
             )
 
             data["damage"]["amount"] = 3
 
             service.configure(
-                "attack.player.sword",
+                "attack.slime.bounce",
                 data,
             )
 
             override = workspace.find(
                 "attacks",
-                "attack.player.sword",
+                "attack.slime.bounce",
             )
 
             self.assertIsNotNone(override)
@@ -223,33 +198,71 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 override.data["damage"]["amount"],
             )
 
-            statuses = {
-                entry.definition_id: entry.status
-                for entry in service.entries()
-            }
+            with self.assertRaises(ValueError):
+                service.delete("attack.slime.bounce")
 
-            self.assertEqual(
-                "override",
-                statuses["attack.player.sword"],
-            )
-
-            service.delete("attack.player.sword")
-
-            self.assertIsNone(
+            self.assertIsNotNone(
                 workspace.find(
                     "attacks",
-                    "attack.player.sword",
+                    "attack.slime.bounce",
                 )
             )
+        finally:
+            temporary.cleanup()
 
-            statuses = {
-                entry.definition_id: entry.status
-                for entry in service.entries()
-            }
+    def test_play_effect_event_round_trip_and_validation(self) -> None:
+        from tools.content_studio.services.attack_authoring_service import (
+            AttackAuthoringService,
+        )
+
+        temporary, workspace = make_workspace(attack_content())
+
+        try:
+            service = AttackAuthoringService(workspace)
+
+            base = service.configuration("attack.slime.bounce")
+
+            data = json.loads(json.dumps(base))
+
+            workspace.create_definition("animations", "animation.arrow")
+
+            data["timeline"] = [
+                {"tick": 2, "kind": "playEffect",
+                 "animationId": "animation.missing", "offsetX": 0, "offsetY": -8},
+                {"tick": 6, "kind": "activateHitbox"},
+                {"tick": 18, "kind": "deactivateHitbox"},
+            ]
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "requires an existing animation",
+            ):
+                service.configure("attack.slime.bounce", data)
+
+            data["timeline"][0]["animationId"] = "animation.arrow"
+
+            service.configure("attack.slime.bounce", data)
+
+            stored = workspace.find("attacks", "attack.slime.bounce")
+
+            assert stored is not None
 
             self.assertEqual(
-                "builtin",
-                statuses["attack.player.sword"],
+                {
+                    "tick": 2,
+                    "kind": "playEffect",
+                    "animationId": "animation.arrow",
+                    "offsetX": 0,
+                    "offsetY": -8,
+                },
+                stored.data["timeline"][0],
+            )
+
+            reloaded = service.configuration("attack.slime.bounce")
+
+            self.assertEqual(
+                "animation.arrow",
+                reloaded["timeline"][0]["animationId"],
             )
         finally:
             temporary.cleanup()
@@ -318,7 +331,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
             service = AttackAuthoringService(workspace)
 
             base = service.configuration(
-                "attack.player.sword"
+                "attack.slime.bounce"
             )
 
             def rejects(mutate, message: str) -> None:
@@ -331,7 +344,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                     message,
                 ):
                     service.configure(
-                        "attack.player.sword",
+                        "attack.slime.bounce",
                         data,
                     )
 
@@ -370,9 +383,11 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 "within totalTicks",
             )
 
-            bow = service.configuration(
-                "attack.player.bow"
-            )
+            bow = json.loads(json.dumps(base))
+            bow.update(kind="projectile", meleeHitboxes=None)
+            bow["timeline"] = [
+                {"tick": 8, "kind": "spawnProjectile"},
+            ]
 
             bow["projectileDefinitionId"] = "projectile.missing"
 
@@ -381,7 +396,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 "unknown projectile",
             ):
                 service.configure(
-                    "attack.player.bow",
+                    "attack.slime.bounce",
                     bow,
                 )
 
@@ -394,7 +409,7 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 "spawnProjectile",
             ):
                 service.configure(
-                    "attack.player.bow",
+                    "attack.slime.bounce",
                     bow,
                 )
         finally:

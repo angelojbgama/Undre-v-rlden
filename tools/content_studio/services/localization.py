@@ -621,6 +621,28 @@ TRANSLATIONS["pt-BR"].update({
     ),
     "attack_melee_hitboxes": "Hitboxes corpo a corpo",
     "attack_projectile": "Projétil",
+    "projectile_new_from_animation": "Novo...",
+    "projectile_new_title": "Novo projétil",
+    "projectile_new_id": "Id do projétil",
+    "projectile_new_animation": "Spritesheet/animação",
+    "projectile_no_animations": "Nenhuma animação está disponível.",
+    "projectile_spawn_offsets": "Posição do projétil por direção",
+    "projectile_spawn_editor_title": "Posições do projétil",
+    "projectile_edit_positions": "Editar...",
+    "projectile_canonical_facing": (
+        "Orientação base da imagem"
+    ),
+    "projectile_render_layer": "Camada de renderização",
+    "projectile_render_layer_actor": (
+        "Na frente do player"
+    ),
+    "projectile_render_layer_world": (
+        "Atrás do player"
+    ),
+    "projectile_spawn_offsets_info": (
+        "Offsets relativos ao ponto dos pés do Player no momento do "
+        "evento spawnProjectile. Salvos na definição do projétil."
+    ),
     "attack_timeline": "Linha de tempo",
     "attack_timeline_play": "Reproduzir",
     "attack_timeline_pause": "Pausar",
@@ -704,6 +726,28 @@ TRANSLATIONS["en-US"].update({
     ),
     "attack_melee_hitboxes": "Melee hitboxes",
     "attack_projectile": "Projectile",
+    "projectile_new_from_animation": "New...",
+    "projectile_new_title": "New projectile",
+    "projectile_new_id": "Projectile id",
+    "projectile_new_animation": "Spritesheet/animation",
+    "projectile_no_animations": "No animations are available.",
+    "projectile_spawn_offsets": "Projectile position per direction",
+    "projectile_spawn_editor_title": "Projectile positions",
+    "projectile_edit_positions": "Edit...",
+    "projectile_canonical_facing": (
+        "Base image orientation"
+    ),
+    "projectile_render_layer": "Render layer",
+    "projectile_render_layer_actor": (
+        "In front of player"
+    ),
+    "projectile_render_layer_world": (
+        "Behind player"
+    ),
+    "projectile_spawn_offsets_info": (
+        "Offsets relative to the player's feet when the spawnProjectile "
+        "timeline event fires. Stored in the projectile definition."
+    ),
     "attack_timeline": "Timeline",
     "attack_timeline_play": "Play",
     "attack_timeline_pause": "Pause",

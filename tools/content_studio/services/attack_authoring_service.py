@@ -15,6 +15,7 @@ TIMELINE_KINDS = (
     "activateHitbox",
     "deactivateHitbox",
     "spawnProjectile",
+    "playEffect",
 )
 
 DIRECTIONS = (
@@ -37,82 +38,6 @@ EDITABLE_FIELDS = (
     "timeline",
 )
 
-# Builtin runtime attacks (src/game/content/builtin_content.cpp). The
-# runtime overlays authored definitions by id, so editing one of these
-# creates an override with the same id. Ids and baseline values are
-# stable; keep this registry in sync with builtin_content.cpp.
-BUILTIN_ATTACKS: dict[str, dict[str, object]] = {
-    "attack.player.sword": {
-        "kind": "meleeHitbox",
-        "damage": {"amount": 1, "knockbackPixels": 32},
-        "totalTicks": 24,
-        "cooldownTicks": 0,
-        "minimumRangePixels": 0,
-        "maximumRangePixels": 27,
-        "visualActionId": "visual.player.sword",
-        "meleeHitboxes": {
-            "down": {"offsetX": -10, "offsetY": -1, "width": 20, "height": 18},
-            "up": {"offsetX": -10, "offsetY": -27, "width": 20, "height": 19},
-            "left": {"offsetX": -27, "offsetY": -18, "width": 21, "height": 18},
-            "right": {"offsetX": 6, "offsetY": -18, "width": 21, "height": 18},
-        },
-        "projectileDefinitionId": None,
-        "timeline": [
-            {"tick": 6, "kind": "activateHitbox"},
-            {"tick": 18, "kind": "deactivateHitbox"},
-        ],
-    },
-    "attack.player.bow": {
-        "kind": "projectile",
-        "damage": {"amount": 1, "knockbackPixels": 32},
-        "totalTicks": 16,
-        "cooldownTicks": 0,
-        "minimumRangePixels": 0,
-        "maximumRangePixels": 512,
-        "visualActionId": "visual.player.bow",
-        "meleeHitboxes": None,
-        "projectileDefinitionId": "projectile.player.arrow",
-        "timeline": [
-            {"tick": 8, "kind": "spawnProjectile"},
-        ],
-    },
-    "attack.soldier.sword": {
-        "kind": "meleeHitbox",
-        "damage": {"amount": 1, "knockbackPixels": 7},
-        "totalTicks": 24,
-        "cooldownTicks": 45,
-        "minimumRangePixels": 0,
-        "maximumRangePixels": 27,
-        "visualActionId": "visual.action.soldier.sword",
-        "meleeHitboxes": {
-            "down": {"offsetX": -10, "offsetY": -1, "width": 20, "height": 18},
-            "up": {"offsetX": -10, "offsetY": -27, "width": 20, "height": 19},
-            "left": {"offsetX": -27, "offsetY": -18, "width": 21, "height": 18},
-            "right": {"offsetX": 6, "offsetY": -18, "width": 21, "height": 18},
-        },
-        "projectileDefinitionId": None,
-        "timeline": [
-            {"tick": 6, "kind": "activateHitbox"},
-            {"tick": 18, "kind": "deactivateHitbox"},
-        ],
-    },
-    "attack.skull.arrow": {
-        "kind": "projectile",
-        "damage": {"amount": 1, "knockbackPixels": 5},
-        "totalTicks": 16,
-        "cooldownTicks": 60,
-        "minimumRangePixels": 0,
-        "maximumRangePixels": 120,
-        "visualActionId": "visual.action.skull.arrow",
-        "meleeHitboxes": None,
-        "projectileDefinitionId": "projectile.skull.arrow",
-        "timeline": [
-            {"tick": 8, "kind": "spawnProjectile"},
-        ],
-    },
-}
-
-
 @dataclass(
     frozen=True,
     slots=True,
@@ -128,7 +53,7 @@ class AttackCatalogEntry:
 
 
 class AttackAuthoringService:
-    """Author attack definitions, including overrides of builtin ones."""
+    """Author attack definitions."""
 
     def __init__(
         self,
@@ -139,53 +64,19 @@ class AttackAuthoringService:
     def entries(
         self,
     ) -> list[AttackCatalogEntry]:
-        authored = {
-            definition.definition_id: definition
-            for definition in self.workspace.definitions(
-                "attacks"
-            )
-        }
-
         referenced_by = self._references()
 
-        result: list[AttackCatalogEntry] = []
-
-        for definition_id, definition in authored.items():
-            status = (
-                "override"
-                if definition_id in BUILTIN_ATTACKS
-                else "authored"
+        result = [
+            self._entry(
+                definition.definition_id,
+                definition.data,
+                "authored",
+                referenced_by,
             )
+            for definition in self.workspace.definitions("attacks")
+        ]
 
-            result.append(
-                self._entry(
-                    definition_id,
-                    definition.data,
-                    status,
-                    referenced_by,
-                )
-            )
-
-        for definition_id in BUILTIN_ATTACKS:
-            if definition_id in authored:
-                continue
-
-            result.append(
-                self._entry(
-                    definition_id,
-                    BUILTIN_ATTACKS[definition_id],
-                    "builtin",
-                    referenced_by,
-                )
-            )
-
-        result.sort(
-            key=lambda entry: (
-                entry.status != "override"
-                and entry.status != "builtin",
-                entry.definition_id,
-            )
-        )
+        result.sort(key=lambda entry: entry.definition_id)
 
         return result
 
@@ -198,20 +89,13 @@ class AttackAuthoringService:
             definition_id,
         )
 
-        if definition is not None:
-            data = copy.deepcopy(definition.data)
-        else:
-            builtin = BUILTIN_ATTACKS.get(
-                definition_id
+        if definition is None:
+            raise ValueError(
+                f"unknown attack definition: "
+                f"{definition_id}"
             )
 
-            if builtin is None:
-                raise ValueError(
-                    f"unknown attack definition: "
-                    f"{definition_id}"
-                )
-
-            data = copy.deepcopy(builtin)
+        data = copy.deepcopy(definition.data)
 
         data.setdefault(
             "id",
@@ -549,6 +433,44 @@ class AttackAuthoringService:
                 raise ValueError(
                     f"unknown attack timeline kind: {event_kind!r}"
                 )
+
+            if event_kind == "playEffect":
+                animation_id = event.get("animationId")
+
+                if (
+                    not isinstance(animation_id, str)
+                    or not animation_id
+                    or self.workspace.find(
+                        "animations",
+                        animation_id,
+                    )
+                    is None
+                ):
+                    raise ValueError(
+                        "playEffect timeline event requires an existing animation"
+                    )
+
+                offset_x = event.get("offsetX", 0)
+                offset_y = event.get("offsetY", 0)
+
+                if not self._is_int(offset_x) or not self._is_int(offset_y):
+                    raise ValueError(
+                        "playEffect timeline offsets must be integers"
+                    )
+
+                normalized.append(
+                    {
+                        "tick": tick,
+                        "kind": event_kind,
+                        "animationId": animation_id,
+                        "offsetX": int(offset_x),
+                        "offsetY": int(offset_y),
+                    }
+                )
+
+                previous_tick = tick
+
+                continue
 
             previous_tick = tick
 

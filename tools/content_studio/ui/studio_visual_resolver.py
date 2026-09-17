@@ -274,6 +274,10 @@ class StudioVisualResolver:
             int(draw_offset.get("y", 0)),
         )
 
+        flip_x = bool(
+            frame.get("flipX", False)
+        )
+
         cache_key = (
             animation_id,
             frame_index,
@@ -282,6 +286,7 @@ class StudioVisualResolver:
             source_rect,
             anchor_value,
             offset_value,
+            flip_x,
         )
 
         if cache_key in self._animation_frames:
@@ -322,6 +327,17 @@ class StudioVisualResolver:
             ] = None
             return None
 
+        # Mirrors the runtime convention in
+        # src/engine/render/sprite.cpp: a flipX frame is drawn
+        # mirrored and its anchor x becomes width - anchor.x.
+        if flip_x:
+            image = image.mirrored(True, False)
+
+            anchor_value = (
+                width - anchor_value[0],
+                anchor_value[1],
+            )
+
         result = ResolvedStudioVisual(
             image=image,
             anchor_x=anchor_value[0],
@@ -335,6 +351,93 @@ class StudioVisualResolver:
         self._animation_frames[
             cache_key
         ] = result
+
+        return result
+
+    def resolve_static_sprite(
+        self,
+        visual_id: str,
+    ) -> ResolvedStudioVisual | None:
+        workspace = self.workspace
+
+        if workspace is None:
+            return None
+
+        sprite = workspace.find(
+            "staticSprites",
+            visual_id,
+        )
+
+        if sprite is None:
+            return None
+
+        source = sprite.data.get("source")
+
+        if not isinstance(source, dict):
+            return None
+
+        image_id = sprite.data.get("imageId")
+
+        if not isinstance(image_id, str):
+            return None
+
+        path = self._visual_image_path(image_id)
+
+        if path is None:
+            return None
+
+        source_rect = (
+            int(source.get("x", 0)),
+            int(source.get("y", 0)),
+            int(source.get("width", 0)),
+            int(source.get("height", 0)),
+        )
+
+        anchor = sprite.data.get("anchor")
+
+        if not isinstance(anchor, dict):
+            anchor = {}
+
+        cache_key = (
+            "static",
+            visual_id,
+            image_id,
+            str(path),
+            source_rect,
+        )
+
+        if cache_key in self._animation_frames:
+            return self._animation_frames[cache_key]
+
+        source_image = self._load_path(path)
+
+        if source_image is None:
+            self._animation_frames[cache_key] = None
+            return None
+
+        x, y, width, height = source_rect
+
+        if width <= 0 or height <= 0:
+            self._animation_frames[cache_key] = None
+            return None
+
+        image = source_image.copy(x, y, width, height)
+
+        if image.isNull():
+            self._animation_frames[cache_key] = None
+            return None
+
+        result = ResolvedStudioVisual(
+            image=image,
+            anchor_x=int(anchor.get("x", 0)),
+            anchor_y=int(anchor.get("y", 0)),
+            draw_offset_x=0,
+            draw_offset_y=0,
+            animation_id=visual_id,
+            frame_index=0,
+        )
+
+        self._animation_frames[cache_key] = result
 
         return result
 

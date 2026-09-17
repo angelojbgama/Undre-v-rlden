@@ -166,17 +166,19 @@ class AttackLibraryWidgetTests(unittest.TestCase):
 
         attack_label = window.translator("attacks_tab")
 
-        self.assertIn(attack_label, labels)
+        self.assertNotIn(attack_label, labels)
 
-        attack_index = labels.index(attack_label)
+        items_tab = window.translator("items_tab")
+
+        items_index = labels.index(items_tab)
 
         window._section_tabs.setCurrentIndex(
-            attack_index
+            items_index
         )
 
         self.assertIs(
             window._map_panels.currentWidget(),
-            window.attack_library,
+            window.item_library,
         )
 
 
