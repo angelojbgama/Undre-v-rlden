@@ -3341,6 +3341,46 @@ class AttackDefinitionDialog(QDialog):
             data.get("renderLayer") == "world"
         )
 
+        # Flight simulation: the projectile exists only from its
+        # spawnProjectile tick, travels along the facing at the
+        # definition's speed, and disappears after its lifetime.
+        spawn_tick = min(
+            (
+                event[0]
+                for event in self._events
+                if len(event) > 1
+                and event[1] == "spawnProjectile"
+            ),
+            default=None,
+        )
+
+        if spawn_tick is not None:
+            if self._selected_tick < spawn_tick:
+                return None, None, None, False
+
+            elapsed = self._selected_tick - spawn_tick
+
+            lifetime = int(
+                data.get("lifetimeTicks", 0) or 0
+            )
+
+            if lifetime > 0 and elapsed >= lifetime:
+                return None, None, None, False
+
+            speed = int(
+                data.get("speedPixelsPerTick", 0) or 0
+            )
+
+            direction = DIRECTION_VECTORS.get(
+                facing,
+                (0, 1),
+            )
+
+            offset = (
+                offset[0] + direction[0] * speed * elapsed,
+                offset[1] + direction[1] * speed * elapsed,
+            )
+
         return (
             rotate_image_quarter_turns(visual.image, turns),
             anchor,
