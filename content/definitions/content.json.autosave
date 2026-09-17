@@ -3169,8 +3169,235 @@
       ]
     }
   ],
-  "projectiles": [],
-  "attacks": [],
+  "projectiles": [
+    {
+      "id": "projectile.arrow",
+      "visualId": "visual.arrow",
+      "canonicalFacing": "up",
+      "speedPixelsPerTick": 4,
+      "lifetimeTicks": 120,
+      "hitboxWidth": 8,
+      "hitboxHeight": 8,
+      "spawnOffsets": {
+        "down": {
+          "x": -1,
+          "y": 1
+        },
+        "up": {
+          "x": 1,
+          "y": -11
+        },
+        "left": {
+          "x": -5,
+          "y": -8
+        },
+        "right": {
+          "x": 5,
+          "y": -8
+        }
+      },
+      "renderLayer": "world"
+    },
+    {
+      "id": "projectile.player.arrow",
+      "visualId": "visual.projectile.player.arrow",
+      "canonicalFacing": "up",
+      "speedPixelsPerTick": 4,
+      "lifetimeTicks": 120,
+      "hitboxWidth": 6,
+      "hitboxHeight": 6,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 3
+        },
+        "up": {
+          "x": 0,
+          "y": -20
+        },
+        "left": {
+          "x": -12,
+          "y": -10
+        },
+        "right": {
+          "x": 12,
+          "y": -10
+        }
+      }
+    },
+    {
+      "id": "projectile.skull.arrow",
+      "visualId": "visual.projectile.skull.arrow",
+      "canonicalFacing": "right",
+      "speedPixelsPerTick": 4,
+      "lifetimeTicks": 120,
+      "hitboxWidth": 6,
+      "hitboxHeight": 6,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 3
+        },
+        "up": {
+          "x": 0,
+          "y": -20
+        },
+        "left": {
+          "x": -12,
+          "y": -10
+        },
+        "right": {
+          "x": 12,
+          "y": -10
+        }
+      }
+    }
+  ],
+  "attacks": [
+    {
+      "id": "attack.player.bow",
+      "kind": "projectile",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 32
+      },
+      "totalTicks": 16,
+      "cooldownTicks": 0,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 10,
+      "visualActionId": "visual.player.bow",
+      "meleeHitboxes": null,
+      "projectileDefinitionId": "projectile.arrow",
+      "timeline": [
+        {
+          "tick": 5,
+          "kind": "spawnProjectile"
+        },
+        {
+          "tick": 8,
+          "kind": "activateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.player.sword",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 32
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 0,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 27,
+      "visualActionId": "visual.player.sword",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -10,
+          "offsetY": -1,
+          "width": 20,
+          "height": 18
+        },
+        "up": {
+          "offsetX": -10,
+          "offsetY": -27,
+          "width": 20,
+          "height": 19
+        },
+        "left": {
+          "offsetX": -27,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        },
+        "right": {
+          "offsetX": 6,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 18,
+          "kind": "deactivateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.soldier.sword",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 7
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 45,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 27,
+      "visualActionId": "visual.action.soldier.sword",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -10,
+          "offsetY": -1,
+          "width": 20,
+          "height": 18
+        },
+        "up": {
+          "offsetX": -10,
+          "offsetY": -27,
+          "width": 20,
+          "height": 19
+        },
+        "left": {
+          "offsetX": -27,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        },
+        "right": {
+          "offsetX": 6,
+          "offsetY": -18,
+          "width": 21,
+          "height": 18
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 18,
+          "kind": "deactivateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.skull.arrow",
+      "kind": "projectile",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 5
+      },
+      "totalTicks": 16,
+      "cooldownTicks": 60,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 120,
+      "visualActionId": "visual.action.skull.arrow",
+      "projectileDefinitionId": "projectile.skull.arrow",
+      "timeline": [
+        {
+          "tick": 8,
+          "kind": "spawnProjectile"
+        }
+      ]
+    }
+  ],
   "behaviors": [],
   "enemies": [],
   "items": [],
@@ -10056,9 +10283,62 @@
       "id": "image.arrow",
       "root": "gameAssets",
       "relativePath": "Characters/Player/attacking/arrow.png"
+    },
+    {
+      "id": "image.projectile.player.arrow",
+      "root": "gameAssets",
+      "relativePath": "Characters/Player/attacking/arrow.png"
+    },
+    {
+      "id": "image.projectile.skull.arrow",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Skull/attacking/arrow.png"
     }
   ],
-  "staticSprites": [],
+  "staticSprites": [
+    {
+      "id": "visual.arrow",
+      "imageId": "image.arrow",
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "anchor": {
+        "x": 8,
+        "y": 15
+      }
+    },
+    {
+      "id": "visual.projectile.player.arrow",
+      "imageId": "image.projectile.player.arrow",
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": "visual.projectile.skull.arrow",
+      "imageId": "image.projectile.skull.arrow",
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    }
+  ],
   "animations": [
     {
       "id": "animation.chest",
