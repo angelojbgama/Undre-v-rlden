@@ -4,6 +4,10 @@
 #include <iostream>
 #include <string>
 
+// Native workspace content validator. Structural and cross-reference
+// validation only: game runtime requirements (required attack/projectile
+// ids and so on) are enforced by the game startup, not by every authored
+// workspace, since combat content is authored data.
 int main(int argc, char** argv) {
     if (argc != 2 || argv[1] == nullptr || std::string(argv[1]).empty()) {
         std::cerr << "usage: content_check <workspace-directory>\n";
@@ -16,16 +20,6 @@ int main(int argc, char** argv) {
     if (!result) {
         for (const auto& diagnostic : result.diagnostics) {
             std::cerr << underworld::game::content::formatContentWorkspaceDiagnostic(diagnostic) << '\n';
-        }
-        return 1;
-    }
-    const auto runtimeRequirements =
-        underworld::game::content::validateCurrentRuntimeContentRequirements(
-            result.content->registry);
-    if (!runtimeRequirements.empty()) {
-        for (const auto& diagnostic : runtimeRequirements) {
-            std::cerr << underworld::game::content::formatContentWorkspaceDiagnostic(diagnostic)
-                      << '\n';
         }
         return 1;
     }
@@ -43,6 +37,7 @@ int main(int argc, char** argv) {
               + authored.visualImages.size() + authored.staticSprites.size()
               + authored.animations.size() + authored.enemyVisuals.size()
               + authored.objectVisuals.size()
-              << "\nruntime requirements: PASS\n";
+              + authored.players.size() + authored.playerVisuals.size()
+              << "\n";
     return 0;
 }

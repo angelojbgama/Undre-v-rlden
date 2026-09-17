@@ -463,11 +463,48 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\playtest_runner.obj"
 if errorlevel 1 goto :build_failed
 
+echo Compiling content checker...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\content_check.obj" "src\tools\content_check.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Linking content_check.exe...
+link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\content_check.exe" ^
+    "build\obj\content_check.obj" ^
+    "build\obj\framebuffer.obj" "build\obj\image.obj" ^
+    "build\obj\renderer_2d.obj" "build\obj\sprite.obj" ^
+    "build\obj\animation.obj" "build\obj\bitmap_font.obj" "build\obj\utf8.obj" ^
+    "build\obj\camera_2d.obj" "build\obj\asset_manager.obj" ^
+    "build\obj\tile.obj" "build\obj\tile_layer.obj" ^
+    "build\obj\collision_grid.obj" "build\obj\collision.obj" ^
+    "build\obj\runtime_map.obj" "build\obj\entity_handle.obj" ^
+    "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" ^
+    "build\obj\game_launch.obj" "build\obj\runtime_world.obj" ^
+    "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
+    "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
+    "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
+    "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" ^
+    "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
+    "build\obj\quest_state.obj" "build\obj\quest_system.obj" ^
+    "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" ^
+    "build\obj\runtime_visual_sync.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\region_tracker.obj" "build\obj\creature_engine.obj" ^
+    "build\obj\enemy_visual.obj" "build\obj\effect_system.obj" ^
+    "build\obj\command_builder.obj" "build\obj\player.obj" ^
+    "build\obj\player_visual.obj" "build\obj\game_runtime.obj" ^
+    "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" ^
+    "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
+    ole32.lib windowscodecs.lib
+if errorlevel 1 goto :build_failed
+
 echo.
 echo Build succeeded:
 echo   build\bin\game.exe
 echo   build\bin\tests.exe
 echo   build\bin\playtest_runner.exe
+echo   build\bin\content_check.exe
 
 popd
 exit /b 0
