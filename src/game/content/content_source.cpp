@@ -3,7 +3,6 @@
 #include "game/content/builtin_content.h"
 #include "game/content/content_compiler.h"
 #include "game/gameplay/attack_definitions.h"
-#include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/rpg/player_progression.h"
 
 #include <algorithm>
@@ -149,15 +148,14 @@ validateCurrentRuntimeContentRequirements(const GameContentRegistry& registry) {
                                    "current game runtime requires this definition"});
         }
     };
+    // Engine contracts only: what the runtime hard-requires to boot. Enemy
+    // combat content (soldier/skull attacks and projectiles) is authored and
+    // validated through its own reference chain when enemies are authored.
     require("tilesets", {"tileset.dungeon"});
     require("progressions", gameplay::rpg::defaultPlayerProgressionId());
     require("players", gameplay::defaultPlayerDefinitionId());
     require("attacks", gameplay::playerSwordAttackId());
     require("attacks", gameplay::playerBowAttackId());
-    require("attacks", gameplay::creatures::soldierSwordAttackId());
-    require("attacks", gameplay::creatures::skullArrowAttackId());
-    require("projectiles", gameplay::playerArrowProjectileId());
-    require("projectiles", gameplay::creatures::skullArrowProjectileId());
     require("presentationEffects", {"effect.player.hit"});
     return diagnostics;
 }
