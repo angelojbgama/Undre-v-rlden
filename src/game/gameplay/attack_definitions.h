@@ -57,6 +57,15 @@ enum class ProjectileRenderLayer {
     actor, // drawn in front of actors (default)
 };
 
+// Per-direction render layer authored on the projectile. Unset facings
+// fall back to ProjectileDefinition::renderLayer.
+struct DirectionalRenderLayers final {
+    std::array<std::optional<ProjectileRenderLayer>, 4> values{}; // down, up, left, right
+    [[nodiscard]] std::optional<ProjectileRenderLayer> forFacing(
+        FacingDirection facing) const noexcept;
+    [[nodiscard]] bool any() const noexcept;
+};
+
 struct ProjectileDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualId{};
@@ -67,6 +76,7 @@ struct ProjectileDefinition final {
     int hitboxHeight{};
     DirectionalOffsets spawnOffsets{};
     ProjectileRenderLayer renderLayer{ProjectileRenderLayer::actor};
+    DirectionalRenderLayers renderLayers{};
 };
 
 struct AttackDefinition final {

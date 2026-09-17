@@ -1633,11 +1633,30 @@ class ProjectileSpawnEditorDialog(QDialog):
             else "up"
         )
 
-        self._render_layer = (
+        raw_render_layers = data.get("renderLayers")
+
+        raw_render_layers = (
+            raw_render_layers
+            if isinstance(raw_render_layers, dict)
+            else {}
+        )
+
+        self._render_layer_default = (
             data.get("renderLayer")
             if data.get("renderLayer") in ("actor", "world")
             else "actor"
         )
+
+        self._render_layers: dict[str, str] = {}
+
+        for direction in DIRECTIONS:
+            layer = raw_render_layers.get(direction)
+
+            self._render_layers[direction] = (
+                layer
+                if layer in ("actor", "world")
+                else self._render_layer_default
+            )
 
         self.setWindowTitle(
             self.translate("projectile_spawn_editor_title")
@@ -1730,7 +1749,9 @@ class ProjectileSpawnEditorDialog(QDialog):
         )
 
         self.render_layer.setCurrentIndex(
-            self.render_layer.findData(self._render_layer)
+            self.render_layer.findData(
+                self._render_layer_default
+            )
         )
 
         self.render_layer.currentIndexChanged.connect(
@@ -1848,6 +1869,16 @@ class ProjectileSpawnEditorDialog(QDialog):
         self.offset_x.blockSignals(False)
         self.offset_y.blockSignals(False)
 
+        self.render_layer.blockSignals(True)
+
+        self.render_layer.setCurrentIndex(
+            self.render_layer.findData(
+                self._render_layers[direction]
+            )
+        )
+
+        self.render_layer.blockSignals(False)
+
         self.canvas.set_offset(
             offsets["x"],
             offsets["y"],
@@ -1856,8 +1887,12 @@ class ProjectileSpawnEditorDialog(QDialog):
     def _render_layer_changed(self) -> None:
         layer = self.render_layer.currentData()
 
-        if isinstance(layer, str) and layer:
-            self._render_layer = layer
+        if (
+            isinstance(layer, str)
+            and layer
+            and self._current_direction
+        ):
+            self._render_layers[self._current_direction] = layer
 
             self._apply_canvas_projectile()
 
@@ -1894,7 +1929,11 @@ class ProjectileSpawnEditorDialog(QDialog):
         self.canvas.set_projectile(
             rotate_image_quarter_turns(visual.image, turns),
             anchor,
-            self._render_layer == "world",
+            self._render_layers.get(
+                direction,
+                self._render_layer_default,
+            )
+            == "world",
         )
 
     def _offset_from_spins(self) -> None:
@@ -1945,7 +1984,8 @@ class ProjectileSpawnEditorDialog(QDialog):
                 self.projectile_id,
                 self._offsets,
                 self._canonical_facing,
-                self._render_layer,
+                None,
+                dict(self._render_layers),
             )
         except ValueError as error:
             QMessageBox.critical(
@@ -3337,9 +3377,20 @@ class AttackDefinitionDialog(QDialog):
             turns,
         )
 
-        behind = (
-            data.get("renderLayer") == "world"
+        render_layers = data.get("renderLayers")
+
+        render_layers = (
+            render_layers
+            if isinstance(render_layers, dict)
+            else {}
         )
+
+        layer = render_layers.get(facing)
+
+        if layer not in ("actor", "world"):
+            layer = data.get("renderLayer")
+
+        behind = layer == "world"
 
         # Flight simulation: the projectile exists only from its
         # spawnProjectile tick, travels along the facing at the

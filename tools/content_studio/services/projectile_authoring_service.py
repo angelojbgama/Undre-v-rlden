@@ -60,6 +60,7 @@ class ProjectileAuthoringService:
         offsets: dict[str, dict[str, int]],
         canonical_facing: str | None = None,
         render_layer: str | None = None,
+        render_layers: dict[str, str] | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -97,6 +98,33 @@ class ProjectileAuthoringService:
                 )
 
             data["renderLayer"] = render_layer
+
+        if render_layers is not None:
+            normalized: dict[str, str] = {}
+
+            for direction, layer in render_layers.items():
+                if direction not in (
+                    "down",
+                    "up",
+                    "left",
+                    "right",
+                ):
+                    raise ValueError(
+                        "renderLayers direction must be one of "
+                        "down/up/left/right"
+                    )
+
+                if layer not in ("actor", "world"):
+                    raise ValueError(
+                        "renderLayers values must be actor or world"
+                    )
+
+                normalized[direction] = layer
+
+            if normalized:
+                data["renderLayers"] = normalized
+            else:
+                data.pop("renderLayers", None)
 
         self.workspace.upsert_definition_bundle(
             "Update Projectile Spawn Offsets",

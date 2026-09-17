@@ -128,6 +128,16 @@ core::WorldPointI DirectionalOffsets::forFacing(FacingDirection facing) const no
     return values[facingIndex(facing)];
 }
 
+std::optional<ProjectileRenderLayer> DirectionalRenderLayers::forFacing(
+    FacingDirection facing) const noexcept {
+    return values[facingIndex(facing)];
+}
+
+bool DirectionalRenderLayers::any() const noexcept {
+    return std::any_of(values.begin(), values.end(),
+                       [](const auto& layer) { return layer.has_value(); });
+}
+
 bool AttackDefinition::hasCollisionSamples(
     FacingDirection facing) const noexcept {
     const auto index = facingIndex(facing);

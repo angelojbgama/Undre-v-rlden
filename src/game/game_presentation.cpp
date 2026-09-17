@@ -287,7 +287,10 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
                                          gameplay::ProjectileRenderLayer layer) const {
     for (const auto& projectile : frame.projectiles.projectiles()) {
         if (!projectile.definition) { continue; }
-        if (projectile.definition->renderLayer != layer) { continue; }
+        const auto projectileLayer =
+            projectile.definition->renderLayers.forFacing(projectile.direction)
+                .value_or(projectile.definition->renderLayer);
+        if (projectileLayer != layer) { continue; }
         const auto& sprite = frame.staticSprites.require(projectile.definition->visualId);
         const auto rotation = projectileRotation(projectile.definition->canonicalFacing,
                                                   projectile.direction);

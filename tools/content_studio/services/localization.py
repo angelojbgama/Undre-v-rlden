@@ -632,7 +632,7 @@ TRANSLATIONS["pt-BR"].update({
     "projectile_canonical_facing": (
         "Orientação base da imagem"
     ),
-    "projectile_render_layer": "Camada de renderização",
+    "projectile_render_layer": "Camada (direção selecionada)",
     "projectile_render_layer_actor": (
         "Na frente do player"
     ),
@@ -737,7 +737,7 @@ TRANSLATIONS["en-US"].update({
     "projectile_canonical_facing": (
         "Base image orientation"
     ),
-    "projectile_render_layer": "Render layer",
+    "projectile_render_layer": "Layer (selected direction)",
     "projectile_render_layer_actor": (
         "In front of player"
     ),

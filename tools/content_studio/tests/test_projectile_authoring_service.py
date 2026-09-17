@@ -172,6 +172,46 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_update_spawn_render_layers_per_direction(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                None,
+                None,
+                {"down": "actor", "up": "world"},
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertEqual(
+                {"down": "actor", "up": "world"},
+                projectile.data["renderLayers"],
+            )
+
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in ("down", "up", "left", "right")
+                    },
+                    None,
+                    None,
+                    {"down": "behind"},
+                )
+        finally:
+            temporary.cleanup()
+
     def test_update_rejects_invalid_render_layer(self) -> None:
         temporary, workspace = make_workspace(workspace_data())
         service = ProjectileAuthoringService(workspace)
