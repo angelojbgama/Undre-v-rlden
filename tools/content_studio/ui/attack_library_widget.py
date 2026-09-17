@@ -574,6 +574,66 @@ class AttackDefinitionDialog(QDialog):
         self.accept()
 
 
+class AttackManagerDialog(QDialog):
+    """Embedded attack library for management from other widgets.
+
+    Data-driven by design: lists every builtin and authored attack the
+    workspace can see, so newly created attacks appear without code
+    changes. Consumers forward `changed`/`status_changed`.
+    """
+
+    changed = Signal()
+
+    status_changed = Signal(str)
+
+    def __init__(
+        self,
+        workspace: ContentWorkspace | None,
+        translator: Translator,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        self.translate = translator
+
+        self.setWindowTitle(
+            self.translate("player_attacks_manage")
+        )
+
+        self.library = AttackLibraryWidget(
+            workspace,
+            translator,
+            self,
+        )
+
+        self.library.changed.connect(
+            self.changed
+        )
+
+        self.library.status_changed.connect(
+            self.status_changed
+        )
+
+        self.close_button = QPushButton(
+            self.translate("attack_cancel")
+        )
+
+        self.close_button.clicked.connect(
+            self.reject
+        )
+
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(
+            self.library,
+            1,
+        )
+
+        layout.addWidget(
+            self.close_button
+        )
+
+
 class AttackLibraryWidget(QWidget):
     """Authoring view for attack definitions."""
 

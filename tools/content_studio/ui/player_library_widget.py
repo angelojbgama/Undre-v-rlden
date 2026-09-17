@@ -12,15 +12,12 @@ from PySide6.QtWidgets import (
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
-from ..services.attack_authoring_service import (
-    PLAYER_ATTACKS,
-)
 from ..services.localization import Translator
 from ..services.player_authoring_service import (
     FrameMaskSpec, FrameSequenceSpec, PlayerAuthoringRequest,
     PlayerAuthoringService, PlayerCollisionMaskSpec,
 )
-from .attack_library_widget import AttackDefinitionDialog
+from .attack_library_widget import AttackManagerDialog
 from .shape_mask_editor import ShapeMaskEditorDialog
 
 
@@ -1158,18 +1155,9 @@ class PlayerLibraryWidget(QWidget):
             self.translate("player_configure")
         )
 
-        attacks_menu = menu.addMenu(
+        attacks_action = menu.addAction(
             self.translate("player_attacks_manage")
         )
-
-        attack_actions: dict[object, str] = {}
-
-        for attack_id, label_key in PLAYER_ATTACKS:
-            attack_actions[
-                attacks_menu.addAction(
-                    self.translate(label_key)
-                )
-            ] = attack_id
 
         chosen = menu.exec(
             self.list.viewport().mapToGlobal(position)
@@ -1183,42 +1171,33 @@ class PlayerLibraryWidget(QWidget):
 
             return
 
-        attack_id = attack_actions.get(chosen)
+        if chosen == attacks_action:
+            self._open_attack_manager()
 
-        if attack_id:
-            self._open_attack_editor(attack_id)
-
-    def _open_attack_editor(self, attack_id: str) -> None:
+    def _open_attack_manager(self) -> None:
         if self.workspace is None:
             return
 
-        dialog = self._build_attack_editor(attack_id)
+        dialog = self._build_attack_manager()
 
-        result = dialog.exec()
+        dialog.exec()
 
-        if getattr(dialog, "statusMessage", None):
-            self.status_changed.emit(
-                str(dialog.statusMessage)
-            )
+        self.refresh()
 
-            return
-
-        if result:
-            self.status_changed.emit(
-                self.translate("attack_saved").format(
-                    definition_id=attack_id,
-                )
-            )
-
-            self.changed.emit()
-
-    def _build_attack_editor(self, attack_id: str) -> AttackDefinitionDialog:
-        return AttackDefinitionDialog(
+    def _build_attack_manager(self) -> AttackManagerDialog:
+        dialog = AttackManagerDialog(
             self.workspace,
-            attack_id,
             self.translate,
             self,
         )
+
+        dialog.changed.connect(self.changed)
+
+        dialog.status_changed.connect(
+            self.status_changed
+        )
+
+        return dialog
 
     def _selection_changed(self, current: QListWidgetItem | None,
                            previous: QListWidgetItem | None) -> None:

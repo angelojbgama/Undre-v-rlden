@@ -24,18 +24,6 @@ DIRECTIONS = (
     "right",
 )
 
-# The player attack slots resolved by the runtime (game_runtime.cpp
-# resolves exactly these two ids for sword and bow).
-PLAYER_ATTACKS = (
-    ("attack.player.sword", "player_attack_sword"),
-    ("attack.player.bow", "player_attack_bow"),
-)
-
-PLAYER_ATTACK_IDS = frozenset(
-    attack_id
-    for attack_id, _ in PLAYER_ATTACKS
-)
-
 EDITABLE_FIELDS = (
     "kind",
     "damage",

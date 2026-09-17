@@ -250,28 +250,30 @@ class PlayerAttackContextMenuTests(unittest.TestCase):
             statuses.append
         )
 
-        dialog = widget._build_attack_editor(
+        manager = widget._build_attack_manager()
+
+        editor = manager.library._build_editor(
             "attack.player.sword"
         )
 
         self.assertEqual(
             1,
-            dialog.damage_amount.value(),
+            editor.damage_amount.value(),
         )
 
-        dialog.damage_amount.setValue(4)
+        editor.damage_amount.setValue(4)
 
-        # Save first (persists + accept()); the patched exec then
-        # replays the widget's post-accept signal handling.
-        dialog._save()
+        editor._save()
 
-        dialog.exec = lambda: 1  # Accepted, without a modal loop.
+        editor.exec = lambda: 1  # Accepted, without a modal loop.
 
-        widget._build_attack_editor = (
-            lambda attack_id: dialog
+        # The library rebuilds its editor internally; inject the
+        # prepared one so no real modal loop starts.
+        manager.library._build_editor = (
+            lambda attack_id: editor
         )
 
-        widget._open_attack_editor(
+        manager.library._open_editor(
             "attack.player.sword"
         )
 
@@ -296,14 +298,39 @@ class PlayerAttackContextMenuTests(unittest.TestCase):
             statuses[-1],
         )
 
-    def test_player_attack_menu_offers_both_slots(self) -> None:
-        from tools.content_studio.services.attack_authoring_service import (
-            PLAYER_ATTACK_IDS,
-        )
+    def test_attack_manager_lists_future_attacks_automatically(self) -> None:
+        widget = self._widget_with_player()
+
+        manager = widget._build_attack_manager()
 
         self.assertEqual(
-            {"attack.player.sword", "attack.player.bow"},
-            set(PLAYER_ATTACK_IDS),
+            5,
+            manager.library.attacks.count(),
+        )
+
+        # A newly authored attack shows up without any code change.
+        widget.workspace.create_definition(
+            "attacks",
+            "attack.future.punch",
+        )
+
+        manager.library.refresh()
+
+        self.assertEqual(
+            6,
+            manager.library.attacks.count(),
+        )
+
+        labels = [
+            manager.library.attacks.item(row).text()
+            for row in range(manager.library.attacks.count())
+        ]
+
+        self.assertTrue(
+            any(
+                "attack.future.punch" in label
+                for label in labels
+            )
         )
 
 
