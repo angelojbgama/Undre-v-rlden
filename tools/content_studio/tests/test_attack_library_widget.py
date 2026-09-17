@@ -180,5 +180,132 @@ class AttackLibraryWidgetTests(unittest.TestCase):
         )
 
 
+@unittest.skipIf(
+    QApplication is None,
+    "PySide6 is not installed",
+)
+class PlayerAttackContextMenuTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        assert QApplication is not None
+
+        cls.application = (
+            QApplication.instance()
+            or QApplication([])
+        )
+
+    def _widget_with_player(self):
+        from tools.content_studio.ui.player_library_widget import (
+            PlayerLibraryWidget,
+        )
+
+        data = attack_content()
+
+        data["players"].append({  # type: ignore[union-attr]
+            "id": "player.hero",
+            "visualSetId": "visual.player.hero",
+            "progressionId": "progression.default",
+        })
+
+        temporary, workspace = make_workspace(data)
+
+        self.addCleanup(temporary.cleanup)
+
+        widget = PlayerLibraryWidget(
+            workspace,
+            None,
+            Translator("en-US"),
+        )
+
+        self.addCleanup(widget.close)
+
+        return widget
+
+    def test_context_menu_policy_and_attack_flow(self) -> None:
+        assert QApplication is not None
+
+        from PySide6.QtCore import Qt
+
+        widget = self._widget_with_player()
+
+        self.assertEqual(
+            Qt.ContextMenuPolicy.CustomContextMenu,
+            widget.list.contextMenuPolicy(),
+        )
+
+        self.assertEqual(
+            1,
+            widget.list.count(),
+        )
+
+        changed: list = []
+
+        statuses: list[str] = []
+
+        widget.changed.connect(
+            lambda: changed.append(True)
+        )
+
+        widget.status_changed.connect(
+            statuses.append
+        )
+
+        dialog = widget._build_attack_editor(
+            "attack.player.sword"
+        )
+
+        self.assertEqual(
+            1,
+            dialog.damage_amount.value(),
+        )
+
+        dialog.damage_amount.setValue(4)
+
+        # Save first (persists + accept()); the patched exec then
+        # replays the widget's post-accept signal handling.
+        dialog._save()
+
+        dialog.exec = lambda: 1  # Accepted, without a modal loop.
+
+        widget._build_attack_editor = (
+            lambda attack_id: dialog
+        )
+
+        widget._open_attack_editor(
+            "attack.player.sword"
+        )
+
+        self.assertTrue(changed)
+
+        stored = widget.workspace.find(
+            "attacks",
+            "attack.player.sword",
+        )
+
+        self.assertIsNotNone(stored)
+
+        assert stored is not None
+
+        self.assertEqual(
+            4,
+            stored.data["damage"]["amount"],
+        )
+
+        self.assertIn(
+            "attack.player.sword",
+            statuses[-1],
+        )
+
+    def test_player_attack_menu_offers_both_slots(self) -> None:
+        from tools.content_studio.services.attack_authoring_service import (
+            PLAYER_ATTACK_IDS,
+        )
+
+        self.assertEqual(
+            {"attack.player.sword", "attack.player.bow"},
+            set(PLAYER_ATTACK_IDS),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -553,6 +553,22 @@ TRANSLATIONS["en-US"].update({
 })
 
 
+# player-attack-context-menu-localization-v1
+TRANSLATIONS["pt-BR"].update({
+    "player_configure": "Configurar Player...",
+    "player_attacks_manage": "Ataques do jogador",
+    "player_attack_sword": "Espada do jogador",
+    "player_attack_bow": "Arco do jogador",
+})
+
+TRANSLATIONS["en-US"].update({
+    "player_configure": "Configure player...",
+    "player_attacks_manage": "Player attacks",
+    "player_attack_sword": "Player sword",
+    "player_attack_bow": "Player bow",
+})
+
+
 # attack-library-localization-v1
 TRANSLATIONS["pt-BR"].update({
     "attacks_tab": "Ataques",

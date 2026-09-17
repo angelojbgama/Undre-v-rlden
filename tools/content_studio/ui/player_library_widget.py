@@ -7,16 +7,20 @@ from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+    QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
+from ..services.attack_authoring_service import (
+    PLAYER_ATTACKS,
+)
 from ..services.localization import Translator
 from ..services.player_authoring_service import (
     FrameMaskSpec, FrameSequenceSpec, PlayerAuthoringRequest,
     PlayerAuthoringService, PlayerCollisionMaskSpec,
 )
+from .attack_library_widget import AttackDefinitionDialog
 from .shape_mask_editor import ShapeMaskEditorDialog
 
 
@@ -1074,6 +1078,10 @@ class PlayerLibraryWidget(QWidget):
         self.list.currentItemChanged.connect(self._selection_changed)
         self.list.itemDoubleClicked.connect(
             lambda unused: self.edit_selected())
+        self.list.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(
+            self._context_menu)
 
         self.add_button = QPushButton("Adicionar Player...")
         self.edit_button = QPushButton("Configurar Player...")
@@ -1133,6 +1141,84 @@ class PlayerLibraryWidget(QWidget):
             "players",
             str(self.list.currentItem().data(
                 Qt.ItemDataRole.UserRole) or ""))
+
+    def _context_menu(self, position) -> None:
+        item = self.list.itemAt(position)
+
+        if item is None:
+            return
+
+        self.list.setCurrentRow(
+            self.list.row(item)
+        )
+
+        menu = QMenu(self)
+
+        configure_action = menu.addAction(
+            self.translate("player_configure")
+        )
+
+        attacks_menu = menu.addMenu(
+            self.translate("player_attacks_manage")
+        )
+
+        attack_actions: dict[object, str] = {}
+
+        for attack_id, label_key in PLAYER_ATTACKS:
+            attack_actions[
+                attacks_menu.addAction(
+                    self.translate(label_key)
+                )
+            ] = attack_id
+
+        chosen = menu.exec(
+            self.list.viewport().mapToGlobal(position)
+        )
+
+        if chosen is None:
+            return
+
+        if chosen == configure_action:
+            self.edit_selected()
+
+            return
+
+        attack_id = attack_actions.get(chosen)
+
+        if attack_id:
+            self._open_attack_editor(attack_id)
+
+    def _open_attack_editor(self, attack_id: str) -> None:
+        if self.workspace is None:
+            return
+
+        dialog = self._build_attack_editor(attack_id)
+
+        result = dialog.exec()
+
+        if getattr(dialog, "statusMessage", None):
+            self.status_changed.emit(
+                str(dialog.statusMessage)
+            )
+
+            return
+
+        if result:
+            self.status_changed.emit(
+                self.translate("attack_saved").format(
+                    definition_id=attack_id,
+                )
+            )
+
+            self.changed.emit()
+
+    def _build_attack_editor(self, attack_id: str) -> AttackDefinitionDialog:
+        return AttackDefinitionDialog(
+            self.workspace,
+            attack_id,
+            self.translate,
+            self,
+        )
 
     def _selection_changed(self, current: QListWidgetItem | None,
                            previous: QListWidgetItem | None) -> None:
