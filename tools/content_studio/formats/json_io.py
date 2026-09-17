@@ -57,6 +57,34 @@ def _clear_windows_readonly(path: Path) -> bool:
     return not _is_windows_readonly(path)
 
 
+def _write_in_place(path: Path, value: Any) -> None:
+    """Last-resort Windows fallback when atomic replacement is denied."""
+
+    payload = encode_json(value).encode("utf-8")
+
+    original = path.read_bytes() if path.exists() else None
+
+    try:
+        with path.open("wb") as output:
+            output.write(payload)
+
+            output.flush()
+
+            os.fsync(output.fileno())
+    except BaseException:
+        if original is not None:
+            with path.open("wb") as recovery:
+                recovery.write(original)
+
+                recovery.flush()
+
+                os.fsync(recovery.fileno())
+        elif path.exists():
+            path.unlink()
+
+        raise
+
+
 def write_atomic(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -108,6 +136,13 @@ def write_atomic(path: Path, value: Any) -> None:
                     or attempt
                     >= len(retry_delays)
                 ):
+                    if transient_windows_lock:
+                        _clear_windows_readonly(path)
+
+                        _write_in_place(path, value)
+
+                        return
+
                     raise
 
                 if error.winerror == 5:
