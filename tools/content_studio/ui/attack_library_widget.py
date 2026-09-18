@@ -1764,6 +1764,32 @@ class ProjectileSpawnEditorDialog(QDialog):
             for direction in DIRECTIONS
         }
 
+        raw_impact_flip = data.get("impactFlipX")
+
+        raw_impact_flip = (
+            raw_impact_flip
+            if isinstance(raw_impact_flip, dict)
+            else {}
+        )
+
+        self._impact_flip_x: dict[str, bool] = {
+            direction: bool(raw_impact_flip.get(direction, False))
+            for direction in DIRECTIONS
+        }
+
+        raw_expire_flip = data.get("expireFlipX")
+
+        raw_expire_flip = (
+            raw_expire_flip
+            if isinstance(raw_expire_flip, dict)
+            else {}
+        )
+
+        self._expire_flip_x: dict[str, bool] = {
+            direction: bool(raw_expire_flip.get(direction, False))
+            for direction in DIRECTIONS
+        }
+
         self._maximum_distance = (
             int(data.get("maximumDistancePixels", 0) or 0)
         )
@@ -2105,7 +2131,13 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._impact_facing_changed
         )
 
-        layer_row.addWidget(self.impact_facing)
+        self.impact_flip = QCheckBox(
+            self.translate("projectile_flip_x")
+        )
+
+        self.impact_flip.toggled.connect(self._impact_flip_changed)
+
+        layer_row.addWidget(self.impact_flip)
 
         layer_row.addStretch(1)
 
@@ -2145,7 +2177,13 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._expire_facing_changed
         )
 
-        expire_row.addWidget(self.expire_facing)
+        self.expire_flip = QCheckBox(
+            self.translate("projectile_flip_x")
+        )
+
+        self.expire_flip.toggled.connect(self._expire_flip_changed)
+
+        expire_row.addWidget(self.expire_flip)
 
         expire_row.addStretch(1)
 
@@ -2310,6 +2348,8 @@ class ProjectileSpawnEditorDialog(QDialog):
             (self.impact_facing, self._impact_animation_facings[direction]),
             (self.expire_facing, self._expire_animation_facings[direction]),
             (self.flip_x, self._flip_x.get(direction, False)),
+            (self.impact_flip, self._impact_flip_x[direction]),
+            (self.expire_flip, self._expire_flip_x[direction]),
         ):
             combo.blockSignals(True)
 
@@ -2334,6 +2374,16 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._flip_x[direction] = bool(checked)
 
             self._apply_canvas_projectile()
+
+    def _impact_flip_changed(self, checked: bool) -> None:
+        if self._current_direction:
+            self._impact_flip_x[self._current_direction] = bool(checked)
+
+            self._apply_canvas_projectile()
+
+    def _expire_flip_changed(self, checked: bool) -> None:
+        if self._current_direction:
+            self._expire_flip_x[self._current_direction] = bool(checked)
 
     def _impact_facing_changed(self) -> None:
         value = self.impact_facing.currentData()
@@ -2705,6 +2755,8 @@ class ProjectileSpawnEditorDialog(QDialog):
                     for direction, enabled in self._flip_x.items()
                     if enabled
                 },
+                impact_flip_x=dict(self._impact_flip_x),
+                expire_flip_x=dict(self._expire_flip_x),
             )
         except ValueError as error:
             QMessageBox.critical(

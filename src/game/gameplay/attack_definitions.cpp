@@ -142,6 +142,14 @@ bool ProjectileDefinition::flipXForFacing(FacingDirection facing) const noexcept
     return flipX[facingIndex(facing)];
 }
 
+bool ProjectileDefinition::impactFlipXForFacing(FacingDirection facing) const noexcept {
+    return impactFlipX[facingIndex(facing)];
+}
+
+bool ProjectileDefinition::expireFlipXForFacing(FacingDirection facing) const noexcept {
+    return expireFlipX[facingIndex(facing)];
+}
+
 std::optional<simulation::DefinitionId> DirectionalAnimations::forFacing(
     FacingDirection facing) const noexcept {
     return values[facingIndex(facing)];

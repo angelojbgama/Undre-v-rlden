@@ -68,6 +68,8 @@ class ProjectileAuthoringService:
         impact_animation_facing: str | None = None,
         expire_animation_facing: str | None = None,
         flip_x: dict[str, bool] | None = None,
+        impact_flip_x: dict[str, bool] | None = None,
+        expire_flip_x: dict[str, bool] | None = None,
         impact_animations: dict[str, str] | None = None,
         impact_animation_facings: dict[str, str] | None = None,
         expire_animation_facings: dict[str, str] | None = None,
@@ -276,6 +278,35 @@ class ProjectileAuthoringService:
                 data["flipX"] = normalized_flip
             else:
                 data.pop("flipX", None)
+
+        for flip_map, category in (
+            (impact_flip_x, "impactFlipX"),
+            (expire_flip_x, "expireFlipX"),
+        ):
+            if flip_map is None:
+                continue
+
+            normalized_flip: dict[str, bool] = {}
+
+            for direction, enabled in flip_map.items():
+                if direction not in (
+                    "down",
+                    "up",
+                    "left",
+                    "right",
+                ):
+                    raise ValueError(
+                        f"{category} direction must be one of "
+                        "down/up/left/right"
+                    )
+
+                if enabled:
+                    normalized_flip[direction] = True
+
+            if normalized_flip:
+                data[category] = normalized_flip
+            else:
+                data.pop(category, None)
 
         if expire_animations is not None:
             normalized_expire: dict[str, str] = {}

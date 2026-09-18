@@ -116,10 +116,15 @@ struct ProjectileDefinition final {
     DirectionalAnimations impactAnimations{};
     DirectionalFacings impactAnimationFacings{};
     DirectionalFacings expireAnimationFacings{};
-    // Per-direction horizontal mirror applied after rotation (both to the
-    // flight animation and the static sprite).
-    std::array<bool, 4> flipX{}; // down, up, left, right
+    // Per-direction horizontal mirror applied after rotation. flipX covers
+    // the flight visual; impactFlipX and expireFlipX cover each end
+    // animation independently.
+    std::array<bool, 4> flipX{};     // down, up, left, right
+    std::array<bool, 4> impactFlipX{}; // down, up, left, right
+    std::array<bool, 4> expireFlipX{}; // down, up, left, right
     [[nodiscard]] bool flipXForFacing(FacingDirection facing) const noexcept;
+    [[nodiscard]] bool impactFlipXForFacing(FacingDirection facing) const noexcept;
+    [[nodiscard]] bool expireFlipXForFacing(FacingDirection facing) const noexcept;
 };
 
 struct AttackDefinition final {
