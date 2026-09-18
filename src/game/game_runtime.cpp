@@ -449,16 +449,23 @@ struct GameRuntime::State final {
                             .value_or(projectileDefinition->expireAnimationId)
                         : simulation::DefinitionId{})
                     : (projectileDefinition != nullptr
-                        ? projectileDefinition->impactAnimationId
+                        ? projectileDefinition->impactAnimations.forFacing(impact->direction)
+                            .value_or(projectileDefinition->impactAnimationId)
                         : simulation::DefinitionId{});
+                const auto endFacing = expired
+                    ? (projectileDefinition != nullptr
+                        ? projectileDefinition->expireAnimationFacings.forFacing(impact->direction)
+                            .value_or(projectileDefinition->expireAnimationFacing)
+                        : gameplay::FacingDirection::up)
+                    : (projectileDefinition != nullptr
+                        ? projectileDefinition->impactAnimationFacings.forFacing(impact->direction)
+                            .value_or(projectileDefinition->impactAnimationFacing)
+                        : gameplay::FacingDirection::up);
                 if (!authoredEndAnimation.empty()) {
                     // Authored per-end animation. Expire animations hold
                     // their last frame (e.g. an arrow stuck in the ground).
                     // The animation is rotated from its authored base
                     // orientation to the projectile's flight direction.
-                    const auto endFacing = expired
-                        ? projectileDefinition->expireAnimationFacing
-                        : projectileDefinition->impactAnimationFacing;
                     const auto turns = gameplay::clockwiseQuarterTurns(endFacing, impact->direction);
                     const auto rotation = turns == 1 ? render::QuarterTurn::r90
                         : turns == 2 ? render::QuarterTurn::r180

@@ -1788,23 +1788,81 @@ class ProjectileSpawnEditorDialog(QDialog):
             else ""
         )
 
-        self._impact_animation_facing = (
-            data.get("impactAnimationFacing")
-            if data.get("impactAnimationFacing") in FACING_QUARTERS
-            else "up"
-        )
-
         self._expire_animation_id = (
             data.get("expireAnimationId")
             if isinstance(data.get("expireAnimationId"), str)
             else ""
         )
 
-        self._expire_animation_facing = (
-            data.get("expireAnimationFacing")
-            if data.get("expireAnimationFacing") in FACING_QUARTERS
-            else "up"
+        raw_impact_animations = data.get("impactAnimations")
+
+        raw_impact_animations = (
+            raw_impact_animations
+            if isinstance(raw_impact_animations, dict)
+            else {}
         )
+
+        raw_expire_animations = data.get("expireAnimations")
+
+        raw_expire_animations = (
+            raw_expire_animations
+            if isinstance(raw_expire_animations, dict)
+            else {}
+        )
+
+        raw_impact_facings = data.get("impactAnimationFacings")
+
+        raw_impact_facings = (
+            raw_impact_facings
+            if isinstance(raw_impact_facings, dict)
+            else {}
+        )
+
+        raw_expire_facings = data.get("expireAnimationFacings")
+
+        raw_expire_facings = (
+            raw_expire_facings
+            if isinstance(raw_expire_facings, dict)
+            else {}
+        )
+
+        self._impact_animations: dict[str, str] = {}
+        self._expire_animations: dict[str, str] = {}
+        self._impact_animation_facings: dict[str, str] = {}
+        self._expire_animation_facings: dict[str, str] = {}
+
+        for direction in DIRECTIONS:
+            impact = raw_impact_animations.get(direction)
+
+            self._impact_animations[direction] = (
+                impact
+                if isinstance(impact, str) and impact
+                else self._impact_animation_id
+            )
+
+            expire = raw_expire_animations.get(direction)
+
+            self._expire_animations[direction] = (
+                expire
+                if isinstance(expire, str) and expire
+                else self._expire_animation_id
+            )
+
+            impact_facing = raw_impact_facings.get(direction)
+
+            self._impact_animation_facings[direction] = (
+                impact_facing
+                if impact_facing in FACING_QUARTERS
+                else "up"
+            )
+
+            expire_facing = raw_expire_facings.get(direction)
+
+            self._expire_animation_facings[direction] = (
+                expire_facing
+                if expire_facing in FACING_QUARTERS
+                else "up"
+            )
 
         raw_expire_animations = data.get("expireAnimations")
 
@@ -2039,7 +2097,7 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         self.impact_facing.setCurrentIndex(
             self.impact_facing.findData(
-                self._impact_animation_facing
+                self._impact_animation_facings["down"]
             )
         )
 
@@ -2079,7 +2137,7 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         self.expire_facing.setCurrentIndex(
             self.expire_facing.findData(
-                self._expire_animation_facing
+                self._expire_animation_facings["down"]
             )
         )
 
@@ -2248,9 +2306,9 @@ class ProjectileSpawnEditorDialog(QDialog):
         for combo, value in (
             (self.render_layer, self._render_layers[direction]),
             (self.expire_animation, self._expire_animations[direction]),
-            (self.end_animation, self._impact_animation_id),
-            (self.impact_facing, self._impact_animation_facing),
-            (self.expire_facing, self._expire_animation_facing),
+            (self.end_animation, self._impact_animations[direction]),
+            (self.impact_facing, self._impact_animation_facings[direction]),
+            (self.expire_facing, self._expire_animation_facings[direction]),
             (self.flip_x, self._flip_x.get(direction, False)),
         ):
             combo.blockSignals(True)
@@ -2280,24 +2338,24 @@ class ProjectileSpawnEditorDialog(QDialog):
     def _impact_facing_changed(self) -> None:
         value = self.impact_facing.currentData()
 
-        if isinstance(value, str) and value:
-            self._impact_animation_facing = value
+        if isinstance(value, str) and value and self._current_direction:
+            self._impact_animation_facings[self._current_direction] = value
 
     def _expire_facing_changed(self) -> None:
         value = self.expire_facing.currentData()
 
-        if isinstance(value, str) and value:
-            self._expire_animation_facing = value
+        if isinstance(value, str) and value and self._current_direction:
+            self._expire_animation_facings[self._current_direction] = value
 
     def _advance_end_previews(self) -> None:
         """Cycle both end animations on their preview labels, rotated per
         the animation's base orientation and the selected direction."""
         direction = self._current_direction or "down"
 
-        for combo, facing_attr, label in (
-            (self.end_animation, "_impact_animation_facing",
+        for combo, facings, label in (
+            (self.end_animation, self._impact_animation_facings,
              self.impact_preview),
-            (self.expire_animation, "_expire_animation_facing",
+            (self.expire_animation, self._expire_animation_facings,
              self.expire_preview),
         ):
             animation_id = combo.currentData()
@@ -2347,7 +2405,7 @@ class ProjectileSpawnEditorDialog(QDialog):
                     animation_id, index)
             )
 
-            facing = getattr(self, facing_attr)
+            facing = facings.get(direction, "up")
 
             turns = quarter_turns(facing, direction)
 
@@ -2364,11 +2422,12 @@ class ProjectileSpawnEditorDialog(QDialog):
                 label.setText("—")
 
     def _impact_animation_changed(self) -> None:
-        value = self.end_animation.currentData()
+        if self._current_direction:
+            value = self.end_animation.currentData()
 
-        self._impact_animation_id = (
-            value if isinstance(value, str) else ""
-        )
+            self._impact_animations[self._current_direction] = (
+                value if isinstance(value, str) else ""
+            )
 
     def _expire_animation_changed(self) -> None:
         value = self.expire_animation.currentData()
@@ -2621,10 +2680,23 @@ class ProjectileSpawnEditorDialog(QDialog):
                 render_layers=dict(self._render_layers),
                 maximum_distance=self._maximum_distance,
                 impact_animation=self._impact_animation_id,
-                impact_animation_facing=self._impact_animation_facing,
                 expire_animation=self._expire_animation_id,
-                expire_animation_facing=self._expire_animation_facing,
                 expire_animations=dict(self._expire_animations),
+                impact_animations={
+                    direction: animation
+                    for direction, animation in self._impact_animations.items()
+                    if animation
+                },
+                impact_animation_facings={
+                    direction: facing
+                    for direction, facing in self._impact_animation_facings.items()
+                    if facing != "up"
+                },
+                expire_animation_facings={
+                    direction: facing
+                    for direction, facing in self._expire_animation_facings.items()
+                    if facing != "up"
+                },
                 flip_x={
                     direction: enabled
                     for direction, enabled in self._flip_x.items()

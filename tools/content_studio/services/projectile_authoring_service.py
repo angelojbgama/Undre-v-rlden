@@ -68,6 +68,9 @@ class ProjectileAuthoringService:
         impact_animation_facing: str | None = None,
         expire_animation_facing: str | None = None,
         flip_x: dict[str, bool] | None = None,
+        impact_animations: dict[str, str] | None = None,
+        impact_animation_facings: dict[str, str] | None = None,
+        expire_animation_facings: dict[str, str] | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -194,6 +197,63 @@ class ProjectileAuthoringService:
                 data.pop(facing_field, None)
             else:
                 data[facing_field] = facing_value
+
+        for source, category, kind in (
+            (impact_animations, "impactAnimations", "animation"),
+            (impact_animation_facings, "impactAnimationFacings", "facing"),
+            (expire_animation_facings, "expireAnimationFacings", "facing"),
+        ):
+            if source is None:
+                continue
+
+            normalized_entries: dict[str, str] = {}
+
+            for direction, entry_value in source.items():
+                if direction not in (
+                    "down",
+                    "up",
+                    "left",
+                    "right",
+                ):
+                    raise ValueError(
+                        f"{category} direction must be one of down/up/left/right"
+                    )
+
+                if kind == "facing":
+                    if entry_value not in (
+                        "down",
+                        "up",
+                        "left",
+                        "right",
+                    ):
+                        raise ValueError(
+                            f"{category} values must be down/up/left/right"
+                        )
+
+                    normalized_entries[direction] = entry_value
+                    continue
+
+                animation_definition = self.workspace.find(
+                    "animations",
+                    entry_value,
+                )
+
+                if animation_definition is None:
+                    raise ValueError(
+                        f"unknown animation: {entry_value}"
+                    )
+
+                if animation_definition.data.get("loop"):
+                    raise ValueError(
+                        f"{category} animation must not loop"
+                    )
+
+                normalized_entries[direction] = entry_value
+
+            if normalized_entries:
+                data[category] = normalized_entries
+            else:
+                data.pop(category, None)
 
         if flip_x is not None:
             normalized_flip: dict[str, bool] = {}

@@ -553,6 +553,16 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile animation does not exist", "animationId");
         if (!value.impactAnimationId.empty() && !contains(animations, value.impactAnimationId))
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile impact animation does not exist", "impactAnimationId");
+        for (const auto& entry : value.impactAnimations.values) {
+            if (!entry) { continue; }
+            if (!contains(animations, *entry))
+                error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile impact animation does not exist", "impactAnimations");
+            else if (contains(loopingAnimations, *entry))
+                error(report, ContentKind::projectile, value.id, "invalid_value", "projectile impact animation must not loop", "impactAnimations");
+        }
+        for (const auto& entry : value.impactAnimationFacings.values) {
+            (void)entry;
+        }
         if (!value.impactAnimationId.empty() && contains(loopingAnimations, value.impactAnimationId))
             error(report, ContentKind::projectile, value.id, "invalid_value", "projectile impact animation must not loop", "impactAnimationId");
         if (!value.expireAnimationId.empty() && !contains(animations, value.expireAnimationId))

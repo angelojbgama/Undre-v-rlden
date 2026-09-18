@@ -59,6 +59,13 @@ struct DirectionalAnimations final {
     [[nodiscard]] bool any() const noexcept;
 };
 
+struct DirectionalFacings final {
+    std::array<std::optional<FacingDirection>, 4> values{}; // down, up, left, right
+    [[nodiscard]] std::optional<FacingDirection> forFacing(
+        FacingDirection facing) const noexcept;
+    [[nodiscard]] bool any() const noexcept;
+};
+
 enum class ProjectileRenderLayer {
     world, // drawn behind actors (below the player sprite)
     actor, // drawn in front of actors (default)
@@ -101,9 +108,14 @@ struct ProjectileDefinition final {
     // spritesheet serves every angle.
     gameplay::FacingDirection impactAnimationFacing{gameplay::FacingDirection::up};
     gameplay::FacingDirection expireAnimationFacing{gameplay::FacingDirection::up};
-    // Per-direction override of expireAnimationId (e.g. an arrow stuck in
-    // the ground looks different per flight direction).
+    // Per-direction overrides: each direction may author its own end
+    // animation and base orientation (e.g. an arrow stuck in the ground
+    // looks different per flight direction). Unset directions fall back
+    // to the single-id/single-facing fields above.
     DirectionalAnimations expireAnimations{};
+    DirectionalAnimations impactAnimations{};
+    DirectionalFacings impactAnimationFacings{};
+    DirectionalFacings expireAnimationFacings{};
     // Per-direction horizontal mirror applied after rotation (both to the
     // flight animation and the static sprite).
     std::array<bool, 4> flipX{}; // down, up, left, right
