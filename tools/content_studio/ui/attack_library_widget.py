@@ -356,6 +356,35 @@ class AttackPreviewCanvas(QWidget):
             None
         )
 
+        self._zoom = 3
+
+        self._flight: dict[str, object] | None = None
+
+    def set_flight(self, flight: dict[str, object] | None) -> None:
+        self._flight = flight
+
+        self.update()
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        delta = event.angleDelta().y()
+
+        if delta > 0:
+            self._zoom = min(12, self._zoom + 1)
+        elif delta < 0:
+            self._zoom = max(1, self._zoom - 1)
+
+        self.update()
+
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._zoom = 3
+
+            self.update()
+
+            event.accept()
+
     def set_projectile(
         self,
         image: QImage | None,
@@ -467,27 +496,13 @@ class AttackPreviewCanvas(QWidget):
 
         frame = self._frame
 
-        frame_width = frame.width() if frame is not None else 48
+        scale = max(1, int(self._zoom))
 
-        frame_height = frame.height() if frame is not None else 48
+        # Feet-centered camera: the player's feet point sits at the middle
+        # of the view so projectile flight paths are symmetric around it.
+        anchor_x = self.width() // 2
 
-        scale = max(
-            1,
-            min(
-                (self.width() - 56) // max(1, frame_width),
-                (self.height() - 56) // max(1, frame_height),
-            ),
-        )
-
-        anchor_x = (
-            (self.width() - frame_width * scale) // 2
-            + self._anchor[0] * scale
-        )
-
-        anchor_y = (
-            (self.height() - frame_height * scale) // 2
-            + self._anchor[1] * scale
-        )
+        anchor_y = self.height() // 2
 
         if (
             self._projectile is not None
@@ -657,7 +672,136 @@ class AttackPreviewCanvas(QWidget):
                 ]
             )
 
+        self._draw_flight(painter, scale, anchor_x, anchor_y)
+
         painter.end()
+
+    def _draw_flight(
+        self,
+        painter: QPainter,
+        scale: int,
+        feet_x: int,
+        feet_y: int,
+    ) -> None:
+        """Real projectile distance: path, tile ruler, expiry and travel."""
+        flight = self._flight
+
+        if not flight:
+            return
+
+        spawn = flight.get("spawn") or (0, 0)
+
+        start_x = feet_x + spawn[0] * scale
+        start_y = feet_y + spawn[1] * scale
+
+        direction_x, direction_y = flight.get(
+            "direction",
+            (0, 1),
+        )
+
+        painter.setRenderHint(
+            QPainter.RenderHint.Antialiasing,
+            True,
+        )
+
+        travel_max = flight.get("travel_max")
+
+        if travel_max:
+            end_x = start_x + direction_x * travel_max * scale
+            end_y = start_y + direction_y * travel_max * scale
+
+            painter.setPen(
+                QPen(
+                    QColor(110, 160, 230),
+                    1,
+                    Qt.PenStyle.DashLine,
+                )
+            )
+
+            painter.drawLine(
+                QPointF(start_x, start_y),
+                QPointF(end_x, end_y),
+            )
+
+            # Tile ruler: tick every 16 px, label every 64 px.
+            painter.setPen(
+                QPen(QColor(110, 160, 230), 1)
+            )
+
+            distance = 16
+
+            while distance < travel_max:
+                mark_x = (
+                    start_x + direction_x * distance * scale
+                )
+
+                mark_y = (
+                    start_y + direction_y * distance * scale
+                )
+
+                painter.drawLine(
+                    QPointF(
+                        mark_x - direction_y * 3 * scale,
+                        mark_y - direction_x * 3 * scale,
+                    ),
+                    QPointF(
+                        mark_x + direction_y * 3 * scale,
+                        mark_y + direction_x * 3 * scale,
+                    ),
+                )
+
+                if distance % 64 == 0:
+                    painter.drawText(
+                        QPointF(mark_x + 4, mark_y - 4),
+                        f"{distance}",
+                    )
+
+                distance += 16
+
+            # Expiry point: where the projectile disappears.
+            painter.setPen(
+                QPen(QColor(230, 120, 120), 2)
+            )
+
+            painter.drawLine(
+                QPointF(
+                    end_x - direction_y * 6 * scale,
+                    end_y - direction_x * 6 * scale,
+                ),
+                QPointF(
+                    end_x + direction_y * 6 * scale,
+                    end_y + direction_x * 6 * scale,
+                ),
+            )
+
+            painter.setPen(
+                QPen(QColor(230, 120, 120), 1)
+            )
+
+            painter.drawText(
+                QPointF(end_x + 6, end_y - 6),
+                f"{travel_max}px",
+            )
+
+        traveled = flight.get("traveled")
+
+        if traveled is not None:
+            current_x = (
+                start_x + direction_x * traveled * scale
+            )
+
+            current_y = (
+                start_y + direction_y * traveled * scale
+            )
+
+            painter.setPen(
+                QPen(QColor(240, 248, 255), 1)
+            )
+
+            painter.drawText(
+                QPointF(current_x + 6, current_y + 14),
+                f"{traveled}px",
+            )
 
 
 class TimelineBar(QWidget):
@@ -3298,18 +3442,97 @@ class AttackDefinitionDialog(QDialog):
                 (0, 0),
             )
 
+        facing = str(self.facing.currentData() or "down")
+
         self.preview.set_overlay(
-            str(self.facing.currentData() or "down"),
+            facing,
             self._active_hitbox(),
             self.knockback.value(),
             self.damage_amount.value(),
         )
 
         self.preview.set_projectile(
-            *self._projectile_preview_visual(
-                str(self.facing.currentData() or "down")
-            )
+            *self._projectile_preview_visual(facing)
         )
+
+        self.preview.set_flight(
+            self._projectile_flight_info(facing)
+        )
+
+    def _projectile_flight_info(
+        self,
+        facing: str,
+    ) -> dict[str, object] | None:
+        """Real flight metrics for the preview ruler: spawn point, travel
+        direction, the pixel distance where the projectile expires and the
+        distance traveled at the inspected tick."""
+        if self.kind.currentData() != "projectile":
+            return None
+
+        data = self._projectile_data
+
+        data = data if isinstance(data, dict) else {}
+
+        offsets = data.get("spawnOffsets")
+
+        offsets = offsets if isinstance(offsets, dict) else {}
+
+        values = offsets.get(facing)
+
+        values = values if isinstance(values, dict) else {}
+
+        spawn = (
+            int(values.get("x", 0) or 0),
+            int(values.get("y", 0) or 0),
+        )
+
+        direction = DIRECTION_VECTORS.get(facing, (0, 1))
+
+        speed = int(data.get("speedPixelsPerTick", 0) or 0)
+
+        lifetime = int(data.get("lifetimeTicks", 0) or 0)
+
+        maximum_distance = int(
+            data.get("maximumDistancePixels", 0) or 0
+        )
+
+        travel_max = lifetime * speed
+
+        if maximum_distance > 0:
+            travel_max = min(travel_max, maximum_distance)
+
+        spawn_tick = min(
+            (
+                event[0]
+                for event in self._events
+                if len(event) > 1
+                and event[1] == "spawnProjectile"
+            ),
+            default=None,
+        )
+
+        traveled = None
+
+        if spawn_tick is not None and self._selected_tick >= spawn_tick:
+            elapsed = self._selected_tick - spawn_tick
+
+            expired = (
+                (lifetime > 0 and elapsed >= lifetime)
+                or (
+                    maximum_distance > 0
+                    and elapsed * speed >= maximum_distance
+                )
+            )
+
+            if not expired:
+                traveled = elapsed * speed
+
+        return {
+            "spawn": spawn,
+            "direction": direction,
+            "travel_max": travel_max,
+            "traveled": traveled,
+        }
 
     def _projectile_preview_visual(
         self,
