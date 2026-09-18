@@ -11,6 +11,9 @@ namespace underworld::game {
 struct EffectInstance final {
     core::WorldPointI position{};
     render::Animator animator{};
+    // When set the effect never erases: it keeps drawing the animation's
+    // last frame in place (e.g. an arrow stuck in the ground).
+    bool holdLastFrame{false};
 };
 
 class EffectSystem final {
@@ -19,7 +22,8 @@ public:
 
     void spawnImpact(core::WorldPointI position);
     void spawnAnimation(core::WorldPointI position,
-                        std::shared_ptr<const render::AnimationClip> clip);
+                        std::shared_ptr<const render::AnimationClip> clip,
+                        bool holdLastFrame = false);
     void update(std::uint64_t ticks = 1);
     void clear() noexcept { effects_.clear(); }
     [[nodiscard]] const std::vector<EffectInstance>& effects() const noexcept { return effects_; }

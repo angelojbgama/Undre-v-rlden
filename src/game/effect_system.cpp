@@ -18,13 +18,15 @@ void EffectSystem::spawnImpact(core::WorldPointI position) {
 }
 
 void EffectSystem::spawnAnimation(core::WorldPointI position,
-                                  std::shared_ptr<const render::AnimationClip> clip) {
+                                  std::shared_ptr<const render::AnimationClip> clip,
+                                  bool holdLastFrame) {
     if (!clip || clip->loops()) {
         // Looping clips would never finish, so they can never be cleaned up.
         return;
     }
     EffectInstance effect{position, {}};
     effect.animator.play(std::move(clip));
+    effect.holdLastFrame = holdLastFrame;
     effects_.push_back(std::move(effect));
 }
 
@@ -33,7 +35,7 @@ void EffectSystem::update(std::uint64_t ticks) {
         effect.animator.updateTicks(ticks);
     }
     std::erase_if(effects_, [](const EffectInstance& effect) {
-        return effect.animator.finished();
+        return effect.animator.finished() && !effect.holdLastFrame;
     });
 }
 

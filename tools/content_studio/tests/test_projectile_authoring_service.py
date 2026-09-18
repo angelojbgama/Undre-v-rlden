@@ -288,7 +288,8 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                     direction: {"x": 0, "y": 0}
                     for direction in ("down", "up", "left", "right")
                 },
-                end_animation="anim.end.poof",
+                impact_animation="anim.end.poof",
+                expire_animation="anim.end.poof",
             )
 
             projectile = workspace.find(
@@ -298,7 +299,11 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
 
             self.assertEqual(
                 "anim.end.poof",
-                projectile.data["endAnimationId"],
+                projectile.data["impactAnimationId"],
+            )
+            self.assertEqual(
+                "anim.end.poof",
+                projectile.data["expireAnimationId"],
             )
 
             # Unknown animation is rejected.
@@ -309,17 +314,18 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                         direction: {"x": 0, "y": 0}
                         for direction in ("down", "up", "left", "right")
                     },
-                    end_animation="anim.missing",
+                    impact_animation="anim.missing",
                 )
 
-            # Empty removes the field.
+            # Empty removes the fields.
             service.update_spawn_offsets(
                 "projectile.player.arrow",
                 {
                     direction: {"x": 0, "y": 0}
                     for direction in ("down", "up", "left", "right")
                 },
-                end_animation="",
+                impact_animation="",
+                expire_animation="",
             )
 
             stored = workspace.find(
@@ -328,7 +334,9 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
             assert stored is not None
 
             self.assertNotIn(
-                "endAnimationId", stored.data)
+                "impactAnimationId", stored.data)
+            self.assertNotIn(
+                "expireAnimationId", stored.data)
         finally:
             temporary.cleanup()
 

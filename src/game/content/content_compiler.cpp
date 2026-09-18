@@ -52,7 +52,7 @@ TilesetDefinition compileTileset(const AuthoredTileset& value) {
 
     return result;
 }
-gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.endAnimationId}; }
+gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.impactAnimationId, v.expireAnimationId}; }
 const AuthoredAnimation* findAnimation(
     const AuthoredContentPack& pack,
     const simulation::DefinitionId& id) {

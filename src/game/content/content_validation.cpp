@@ -551,10 +551,14 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile static sprite does not exist", "visualId");
         if (!value.animationId.empty() && !contains(animations, value.animationId))
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile animation does not exist", "animationId");
-        if (!value.endAnimationId.empty() && !contains(animations, value.endAnimationId))
-            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile end animation does not exist", "endAnimationId");
-        if (!value.endAnimationId.empty() && contains(loopingAnimations, value.endAnimationId))
-            error(report, ContentKind::projectile, value.id, "invalid_value", "projectile end animation must not loop", "endAnimationId");
+        if (!value.impactAnimationId.empty() && !contains(animations, value.impactAnimationId))
+            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile impact animation does not exist", "impactAnimationId");
+        if (!value.impactAnimationId.empty() && contains(loopingAnimations, value.impactAnimationId))
+            error(report, ContentKind::projectile, value.id, "invalid_value", "projectile impact animation must not loop", "impactAnimationId");
+        if (!value.expireAnimationId.empty() && !contains(animations, value.expireAnimationId))
+            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile expire animation does not exist", "expireAnimationId");
+        if (!value.expireAnimationId.empty() && contains(loopingAnimations, value.expireAnimationId))
+            error(report, ContentKind::projectile, value.id, "invalid_value", "projectile expire animation must not loop", "expireAnimationId");
     }
     for (const auto& value : pack.attacks) {
         validateAttack(value, animations, report);

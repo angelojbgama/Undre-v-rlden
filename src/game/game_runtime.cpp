@@ -442,13 +442,19 @@ struct GameRuntime::State final {
                 const auto* projectileDefinition = impact->projectileDefinitionId.empty()
                     ? nullptr
                     : content.projectiles().find(impact->projectileDefinitionId);
-                const auto& endAnimationId = projectileDefinition != nullptr
-                    ? projectileDefinition->endAnimationId
-                    : simulation::DefinitionId{};
-                if (!endAnimationId.empty()) {
-                    // Authored end animation replaces the default impact poof.
-                    if (const auto* clip = runtimeVisualContent.animations.find(endAnimationId)) {
-                        effects->spawnAnimation(impact->position, *clip);
+                const bool expired = impact->kind == simulation::ProjectileImpactKind::expired;
+                const auto& authoredEndAnimation = expired
+                    ? projectileDefinition != nullptr
+                        ? projectileDefinition->expireAnimationId
+                        : simulation::DefinitionId{}
+                    : projectileDefinition != nullptr
+                        ? projectileDefinition->impactAnimationId
+                        : simulation::DefinitionId{};
+                if (!authoredEndAnimation.empty()) {
+                    // Authored per-end animation. Expire animations hold
+                    // their last frame (e.g. an arrow stuck in the ground).
+                    if (const auto* clip = runtimeVisualContent.animations.find(authoredEndAnimation)) {
+                        effects->spawnAnimation(impact->position, *clip, expired);
                     }
                 } else if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);

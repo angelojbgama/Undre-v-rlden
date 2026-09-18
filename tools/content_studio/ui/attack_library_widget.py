@@ -1750,9 +1750,15 @@ class ProjectileSpawnEditorDialog(QDialog):
             int(data.get("maximumDistancePixels", 0) or 0)
         )
 
-        self._end_animation_id = (
-            data.get("endAnimationId")
-            if isinstance(data.get("endAnimationId"), str)
+        self._impact_animation_id = (
+            data.get("impactAnimationId")
+            if isinstance(data.get("impactAnimationId"), str)
+            else ""
+        )
+
+        self._expire_animation_id = (
+            data.get("expireAnimationId")
+            if isinstance(data.get("expireAnimationId"), str)
             else ""
         )
 
@@ -1893,6 +1899,13 @@ class ProjectileSpawnEditorDialog(QDialog):
             "",
         )
 
+        self.expire_animation = QComboBox()
+
+        self.expire_animation.addItem(
+            self.translate("projectile_end_animation_none"),
+            "",
+        )
+
         for animation in sorted(
             self.workspace.definitions("animations"),
             key=lambda item: item.definition_id,
@@ -1905,17 +1918,35 @@ class ProjectileSpawnEditorDialog(QDialog):
                 animation.definition_id,
             )
 
+            self.expire_animation.addItem(
+                animation.definition_id,
+                animation.definition_id,
+            )
+
         self.end_animation.setCurrentIndex(
             max(
                 0,
                 self.end_animation.findData(
-                    self._end_animation_id
+                    self._impact_animation_id
+                ),
+            )
+        )
+
+        self.expire_animation.setCurrentIndex(
+            max(
+                0,
+                self.expire_animation.findData(
+                    self._expire_animation_id
                 ),
             )
         )
 
         self.end_animation.currentIndexChanged.connect(
-            self._end_animation_changed
+            self._impact_animation_changed
+        )
+
+        self.expire_animation.currentIndexChanged.connect(
+            self._expire_animation_changed
         )
 
         layer_row.addWidget(self.end_animation)
@@ -1923,6 +1954,20 @@ class ProjectileSpawnEditorDialog(QDialog):
         layer_row.addStretch(1)
 
         layout.addLayout(layer_row)
+
+        expire_row = QHBoxLayout()
+
+        expire_row.addWidget(
+            QLabel(
+                self.translate("projectile_expire_animation")
+            )
+        )
+
+        expire_row.addWidget(self.expire_animation)
+
+        expire_row.addStretch(1)
+
+        layout.addLayout(expire_row)
 
         self.canvas = ProjectileSpawnCanvas(translator)
 
@@ -2044,10 +2089,17 @@ class ProjectileSpawnEditorDialog(QDialog):
             offsets["y"],
         )
 
-    def _end_animation_changed(self) -> None:
+    def _impact_animation_changed(self) -> None:
         value = self.end_animation.currentData()
 
-        self._end_animation_id = (
+        self._impact_animation_id = (
+            value if isinstance(value, str) else ""
+        )
+
+    def _expire_animation_changed(self) -> None:
+        value = self.expire_animation.currentData()
+
+        self._expire_animation_id = (
             value if isinstance(value, str) else ""
         )
 
@@ -2159,7 +2211,8 @@ class ProjectileSpawnEditorDialog(QDialog):
                 None,
                 dict(self._render_layers),
                 self._maximum_distance,
-                self._end_animation_id,
+                self._impact_animation_id,
+                self._expire_animation_id,
             )
         except ValueError as error:
             QMessageBox.critical(
