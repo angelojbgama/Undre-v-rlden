@@ -336,5 +336,211 @@ class PlayerAttackContextMenuTests(unittest.TestCase):
         )
 
 
+@unittest.skipIf(
+    QApplication is None,
+    "PySide6 is not installed",
+)
+class ProjectileSpawnEditorDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        assert QApplication is not None
+
+        cls.application = (
+            QApplication.instance()
+            or QApplication([])
+        )
+
+    def _workspace(self):
+        from tools.content_studio.tests.test_projectile_authoring_service import (
+            workspace_data,
+        )
+
+        temporary, workspace = make_workspace(workspace_data())
+
+        self.addCleanup(temporary.cleanup)
+
+        looping = workspace.create_definition(
+            "animations",
+            "anim.loop.poof",
+        )
+
+        workspace.update(looping, "loop", True)
+
+        arrow_pickup = workspace.find(
+            "pickups",
+            "pickup.arrow",
+        )
+
+        if arrow_pickup is None:
+            arrow_pickup = workspace.create_definition(
+                "pickups",
+                "pickup.arrow",
+            )
+
+        workspace.replace_definition(arrow_pickup, {
+            "id": "pickup.arrow",
+            "visualId": "visual.projectile.player.arrow",
+            "collectionBounds": {"x": -5, "y": -5, "width": 10, "height": 10},
+            "payload": {"kind": "item", "itemId": "item.arrow", "quantity": 1},
+        })
+
+        projectile = workspace.find(
+            "projectiles",
+            "projectile.player.arrow",
+        )
+
+        assert projectile is not None
+
+        workspace.replace_definition(projectile, {
+            **projectile.data,
+            "animationId": "animation.arrow",
+        })
+
+        return workspace
+
+    def _dialog(self, workspace):
+        from tools.content_studio.ui.attack_library_widget import (
+            AttackVisualResolver,
+            ProjectileSpawnEditorDialog,
+        )
+
+        dialog = ProjectileSpawnEditorDialog(
+            workspace,
+            Translator("en-US"),
+            "projectile.player.arrow",
+            AttackVisualResolver(workspace, None),
+            "attack.player.bow",
+            {"kind": "projectile"},
+        )
+
+        self.addCleanup(dialog.deleteLater)
+
+        return dialog
+
+    def test_end_animation_combo_lists_looping_animations(self) -> None:
+        workspace = self._workspace()
+
+        dialog = self._dialog(workspace)
+
+        self.assertIsNotNone(
+            dialog.end_animation.findData("anim.loop.poof"),
+        )
+
+        self.assertIsNotNone(
+            dialog.expire_animation.findData("anim.loop.poof"),
+        )
+
+    def test_impact_loop_removed_on_save(self) -> None:
+        workspace = self._workspace()
+
+        dialog = self._dialog(workspace)
+
+        dialog.end_animation.setCurrentIndex(
+            dialog.end_animation.findData("anim.loop.poof"),
+        )
+
+        # The checkbox reflects the pending loop flag of the selected
+        # animation and is editable right in the dialog.
+        self.assertTrue(dialog.impact_loop.isEnabled())
+
+        self.assertTrue(dialog.impact_loop.isChecked())
+
+        dialog.impact_loop.setChecked(False)
+
+        dialog._save()
+
+        projectile = workspace.find(
+            "projectiles",
+            "projectile.player.arrow",
+        )
+
+        assert projectile is not None
+
+        self.assertEqual(
+            {"down": "anim.loop.poof"},
+            projectile.data["impactAnimations"],
+        )
+
+        animation = workspace.find(
+            "animations",
+            "anim.loop.poof",
+        )
+
+        assert animation is not None
+
+        self.assertIs(False, animation.data["loop"])
+
+    def test_flight_loop_toggles_animation_definition(self) -> None:
+        workspace = self._workspace()
+
+        dialog = self._dialog(workspace)
+
+        self.assertTrue(dialog.flight_loop.isEnabled())
+
+        self.assertFalse(dialog.flight_loop.isChecked())
+
+        dialog.flight_loop.setChecked(True)
+
+        dialog._save()
+
+        animation = workspace.find(
+            "animations",
+            "animation.arrow",
+        )
+
+        assert animation is not None
+
+        self.assertIs(True, animation.data["loop"])
+
+    def test_loop_controls_disabled_without_animation(self) -> None:
+        workspace = self._workspace()
+
+        dialog = self._dialog(workspace)
+
+        self.assertFalse(dialog.impact_loop.isEnabled())
+
+        self.assertFalse(dialog.expire_loop.isEnabled())
+
+    def test_drop_selection_persists(self) -> None:
+        workspace = self._workspace()
+
+        dialog = self._dialog(workspace)
+
+        self.assertIsNotNone(
+            dialog.expire_drop.findData("pickup.arrow"),
+        )
+
+        dialog.expire_drop.setCurrentIndex(
+            dialog.expire_drop.findData("pickup.arrow"),
+        )
+
+        dialog.expire_drop_chance.setValue(100)
+
+        dialog.impact_drop.setCurrentIndex(
+            dialog.impact_drop.findData("pickup.arrow"),
+        )
+
+        dialog.impact_drop_chance.setValue(50)
+
+        dialog._save()
+
+        projectile = workspace.find(
+            "projectiles",
+            "projectile.player.arrow",
+        )
+
+        assert projectile is not None
+
+        self.assertEqual(
+            {"pickupId": "pickup.arrow", "chancePercent": 100},
+            projectile.data["expireDrop"],
+        )
+
+        self.assertEqual(
+            {"pickupId": "pickup.arrow", "chancePercent": 50},
+            projectile.data["impactDrop"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

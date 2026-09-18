@@ -128,6 +128,12 @@ public:
 private:
     void startPlayerAttack();
     void advancePlayerAttack();
+    // Authored ammo: strips the bow attack edge when the inventory cannot
+    // pay for the shot, and spends the items + emits ItemConsumed when the
+    // attack actually starts.
+    [[nodiscard]] simulation::PlayerCommand gateAttackAmmo(
+        const simulation::PlayerCommand& command) const;
+    void consumePlayerAttackAmmo();
     void applyResolution(const gameplay::CombatResolution& resolution);
     void resolvePlayerSword();
     void resolveEnemyContacts();
@@ -152,6 +158,9 @@ private:
     void resolveEncounterRewards();
     void resolveDoorAttacks(const world::AabbI& attackRegion);
     void resolveDoorProjectileImpacts();
+    // Authored projectile drops: spawns collectible pickups where projectiles
+    // finished (distance/lifetime limit or collision), per definition.
+    void resolveProjectileDrops();
     void resolveEncounterDoors();
     void emitDoorOpened(simulation::PersistentInstanceId id);
     [[nodiscard]] bool requestScene(const simulation::DefinitionId& sceneId);

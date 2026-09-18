@@ -73,6 +73,9 @@ class ProjectileAuthoringService:
         impact_animations: dict[str, str] | None = None,
         impact_animation_facings: dict[str, str] | None = None,
         expire_animation_facings: dict[str, str] | None = None,
+        animation_loops: dict[str, bool] | None = None,
+        expire_drop: dict[str, object] | None = None,
+        impact_drop: dict[str, object] | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -80,6 +83,35 @@ class ProjectileAuthoringService:
             raise ValueError(
                 f"unknown projectile: {definition_id}"
             )
+
+        # Loop is an animation-authoring flag, but the spawn editor exposes
+        # it per slot (flight/impact/expire). Pending overrides are applied
+        # in the same undoable bundle and consulted by the end-animation
+        # validation below, so a looping animation can be selected and
+        # un-looped in one save.
+        pending_loops: dict[str, bool] = {}
+
+        if animation_loops is not None:
+            for animation_id, loop_enabled in animation_loops.items():
+                animation = self.workspace.find(
+                    "animations",
+                    animation_id,
+                )
+
+                if animation is None:
+                    raise ValueError(
+                        f"unknown animation: {animation_id}"
+                    )
+
+                pending_loops[animation_id] = bool(loop_enabled)
+
+        def stored_loops(animation) -> bool:
+            override = pending_loops.get(animation.definition_id)
+
+            if override is not None:
+                return override
+
+            return bool(animation.data.get("loop"))
 
         data["spawnOffsets"] = {
             direction: {
@@ -169,7 +201,7 @@ class ProjectileAuthoringService:
                         f"unknown animation: {field}"
                     )
 
-                if animation.data.get("loop"):
+                if stored_loops(animation):
                     raise ValueError(
                         f"{field_name} animation must not loop"
                     )
@@ -245,7 +277,7 @@ class ProjectileAuthoringService:
                         f"unknown animation: {entry_value}"
                     )
 
-                if animation_definition.data.get("loop"):
+                if stored_loops(animation_definition):
                     raise ValueError(
                         f"{category} animation must not loop"
                     )
@@ -336,7 +368,7 @@ class ProjectileAuthoringService:
                         f"unknown animation: {animation_id}"
                     )
 
-                if animation.data.get("loop"):
+                if stored_loops(animation):
                     raise ValueError(
                         "expire animation must not loop"
                     )
@@ -348,9 +380,77 @@ class ProjectileAuthoringService:
             else:
                 data.pop("expireAnimations", None)
 
+        # Ground item left where the projectile ends. An empty pickupId
+        # removes the drop; a filled one is validated against the pickup
+        # catalog so content_check and the runtime stay authoritative.
+        for drop_value, field_name in (
+            (expire_drop, "expireDrop"),
+            (impact_drop, "impactDrop"),
+        ):
+            if drop_value is None:
+                continue
+
+            pickup_id = drop_value.get("pickupId")
+
+            if not isinstance(pickup_id, str) or not pickup_id:
+                data.pop(field_name, None)
+                continue
+
+            if self.workspace.find(
+                "pickups",
+                pickup_id,
+            ) is None:
+                raise ValueError(
+                    f"unknown pickup: {pickup_id}"
+                )
+
+            raw_chance = drop_value.get("chancePercent")
+
+            chance = (
+                int(raw_chance)
+                if isinstance(raw_chance, int)
+                and not isinstance(raw_chance, bool)
+                else 100
+            )
+
+            if chance < 1 or chance > 100:
+                raise ValueError(
+                    f"{field_name} chance must be between 1 and 100"
+                )
+
+            data[field_name] = {
+                "pickupId": pickup_id,
+                "chancePercent": chance,
+            }
+
+        bundle_entries: list[tuple[str, str, dict[str, object]]] = [
+            ("projectiles", definition_id, data),
+        ]
+
+        for animation_id, loop_enabled in sorted(
+            pending_loops.items(),
+        ):
+            animation = self.workspace.find(
+                "animations",
+                animation_id,
+            )
+
+            if animation is None or bool(
+                animation.data.get("loop"),
+            ) == loop_enabled:
+                continue
+
+            animation_data = copy.deepcopy(animation.data)
+
+            animation_data["loop"] = loop_enabled
+
+            bundle_entries.append(
+                ("animations", animation_id, animation_data),
+            )
+
         self.workspace.upsert_definition_bundle(
             "Update Projectile Spawn Offsets",
-            [("projectiles", definition_id, data)],
+            bundle_entries,
         )
 
     def ensure_for_animation(self, animation_id: str) -> str:

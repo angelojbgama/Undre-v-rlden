@@ -454,6 +454,14 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
     }
     renderer.drawImage(*frame.hudMoneyImage, 68, 2);
     render::drawText(renderer, frame.font, std::to_string(view.gold), 79, 2);
+    if (view.ammo.itemId) {
+        if (const auto* sprite = frame.staticSprites.find(*view.ammo.visualId)) {
+            render::drawSprite(renderer, *sprite->sheet, sprite->frame,
+                               {246 + sprite->frame.anchor.x, 199 + sprite->frame.anchor.y});
+        }
+        render::drawText(renderer, frame.font,
+                         "x" + std::to_string(view.ammo.quantity), 226, 209);
+    }
     render::drawText(renderer, frame.font, "MAP: " + std::string(frame.world.id().value()), 116, 2);
     if (!frame.lastEvent.empty()) { render::drawText(renderer, frame.font, std::string(frame.lastEvent), 190, 2); }
     renderer.fillRect({0, 194, core::GameMetrics::logicalWidth, 30}, {8, 10, 16, 220});

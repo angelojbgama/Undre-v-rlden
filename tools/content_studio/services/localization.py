@@ -624,6 +624,13 @@ TRANSLATIONS["pt-BR"].update({
     "attack_projectile_info": (
         "Projétil criado no evento spawnProjectile da linha do tempo."
     ),
+    "attack_ammo": "Consome item",
+    "attack_ammo_none": "Nenhum",
+    "attack_ammo_amount": "Qtd",
+    "attack_ammo_info": (
+        "Item removido do inventário do Player quando o ataque começa. "
+        "Sem o item no inventário, o ataque não dispara."
+    ),
     "attack_timeline_info": (
         "Cada faixa é um frame da animação e os círculos são eventos. Clique para inspecionar um tick."
     ),
@@ -637,6 +644,29 @@ TRANSLATIONS["pt-BR"].update({
     "projectile_spawn_offsets": "Posição do projétil por direção",
     "projectile_spawn_editor_title": "Posições do projétil",
     "projectile_edit_positions": "Editar...",
+    "projectile_direction": "Direção",
+    "projectile_group_flight": "Projétil",
+    "projectile_group_impact": "Animação de colisão",
+    "projectile_group_expire": "Animação de limite de distância",
+    "projectile_animation": "Animação",
+    "projectile_loop": "Loop",
+    "projectile_flight_loop_help": (
+        "Repetir a animação de voo. Desmarcado, a animação toca uma vez "
+        "e o último frame fica fixo até o projétil terminar."
+    ),
+    "projectile_end_loop_help": (
+        "Animações de colisão e de limite não podem repetir. Se a animação "
+        "selecionada tiver loop, desmarque para remover o loop ao salvar."
+    ),
+    "projectile_drop_group": "Item ao cair",
+    "projectile_drop_expire": "Ao expirar (limite)",
+    "projectile_drop_impact": "Ao colidir",
+    "projectile_drop_none": "Nenhum",
+    "projectile_drop_help": (
+        "Pickup coletável deixado no chão onde o projétil terminar. "
+        "Ao expirar cobre o limite de distância/tempo de vida; ao colidir "
+        "cobrir parede, alvo e objetos. A chance é a probabilidade de drop."
+    ),
     "projectile_canonical_facing": (
         "Orientação base da imagem"
     ),
@@ -656,7 +686,8 @@ TRANSLATIONS["pt-BR"].update({
     ),
     "projectile_spawn_offsets_info": (
         "Offsets relativos ao ponto dos pés do Player no momento do "
-        "evento spawnProjectile. Salvos na definição do projétil."
+        "evento spawnProjectile. Espelhar, camada e as animações de "
+        "colisão/limite são salvos para a direção selecionada."
     ),
     "attack_timeline": "Linha de tempo",
     "attack_timeline_play": "Reproduzir",
@@ -736,6 +767,13 @@ TRANSLATIONS["en-US"].update({
     "attack_projectile_info": (
         "Projectile created by the timeline's spawnProjectile event."
     ),
+    "attack_ammo": "Consumes item",
+    "attack_ammo_none": "None",
+    "attack_ammo_amount": "Amount",
+    "attack_ammo_info": (
+        "Item removed from the player inventory when the attack starts. "
+        "Without the item in stock the attack never fires."
+    ),
     "attack_timeline_info": (
         "Each span is an animation frame and circles are events. Click to inspect a tick."
     ),
@@ -749,6 +787,29 @@ TRANSLATIONS["en-US"].update({
     "projectile_spawn_offsets": "Projectile position per direction",
     "projectile_spawn_editor_title": "Projectile positions",
     "projectile_edit_positions": "Edit...",
+    "projectile_direction": "Direction",
+    "projectile_group_flight": "Projectile",
+    "projectile_group_impact": "Impact animation",
+    "projectile_group_expire": "Range limit animation",
+    "projectile_animation": "Animation",
+    "projectile_loop": "Loop",
+    "projectile_flight_loop_help": (
+        "Repeat the flight animation. Unchecked, it plays once and the "
+        "last frame is held until the projectile ends."
+    ),
+    "projectile_end_loop_help": (
+        "Impact and range-limit animations must not repeat. If the selected "
+        "animation loops, uncheck this to remove the loop on save."
+    ),
+    "projectile_drop_group": "Dropped item",
+    "projectile_drop_expire": "On expire (range limit)",
+    "projectile_drop_impact": "On impact",
+    "projectile_drop_none": "None",
+    "projectile_drop_help": (
+        "Collectible pickup left on the ground where the projectile ends. "
+        "On expire covers the distance/lifetime limit; on impact covers "
+        "walls, targets and objects. Chance is the drop probability."
+    ),
     "projectile_canonical_facing": (
         "Base image orientation"
     ),
@@ -768,7 +829,8 @@ TRANSLATIONS["en-US"].update({
     ),
     "projectile_spawn_offsets_info": (
         "Offsets relative to the player's feet when the spawnProjectile "
-        "timeline event fires. Stored in the projectile definition."
+        "timeline event fires. Mirror, layer and the impact/range-limit "
+        "animations are stored for the selected direction."
     ),
     "attack_timeline": "Timeline",
     "attack_timeline_play": "Play",

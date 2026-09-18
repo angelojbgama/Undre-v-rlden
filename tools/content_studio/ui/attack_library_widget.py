@@ -1802,6 +1802,10 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         self._flight_frame_index = 0
 
+        # Loop edits are pending overrides on the shared animation
+        # definitions; they are committed with the projectile in _save.
+        self._animation_loop_overrides: dict[str, bool] = {}
+
         self._flight_timer = QTimer(self)
 
         self._flight_timer.timeout.connect(
@@ -1852,6 +1856,24 @@ class ProjectileSpawnEditorDialog(QDialog):
             else {}
         )
 
+        # The scalar facings are the legacy runtime fallback for directions
+        # without an explicit entry; show them instead of a bare "up".
+        impact_facing_default = data.get("impactAnimationFacing")
+
+        impact_facing_default = (
+            impact_facing_default
+            if impact_facing_default in FACING_QUARTERS
+            else "up"
+        )
+
+        expire_facing_default = data.get("expireAnimationFacing")
+
+        expire_facing_default = (
+            expire_facing_default
+            if expire_facing_default in FACING_QUARTERS
+            else "up"
+        )
+
         self._impact_animations: dict[str, str] = {}
         self._expire_animations: dict[str, str] = {}
         self._impact_animation_facings: dict[str, str] = {}
@@ -1879,7 +1901,7 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._impact_animation_facings[direction] = (
                 impact_facing
                 if impact_facing in FACING_QUARTERS
-                else "up"
+                else impact_facing_default
             )
 
             expire_facing = raw_expire_facings.get(direction)
@@ -1887,34 +1909,14 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._expire_animation_facings[direction] = (
                 expire_facing
                 if expire_facing in FACING_QUARTERS
-                else "up"
-            )
-
-        raw_expire_animations = data.get("expireAnimations")
-
-        raw_expire_animations = (
-            raw_expire_animations
-            if isinstance(raw_expire_animations, dict)
-            else {}
-        )
-
-        self._expire_animations: dict[str, str] = {}
-
-        for direction in DIRECTIONS:
-            expire_animation = raw_expire_animations.get(direction)
-
-            self._expire_animations[direction] = (
-                expire_animation
-                if isinstance(expire_animation, str)
-                and expire_animation
-                else self._expire_animation_id
+                else expire_facing_default
             )
 
         self.setWindowTitle(
             self.translate("projectile_spawn_editor_title")
         )
 
-        self.resize(540, 600)
+        self.resize(620, 660)
 
         layout = QVBoxLayout(self)
 
@@ -1927,6 +1929,12 @@ class ProjectileSpawnEditorDialog(QDialog):
         layout.addWidget(hint)
 
         directions_row = QHBoxLayout()
+
+        directions_row.addWidget(
+            QLabel(
+                self.translate("projectile_direction")
+            )
+        )
 
         self._direction_buttons: dict[str, QPushButton] = {}
 
@@ -1946,11 +1954,22 @@ class ProjectileSpawnEditorDialog(QDialog):
 
             directions_row.addWidget(button)
 
+        directions_row.addStretch(1)
+
         layout.addLayout(directions_row)
 
-        facing_row = QHBoxLayout()
+        # Three authoring groups share the same vocabulary — orientation,
+        # mirroring and (for animated visuals) loop — so each slot can be
+        # tuned without hunting through unrelated rows.
+        flight_group = QGroupBox(
+            self.translate("projectile_group_flight")
+        )
 
-        facing_row.addWidget(
+        flight_layout = QVBoxLayout(flight_group)
+
+        flight_orientation_row = QHBoxLayout()
+
+        flight_orientation_row.addWidget(
             QLabel(
                 self.translate("projectile_canonical_facing")
             )
@@ -1974,7 +1993,9 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._canonical_facing_changed
         )
 
-        facing_row.addWidget(self.canonical_facing)
+        flight_orientation_row.addWidget(
+            self.canonical_facing,
+        )
 
         self.flip_x = QCheckBox(
             self.translate("projectile_flip_x")
@@ -1982,15 +2003,29 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         self.flip_x.toggled.connect(self._flip_x_changed)
 
-        facing_row.addWidget(self.flip_x)
+        flight_orientation_row.addWidget(self.flip_x)
 
-        facing_row.addStretch(1)
+        self.flight_loop = QCheckBox(
+            self.translate("projectile_loop")
+        )
 
-        layout.addLayout(facing_row)
+        self.flight_loop.setToolTip(
+            self.translate("projectile_flight_loop_help")
+        )
 
-        layer_row = QHBoxLayout()
+        self.flight_loop.toggled.connect(
+            self._flight_loop_changed
+        )
 
-        layer_row.addWidget(
+        flight_orientation_row.addWidget(self.flight_loop)
+
+        flight_orientation_row.addStretch(1)
+
+        flight_layout.addLayout(flight_orientation_row)
+
+        flight_settings_row = QHBoxLayout()
+
+        flight_settings_row.addWidget(
             QLabel(
                 self.translate("projectile_render_layer")
             )
@@ -2018,9 +2053,9 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._render_layer_changed
         )
 
-        layer_row.addWidget(self.render_layer)
+        flight_settings_row.addWidget(self.render_layer)
 
-        layer_row.addWidget(
+        flight_settings_row.addWidget(
             QLabel(
                 self.translate("projectile_maximum_distance")
             )
@@ -2042,11 +2077,13 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._maximum_distance_changed
         )
 
-        layer_row.addWidget(
-            QLabel(
-                self.translate("projectile_end_animation")
-            )
-        )
+        flight_settings_row.addWidget(self.maximum_distance)
+
+        flight_settings_row.addStretch(1)
+
+        flight_layout.addLayout(flight_settings_row)
+
+        layout.addWidget(flight_group)
 
         self.end_animation = QComboBox()
 
@@ -2062,13 +2099,12 @@ class ProjectileSpawnEditorDialog(QDialog):
             "",
         )
 
+        # Looping animations stay selectable: the loop checkbox below lets
+        # the author strip the loop in the same save that binds them.
         for animation in sorted(
             self.workspace.definitions("animations"),
             key=lambda item: item.definition_id,
         ):
-            if bool(animation.data.get("loop")):
-                continue
-
             self.end_animation.addItem(
                 animation.definition_id,
                 animation.definition_id,
@@ -2105,123 +2141,75 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._expire_animation_changed
         )
 
-        layer_row.addWidget(self.end_animation)
-
-        layer_row.addWidget(
-            QLabel(
-                self.translate("projectile_end_facing")
-            )
-        )
-
-        self.impact_facing = QComboBox()
-
-        for direction in DIRECTIONS:
-            self.impact_facing.addItem(
-                direction.capitalize(),
-                direction,
-            )
-
-        self.impact_facing.setCurrentIndex(
-            self.impact_facing.findData(
-                self._impact_animation_facings["down"]
-            )
-        )
-
-        self.impact_facing.currentIndexChanged.connect(
-            self._impact_facing_changed
-        )
-
         self.impact_flip = QCheckBox(
             self.translate("projectile_flip_x")
         )
 
-        self.impact_flip.toggled.connect(self._impact_flip_changed)
-
-        layer_row.addWidget(self.impact_flip)
-
-        layer_row.addStretch(1)
-
-        layout.addLayout(layer_row)
-
-        expire_row = QHBoxLayout()
-
-        expire_row.addWidget(
-            QLabel(
-                self.translate("projectile_expire_animation")
-            )
+        self.impact_flip.toggled.connect(
+            self._impact_flip_changed
         )
 
-        expire_row.addWidget(self.expire_animation)
-
-        expire_row.addWidget(
-            QLabel(
-                self.translate("projectile_end_facing")
-            )
+        self.impact_loop = QCheckBox(
+            self.translate("projectile_loop")
         )
 
-        self.expire_facing = QComboBox()
-
-        for direction in DIRECTIONS:
-            self.expire_facing.addItem(
-                direction.capitalize(),
-                direction,
-            )
-
-        self.expire_facing.setCurrentIndex(
-            self.expire_facing.findData(
-                self._expire_animation_facings["down"]
-            )
+        self.impact_loop.setToolTip(
+            self.translate("projectile_end_loop_help")
         )
 
-        self.expire_facing.currentIndexChanged.connect(
-            self._expire_facing_changed
+        self.impact_loop.toggled.connect(
+            self._impact_loop_changed
         )
 
         self.expire_flip = QCheckBox(
             self.translate("projectile_flip_x")
         )
 
-        self.expire_flip.toggled.connect(self._expire_flip_changed)
-
-        expire_row.addWidget(self.expire_flip)
-
-        expire_row.addStretch(1)
-
-        layout.addLayout(expire_row)
-
-        # Animated previews of both end animations, rotated per their
-        # base orientation and the selected direction.
-        preview_row = QHBoxLayout()
-
-        self.impact_preview = QLabel()
-
-        self.impact_preview.setFixedSize(96, 96)
-
-        self.impact_preview.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
+        self.expire_flip.toggled.connect(
+            self._expire_flip_changed
         )
 
-        self.impact_preview.setStyleSheet(
-            "background: #161b22; border: 1px solid #4b5563;")
-
-        expire_preview = self.expire_preview = QLabel()
-
-        self.expire_preview.setFixedSize(96, 96)
-
-        self.expire_preview.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
+        self.expire_loop = QCheckBox(
+            self.translate("projectile_loop")
         )
 
-        self.expire_preview.setStyleSheet(
-            "background: #161b22; border: 1px solid #4b5563;")
+        self.expire_loop.setToolTip(
+            self.translate("projectile_end_loop_help")
+        )
 
-        preview_row.addWidget(self.impact_preview)
+        self.expire_loop.toggled.connect(
+            self._expire_loop_changed
+        )
 
-        preview_row.addWidget(self.expire_preview)
+        layout.addWidget(
+            self._build_end_group(
+                self.translate("projectile_group_impact"),
+                self.end_animation,
+                self._build_end_facing_combo(
+                    "impact_facing",
+                    self._impact_animation_facings,
+                    self._impact_facing_changed,
+                ),
+                self.impact_flip,
+                self.impact_loop,
+                "impact_preview",
+            )
+        )
 
-        preview_row.addStretch(1)
-
-        layout.addLayout(preview_row)
+        layout.addWidget(
+            self._build_end_group(
+                self.translate("projectile_group_expire"),
+                self.expire_animation,
+                self._build_end_facing_combo(
+                    "expire_facing",
+                    self._expire_animation_facings,
+                    self._expire_facing_changed,
+                ),
+                self.expire_flip,
+                self.expire_loop,
+                "expire_preview",
+            )
+        )
 
         self._end_preview_state: dict = {}
 
@@ -2232,6 +2220,113 @@ class ProjectileSpawnEditorDialog(QDialog):
         )
 
         self._end_preview_timer.start(120)
+
+        # Ground items the projectile leaves behind are projectile-global
+        # (they do not vary per direction like the visuals above).
+        drop_group = QGroupBox(
+            self.translate("projectile_drop_group")
+        )
+
+        drop_layout = QHBoxLayout(drop_group)
+
+        raw_expire_drop = data.get("expireDrop")
+
+        raw_expire_drop = (
+            raw_expire_drop
+            if isinstance(raw_expire_drop, dict)
+            else {}
+        )
+
+        raw_impact_drop = data.get("impactDrop")
+
+        raw_impact_drop = (
+            raw_impact_drop
+            if isinstance(raw_impact_drop, dict)
+            else {}
+        )
+
+        drop_layout.addWidget(
+            QLabel(
+                self.translate("projectile_drop_expire")
+            )
+        )
+
+        self.expire_drop = QComboBox()
+
+        self.impact_drop = QComboBox()
+
+        for combo in (self.expire_drop, self.impact_drop):
+            combo.addItem(
+                self.translate("projectile_drop_none"),
+                "",
+            )
+
+            for pickup in sorted(
+                self.workspace.definitions("pickups"),
+                key=lambda entry: entry.definition_id,
+            ):
+                combo.addItem(
+                    pickup.definition_id,
+                    pickup.definition_id,
+                )
+
+        drop_layout.addWidget(self.expire_drop, 1)
+
+        self.expire_drop_chance = QSpinBox()
+
+        self.expire_drop_chance.setRange(1, 100)
+
+        self.expire_drop_chance.setSuffix("%")
+
+        drop_layout.addWidget(self.expire_drop_chance)
+
+        drop_layout.addWidget(
+            QLabel(
+                self.translate("projectile_drop_impact")
+            )
+        )
+
+        drop_layout.addWidget(self.impact_drop, 1)
+
+        self.impact_drop_chance = QSpinBox()
+
+        self.impact_drop_chance.setRange(1, 100)
+
+        self.impact_drop_chance.setSuffix("%")
+
+        drop_layout.addWidget(self.impact_drop_chance)
+
+        drop_group.setToolTip(
+            self.translate("projectile_drop_help")
+        )
+
+        self.expire_drop.setCurrentIndex(
+            max(
+                0,
+                self.expire_drop.findData(
+                    str(raw_expire_drop.get("pickupId", "") or "")
+                ),
+            )
+        )
+
+        self.impact_drop.setCurrentIndex(
+            max(
+                0,
+                self.impact_drop.findData(
+                    str(raw_impact_drop.get("pickupId", "") or "")
+                ),
+            )
+        )
+
+        self.expire_drop_chance.setValue(
+            int(raw_expire_drop.get("chancePercent", 100) or 100)
+        )
+
+        self.impact_drop_chance.setValue(
+            int(raw_impact_drop.get("chancePercent", 100) or 100)
+        )
+
+        layout.addWidget(drop_group)
 
         self.canvas = ProjectileSpawnCanvas(translator)
 
@@ -2289,6 +2384,106 @@ class ProjectileSpawnEditorDialog(QDialog):
         self._current_direction = ""
 
         self._select_direction("down")
+
+    def _build_end_facing_combo(
+        self,
+        attribute: str,
+        facings: dict[str, str],
+        handler,
+    ) -> QComboBox:
+        combo = QComboBox()
+
+        for direction in DIRECTIONS:
+            combo.addItem(
+                direction.capitalize(),
+                direction,
+            )
+
+        combo.setCurrentIndex(
+            combo.findData(facings["down"])
+        )
+
+        combo.currentIndexChanged.connect(handler)
+
+        setattr(self, attribute, combo)
+
+        return combo
+
+    def _build_end_group(
+        self,
+        title: str,
+        animation_combo: QComboBox,
+        facing_combo: QComboBox,
+        flip: QCheckBox,
+        loop: QCheckBox,
+        preview_attribute: str,
+    ) -> QWidget:
+        """One end-effect group: animation, orientation, mirror, loop and
+        its live preview, laid out side by side."""
+        group = QGroupBox(title)
+
+        group_layout = QHBoxLayout(group)
+
+        controls = QVBoxLayout()
+
+        animation_row = QHBoxLayout()
+
+        animation_row.addWidget(
+            QLabel(
+                self.translate("projectile_animation")
+            )
+        )
+
+        animation_row.addWidget(animation_combo, 1)
+
+        controls.addLayout(animation_row)
+
+        orientation_row = QHBoxLayout()
+
+        orientation_row.addWidget(
+            QLabel(
+                self.translate("projectile_end_facing")
+            )
+        )
+
+        orientation_row.addWidget(facing_combo)
+
+        orientation_row.addWidget(flip)
+
+        orientation_row.addWidget(loop)
+
+        orientation_row.addStretch(1)
+
+        controls.addLayout(orientation_row)
+
+        group_layout.addLayout(controls)
+
+        group_layout.addSpacing(12)
+
+        preview = QLabel()
+
+        preview.setFixedSize(96, 96)
+
+        preview.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        preview.setStyleSheet(
+            "background: #161b22; border: 1px solid #4b5563;")
+
+        setattr(self, preview_attribute, preview)
+
+        preview_container = QWidget()
+
+        preview_layout = QHBoxLayout(preview_container)
+
+        preview_layout.setContentsMargins(0, 0, 8, 0)
+
+        preview_layout.addWidget(preview)
+
+        group_layout.addWidget(preview_container)
+
+        return group
 
     def _select_direction(self, direction: str) -> None:
         if direction == self._current_direction:
@@ -2362,10 +2557,86 @@ class ProjectileSpawnEditorDialog(QDialog):
 
             combo.blockSignals(False)
 
+        self._sync_loop_controls()
+
         self.canvas.set_offset(
             offsets["x"],
             offsets["y"],
         )
+
+    def _effective_animation_loop(
+        self,
+        animation_id: str,
+    ) -> bool:
+        override = self._animation_loop_overrides.get(
+            animation_id,
+        )
+
+        if override is not None:
+            return override
+
+        animation = (
+            self.workspace.find("animations", animation_id)
+            if animation_id
+            else None
+        )
+
+        return bool(
+            animation.data.get("loop")
+        ) if animation is not None else False
+
+    def _sync_loop_controls(self) -> None:
+        """Reflect the pending loop flag of each slot's current animation."""
+        direction = self._current_direction or "down"
+
+        for checkbox, animation_id in (
+            (self.flight_loop, self._flight_animation_id),
+            (self.impact_loop, self._impact_animations.get(direction, "")),
+            (self.expire_loop, self._expire_animations.get(direction, "")),
+        ):
+            enabled = bool(animation_id)
+
+            checkbox.setEnabled(enabled)
+
+            checkbox.blockSignals(True)
+
+            checkbox.setChecked(
+                self._effective_animation_loop(animation_id)
+                if enabled
+                else False
+            )
+
+            checkbox.blockSignals(False)
+
+    def _flight_loop_changed(self, checked: bool) -> None:
+        if self._flight_animation_id:
+            self._animation_loop_overrides[
+                self._flight_animation_id
+            ] = bool(checked)
+
+            self._apply_canvas_projectile()
+
+    def _impact_loop_changed(self, checked: bool) -> None:
+        animation_id = self._impact_animations.get(
+            self._current_direction,
+            "",
+        )
+
+        if animation_id:
+            self._animation_loop_overrides[animation_id] = bool(
+                checked
+            )
+
+    def _expire_loop_changed(self, checked: bool) -> None:
+        animation_id = self._expire_animations.get(
+            self._current_direction,
+            "",
+        )
+
+        if animation_id:
+            self._animation_loop_overrides[animation_id] = bool(
+                checked
+            )
 
     def _flip_x_changed(self, checked: bool) -> None:
         direction = self._current_direction
@@ -2399,14 +2670,15 @@ class ProjectileSpawnEditorDialog(QDialog):
 
     def _advance_end_previews(self) -> None:
         """Cycle both end animations on their preview labels, rotated per
-        the animation's base orientation and the selected direction."""
+        the animation's base orientation and mirrored with the slot's own
+        per-direction flip, exactly like the runtime end effects."""
         direction = self._current_direction or "down"
 
-        for combo, facings, label in (
+        for combo, facings, flips, label in (
             (self.end_animation, self._impact_animation_facings,
-             self.impact_preview),
+             self._impact_flip_x, self.impact_preview),
             (self.expire_animation, self._expire_animation_facings,
-             self.expire_preview),
+             self._expire_flip_x, self.expire_preview),
         ):
             animation_id = combo.currentData()
 
@@ -2427,10 +2699,19 @@ class ProjectileSpawnEditorDialog(QDialog):
             if not frames:
                 label.setText("—")
 
+                self._end_preview_state.pop(label, None)
+
                 continue
 
             state = self._end_preview_state.setdefault(
                 label, {"index": 0, "cursor": 0})
+
+            if state.get("animation") != animation_id:
+                state["animation"] = animation_id
+
+                state["index"] = 0
+
+                state["cursor"] = 0
 
             index = state["index"]
 
@@ -2445,7 +2726,12 @@ class ProjectileSpawnEditorDialog(QDialog):
             if state["cursor"] >= duration:
                 state["cursor"] = 0
 
-                index = (index + 1) % len(frames)
+                # Non-looping end animations hold their last frame, like
+                # the runtime effect does after the clip finishes.
+                if self._effective_animation_loop(animation_id):
+                    index = (index + 1) % len(frames)
+                else:
+                    index = min(index + 1, len(frames) - 1)
 
                 state["index"] = index
 
@@ -2463,7 +2749,7 @@ class ProjectileSpawnEditorDialog(QDialog):
                 rotated = rotate_image_quarter_turns(
                     resolved.image, turns)
 
-                if self._flip_x.get(direction):
+                if flips.get(direction):
                     rotated = mirror_image_horizontally(rotated)
 
                 label.setPixmap(QPixmap.fromImage(
@@ -2482,6 +2768,8 @@ class ProjectileSpawnEditorDialog(QDialog):
                 value if isinstance(value, str) else ""
             )
 
+            self._sync_loop_controls()
+
     def _expire_animation_changed(self) -> None:
         value = self.expire_animation.currentData()
 
@@ -2489,6 +2777,8 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._expire_animations[self._current_direction] = (
                 value if isinstance(value, str) else ""
             )
+
+            self._sync_loop_controls()
 
     def _maximum_distance_changed(self) -> None:
         self._maximum_distance = int(
@@ -2667,7 +2957,9 @@ class ProjectileSpawnEditorDialog(QDialog):
         next_index = self._flight_frame_index + 1
 
         if next_index >= len(frames):
-            if bool(animation.data.get("loop")):
+            if self._effective_animation_loop(
+                self._flight_animation_id,
+            ):
                 next_index = 0
             else:
                 self._flight_timer.stop()
@@ -2757,6 +3049,25 @@ class ProjectileSpawnEditorDialog(QDialog):
                 },
                 impact_flip_x=dict(self._impact_flip_x),
                 expire_flip_x=dict(self._expire_flip_x),
+                animation_loops=dict(
+                    self._animation_loop_overrides
+                ),
+                expire_drop={
+                    "pickupId": str(
+                        self.expire_drop.currentData() or ""
+                    ),
+                    "chancePercent": (
+                        self.expire_drop_chance.value()
+                    ),
+                },
+                impact_drop={
+                    "pickupId": str(
+                        self.impact_drop.currentData() or ""
+                    ),
+                    "chancePercent": (
+                        self.impact_drop_chance.value()
+                    ),
+                },
             )
         except ValueError as error:
             QMessageBox.critical(
@@ -3052,6 +3363,57 @@ class AttackDefinitionDialog(QDialog):
             ),
         )
 
+        self.ammo_item = QComboBox()
+
+        self.ammo_item.addItem(
+            self.translate("attack_ammo_none"),
+            "",
+        )
+
+        for item in sorted(
+            self.workspace.definitions("items"),
+            key=lambda entry: entry.definition_id,
+        ):
+            self.ammo_item.addItem(
+                item.definition_id,
+                item.definition_id,
+            )
+
+        self.ammo_amount = QSpinBox()
+
+        self.ammo_amount.setRange(1, 999)
+
+        ammo_editor = QWidget()
+
+        ammo_layout = QHBoxLayout(ammo_editor)
+
+        ammo_layout.setContentsMargins(0, 0, 0, 0)
+
+        ammo_layout.setSpacing(6)
+
+        ammo_layout.addWidget(
+            self.ammo_item,
+            1,
+        )
+
+        ammo_layout.addWidget(
+            QLabel(
+                self.translate("attack_ammo_amount")
+            )
+        )
+
+        ammo_layout.addWidget(
+            self.ammo_amount
+        )
+
+        form.addRow(
+            self.translate("attack_ammo"),
+            self._with_info(
+                ammo_editor,
+                "attack_ammo_info",
+            ),
+        )
+
         self._refresh_projectiles()
 
         timeline_group = QGroupBox(
@@ -3328,6 +3690,10 @@ class AttackDefinitionDialog(QDialog):
                 )
 
         self.kind.currentIndexChanged.connect(
+            self._sync_enabled
+        )
+
+        self.ammo_item.currentIndexChanged.connect(
             self._sync_enabled
         )
 
@@ -3624,6 +3990,25 @@ class AttackDefinitionDialog(QDialog):
 
         self.visual_action.setCurrentText(
             str(data.get("visualActionId", ""))
+        )
+
+        ammo = (
+            data.get("ammo")
+            if isinstance(data.get("ammo"), dict)
+            else {}
+        )
+
+        self.ammo_item.setCurrentIndex(
+            max(
+                0,
+                self.ammo_item.findData(
+                    str(ammo.get("itemId", "") or "")
+                ),
+            )
+        )
+
+        self.ammo_amount.setValue(
+            int(ammo.get("amount", 1) or 1)
         )
 
         melee = data.get("meleeHitboxes")
@@ -4454,6 +4839,13 @@ class AttackDefinitionDialog(QDialog):
             and self.projectile.currentData() is not None
         )
 
+        self.ammo_item.setEnabled(not melee)
+
+        self.ammo_amount.setEnabled(
+            not melee
+            and bool(self.ammo_item.currentData())
+        )
+
         self._refresh_event_animations()
 
         if 0 <= self._selected_event < len(self._events):
@@ -4545,6 +4937,16 @@ class AttackDefinitionDialog(QDialog):
             data["projectileDefinitionId"] = (
                 self._current_projectile_id() or None
             )
+
+            ammo_item = str(
+                self.ammo_item.currentData() or ""
+            )
+
+            if ammo_item:
+                data["ammo"] = {
+                    "itemId": ammo_item,
+                    "amount": self.ammo_amount.value(),
+                }
 
         return data
 

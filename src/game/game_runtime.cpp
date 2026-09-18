@@ -527,7 +527,7 @@ struct GameRuntime::State final {
         maps.reserve(knownMapData.size());
         for (const auto& map : knownMapData) { maps.push_back(&map); }
         return {&itemCatalog, std::move(maps), &content.quests(), &content.progressions(),
-                &content.objects()};
+                &content.objects(), &content.pickups()};
     }
 
     void saveGame() {
@@ -601,9 +601,19 @@ struct GameRuntime::State final {
     }
 
     void render(render::Framebuffer& framebuffer) const {
-        const auto view = buildGameViewModel(
+        auto view = buildGameViewModel(
             player, session.playerItems(), itemCatalog, session.inventoryOverlay(), session.bankOverlay(),
             session.derivedPlayerStats(), session.shopOverlay(), content.shops());
+        // Ammo readout derives from the authored attack requirement and the
+        // live inventory; attacks without ammo leave the HUD slot empty.
+        const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());
+        if (bowAttack != nullptr && bowAttack->ammo) {
+            const auto* ammoItem = itemCatalog.find(bowAttack->ammo->itemId);
+            if (ammoItem != nullptr) {
+                view.ammo = {ammoItem->id, ammoItem->visualId,
+                             session.playerItems().inventory().items().count(ammoItem->id)};
+            }
+        }
         const auto presentationFrame = presentationEffects.resolveFrame();
         presentation.render(framebuffer, {
             activeWorld(), player, *visual, enemyVisuals, objectVisuals, objectResidueVisuals,

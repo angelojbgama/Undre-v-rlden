@@ -40,6 +40,14 @@ def workspace_data() -> dict[str, object]:
             }
         ],
     })
+    data["pickups"] = [  # type: ignore[assignment]
+        {
+            "id": "pickup.arrow",
+            "visualId": "visual.projectile.player.arrow",
+            "collectionBounds": {"x": -5, "y": -5, "width": 10, "height": 10},
+            "payload": {"kind": "item", "itemId": "item.arrow", "quantity": 1},
+        }
+    ]
     return data
 
 
@@ -341,6 +349,228 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                 "impactAnimationId", stored.data)
             self.assertNotIn(
                 "expireAnimations", stored.data)
+        finally:
+            temporary.cleanup()
+
+    def test_update_animation_loops_persists_loop_flag(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                animation_loops={"animation.arrow": True},
+            )
+
+            animation = workspace.find(
+                "animations", "animation.arrow")
+
+            assert animation is not None
+
+            self.assertIs(True, animation.data["loop"])
+        finally:
+            temporary.cleanup()
+
+    def test_end_animation_unlooped_in_same_save(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            looping = workspace.create_definition(
+                "animations", "anim.loop.poof")
+
+            workspace.update(looping, "loop", True)
+
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                impact_animations={"down": "anim.loop.poof"},
+                animation_loops={"anim.loop.poof": False},
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertEqual(
+                {"down": "anim.loop.poof"},
+                projectile.data["impactAnimations"],
+            )
+
+            animation = workspace.find(
+                "animations", "anim.loop.poof")
+
+            assert animation is not None
+
+            self.assertIs(False, animation.data["loop"])
+        finally:
+            temporary.cleanup()
+
+    def test_end_animation_still_looping_rejected(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            looping = workspace.create_definition(
+                "animations", "anim.loop.poof")
+
+            workspace.update(looping, "loop", True)
+
+            # Without a pending un-loop the save must keep refusing.
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in (
+                            "down",
+                            "up",
+                            "left",
+                            "right",
+                        )
+                    },
+                    impact_animations={"down": "anim.loop.poof"},
+                )
+
+            # Re-affirming the loop in the same save is still refused.
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in (
+                            "down",
+                            "up",
+                            "left",
+                            "right",
+                        )
+                    },
+                    impact_animations={"down": "anim.loop.poof"},
+                    animation_loops={"anim.loop.poof": True},
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_animation_loops_unknown_animation_rejected(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in (
+                            "down",
+                            "up",
+                            "left",
+                            "right",
+                        )
+                    },
+                    animation_loops={"anim.missing": False},
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_update_drops(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                expire_drop={
+                    "pickupId": "pickup.arrow",
+                    "chancePercent": 100,
+                },
+                impact_drop={
+                    "pickupId": "pickup.arrow",
+                    "chancePercent": 50,
+                },
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertEqual(
+                {"pickupId": "pickup.arrow", "chancePercent": 100},
+                projectile.data["expireDrop"],
+            )
+            self.assertEqual(
+                {"pickupId": "pickup.arrow", "chancePercent": 50},
+                projectile.data["impactDrop"],
+            )
+
+            # An empty pickup id removes the drop.
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                expire_drop={"pickupId": "", "chancePercent": 100},
+                impact_drop={"pickupId": "", "chancePercent": 100},
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertNotIn("expireDrop", projectile.data)
+            self.assertNotIn("impactDrop", projectile.data)
+
+            # Unknown pickups and out-of-range chances are rejected.
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in (
+                            "down",
+                            "up",
+                            "left",
+                            "right",
+                        )
+                    },
+                    expire_drop={
+                        "pickupId": "pickup.missing",
+                        "chancePercent": 100,
+                    },
+                )
+
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in (
+                            "down",
+                            "up",
+                            "left",
+                            "right",
+                        )
+                    },
+                    impact_drop={
+                        "pickupId": "pickup.arrow",
+                        "chancePercent": 0,
+                    },
+                )
         finally:
             temporary.cleanup()
 

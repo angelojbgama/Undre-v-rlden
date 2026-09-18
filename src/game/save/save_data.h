@@ -71,9 +71,20 @@ struct PickupDelta final {
     std::optional<std::uint64_t> remainingQuantity;
 };
 
+// Runtime-spawned ground item (projectile drop or loot) recorded so it
+// survives save/load and map re-entries. Map-placed pickups keep using
+// PickupDelta; these have no persistent instance id of their own.
+struct SpawnedPickup final {
+    simulation::MapId mapId{};
+    simulation::DefinitionId pickupDefinitionId{};
+    core::WorldPointI position{};
+    gameplay::PickupPayload payload{};
+};
+
 struct SessionWorldState final {
     std::vector<ObjectDelta> objects;
     std::vector<PickupDelta> pickups;
+    std::vector<SpawnedPickup> spawnedPickups;
     std::vector<gameplay::WorldRuleState> worldRules;
     std::vector<gameplay::EncounterRuntimeState> encounters;
     void set(ObjectDelta delta);
@@ -99,6 +110,7 @@ struct SaveValidationCatalogs final {
     const gameplay::quests::QuestCatalog* quests{};
     const gameplay::rpg::PlayerProgressionCatalog* progressions{};
     const gameplay::WorldObjectCatalog* objects{};
+    const std::vector<gameplay::PickupDefinition>* pickups{};
 };
 
 struct SaveResult final {
@@ -111,8 +123,9 @@ struct SaveResult final {
 inline constexpr std::uint16_t saveMajorVersion = 1;
 // Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP;
 // minor 5 added BANK; minor 6 added quest reward claims; minor 7 adds world rules
-// and encounter runtime state; minor 8 adds persistent object activation.
-inline constexpr std::uint16_t saveMinorVersion = 8;
+// and encounter runtime state; minor 8 adds persistent object activation;
+// minor 9 adds the SPWN chunk (runtime-spawned ground items such as drops).
+inline constexpr std::uint16_t saveMinorVersion = 9;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);
@@ -125,7 +138,9 @@ inline constexpr std::uint16_t saveMinorVersion = 8;
                                   const SaveValidationCatalogs& catalogs);
 [[nodiscard]] bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
                                    simulation::EntityHandlePool& handles,
-                                   const gameplay::ItemCatalog& items, std::string& error);
+                                   const gameplay::ItemCatalog& items,
+                                   const std::vector<gameplay::PickupDefinition>& pickups,
+                                   std::string& error);
 void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& world,
                        SessionWorldState& state);
 [[nodiscard]] SavedPlayer capturePlayer(const gameplay::Player& player,

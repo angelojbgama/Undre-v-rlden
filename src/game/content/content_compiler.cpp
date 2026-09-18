@@ -52,7 +52,7 @@ TilesetDefinition compileTileset(const AuthoredTileset& value) {
 
     return result;
 }
-gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.impactAnimationId, v.expireAnimationId, v.impactAnimationFacing, v.expireAnimationFacing, v.expireAnimations, v.impactAnimations, v.impactAnimationFacings, v.expireAnimationFacings, v.flipX, v.impactFlipX, v.expireFlipX}; }
+gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.impactAnimationId, v.expireAnimationId, v.impactAnimationFacing, v.expireAnimationFacing, v.expireAnimations, v.impactAnimations, v.impactAnimationFacings, v.expireAnimationFacings, v.flipX, v.impactFlipX, v.expireFlipX, v.expireDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.expireDrop->pickupId, v.expireDrop->chancePercent}} : std::nullopt, v.impactDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.impactDrop->pickupId, v.impactDrop->chancePercent}} : std::nullopt}; }
 const AuthoredAnimation* findAnimation(
     const AuthoredContentPack& pack,
     const simulation::DefinitionId& id) {
@@ -305,6 +305,9 @@ gameplay::AttackDefinition compileAttack(
                                       v.minimumRangePixels, v.maximumRangePixels,
                                       v.visualActionId, v.meleeHitboxes,
                                       v.projectileDefinitionId, v.timeline, {}};
+    if (v.ammo) {
+        result.ammo = gameplay::AttackAmmoCost{v.ammo->itemId, v.ammo->amount};
+    }
     for (const auto& authoredDirection : v.shapes) {
         for (const auto& frame : authoredDirection.frames) {
             auto& sample = collisionSample(

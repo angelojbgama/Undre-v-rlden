@@ -274,7 +274,7 @@ Phase 7 validation/fix commit: 7cc9da495d314de52ab097f890594dd7deb2d0a4
 Phase 8 foundation commits: 4d7d808a769b5739dc6a1e36d0e0134552b77155 + a3076f41b605b1835356d4bb0bcce4c430d9612c
 Phase 8 final code commit: d93e72429d77811c29e26c6350d5c892123b562b
 DMAP: v1.5
-DSAV: v1.8
+DSAV: v1.9 (minor 9 adiciona o chunk SPWN: pickups spawnados em runtime, como drops de projétil e loot)
 Windows smoke: PASS (historical baseline; not rerun in the current Linux/WSL environment)
 ```
 
@@ -1954,3 +1954,30 @@ Não criar PuzzleEngine, push blocks, expressão booleana genérica, StatusEffec
 Visual Content Boundary, Content Studio, LLM, áudio, scripting ou networking para
 esta fase. Novos comportamentos de objetos devem preferir definitions + placements +
 World Rules, sem branches por mapa ou por ID de teste.
+
+# Estado atual — item consumption & projectile drops loop
+
+Loop autoral de munição implementado de ponta a ponta, interpretado pelo runtime
+sem branches por conteúdo:
+
+- `AttackDefinition.ammo` (Content JSON `attacks[].ammo`, opcional): item +
+  quantidade consumidos do inventário quando o ataque do player começa. Sem
+  estoque o ataque não inicia (gate em `GameSession::gateAttackAmmo`) e o
+  consumo emite `simulation::ItemConsumed`. Ataques referenciados por inimigos
+  não podem exigir ammo (validação de conteúdo).
+- `ProjectileDefinition.expireDrop/impactDrop` (`projectiles[].expireDrop` /
+  `impactDrop`): pickup deixado no chão quando o projétil expira por
+  distância/tempo de vida ou colide (parede/alvo/objeto), com chance em % e
+  roll determinístico. Spawn em `GameSession::resolveProjectileDrops`,
+  reutilizando `PickupDefinition` + coleta por sobreposição existentes.
+- HUD mostra munição (ícone + contagem) derivado do ammo autoral e do
+  inventário (`GameViewModel::ammo`).
+- DSAV 1.9 (chunk SPWN) persiste pickups spawnados em runtime por mapa; o
+  load e a reentrada de mapa os reconstroem (`SpawnedPickup`,
+  `applyWorldState`/`captureWorldState`). DSAV <= 1.8 segue legível.
+- Studio: campo "Consome item" no editor de ataques e grupo "Item ao cair"
+  no editor de posições do projétil; validação espelha o C++.
+
+Não implementar: custos genéricos (MP/stamina), durabilidade de flechas,
+inimigos com ammo ou economia de recuperação automática; essas ficam como
+conteúdo/fases futuras.

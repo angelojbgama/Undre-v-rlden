@@ -2539,6 +2539,252 @@ void testProjectilesAndEffects() {
            "arrow impacts a valid invulnerable Hurtbox without applying damage or piercing");
 }
 
+void testProjectileAmmoAndDrops() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace save = underworld::game::save;
+    namespace simulation = underworld::simulation;
+
+    const auto registry = content::compileCombatContentOrThrow();
+    const auto& bow = registry.attacks().require(gameplay::playerBowAttackId());
+    expect(bow.ammo && bow.ammo->itemId == simulation::DefinitionId{"item.arrow"} &&
+               bow.ammo->amount == 1,
+           "authored bow attack compiles its ammo requirement");
+    const auto& arrow = registry.projectiles().require(
+        simulation::DefinitionId{"projectile.player.arrow"});
+    expect(arrow.expireDrop &&
+               arrow.expireDrop->pickupId == simulation::DefinitionId{"pickup.arrow"} &&
+               arrow.expireDrop->chancePercent == 100 && arrow.impactDrop &&
+               arrow.impactDrop->pickupId == simulation::DefinitionId{"pickup.arrow"} &&
+               arrow.impactDrop->chancePercent == 50,
+           "authored arrow compiles expire and impact drops");
+
+    const auto findAttack = [](auto& attacks, const simulation::DefinitionId& id) {
+        const auto found = std::find_if(attacks.begin(), attacks.end(),
+                                        [&](const auto& value) { return value.id == id; });
+        return found == attacks.end() ? nullptr : &*found;
+    };
+    const auto findProjectile = [](auto& projectiles, const simulation::DefinitionId& id) {
+        const auto found = std::find_if(projectiles.begin(), projectiles.end(),
+                                        [&](const auto& value) { return value.id == id; });
+        return found == projectiles.end() ? nullptr : &*found;
+    };
+
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        findAttack(invalid.attacks, gameplay::playerBowAttackId())
+            ->ammo->itemId = simulation::DefinitionId{"item.missing"};
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects ammo referencing an unknown item");
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        auto* skull = findAttack(invalid.attacks, simulation::DefinitionId{"attack.skull.arrow"});
+        if (skull != nullptr) {
+            skull->ammo = content::AuthoredAmmoCost{simulation::DefinitionId{"item.arrow"}, 1};
+            expect(!content::compileContent(invalid).registry,
+                   "content validation rejects enemy attacks that require ammo");
+        }
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        findProjectile(invalid.projectiles, simulation::DefinitionId{"projectile.player.arrow"})
+            ->expireDrop->pickupId = simulation::DefinitionId{"pickup.missing"};
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects a projectile drop referencing an unknown pickup");
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        findProjectile(invalid.projectiles, simulation::DefinitionId{"projectile.player.arrow"})
+            ->impactDrop->chancePercent = 0;
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects a zero-percent drop chance");
+    }
+
+    {
+        const auto json = content::encodeAuthoredContentJson(content::makeCombatAuthoredContent());
+        const auto decoded = content::decodeAuthoredContentJson(json);
+        const auto* decodedBow = decoded.content
+            ? findAttack(decoded.content->attacks, gameplay::playerBowAttackId()) : nullptr;
+        const auto* decodedArrow = decoded.content
+            ? findProjectile(decoded.content->projectiles,
+                             simulation::DefinitionId{"projectile.player.arrow"}) : nullptr;
+        expect(decoded.content && decodedBow && decodedBow->ammo &&
+                   decodedBow->ammo->itemId == simulation::DefinitionId{"item.arrow"} &&
+                   decodedBow->ammo->amount == 1,
+               "content JSON roundtrips the attack ammo requirement");
+        expect(decodedArrow && decodedArrow->expireDrop && decodedArrow->impactDrop &&
+                   decodedArrow->expireDrop->pickupId == simulation::DefinitionId{"pickup.arrow"} &&
+                   decodedArrow->impactDrop->chancePercent == 50,
+               "content JSON roundtrips the projectile drops");
+    }
+
+    maps::MapData map;
+    map.id = simulation::MapId{"map.ammo.range"};
+    map.width = 8;
+    map.height = 8;
+    map.tileSize = 16;
+    map.tileReferences.push_back(
+        {simulation::DefinitionId{"tileset.dungeon"}, 10, underworld::world::TileFlags::none});
+    maps::MapTileLayer ground{"ground", true, std::vector<std::optional<std::uint32_t>>(64)};
+    map.layers.push_back(std::move(ground));
+    map.collision.assign(64, 0);
+    map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {64, 40},
+                                gameplay::FacingDirection::down});
+
+    const auto validation = game::mapValidationCatalogs(registry);
+    simulation::EntityHandlePool handles;
+    const std::array visuals{gameplay::creatures::soldierVisualId(),
+                             gameplay::creatures::skullVisualId()};
+    gameplay::creatures::EnemyFactory enemies(handles, registry.enemies(), registry.behaviors(),
+                                              registry.attacks(), registry.projectiles(), visuals);
+    gameplay::WorldObjectFactory objects(handles, registry.objects(), registry.items());
+    game::RuntimeTilesetCatalog runtimeTilesets(registry.tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+    const auto dmapPath = std::filesystem::temp_directory_path() / "underworld_ammo_drops.dmap";
+    std::error_code fsError;
+    std::filesystem::remove(dmapPath, fsError);
+    std::string ioError;
+    const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
+    maps::MapCatalog catalog;
+    if (dmapWritten) catalog.add(map.id, dmapPath);
+    game::GameSession session({0}, testProgression());
+    session.configureCombat(registry.attacks(), registry.projectiles(), registry.behaviors(),
+                            registry.attacks().require(gameplay::playerSwordAttackId()),
+                            registry.attacks().require(gameplay::playerBowAttackId()));
+    session.configureItems(registry.items());
+    session.configureRewards(registry.rewardProfiles(), registry.pickups());
+    std::string sessionError;
+    expect(dmapWritten && session.initializeMap(catalog, validation, builder, map.id,
+                                                simulation::SpawnId{"entry.start"}, sessionError),
+           "ammo and drop session fixture initializes through the DMAP catalog");
+    if (session.world().id() == map.id) {
+        auto& items = const_cast<gameplay::PlayerItems&>(session.playerItems());
+
+        // Without ammo the bow press is simply ignored.
+        session.tick(actionCommand(1, false, true));
+        expect(session.player().actionState() == gameplay::PlayerActionState::none,
+               "bow attack without ammo never starts");
+        for (std::uint64_t tick = 2; tick <= 30; ++tick) {
+            session.tick(movementCommand(tick, 0, 0));
+        }
+        expect(session.projectiles().projectiles().empty() &&
+                   session.world().pickups().empty(),
+               "no ammo produces no shot, no consumption and no drops");
+
+        // With ammo the shot spends one arrow and emits ItemConsumed.
+        static_cast<void>(items.inventory().items().add(
+            simulation::DefinitionId{"item.arrow"}, 3));
+        session.tick(actionCommand(31, false, true));
+        const bool consumed = std::any_of(
+            session.events().events().begin(), session.events().events().end(),
+            [](const simulation::SimulationEvent& event) {
+                const auto* spent = std::get_if<simulation::ItemConsumed>(&event);
+                return spent && spent->itemId == simulation::DefinitionId{"item.arrow"} &&
+                       spent->attackId == gameplay::playerBowAttackId() && spent->amount == 1;
+            });
+        expect(consumed && items.inventory().items().count(
+                               simulation::DefinitionId{"item.arrow"}) == 2,
+               "bow attack with ammo spends one arrow and emits ItemConsumed");
+
+        // The arrow expires at the distance limit and leaves a pickup behind.
+        bool dropped = false;
+        underworld::core::WorldPointI dropPosition{};
+        for (std::uint64_t tick = 32; tick < 110 && !dropped; ++tick) {
+            session.tick(movementCommand(tick, 0, 0));
+            const auto found = std::find_if(
+                session.world().pickups().begin(), session.world().pickups().end(),
+                [](const auto& pickup) {
+                    const auto* payload =
+                        std::get_if<gameplay::ItemPickup>(&pickup.instance.payload());
+                    return pickup.transient && payload &&
+                           payload->itemId == simulation::DefinitionId{"item.arrow"};
+                });
+            if (found != session.world().pickups().end()) {
+                dropped = true;
+                dropPosition = found->instance.position();
+            }
+        }
+        expect(dropped, "expiring arrow drops a collectible ground pickup");
+
+        // Walking over the fallen arrow returns it to the inventory.
+        if (dropped) {
+            session.relocatePlayer(dropPosition, gameplay::FacingDirection::down);
+            session.tick(movementCommand(110, 0, 0));
+            const bool collected = std::any_of(
+                session.events().events().begin(), session.events().events().end(),
+                [](const simulation::SimulationEvent& event) {
+                    const auto* pickup = std::get_if<simulation::PickupCollected>(&event);
+                    return pickup && pickup->itemId == simulation::DefinitionId{"item.arrow"};
+                });
+            expect(collected && items.inventory().items().count(
+                                    simulation::DefinitionId{"item.arrow"}) == 3,
+                   "player recovers the dropped arrow by walking over it");
+        }
+
+        // Runtime-spawned ground items survive save/load (DSAV 1.9 SPWN).
+        // Return to the open center so the second arrow expires by range
+        // instead of clipping the map edge.
+        session.relocatePlayer({64, 40}, gameplay::FacingDirection::down);
+        session.tick(actionCommand(111, false, true));
+        bool respawned = false;
+        for (std::uint64_t tick = 112; tick < 190 && !respawned; ++tick) {
+            session.tick(movementCommand(tick, 0, 0));
+            respawned = std::any_of(
+                session.world().pickups().begin(), session.world().pickups().end(),
+                [](const auto& pickup) {
+                    const auto* payload =
+                        std::get_if<gameplay::ItemPickup>(&pickup.instance.payload());
+                    return pickup.transient && payload &&
+                           payload->itemId == simulation::DefinitionId{"item.arrow"};
+                });
+        }
+        const auto saved = session.captureSaveData();
+        const auto& spawnedState = saved.world.spawnedPickups;
+        expect(respawned && spawnedState.size() == 1 &&
+                   spawnedState.front().mapId == map.id &&
+                   spawnedState.front().pickupDefinitionId ==
+                       simulation::DefinitionId{"pickup.arrow"},
+               "dropped arrows are captured as spawned pickup world state");
+        const auto savedBytes = save::serializeSave(saved);
+        save::SaveValidationCatalogs saveCatalogs{
+            &registry.items(), {&map}, nullptr, &registry.progressions(),
+            nullptr, &registry.pickups()};
+        const auto loaded = save::deserializeSave(savedBytes, saveCatalogs);
+        const auto loadedPayload = loaded
+            ? std::get_if<gameplay::ItemPickup>(
+                  &loaded.data.world.spawnedPickups.front().payload)
+            : nullptr;
+        expect(loaded && loaded.data.world.spawnedPickups.size() == 1 &&
+                   loadedPayload != nullptr &&
+                   loadedPayload->itemId == simulation::DefinitionId{"item.arrow"} &&
+                   loadedPayload->quantity == 1,
+               "DSAV 1.9 roundtrips the spawned ground item with its payload");
+        auto olderBytes = savedBytes;
+        olderBytes[4] = 8;
+        expect(!save::deserializeSave(olderBytes, saveCatalogs),
+               "DSAV minor 8 rejects the newer SPWN chunk explicitly");
+        const auto rebuilt = builder.build(map, simulation::SpawnId{"entry.start"});
+        std::string applyError;
+        const bool applied = rebuilt && save::applyWorldState(
+            loaded.data.world, *rebuilt.world, handles, registry.items(),
+            registry.pickups(), applyError);
+        expect(applied && std::any_of(
+                              rebuilt.world->pickups().begin(),
+                              rebuilt.world->pickups().end(),
+                              [](const auto& pickup) {
+                                  const auto* payload =
+                                      std::get_if<gameplay::ItemPickup>(&pickup.instance.payload());
+                                  return pickup.transient && payload &&
+                                         payload->itemId ==
+                                             simulation::DefinitionId{"item.arrow"};
+                              }),
+               "applyWorldState rebuilds the spawned ground item on a fresh world");
+    }
+}
+
 void testPhase6CombatGeneralization() {
     namespace gameplay = underworld::game::gameplay;
     namespace simulation = underworld::simulation;
@@ -4890,7 +5136,7 @@ void testPhase8PersistentMapsAndSave() {
     expect(malformedFlagsRejected, "DSAV rejects an oversized persistent dialogue flag chunk");
 
     std::string applyError;
-    expect(save::applyWorldState(saved.world,*runtime.world,handles,items,applyError) &&
+    expect(save::applyWorldState(saved.world,*runtime.world,handles,items,{},applyError) &&
                runtime.world->objects().size()==1 && runtime.world->objects()[0].instance.state()==gameplay::WorldObjectState::opened &&
                runtime.world->objects()[0].instance.contents()->count(gameplay::lifePotionItemId())==1 &&
                runtime.world->destroyedObjectResidues().size() == 1 &&
@@ -5993,8 +6239,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 8 && encoded[7] == 0,
-           "world state persistence advances DSAV to minor version 8");
+    expect(encoded.size() > 7 && encoded[6] == 9 && encoded[7] == 0,
+           "spawned ground items advance DSAV to minor version 9");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
@@ -10375,6 +10621,7 @@ int main() {
         testEntityHandlesAndActorOrder();
         testCombatSystem();
         testProjectilesAndEffects();
+        testProjectileAmmoAndDrops();
         testPhase6CombatGeneralization();
         testCreatureDefinitionsAndBehavior();
         testCreatureCombatIntegration();

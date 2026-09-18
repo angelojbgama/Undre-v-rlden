@@ -415,6 +415,98 @@ class AttackAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_configure_attack_ammo(self) -> None:
+        from tools.content_studio.services.attack_authoring_service import (
+            AttackAuthoringService,
+        )
+
+        data = attack_content()
+        data["items"] = [
+            {
+                "id": "item.arrow",
+                "visualId": "visual.item.arrow",
+                "category": "misc",
+                "stackLimit": 99,
+            }
+        ]
+
+        temporary, workspace = make_workspace(data)
+
+        try:
+            bow = {
+                "id": "attack.player.bow",
+                "kind": "projectile",
+                "damage": {"amount": 1, "knockbackPixels": 32},
+                "totalTicks": 16,
+                "cooldownTicks": 0,
+                "minimumRangePixels": 0,
+                "maximumRangePixels": 512,
+                "visualActionId": "visual.player.bow",
+                "projectileDefinitionId": "projectile.player.arrow",
+                "timeline": [{"tick": 8, "kind": "spawnProjectile"}],
+                "ammo": {"itemId": "item.arrow", "amount": 1},
+            }
+
+            AttackAuthoringService(workspace).configure(
+                "attack.player.bow",
+                bow,
+            )
+
+            stored = workspace.find(
+                "attacks",
+                "attack.player.bow",
+            )
+
+            self.assertIsNotNone(stored)
+
+            assert stored is not None
+
+            self.assertEqual(
+                {"itemId": "item.arrow", "amount": 1},
+                stored.data["ammo"],
+            )
+
+            # Removing the ammo reference drops the field.
+            without_ammo = dict(bow)
+            without_ammo["ammo"] = None
+
+            AttackAuthoringService(workspace).configure(
+                "attack.player.bow",
+                without_ammo,
+            )
+
+            stored = workspace.find(
+                "attacks",
+                "attack.player.bow",
+            )
+
+            assert stored is not None
+
+            self.assertNotIn("ammo", stored.data)
+
+            # Unknown items and non-positive amounts are rejected.
+            for invalid in (
+                {"itemId": "item.missing", "amount": 1},
+                {"itemId": "item.arrow", "amount": 0},
+            ):
+                with self.assertRaises(ValueError):
+                    AttackAuthoringService(workspace).configure(
+                        "attack.player.bow",
+                        {**bow, "ammo": invalid},
+                    )
+
+            # Melee attacks cannot spend ammo.
+            melee = dict(bow)
+            melee["kind"] = "meleeHitbox"
+
+            with self.assertRaises(ValueError):
+                AttackAuthoringService(workspace).configure(
+                    "attack.player.bow",
+                    melee,
+                )
+        finally:
+            temporary.cleanup()
+
     def test_delete_blocks_referenced_attack(self) -> None:
         from tools.content_studio.services.attack_authoring_service import (
             AttackAuthoringService,

@@ -108,6 +108,15 @@ struct ItemDelivered final {
     std::uint64_t amount{};
 };
 
+// Emitted when gameplay consumes items from the player inventory for an
+// action (e.g. an authored attack that spends ammo to fire).
+struct ItemConsumed final {
+    EntityHandle player{};
+    DefinitionId attackId{};
+    DefinitionId itemId{};
+    std::uint32_t amount{};
+};
+
 struct ExperienceGranted final {
     EntityHandle player{};
     DefinitionId sourceDefinitionId{};
@@ -121,7 +130,8 @@ using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileIm
                                      PickupCollected, NpcTalked, MapEntered, RegionEntered,
                                      RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
                                      ObjectActivationChanged,
-                                     ItemDelivered, ExperienceGranted, PresentationEffectRequested,
+                                     ItemDelivered, ItemConsumed, ExperienceGranted,
+                                     PresentationEffectRequested,
                                      EffectPlayback,
                                      SceneStarted, SceneCompleted, SceneAborted>;
 

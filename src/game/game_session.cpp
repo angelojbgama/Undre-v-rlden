@@ -10,6 +10,30 @@
 #include <utility>
 
 namespace underworld::game {
+namespace {
+
+// Deterministic per-impact drop roll: no RNG state, so replays and save/load
+// stay consistent while still allowing authored chances below 100%.
+bool dropChanceRoll(std::uint32_t chancePercent,
+                    const simulation::ProjectileImpact& impact) {
+    if (chancePercent >= 100) { return true; }
+    std::uint64_t hash = 1469598103934665603ULL;
+    const auto mix = [&hash](std::uint64_t value) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= (value >> (byte * 8)) & 0xFF;
+            hash *= 1099511628211ULL;
+        }
+    };
+    for (const char character : impact.projectileDefinitionId.value()) {
+        mix(static_cast<unsigned char>(character));
+    }
+    mix(static_cast<std::uint64_t>(impact.position.x));
+    mix(static_cast<std::uint64_t>(impact.position.y));
+    mix(impact.kind == simulation::ProjectileImpactKind::expired ? 1 : 0);
+    return static_cast<std::uint32_t>(hash % 100) < chancePercent;
+}
+
+} // namespace
 
 GameSession::GameSession(simulation::PlayerId playerId,
                          const gameplay::rpg::PlayerProgressionDefinition& progression,
@@ -353,6 +377,35 @@ void GameSession::startPlayerAttack() {
                                   ? *swordDefinition_ : *bowDefinition_;
     playerAttack_ = {&definition, {player_.entityHandle(), player_.attackInstance()},
                      player_.facing()};
+}
+
+simulation::PlayerCommand GameSession::gateAttackAmmo(
+    const simulation::PlayerCommand& command) const {
+    if (playerItems_ == nullptr || bowDefinition_ == nullptr ||
+        !bowDefinition_->ammo || !command.actions.secondaryAttackPressed) {
+        return command;
+    }
+    const auto& ammo = *bowDefinition_->ammo;
+    if (playerItems_->inventory().items().count(ammo.itemId) >= ammo.amount) {
+        return command;
+    }
+    // The bow never enters its attack state without ammo: the press is
+    // ignored for this tick and the player keeps full control.
+    simulation::PlayerCommand gated = command;
+    gated.actions.secondaryAttackPressed = false;
+    return gated;
+}
+
+void GameSession::consumePlayerAttackAmmo() {
+    if (playerItems_ == nullptr || bowDefinition_ == nullptr || !bowDefinition_->ammo ||
+        player_.actionState() != gameplay::PlayerActionState::bowAttack) {
+        return;
+    }
+    const auto& ammo = *bowDefinition_->ammo;
+    const auto removed = playerItems_->inventory().items().remove(ammo.itemId, ammo.amount);
+    if (removed == 0) { return; }
+    events_.emit(simulation::ItemConsumed{
+        player_.entityHandle(), bowDefinition_->id, ammo.itemId, removed});
 }
 
 void GameSession::advancePlayerAttack() {
@@ -1051,6 +1104,35 @@ void GameSession::resolveDoorProjectileImpacts() {
     }
 }
 
+void GameSession::resolveProjectileDrops() {
+    if (!mapSession_ || !mapSession_->world() || projectileCatalog_ == nullptr ||
+        pickupDefinitions_ == nullptr) {
+        return;
+    }
+    bool spawned = false;
+    const auto eventSnapshot = events_.events();
+    for (const auto& event : eventSnapshot) {
+        const auto* impact = std::get_if<simulation::ProjectileImpact>(&event);
+        if (!impact || impact->projectileDefinitionId.empty()) { continue; }
+        const auto* definition = projectileCatalog_->find(impact->projectileDefinitionId);
+        if (definition == nullptr) { continue; }
+        const auto& drop =
+            impact->kind == simulation::ProjectileImpactKind::expired
+                ? definition->expireDrop
+                : definition->impactDrop;
+        if (!drop || !dropChanceRoll(drop->chancePercent, *impact)) { continue; }
+        const auto pickupDefinition = std::find_if(
+            pickupDefinitions_->begin(), pickupDefinitions_->end(),
+            [&](const auto& value) { return value.id == drop->pickupId; });
+        if (pickupDefinition == pickupDefinitions_->end()) { continue; }
+        mapSession_->world()->pickups().push_back(
+            {{}, true, gameplay::WorldPickup{handles_.create(), *pickupDefinition,
+                                             impact->position}});
+        spawned = true;
+    }
+    if (spawned) { captureWorldState(); }
+}
+
 void GameSession::resolveEncounterDoors() {
     if (!mapSession_ || !mapSession_->world()) return;
     const auto eventSnapshot = events_.events();
@@ -1194,7 +1276,8 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     const auto& map = mapSession_->world()->map();
     const auto movementCollisions = mapSession_->world()->movementCollisionBounds();
     const auto previousAction = player_.actionState();
-    player_.update(command, map.collision(), map.tileSize(), movementCollisions);
+    player_.update(gateAttackAmmo(command), map.collision(), map.tileSize(),
+                   movementCollisions);
     regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                           player_.feetPosition(), events_);
     mapSession_->world()->updatePressureActivations(player_.feetPosition(), events_);
@@ -1205,6 +1288,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         if (previousAction == gameplay::PlayerActionState::none &&
             (player_.actionState() == gameplay::PlayerActionState::swordAttack ||
              player_.actionState() == gameplay::PlayerActionState::bowAttack)) {
+            consumePlayerAttackAmmo();
             startPlayerAttack();
         }
         advancePlayerAttack();
@@ -1217,6 +1301,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
                              movementCollisions);
         for (const auto& resolution : resolutions) { applyResolution(resolution); }
         resolveDoorProjectileImpacts();
+        resolveProjectileDrops();
         resolveDefeatRewards();
         removeDefeatedEnemies();
     }

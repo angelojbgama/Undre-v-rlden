@@ -61,6 +61,11 @@ std::vector<std::string> stringsFor(const SaveData& data){
     for(const auto& slot:data.player.quickSlots)if(slot)add(slot->value());
     for(const auto& delta:data.world.objects){add(delta.key.mapId.value());for(const auto& stack:delta.remainingContents)add(stack.itemId.value());}
     for(const auto& delta:data.world.pickups)add(delta.key.mapId.value());
+    for(const auto& spawned:data.world.spawnedPickups){
+        add(spawned.mapId.value());
+        add(spawned.pickupDefinitionId.value());
+        if(const auto* item=std::get_if<gameplay::ItemPickup>(&spawned.payload))add(item->itemId.value());
+    }
     for(const auto& flag:data.dialogueFlags.values())add(flag.value());
     for(const auto& quest:data.quests.snapshot()){add(quest.questId.value());for(const auto& objective:quest.objectives)add(objective.objectiveId.value());}
     for (const auto& rule : data.world.worldRules) {
@@ -124,6 +129,24 @@ std::string validateSaveData(const SaveData& data,const SaveValidationCatalogs& 
     std::unordered_set<simulation::PersistentEntityKey,simulation::PersistentEntityKeyHash> keys;
     for(const auto& delta:data.world.objects){if(delta.key.mapId.empty()||!delta.key.instanceId||!keys.emplace(delta.key).second)return "duplicate or invalid object delta key";if(delta.doorState&&!validDoorState(*delta.doorState))return "object delta has an invalid door state";const auto* map=findMap(catalogs,delta.key.mapId);if(!map||!hasInstance(*map,delta.key.instanceId,true))return "object delta references unknown map instance";const auto placement=std::find_if(map->objects.begin(),map->objects.end(),[&](const auto& value){return value.id==delta.key.instanceId;});const auto* definition=catalogs.objects?catalogs.objects->find(placement->definitionId):nullptr;if(delta.doorState&&catalogs.objects&&(!definition||!definition->door))return "door delta references a non-door object";if(delta.activationState&&(!catalogs.objects||!definition||!definition->activation||definition->activation->mode!=gameplay::ObjectActivationMode::interactToggle))return "activation delta references a non-persistent activation object";for(const auto& stack:delta.remainingContents)if(!validStack(stack,*catalogs.items))return "object delta stack is invalid";}
     keys.clear();for(const auto& delta:data.world.pickups){if(delta.key.mapId.empty()||!delta.key.instanceId||!keys.emplace(delta.key).second)return "duplicate or invalid pickup delta key";const auto* map=findMap(catalogs,delta.key.mapId);if(!map||!hasInstance(*map,delta.key.instanceId,false))return "pickup delta references unknown map instance";if(!delta.collected&&delta.remainingQuantity&&*delta.remainingQuantity==0)return "partial pickup remainder must be positive";}
+    for(const auto& spawned:data.world.spawnedPickups){
+        // Duplicates are legitimate: several drops may stack on the same
+        // pixel, each is its own runtime pickup instance.
+        if(spawned.mapId.empty()||spawned.pickupDefinitionId.empty())
+            return "invalid spawned pickup state";
+        if(!findMap(catalogs,spawned.mapId))return "spawned pickup references unknown map";
+        if(catalogs.pickups&&std::none_of(catalogs.pickups->begin(),catalogs.pickups->end(),
+            [&](const auto& value){return value.id==spawned.pickupDefinitionId;}))
+            return "spawned pickup references unknown pickup definition";
+        if(const auto* item=std::get_if<gameplay::ItemPickup>(&spawned.payload)){
+            if(item->itemId.empty()||item->quantity==0||!validStack({item->itemId,item->quantity},*catalogs.items))
+                return "spawned item pickup payload is invalid";
+        } else if(const auto* currency=std::get_if<gameplay::CurrencyPickup>(&spawned.payload)){
+            if(currency->amount==0)return "spawned currency pickup payload is invalid";
+        } else if(const auto* health=std::get_if<gameplay::HealthPickup>(&spawned.payload)){
+            if(health->amount==0)return "spawned health pickup payload is invalid";
+        }
+    }
     if(data.dialogueFlags.values().size()>maps::MapLimits::maximumStrings)return "too many dialogue flags";
     for(std::size_t index=0;index<data.dialogueFlags.values().size();++index){const auto& flag=data.dialogueFlags.values()[index];if(flag.empty()||(index!=0&&data.dialogueFlags.values()[index-1].value()>=flag.value()))return "dialogue flags are not unique and sorted";}
     if(data.quests.size()!=0&&!catalogs.quests)return "save validation requires quest catalog";
@@ -198,6 +221,24 @@ std::vector<std::uint8_t> serializeSave(const SaveData& data){
         encounters.writeU8(state.rewardClaimed ? 1 : 0);
     }
     chunk(chunks, "ENCT", std::move(encounters));
+    if(!data.world.spawnedPickups.empty()){
+        ByteWriter spawnedChunk;
+        spawnedChunk.writeU32(static_cast<std::uint32_t>(data.world.spawnedPickups.size()));
+        for(const auto& value:data.world.spawnedPickups){
+            spawnedChunk.writeU32(stringIndex(strings,value.mapId.value()));
+            spawnedChunk.writeU32(stringIndex(strings,value.pickupDefinitionId.value()));
+            point(spawnedChunk,value.position);
+            if(const auto* health=std::get_if<gameplay::HealthPickup>(&value.payload)){
+                spawnedChunk.writeU8(0);spawnedChunk.writeI32(health->amount);
+            }else if(const auto* currency=std::get_if<gameplay::CurrencyPickup>(&value.payload)){
+                spawnedChunk.writeU8(1);spawnedChunk.writeU64(currency->amount);
+            }else{
+                const auto& item=std::get<gameplay::ItemPickup>(value.payload);
+                spawnedChunk.writeU8(2);spawnedChunk.writeU32(stringIndex(strings,item.itemId.value()));spawnedChunk.writeU32(item.quantity);
+            }
+        }
+        chunk(chunks, "SPWN", std::move(spawnedChunk));
+    }
     ByteWriter out;for(char c:std::array<char,4>{'D','S','A','V'})out.writeU8(static_cast<std::uint8_t>(c));out.writeU16(saveMajorVersion);out.writeU16(saveMinorVersion);out.writeU16(0);out.writeU16(headerSize);out.writeU64(headerSize+chunks.bytes().size());out.writeBytes(chunks.bytes());return std::move(out).take();
 }
 
@@ -208,7 +249,7 @@ SaveResult deserializeSave(std::span<const std::uint8_t> bytes,const SaveValidat
     if(!in.readU16(major)||!in.readU16(minor)||!in.readU16(flags)||!in.readU16(size)||!in.readU64(declared)) return fail("truncated DSAV header");
     if(major!=saveMajorVersion||minor>saveMinorVersion) return fail("unsupported DSAV version");
     if(flags||size<headerSize||declared!=bytes.size()||!in.skip(size-headerSize)) return fail("invalid DSAV header");
-    std::unordered_map<std::string,std::span<const std::uint8_t>> chunks;while(in.remaining()){std::span<const std::uint8_t>tag,payload;std::uint64_t amount{};if(!in.readBytes(4,tag)||!in.readU64(amount)||amount>maps::MapLimits::maximumChunkBytes||amount>in.remaining()||!in.readBytes(static_cast<std::size_t>(amount),payload))return fail("truncated DSAV chunk");std::string name(reinterpret_cast<const char*>(tag.data()),4);if((name=="STRS"||name=="PLYR"||name=="DELT"||name=="FLGS"||name=="QSTS"||name=="PROG"||name=="EQIP"||name=="BANK"||name=="WRLD"||name=="ENCT")&&!chunks.emplace(name,payload).second)return fail("duplicate DSAV chunk");}for(const char* required:{"STRS","PLYR","DELT"})if(!chunks.contains(required))return fail("missing required DSAV chunk");if(minor==0&&chunks.contains("FLGS"))return fail("FLGS chunk requires DSAV minor version 1");if(minor<2&&chunks.contains("QSTS"))return fail("QSTS chunk requires DSAV minor version 2");if(minor<3&&chunks.contains("PROG"))return fail("PROG chunk requires DSAV minor version 3");if(minor>=3&&!chunks.contains("PROG"))return fail("DSAV minor version 3 requires PROG chunk");if(minor<4&&chunks.contains("EQIP"))return fail("EQIP chunk requires DSAV minor version 4");if(minor>=4&&!chunks.contains("EQIP"))return fail("DSAV minor version 4 requires EQIP chunk");if(minor<5&&chunks.contains("BANK"))return fail("BANK chunk requires DSAV minor version 5");if(minor>=5&&!chunks.contains("BANK"))return fail("DSAV minor version 5 requires BANK chunk");if(minor<7&&(chunks.contains("WRLD")||chunks.contains("ENCT")))return fail("world state chunks require DSAV minor version 7");if(minor>=7&&(!chunks.contains("WRLD")||!chunks.contains("ENCT")))return fail("DSAV minor version 7 requires world state chunks");if(chunks.contains("QSTS")&&!catalogs.quests)return fail("save validation requires quest catalog");
+    std::unordered_map<std::string,std::span<const std::uint8_t>> chunks;while(in.remaining()){std::span<const std::uint8_t>tag,payload;std::uint64_t amount{};if(!in.readBytes(4,tag)||!in.readU64(amount)||amount>maps::MapLimits::maximumChunkBytes||amount>in.remaining()||!in.readBytes(static_cast<std::size_t>(amount),payload))return fail("truncated DSAV chunk");std::string name(reinterpret_cast<const char*>(tag.data()),4);if((name=="STRS"||name=="PLYR"||name=="DELT"||name=="FLGS"||name=="QSTS"||name=="PROG"||name=="EQIP"||name=="BANK"||name=="WRLD"||name=="ENCT"||name=="SPWN")&&!chunks.emplace(name,payload).second)return fail("duplicate DSAV chunk");}for(const char* required:{"STRS","PLYR","DELT"})if(!chunks.contains(required))return fail("missing required DSAV chunk");if(minor==0&&chunks.contains("FLGS"))return fail("FLGS chunk requires DSAV minor version 1");if(minor<2&&chunks.contains("QSTS"))return fail("QSTS chunk requires DSAV minor version 2");if(minor<3&&chunks.contains("PROG"))return fail("PROG chunk requires DSAV minor version 3");if(minor>=3&&!chunks.contains("PROG"))return fail("DSAV minor version 3 requires PROG chunk");if(minor<4&&chunks.contains("EQIP"))return fail("EQIP chunk requires DSAV minor version 4");if(minor>=4&&!chunks.contains("EQIP"))return fail("DSAV minor version 4 requires EQIP chunk");if(minor<5&&chunks.contains("BANK"))return fail("BANK chunk requires DSAV minor version 5");if(minor>=5&&!chunks.contains("BANK"))return fail("DSAV minor version 5 requires BANK chunk");if(minor<7&&(chunks.contains("WRLD")||chunks.contains("ENCT")))return fail("world state chunks require DSAV minor version 7");if(minor>=7&&(!chunks.contains("WRLD")||!chunks.contains("ENCT")))return fail("DSAV minor version 7 requires world state chunks");if(minor<9&&chunks.contains("SPWN"))return fail("SPWN chunk requires DSAV minor version 9");if(chunks.contains("QSTS")&&!catalogs.quests)return fail("save validation requires quest catalog");
     std::vector<std::string> strings;{ByteReader r(chunks["STRS"]);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumStrings)return fail("invalid save string count");for(std::uint32_t i=0;i<count;++i){std::string value;if(!r.readString(value,maps::MapLimits::maximumStringBytes)||value.empty())return fail("invalid save string");strings.push_back(std::move(value));}if(r.remaining())return fail("trailing save string data");}
     SaveData data;{ByteReader r(chunks["PLYR"]);std::uint8_t facing{};std::uint32_t count{};if(!readId(r,strings,data.player.currentMapId)||!point(r,data.player.position)||!r.readU8(facing)||facing>3||!r.readI32(data.player.health)||!r.readU64(data.player.gold)||!r.readU32(count)||count!=data.player.inventory.size())return fail("invalid saved player");data.player.facing=static_cast<gameplay::FacingDirection>(facing);for(auto& slot:data.player.inventory){std::uint8_t present{};if(!r.readU8(present)||present>1)return fail("invalid inventory slot");if(present){simulation::DefinitionId id;std::uint32_t quantity{};if(!readId(r,strings,id)||!r.readU32(quantity))return fail("truncated inventory slot");slot=gameplay::ItemStack{std::move(id),quantity};}}if(!r.readU32(count)||count!=data.player.quickSlots.size())return fail("invalid quick slot count");for(auto& slot:data.player.quickSlots){std::uint8_t present{};if(!r.readU8(present)||present>1)return fail("invalid quick slot");if(present){simulation::DefinitionId id;if(!readId(r,strings,id))return fail("truncated quick slot");slot=std::move(id);}}if(r.remaining())return fail("trailing player data");}
     {ByteReader r(chunks["DELT"]);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid object delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{};std::uint8_t opened{},destroyed{},hasDoor{},hasActivation{};std::uint32_t stacks{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(opened)||opened>1||!r.readU8(destroyed)||destroyed>1)return fail("invalid object delta");ObjectDelta delta{{std::move(map),{id}},opened!=0,destroyed!=0,{},std::nullopt,std::nullopt};if(minor>=7){if(!r.readU8(hasDoor)||hasDoor>1)return fail("invalid door delta");if(hasDoor){std::uint8_t door{};if(!r.readU8(door)||door>2)return fail("invalid door state");delta.doorState=static_cast<gameplay::DoorState>(door);}}if(minor>=8){if(!r.readU8(hasActivation)||hasActivation>1)return fail("invalid activation delta");if(hasActivation){std::uint8_t active{};if(!r.readU8(active)||active>1)return fail("invalid activation state");delta.activationState=active!=0;}}if(!r.readU32(stacks)||stacks>maps::MapLimits::maximumPlacements)return fail("invalid object delta");for(std::uint32_t s=0;s<stacks;++s){simulation::DefinitionId item;std::uint32_t quantity{};if(!readId(r,strings,item)||!r.readU32(quantity))return fail("invalid object delta contents");delta.remainingContents.push_back({std::move(item),quantity});}if(!resetOnMapEnter(catalogs,delta.key))data.world.objects.push_back(std::move(delta));}if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid pickup delta count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;std::uint64_t id{},remaining{};std::uint8_t collected{},hasRemaining{};if(!readId(r,strings,map)||!r.readU64(id)||!r.readU8(collected)||collected>1||!r.readU8(hasRemaining)||hasRemaining>1)return fail("invalid pickup delta");std::optional<std::uint64_t> quantity;if(hasRemaining){if(!r.readU64(remaining))return fail("truncated pickup remainder");quantity=remaining;}data.world.pickups.push_back({{std::move(map),{id}},collected!=0,quantity});}if(r.remaining())return fail("trailing delta data");}
@@ -219,6 +260,7 @@ SaveResult deserializeSave(std::span<const std::uint8_t> bytes,const SaveValidat
     if(const auto found=chunks.find("BANK");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU64(data.bank.gold)||!r.readU32(count)||count!=data.bank.items.size())return fail("invalid bank slot count");for(auto& slot:data.bank.items){std::uint8_t present{};if(!r.readU8(present)||present>1)return fail("invalid bank slot");if(present){simulation::DefinitionId id;std::uint32_t quantity{};if(!readId(r,strings,id)||!r.readU32(quantity))return fail("invalid bank item");slot=gameplay::ItemStack{std::move(id),quantity};}}if(r.remaining())return fail("trailing bank data");}
     if(const auto found=chunks.find("WRLD");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid world rule state count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;simulation::DefinitionId rule;std::uint8_t fired{};if(!readId(r,strings,map)||!readId(r,strings,rule)||!r.readU8(fired)||fired>1)return fail("invalid world rule state");data.world.worldRules.push_back({std::move(map),std::move(rule),fired!=0});}if(r.remaining())return fail("trailing world rule state");}
     if(const auto found=chunks.find("ENCT");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid encounter state count");for(std::uint32_t i=0;i<count;++i){simulation::MapId map;simulation::DefinitionId encounter;std::uint8_t state{},claimed{};if(!readId(r,strings,map)||!readId(r,strings,encounter)||!r.readU8(state)||state>static_cast<std::uint8_t>(gameplay::EncounterState::completed)||!r.readU8(claimed)||claimed>1)return fail("invalid encounter state");data.world.encounters.push_back({std::move(map),std::move(encounter),static_cast<gameplay::EncounterState>(state),claimed!=0});}if(r.remaining())return fail("trailing encounter state");}
+    if(const auto found=chunks.find("SPWN");found!=chunks.end()){ByteReader r(found->second);std::uint32_t count{};if(!r.readU32(count)||count>maps::MapLimits::maximumPlacements)return fail("invalid spawned pickup count");for(std::uint32_t i=0;i<count;++i){SpawnedPickup spawned;std::uint8_t payloadKind{};if(!readId(r,strings,spawned.mapId)||!readId(r,strings,spawned.pickupDefinitionId)||!point(r,spawned.position)||!r.readU8(payloadKind)||payloadKind>2)return fail("invalid spawned pickup");if(payloadKind==0){gameplay::HealthPickup payload;if(!r.readI32(payload.amount))return fail("truncated spawned pickup");spawned.payload=payload;}else if(payloadKind==1){gameplay::CurrencyPickup payload;if(!r.readU64(payload.amount))return fail("truncated spawned pickup");spawned.payload=payload;}else{gameplay::ItemPickup payload;if(!readId(r,strings,payload.itemId)||!r.readU32(payload.quantity))return fail("truncated spawned pickup");spawned.payload=payload;}data.world.spawnedPickups.push_back(std::move(spawned));}if(r.remaining())return fail("trailing spawned pickup data");}
     const auto error=validateSaveData(data,catalogs);if(!error.empty())return fail(error);return {true,std::move(data),{}};
 }
 
@@ -230,7 +272,9 @@ SaveResult readSave(const std::filesystem::path& path,const SaveValidationCatalo
 
 bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
                      simulation::EntityHandlePool& handles,
-                     const gameplay::ItemCatalog& items, std::string& error) {
+                     const gameplay::ItemCatalog& items,
+                     const std::vector<gameplay::PickupDefinition>& pickupDefinitions,
+                     std::string& error) {
     auto& objects = world.objects();
     for (auto it = objects.begin(); it != objects.end();) {
         if (it->persistence == maps::ObjectPersistencePolicy::resetOnMapEnter) {
@@ -297,6 +341,30 @@ bool applyWorldState(const SessionWorldState& state, maps::RuntimeWorld& world,
             }
         }
         ++it;
+    }
+    // Runtime-spawned ground items (drops and loot) are rebuilt from the
+    // session state so they survive reloads and map re-entries. Any
+    // transient pickup still alive is replaced, keeping apply idempotent.
+    for (auto& existing : pickups) {
+        if (existing.transient) {
+            static_cast<void>(handles.destroy(existing.instance.handle()));
+        }
+    }
+    pickups.erase(std::remove_if(pickups.begin(), pickups.end(),
+                                 [](const auto& existing) { return existing.transient; }),
+                  pickups.end());
+    for (const auto& spawned : state.spawnedPickups) {
+        if (spawned.mapId != world.id()) { continue; }
+        const auto definition = std::find_if(
+            pickupDefinitions.begin(), pickupDefinitions.end(),
+            [&](const auto& value) { return value.id == spawned.pickupDefinitionId; });
+        if (definition == pickupDefinitions.end()) {
+            error = "spawned pickup definition is unknown";
+            return false;
+        }
+        pickups.push_back({{}, true, gameplay::WorldPickup{
+            handles.create(), *definition, spawned.position}});
+        pickups.back().instance.payload() = spawned.payload;
     }
     static_cast<void>(items);
     return true;
@@ -390,6 +458,19 @@ void captureWorldState(const maps::MapData& original, const maps::RuntimeWorld& 
         if (originalQuantity && runtimeQuantity && *originalQuantity != *runtimeQuantity) {
             state.set(PickupDelta{{original.id, placement.id}, false, runtimeQuantity});
         }
+    }
+
+    // Runtime-spawned pickups replace the whole per-map list, so drops that
+    // were collected since the last capture disappear and new ones persist.
+    state.spawnedPickups.erase(
+        std::remove_if(state.spawnedPickups.begin(), state.spawnedPickups.end(),
+                       [&](const SpawnedPickup& value) { return value.mapId == original.id; }),
+        state.spawnedPickups.end());
+    for (const auto& runtime : world.pickups()) {
+        if (!runtime.transient) { continue; }
+        state.spawnedPickups.push_back({original.id, runtime.instance.definition().id,
+                                        runtime.instance.position(),
+                                        runtime.instance.payload()});
     }
 }
 

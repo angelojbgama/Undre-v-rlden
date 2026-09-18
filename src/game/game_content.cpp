@@ -29,7 +29,7 @@ maps::MapValidationCatalogs mapValidationCatalogs(
     return {&content.enemies(), &content.objects(), &content.items(), &content.tilesets(),
             &content.npcs(), &content.dialogues(), &content.rewardGrants(),
             &content.presentationEffects(), &content.animationCollisions(),
-            &content.objectVisuals()};
+            &content.objectVisuals(), &content.pickups()};
 }
 
 } // namespace underworld::game

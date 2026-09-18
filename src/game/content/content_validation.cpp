@@ -576,11 +576,30 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             else if (contains(loopingAnimations, *entry))
                 error(report, ContentKind::projectile, value.id, "invalid_value", "projectile expire animation must not loop", "expireAnimations");
         }
+        const std::pair<const std::optional<AuthoredProjectileDrop>*, const char*> projectileDrops[] = {
+            {&value.expireDrop, "expireDrop"}, {&value.impactDrop, "impactDrop"}};
+        for (const auto& [drop, field] : projectileDrops) {
+            if (!*drop) { continue; }
+            if ((*drop)->pickupId.empty() || !contains(pickups, (*drop)->pickupId))
+                error(report, ContentKind::projectile, value.id, "unknown_reference",
+                      "projectile drop pickup does not exist", field);
+            if ((*drop)->chancePercent < 1 || (*drop)->chancePercent > 100)
+                error(report, ContentKind::projectile, value.id, "invalid_value",
+                      "projectile drop chance must be between 1 and 100", field);
+        }
     }
+    std::unordered_set<std::string> ammoAttacks;
     for (const auto& value : pack.attacks) {
         validateAttack(value, animations, report);
         if (value.projectileDefinitionId && !contains(projectiles, *value.projectileDefinitionId))
             error(report, ContentKind::attack, value.id, "unknown_reference", "projectile definition does not exist", "projectileDefinitionId");
+        if (value.ammo) {
+            if (value.ammo->itemId.empty() || !contains(items, value.ammo->itemId))
+                error(report, ContentKind::attack, value.id, "unknown_reference", "attack ammo item does not exist", "ammo.itemId");
+            if (value.ammo->amount == 0)
+                error(report, ContentKind::attack, value.id, "invalid_value", "attack ammo amount must be positive", "ammo.amount");
+            ammoAttacks.insert(std::string(value.id.value()));
+        }
     }
     for (const auto& value : pack.behaviors) {
         if (value.detectionRangePixels < 0 || value.disengageRangePixels < value.detectionRangePixels)
@@ -594,6 +613,10 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::enemy, value.id, "unknown_reference", "behavior profile does not exist", "behaviorProfileId");
         for (const auto& attack : value.attackIds) if (!contains(attacks, attack))
             error(report, ContentKind::enemy, value.id, "unknown_reference", "attack definition does not exist", "attackIds");
+        for (const auto& attack : value.attackIds)
+            if (contains(ammoAttacks, attack))
+                error(report, ContentKind::enemy, value.id, "invalid_value",
+                      "enemy attacks cannot require ammo", "attackIds");
         if (value.rewardProfileId && !contains(rewards, *value.rewardProfileId))
             error(report, ContentKind::enemy, value.id, "unknown_reference", "reward profile does not exist", "rewardProfileId");
         if (hasVisualSchema && !contains(enemyVisuals, value.visualSetId))

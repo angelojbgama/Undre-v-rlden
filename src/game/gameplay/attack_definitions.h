@@ -80,6 +80,14 @@ struct DirectionalRenderLayers final {
     [[nodiscard]] bool any() const noexcept;
 };
 
+// Optional pickup spawned when a projectile finishes: reaching the
+// distance/lifetime limit spawns expireDrop; hitting a tile, target or
+// world object spawns impactDrop. chancePercent 100 always spawns.
+struct ProjectileDrop final {
+    simulation::DefinitionId pickupId{};
+    std::uint32_t chancePercent{100};
+};
+
 struct ProjectileDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualId{};
@@ -122,9 +130,21 @@ struct ProjectileDefinition final {
     std::array<bool, 4> flipX{};     // down, up, left, right
     std::array<bool, 4> impactFlipX{}; // down, up, left, right
     std::array<bool, 4> expireFlipX{}; // down, up, left, right
+    // Ground item left behind when the projectile ends. Orthogonal to the
+    // end animations: a projectile may play its expire animation and drop a
+    // collectible (e.g. a retrievable arrow) at the same time.
+    std::optional<ProjectileDrop> expireDrop{};
+    std::optional<ProjectileDrop> impactDrop{};
     [[nodiscard]] bool flipXForFacing(FacingDirection facing) const noexcept;
     [[nodiscard]] bool impactFlipXForFacing(FacingDirection facing) const noexcept;
     [[nodiscard]] bool expireFlipXForFacing(FacingDirection facing) const noexcept;
+};
+
+// Authored attack cost: items removed from the player inventory when the
+// attack starts. Attacks without ammo (e.g. the sword) are unaffected.
+struct AttackAmmoCost final {
+    simulation::DefinitionId itemId{};
+    std::uint32_t amount{1};
 };
 
 struct AttackDefinition final {
@@ -147,6 +167,9 @@ struct AttackDefinition final {
         std::array<bool, 4> authored{};
     };
     std::vector<CollisionSample> collisionSamples{};
+    // Optional ammo requirement; consumed by the player attack path when the
+    // attack begins. Enemy attacks must not use ammo (validated).
+    std::optional<AttackAmmoCost> ammo{};
 
     [[nodiscard]] bool hasCollisionSamples(
         FacingDirection facing) const noexcept;

@@ -173,6 +173,7 @@ struct MapValidationCatalogs final {
     const presentation::PresentationEffectCatalog* presentationEffects{};
     const gameplay::AnimationCollisionCatalog* animationCollisions{};
     const presentation::WorldObjectVisualDefinitionCatalog* objectVisuals{};
+    const std::vector<gameplay::PickupDefinition>* pickups{};
 };
 
 struct MapValidationResult final {

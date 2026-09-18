@@ -34,6 +34,9 @@ struct GameViewModel final {
     int playerHealth{};
     int playerMaximumHealth{};
     std::uint64_t gold{};
+    // Ammo readout for the player's projectile attack (authored
+    // AttackDefinition::ammo); empty when the attack spends nothing.
+    ItemSlotView ammo{};
     std::array<ItemSlotView, gameplay::QuickSlotBindings::slotCount> quickSlots{};
     std::array<ItemSlotView, gameplay::PlayerInventory::slotCount> inventory{};
     bool inventoryOpen{};

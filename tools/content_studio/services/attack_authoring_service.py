@@ -36,6 +36,7 @@ EDITABLE_FIELDS = (
     "meleeHitboxes",
     "projectileDefinitionId",
     "timeline",
+    "ammo",
 )
 
 @dataclass(
@@ -333,6 +334,11 @@ class AttackAuthoringService:
             kind,
         )
 
+        ammo = self._validate_ammo(
+            data.get("ammo"),
+            kind,
+        )
+
         melee_hitboxes = data.get(
             "meleeHitboxes"
         )
@@ -353,6 +359,7 @@ class AttackAuthoringService:
                 melee_hitboxes=normalized_hitboxes,
                 projectile_definition_id=None,
                 timeline=timeline,
+                ammo=None,
             )
 
         if (
@@ -376,7 +383,56 @@ class AttackAuthoringService:
             melee_hitboxes=None,
             projectile_definition_id=projectile_id,
             timeline=timeline,
+            ammo=ammo,
         )
+
+    def _validate_ammo(
+        self,
+        ammo: object,
+        kind: str,
+    ) -> dict[str, object] | None:
+        if ammo is None:
+            return None
+
+        if not isinstance(ammo, dict):
+            raise ValueError(
+                "attack ammo must be an object"
+            )
+
+        if kind != "projectile":
+            raise ValueError(
+                "only projectile attacks can consume ammo"
+            )
+
+        item_id = ammo.get("itemId")
+
+        if (
+            not isinstance(item_id, str)
+            or not item_id
+        ):
+            raise ValueError(
+                "attack ammo requires itemId"
+            )
+
+        if self.workspace.find(
+            "items",
+            item_id,
+        ) is None:
+            raise ValueError(
+                f"unknown item: {item_id}"
+            )
+
+        amount = ammo.get("amount", 1)
+
+        if not self._is_int(amount) or amount < 1:
+            raise ValueError(
+                "attack ammo amount must be positive"
+            )
+
+        return {
+            "itemId": item_id,
+            "amount": int(amount),
+        }
 
     def _validate_timeline(
         self,
@@ -563,6 +619,7 @@ class AttackAuthoringService:
         melee_hitboxes: object,
         projectile_definition_id: object,
         timeline: list[dict[str, object]],
+        ammo: dict[str, object] | None,
     ) -> dict[str, object]:
         # Preserve shapes and any field this editor does not own so a
         # roundtrip through the dialog never erases authored masks.
@@ -597,6 +654,9 @@ class AttackAuthoringService:
             ),
             "timeline": timeline,
         }
+
+        if ammo is not None:
+            normalized["ammo"] = ammo
 
         normalized.update(
             preserved
