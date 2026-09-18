@@ -131,6 +131,65 @@ class ProjectileAuthoringService:
             [("projectiles", definition_id, data)],
         )
 
+    def ensure_for_animation(self, animation_id: str) -> str:
+        """Return the projectile bound to an animation, creating it on demand.
+
+        The projectile id is derived from the animation id (an
+        'animation.foo' becomes 'projectile.foo'), so selecting an
+        animation in any dropdown never requires typing an id. An
+        existing definition is rebound when the animation differs.
+        """
+        normalized_animation = animation_id.strip()
+
+        if not normalized_animation:
+            raise ValueError("animation id is required")
+
+        animation = self.workspace.find(
+            "animations",
+            normalized_animation,
+        )
+
+        if animation is None:
+            raise ValueError(
+                f"unknown animation: {normalized_animation}"
+            )
+
+        projectile_id = self._projectile_id_for_animation(
+            normalized_animation
+        )
+
+        existing = self.workspace.find(
+            "projectiles",
+            projectile_id,
+        )
+
+        if existing is None:
+            self.create_from_animation(
+                projectile_id,
+                normalized_animation,
+            )
+
+            return projectile_id
+
+        if existing.data.get("animationId") != normalized_animation:
+            data = copy.deepcopy(existing.data)
+
+            data["animationId"] = normalized_animation
+
+            self.workspace.upsert_definition_bundle(
+                "Rebind Projectile Animation",
+                [("projectiles", projectile_id, data)],
+            )
+
+        return projectile_id
+
+    @staticmethod
+    def _projectile_id_for_animation(animation_id: str) -> str:
+        if animation_id.startswith("animation."):
+            return "projectile." + animation_id[len("animation."):]
+
+        return "projectile." + animation_id
+
     def create_from_animation(
         self,
         definition_id: str,

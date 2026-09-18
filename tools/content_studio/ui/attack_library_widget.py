@@ -2263,10 +2263,6 @@ class AttackDefinitionDialog(QDialog):
 
         self.projectile = QComboBox()
 
-        self.projectile_new = QPushButton(
-            self.translate("projectile_new_from_animation")
-        )
-
         self.projectile_edit = QPushButton(
             self.translate("projectile_edit_positions")
         )
@@ -2282,10 +2278,6 @@ class AttackDefinitionDialog(QDialog):
         projectile_layout.addWidget(
             self.projectile,
             1,
-        )
-
-        projectile_layout.addWidget(
-            self.projectile_new
         )
 
         projectile_layout.addWidget(
@@ -2504,8 +2496,8 @@ class AttackDefinitionDialog(QDialog):
             self.reject
         )
 
-        self.projectile_new.clicked.connect(
-            self._create_projectile
+        projectile_layout.addWidget(
+            self.projectile_edit
         )
 
         self.projectile.currentIndexChanged.connect(
@@ -2635,25 +2627,36 @@ class AttackDefinitionDialog(QDialog):
         self,
         selected_id: str | None = None,
     ) -> None:
-        entries = ProjectileAuthoringService(
-            self.workspace
-        ).entries()
+        if self.workspace is None:
+            return
 
         if selected_id is None:
             selected_id = str(
                 self.data.get("projectileDefinitionId") or ""
             )
 
+        self._animation_items: set[str] = set()
+
         self.projectile.blockSignals(True)
         self.projectile.clear()
 
-        for entry in entries:
+        # Every animation in Spritesheets/Animações is selectable: choosing
+        # one binds (creating on demand) a projectile to it, so no manual
+        # id entry is needed anywhere.
+        for animation in sorted(
+            self.workspace.definitions("animations"),
+            key=lambda item: item.definition_id,
+        ):
+            animation_id = animation.definition_id
+
+            self._animation_items.add(animation_id)
+
             self.projectile.addItem(
-                entry.definition_id,
-                entry.definition_id,
+                animation_id,
+                animation_id,
             )
 
-            icon = self._projectile_icon(entry.visual_id)
+            icon = self._animation_icon(animation_id)
 
             if icon is not None:
                 row_index = self.projectile.count() - 1
@@ -2664,15 +2667,90 @@ class AttackDefinitionDialog(QDialog):
                     Qt.ItemDataRole.DecorationRole,
                 )
 
+        # Legacy reference: a stored projectile without an animation stays
+        # selectable so existing attacks keep working.
+        stored = (
+            self.workspace.find("projectiles", selected_id)
+            if selected_id
+            else None
+        )
+
+        select_value = None
+
+        if stored is not None:
+            stored_animation = stored.data.get("animationId")
+
+            if isinstance(stored_animation, str) and stored_animation:
+                select_value = stored_animation
+            else:
+                self.projectile.addItem(selected_id, selected_id)
+                select_value = selected_id
+
+                icon = self._projectile_icon(
+                    str(stored.data.get("visualId", "") or "")
+                )
+
+                if icon is not None:
+                    row_index = self.projectile.count() - 1
+
+                    self.projectile.setItemData(
+                        row_index,
+                        icon,
+                        Qt.ItemDataRole.DecorationRole,
+                    )
+
         self.projectile.blockSignals(False)
 
-        index = self.projectile.findData(selected_id)
+        index = (
+            self.projectile.findData(select_value)
+            if select_value is not None
+            else -1
+        )
 
         self.projectile.setCurrentIndex(index)
 
         self._projectile_data: dict[str, object] | None = None
 
         self._update_projectile_preview()
+
+    def _animation_icon(self, animation_id: str) -> QPixmap | None:
+        visual = (
+            self._visual_resolver.visuals
+            .resolve_animation_frame(animation_id, 0)
+        )
+
+        if visual is None:
+            return None
+
+        return QPixmap.fromImage(
+            visual.image
+        ).scaled(
+            24,
+            24,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+
+    def _current_projectile_id(self) -> str:
+        """Resolve the combo selection to a projectile definition id.
+
+        Animation entries bind (creating on demand) a projectile to the
+        animation; legacy entries are projectile ids themselves.
+        """
+        value = self.projectile.currentData()
+
+        if not isinstance(value, str) or not value:
+            return ""
+
+        if value not in getattr(self, "_animation_items", set()):
+            return value
+
+        try:
+            return ProjectileAuthoringService(
+                self.workspace
+            ).ensure_for_animation(value)
+        except ValueError:
+            return ""
 
     def _projectile_icon(
         self,
@@ -2703,7 +2781,7 @@ class AttackDefinitionDialog(QDialog):
             self.workspace
         )
 
-        definition_id = self.projectile.currentData()
+        definition_id = self._current_projectile_id()
         visual_id = ""
 
         if isinstance(definition_id, str) and definition_id:
@@ -2746,67 +2824,8 @@ class AttackDefinitionDialog(QDialog):
             )
         )
 
-    def _create_projectile(self) -> None:
-        service = ProjectileAuthoringService(self.workspace)
-
-        animations = service.animation_ids()
-
-        if not animations:
-            QMessageBox.warning(
-                self,
-                self.translate("projectile_new_title"),
-                self.translate("projectile_no_animations"),
-            )
-
-            return
-
-        suggested_id = "projectile.arrow"
-
-        definition_id, confirmed_id = QInputDialog.getText(
-            self,
-            self.translate("projectile_new_title"),
-            self.translate("projectile_new_id"),
-            text=suggested_id,
-        )
-
-        if not confirmed_id:
-            return
-
-        default_index = next(
-            (
-                index
-                for index, animation_id in enumerate(animations)
-                if "arrow" in animation_id.casefold()
-            ),
-            0,
-        )
-
-        animation_id = self._choose_animation(
-            animations,
-            default_index,
-        )
-
-        if animation_id is None:
-            return
-
-        try:
-            projectile_id = service.create_from_animation(
-                definition_id,
-                str(animation_id),
-            )
-        except ValueError as error:
-            QMessageBox.critical(
-                self,
-                self.translate("projectile_new_title"),
-                str(error),
-            )
-
-            return
-
-        self._refresh_projectiles(projectile_id)
-
     def _edit_projectile(self) -> None:
-        projectile_id = self.projectile.currentData()
+        projectile_id = self._current_projectile_id()
 
         if not isinstance(projectile_id, str) or not projectile_id:
             return
@@ -2825,80 +2844,6 @@ class AttackDefinitionDialog(QDialog):
             self._update_projectile_preview()
 
             self._update_preview()
-
-    def _choose_animation(
-        self,
-        animations: list[str],
-        default_index: int,
-    ) -> str | None:
-        dialog = QDialog(self)
-
-        dialog.setWindowTitle(
-            self.translate("projectile_new_title")
-        )
-
-        layout = QVBoxLayout(dialog)
-
-        label = QLabel(
-            self.translate("projectile_new_animation")
-        )
-
-        layout.addWidget(label)
-
-        listing = QListWidget(dialog)
-
-        listing.setIconSize(
-            QSize(32, 32)
-        )
-
-        for animation_id in animations:
-            item = QListWidgetItem(animation_id)
-
-            visual = (
-                self._visual_resolver.visuals
-                .resolve_animation_frame(animation_id, 0)
-            )
-
-            if visual is not None:
-                item.setIcon(
-                    QIcon(
-                        QPixmap.fromImage(
-                            visual.image
-                        ).scaled(
-                            32,
-                            32,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.FastTransformation,
-                        )
-                    )
-                )
-
-            listing.addItem(item)
-
-        listing.setCurrentRow(default_index)
-
-        listing.itemDoubleClicked.connect(
-            lambda _item: dialog.accept()
-        )
-
-        layout.addWidget(listing)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-
-        layout.addWidget(buttons)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return None
-
-        current = listing.currentItem()
-
-        return current.text() if current is not None else None
 
     def _load(self) -> None:
         data = self.data
@@ -2976,17 +2921,9 @@ class AttackDefinitionDialog(QDialog):
                     int(box.get(field, 0) or 0)
                 )
 
-        projectile = data.get(
-            "projectileDefinitionId"
-        )
-
-        index = self.projectile.findData(
-            projectile
-        )
-
-        self.projectile.setCurrentIndex(
-            index
-        )
+        # The projectile combo lists animations; re-run the refresh so the
+        # selection resolves through the projectile's bound animation.
+        self._refresh_projectiles()
 
         for event in (
             data.get("timeline")
@@ -3399,7 +3336,7 @@ class AttackDefinitionDialog(QDialog):
         if self.kind.currentData() != "projectile":
             return None, None, None, False
 
-        definition_id = self.projectile.currentData()
+        definition_id = self._current_projectile_id()
 
         if not isinstance(definition_id, str) or not definition_id:
             return None, None, None, False
@@ -3724,7 +3661,7 @@ class AttackDefinitionDialog(QDialog):
         else:
             data["meleeHitboxes"] = None
             data["projectileDefinitionId"] = (
-                self.projectile.currentData()
+                self._current_projectile_id() or None
             )
 
         return data
