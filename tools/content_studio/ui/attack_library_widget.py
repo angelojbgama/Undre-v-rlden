@@ -2413,6 +2413,9 @@ class ProjectileSpawnEditorDialog(QDialog):
                 rotated = rotate_image_quarter_turns(
                     resolved.image, turns)
 
+                if self._flip_x.get(direction):
+                    rotated = mirror_image_horizontally(rotated)
+
                 label.setPixmap(QPixmap.fromImage(
                     rotated).scaled(
                     96, 96,
