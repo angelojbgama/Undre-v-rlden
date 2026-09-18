@@ -6,7 +6,7 @@ from PySide6.QtCore import QPoint, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QMenu, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
@@ -134,11 +134,15 @@ class SpritesheetLibraryWidget(QWidget):
         menu = QMenu(self)
         edit_frames_action = menu.addAction(self.translate("edit_animation_frames"))
         edit_import_action = menu.addAction(self.translate("edit_spritesheet_import"))
+        menu.addSeparator()
+        delete_action = menu.addAction(self.translate("delete_animation"))
         selected_action = menu.exec(self.animations.viewport().mapToGlobal(position))
         if selected_action == edit_frames_action:
             self.edit_frames()
         elif selected_action == edit_import_action:
             self.edit_import()
+        elif selected_action == delete_action:
+            self.delete_animation()
 
     def edit_frames(self) -> None:
         animation = self._current_animation()
@@ -167,6 +171,59 @@ class SpritesheetLibraryWidget(QWidget):
             self.refresh()
             self.changed.emit()
             self.status_changed.emit(self.translate("spritesheet_import_updated"))
+
+    def delete_animation(self) -> None:
+        animation = self._current_animation()
+
+        if animation is None or self.workspace is None:
+            return
+
+        animation_id = animation.definition_id
+
+        usages = self.workspace.find_usages(animation_id)
+
+        if usages:
+            used_by = ", ".join(
+                f"{usage.category}/{usage.definition_id}"
+                for usage in usages[:6]
+            )
+
+            QMessageBox.warning(
+                self,
+                self.translate("delete_animation"),
+                self.translate("animation_in_use").format(ids=used_by),
+            )
+
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            self.translate("delete_animation"),
+            self.translate("delete_animation_confirm").format(
+                id=animation_id),
+        )
+
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        image_id = str(animation.data.get("imageId", "") or "")
+
+        self.workspace.delete_definition(animation)
+
+        # The imported PNG definition is part of the import: remove it too
+        # when nothing else (another animation, a static sprite) uses it.
+        image_definition = (
+            self.workspace.find("visualImages", image_id)
+            if image_id
+            else None
+        )
+
+        if image_definition is not None and not self.workspace.find_usages(image_id):
+            self.workspace.delete_definition(image_definition)
+
+        self.refresh()
+        self.changed.emit()
+        self.status_changed.emit(self.translate("animation_deleted"))
 
     def import_spritesheet(self) -> None:
         if self.workspace is None:
