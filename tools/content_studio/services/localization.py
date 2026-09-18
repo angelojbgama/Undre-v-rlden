@@ -646,6 +646,7 @@ TRANSLATIONS["pt-BR"].update({
         "projectile_impact_animation": "Animação de colisão",
         "projectile_expire_animation": "Animação de limite de alcance (direção selecionada)",
         "projectile_end_facing": "Orientação base",
+        "projectile_flip_x": "Espelhar",
         "projectile_end_animation_none": "Nenhuma",
     "projectile_render_layer_actor": (
         "Na frente do player"
@@ -757,6 +758,7 @@ TRANSLATIONS["en-US"].update({
         "projectile_impact_animation": "Impact animation",
         "projectile_expire_animation": "Range limit animation (selected direction)",
         "projectile_end_facing": "Base orientation",
+        "projectile_flip_x": "Mirror",
         "projectile_end_animation_none": "None",
     "projectile_render_layer_actor": (
         "In front of player"

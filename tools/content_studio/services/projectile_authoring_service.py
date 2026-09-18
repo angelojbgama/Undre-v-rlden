@@ -67,6 +67,7 @@ class ProjectileAuthoringService:
         expire_animations: dict[str, str] | None = None,
         impact_animation_facing: str | None = None,
         expire_animation_facing: str | None = None,
+        flip_x: dict[str, bool] | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -193,6 +194,28 @@ class ProjectileAuthoringService:
                 data.pop(facing_field, None)
             else:
                 data[facing_field] = facing_value
+
+        if flip_x is not None:
+            normalized_flip: dict[str, bool] = {}
+
+            for direction, enabled in flip_x.items():
+                if direction not in (
+                    "down",
+                    "up",
+                    "left",
+                    "right",
+                ):
+                    raise ValueError(
+                        "flipX direction must be one of down/up/left/right"
+                    )
+
+                if enabled:
+                    normalized_flip[direction] = True
+
+            if normalized_flip:
+                data["flipX"] = normalized_flip
+            else:
+                data.pop("flipX", None)
 
         if expire_animations is not None:
             normalized_expire: dict[str, str] = {}

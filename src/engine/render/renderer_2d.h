@@ -27,7 +27,7 @@ public:
     void drawImageRegionFlipX(const Image& image, core::RectI source, int destinationX,
                               int destinationY);
     void drawImageRegionQuarterTurn(const Image& image, core::RectI source, int destinationX,
-                                    int destinationY, QuarterTurn rotation);
+                                    int destinationY, QuarterTurn rotation, bool flipX = false);
     void drawImageRegionNearest(const Image& image, core::RectI source,
                                 core::RectI destination, bool flipX = false);
 

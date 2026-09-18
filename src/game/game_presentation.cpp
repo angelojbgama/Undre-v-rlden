@@ -293,6 +293,7 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
         if (projectileLayer != layer) { continue; }
         const auto rotation = projectileRotation(projectile.definition->canonicalFacing,
                                                   projectile.direction);
+        const auto flip = projectile.definition->flipXForFacing(projectile.direction);
 
         // Animated projectile: pick the clip frame by ticks since spawn,
         // looping or clamping per the authored animation, and keep the
@@ -318,7 +319,7 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
             renderer.drawImageRegionQuarterTurn(
                 clip.sheet().image(), current->sprite.source,
                 projectile.position.x - cameraPosition.x - anchor.x,
-                projectile.position.y - cameraPosition.y - anchor.y, rotation);
+                projectile.position.y - cameraPosition.y - anchor.y, rotation, flip);
             continue;
         }
 
@@ -327,7 +328,7 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
         renderer.drawImageRegionQuarterTurn(
             sprite.sheet->image(), sprite.frame.source,
             projectile.position.x - cameraPosition.x - anchor.x,
-            projectile.position.y - cameraPosition.y - anchor.y, rotation);
+            projectile.position.y - cameraPosition.y - anchor.y, rotation, flip);
     }
 }
 

@@ -69,7 +69,7 @@ void Renderer2D::drawImageRegionFlipX(const Image& image, core::RectI source, in
 
 void Renderer2D::drawImageRegionQuarterTurn(const Image& image, core::RectI source,
                                              int destinationX, int destinationY,
-                                             QuarterTurn rotation) {
+                                             QuarterTurn rotation, bool flipX) {
     if (rotation == QuarterTurn::r0) {
         drawImageRegion(image, source, destinationX, destinationY);
         return;
@@ -96,10 +96,13 @@ void Renderer2D::drawImageRegionQuarterTurn(const Image& image, core::RectI sour
     auto targetPixels = target_.pixels();
     for (int y = top; y < bottom; ++y) {
         for (int x = left; x < right; ++x) {
-            const int dx = x - destinationX;
-            const int dy = y - destinationY;
+            int dx = x - destinationX;
+            int dy = y - destinationY;
             int sx{};
             int sy{};
+            if (flipX) {
+                dx = outputWidth - 1 - dx;
+            }
             switch (rotation) {
             case QuarterTurn::r90:
                 sx = dy;

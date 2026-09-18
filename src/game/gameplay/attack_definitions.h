@@ -104,6 +104,10 @@ struct ProjectileDefinition final {
     // Per-direction override of expireAnimationId (e.g. an arrow stuck in
     // the ground looks different per flight direction).
     DirectionalAnimations expireAnimations{};
+    // Per-direction horizontal mirror applied after rotation (both to the
+    // flight animation and the static sprite).
+    std::array<bool, 4> flipX{}; // down, up, left, right
+    [[nodiscard]] bool flipXForFacing(FacingDirection facing) const noexcept;
 };
 
 struct AttackDefinition final {

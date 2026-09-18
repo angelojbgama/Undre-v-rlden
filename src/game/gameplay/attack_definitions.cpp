@@ -138,6 +138,10 @@ bool DirectionalRenderLayers::any() const noexcept {
                        [](const auto& layer) { return layer.has_value(); });
 }
 
+bool ProjectileDefinition::flipXForFacing(FacingDirection facing) const noexcept {
+    return flipX[facingIndex(facing)];
+}
+
 std::optional<simulation::DefinitionId> DirectionalAnimations::forFacing(
     FacingDirection facing) const noexcept {
     return values[facingIndex(facing)];

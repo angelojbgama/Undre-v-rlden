@@ -14,6 +14,7 @@ from PySide6.QtGui import (
     QTransform,
 )
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -98,6 +99,10 @@ def rotate_image_quarter_turns(
     return image.transformed(
         QTransform().rotate(90 * turns)
     )
+
+
+def mirror_image_horizontally(image: QImage) -> QImage:
+    return image.mirrored(True, False)
 
 
 def rotated_anchor(
@@ -1746,6 +1751,19 @@ class ProjectileSpawnEditorDialog(QDialog):
                 else self._render_layer_default
             )
 
+        raw_flip_x = data.get("flipX")
+
+        raw_flip_x = (
+            raw_flip_x
+            if isinstance(raw_flip_x, dict)
+            else {}
+        )
+
+        self._flip_x: dict[str, bool] = {
+            direction: bool(raw_flip_x.get(direction, False))
+            for direction in DIRECTIONS
+        }
+
         self._maximum_distance = (
             int(data.get("maximumDistancePixels", 0) or 0)
         )
@@ -1873,6 +1891,14 @@ class ProjectileSpawnEditorDialog(QDialog):
         )
 
         facing_row.addWidget(self.canonical_facing)
+
+        self.flip_x = QCheckBox(
+            self.translate("projectile_flip_x")
+        )
+
+        self.flip_x.toggled.connect(self._flip_x_changed)
+
+        facing_row.addWidget(self.flip_x)
 
         facing_row.addStretch(1)
 
@@ -2216,33 +2242,40 @@ class ProjectileSpawnEditorDialog(QDialog):
         self.offset_x.blockSignals(False)
         self.offset_y.blockSignals(False)
 
-        self.render_layer.blockSignals(True)
+        # Resync every direction-scoped combo with signals blocked: an
+        # unblocked setCurrentIndex fires the change handlers, which would
+        # overwrite the stored state with the previous direction's values.
+        for combo, value in (
+            (self.render_layer, self._render_layers[direction]),
+            (self.expire_animation, self._expire_animations[direction]),
+            (self.end_animation, self._impact_animation_id),
+            (self.impact_facing, self._impact_animation_facing),
+            (self.expire_facing, self._expire_animation_facing),
+            (self.flip_x, self._flip_x.get(direction, False)),
+        ):
+            combo.blockSignals(True)
 
-        self.render_layer.setCurrentIndex(
-            self.render_layer.findData(
-                self._render_layers[direction]
-            )
-        )
+            if isinstance(combo, QComboBox):
+                combo.setCurrentIndex(
+                    max(0, combo.findData(value))
+                )
+            else:
+                combo.setChecked(bool(value))
 
-        self.render_layer.blockSignals(False)
-
-        self.expire_animation.blockSignals(True)
-
-        self.expire_animation.setCurrentIndex(
-            max(
-                0,
-                self.expire_animation.findData(
-                    self._expire_animations[direction]
-                ),
-            )
-        )
-
-        self.expire_animation.blockSignals(False)
+            combo.blockSignals(False)
 
         self.canvas.set_offset(
             offsets["x"],
             offsets["y"],
         )
+
+    def _flip_x_changed(self, checked: bool) -> None:
+        direction = self._current_direction
+
+        if direction:
+            self._flip_x[direction] = bool(checked)
+
+            self._apply_canvas_projectile()
 
     def _impact_facing_changed(self) -> None:
         value = self.impact_facing.currentData()
@@ -2428,11 +2461,14 @@ class ProjectileSpawnEditorDialog(QDialog):
                         turns,
                     )
 
+                    image = rotate_image_quarter_turns(
+                        resolved.image, turns)
+
+                    if self._flip_x.get(direction):
+                        image = mirror_image_horizontally(image)
+
                     self.canvas.set_projectile(
-                        rotate_image_quarter_turns(
-                            resolved.image,
-                            turns,
-                        ),
+                        image,
                         anchor,
                         behind,
                     )
@@ -2458,8 +2494,13 @@ class ProjectileSpawnEditorDialog(QDialog):
             turns,
         )
 
+        image = rotate_image_quarter_turns(visual.image, turns)
+
+        if self._flip_x.get(direction):
+            image = mirror_image_horizontally(image)
+
         self.canvas.set_projectile(
-            rotate_image_quarter_turns(visual.image, turns),
+            image,
             anchor,
             behind,
         )
@@ -2584,6 +2625,11 @@ class ProjectileSpawnEditorDialog(QDialog):
                 expire_animation=self._expire_animation_id,
                 expire_animation_facing=self._expire_animation_facing,
                 expire_animations=dict(self._expire_animations),
+                flip_x={
+                    direction: enabled
+                    for direction, enabled in self._flip_x.items()
+                    if enabled
+                },
             )
         except ValueError as error:
             QMessageBox.critical(
@@ -4228,8 +4274,14 @@ class AttackDefinitionDialog(QDialog):
             turns,
         )
 
+        flight_image = rotate_image_quarter_turns(visual_image, turns)
+
+        if data.get("flipX", {}).get(facing) if isinstance(
+                data.get("flipX"), dict) else False:
+            flight_image = mirror_image_horizontally(flight_image)
+
         return (
-            rotate_image_quarter_turns(visual_image, turns),
+            flight_image,
             anchor,
             offset,
             behind,
