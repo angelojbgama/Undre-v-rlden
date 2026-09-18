@@ -39,6 +39,9 @@ struct ProjectileImpact final {
     // spawner could not identify it. Lets consumers react to specific
     // attacks (e.g. authored door open conditions) without extra state.
     DefinitionId attackDefinitionId{};
+    // Projectile definition that produced the impact, when known. Lets
+    // consumers (e.g. end animations) react per projectile type.
+    DefinitionId projectileDefinitionId{};
 };
 
 enum class PickupPayloadKind { health, currency, item };

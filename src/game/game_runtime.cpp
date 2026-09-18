@@ -439,7 +439,18 @@ struct GameRuntime::State final {
             } else if (std::holds_alternative<simulation::EntityDefeated>(event)) {
                 lastEvent = "ENTITY DEFEATED";
             } else if (const auto* impact = std::get_if<simulation::ProjectileImpact>(&event)) {
-                if (impact->kind != simulation::ProjectileImpactKind::expired) {
+                const auto* projectileDefinition = impact->projectileDefinitionId.empty()
+                    ? nullptr
+                    : content.projectiles().find(impact->projectileDefinitionId);
+                const auto& endAnimationId = projectileDefinition != nullptr
+                    ? projectileDefinition->endAnimationId
+                    : simulation::DefinitionId{};
+                if (!endAnimationId.empty()) {
+                    // Authored end animation replaces the default impact poof.
+                    if (const auto* clip = runtimeVisualContent.animations.find(endAnimationId)) {
+                        effects->spawnAnimation(impact->position, *clip);
+                    }
+                } else if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);
                 }
             } else if (const auto* playback = std::get_if<simulation::EffectPlayback>(&event)) {

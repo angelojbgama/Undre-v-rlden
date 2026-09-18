@@ -539,6 +539,10 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             }
         }
     }
+    std::unordered_set<std::string> loopingAnimations;
+    for (const auto& value : pack.animations) {
+        if (value.loop) loopingAnimations.insert(std::string(value.id.value()));
+    }
     for (const auto& value : pack.projectiles) {
         if (value.visualId.empty() || value.speedPixelsPerTick <= 0 || value.lifetimeTicks == 0 ||
             value.hitboxWidth <= 0 || value.hitboxHeight <= 0)
@@ -547,6 +551,10 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile static sprite does not exist", "visualId");
         if (!value.animationId.empty() && !contains(animations, value.animationId))
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile animation does not exist", "animationId");
+        if (!value.endAnimationId.empty() && !contains(animations, value.endAnimationId))
+            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile end animation does not exist", "endAnimationId");
+        if (!value.endAnimationId.empty() && contains(loopingAnimations, value.endAnimationId))
+            error(report, ContentKind::projectile, value.id, "invalid_value", "projectile end animation must not loop", "endAnimationId");
     }
     for (const auto& value : pack.attacks) {
         validateAttack(value, animations, report);

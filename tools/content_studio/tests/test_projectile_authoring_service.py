@@ -272,6 +272,66 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_update_end_animation(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            end_anim = workspace.create_definition(
+                "animations", "anim.end.poof")
+
+            workspace.update(end_anim, "loop", False)
+
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                end_animation="anim.end.poof",
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertEqual(
+                "anim.end.poof",
+                projectile.data["endAnimationId"],
+            )
+
+            # Unknown animation is rejected.
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in ("down", "up", "left", "right")
+                    },
+                    end_animation="anim.missing",
+                )
+
+            # Empty removes the field.
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                end_animation="",
+            )
+
+            stored = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert stored is not None
+
+            self.assertNotIn(
+                "endAnimationId", stored.data)
+        finally:
+            temporary.cleanup()
+
     def test_update_rejects_invalid_render_layer(self) -> None:
         temporary, workspace = make_workspace(workspace_data())
         service = ProjectileAuthoringService(workspace)

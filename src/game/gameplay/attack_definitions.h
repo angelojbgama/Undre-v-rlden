@@ -83,6 +83,9 @@ struct ProjectileDefinition final {
     // Optional travel cap in pixels (0 = unlimited: flies until collision
     // or lifetime expiry).
     int maximumDistancePixels{};
+    // Optional animation played when the projectile finishes its flight
+    // (expiry or impact). Empty = default impact behavior.
+    simulation::DefinitionId endAnimationId{};
 };
 
 struct AttackDefinition final {

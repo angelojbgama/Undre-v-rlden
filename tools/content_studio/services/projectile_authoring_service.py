@@ -62,6 +62,7 @@ class ProjectileAuthoringService:
         render_layer: str | None = None,
         render_layers: dict[str, str] | None = None,
         maximum_distance: int | None = None,
+        end_animation: str | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -139,6 +140,27 @@ class ProjectileAuthoringService:
                 data["maximumDistancePixels"] = maximum_distance
             else:
                 data.pop("maximumDistancePixels", None)
+
+        if end_animation is not None:
+            if end_animation:
+                animation = self.workspace.find(
+                    "animations",
+                    end_animation,
+                )
+
+                if animation is None:
+                    raise ValueError(
+                        f"unknown animation: {end_animation}"
+                    )
+
+                if animation.data.get("loop"):
+                    raise ValueError(
+                        "end animation must not loop"
+                    )
+
+                data["endAnimationId"] = end_animation
+            else:
+                data.pop("endAnimationId", None)
 
         self.workspace.upsert_definition_bundle(
             "Update Projectile Spawn Offsets",

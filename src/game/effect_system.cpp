@@ -19,7 +19,8 @@ void EffectSystem::spawnImpact(core::WorldPointI position) {
 
 void EffectSystem::spawnAnimation(core::WorldPointI position,
                                   std::shared_ptr<const render::AnimationClip> clip) {
-    if (!clip) {
+    if (!clip || clip->loops()) {
+        // Looping clips would never finish, so they can never be cleaned up.
         return;
     }
     EffectInstance effect{position, {}};
