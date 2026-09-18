@@ -268,11 +268,12 @@ class AttackVisualResolver:
         definition_id: str,
         data: dict[str, object],
     ) -> str:
+        # Honor the authored action: the last segment of the visual action
+        # is the action id looked up in the player's visual set.
         visual_action = str(data.get("visualActionId") or "")
-        action_name = visual_action.rsplit(".", 1)[-1]
 
-        if action_name in {"sword", "bow"}:
-            return action_name
+        if visual_action:
+            return visual_action.rsplit(".", 1)[-1]
 
         if str(data.get("kind")) == "projectile":
             return "bow"
