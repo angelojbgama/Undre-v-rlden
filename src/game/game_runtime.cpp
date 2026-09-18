@@ -454,8 +454,18 @@ struct GameRuntime::State final {
                 if (!authoredEndAnimation.empty()) {
                     // Authored per-end animation. Expire animations hold
                     // their last frame (e.g. an arrow stuck in the ground).
+                    // The animation is rotated from its authored base
+                    // orientation to the projectile's flight direction.
+                    const auto endFacing = expired
+                        ? projectileDefinition->expireAnimationFacing
+                        : projectileDefinition->impactAnimationFacing;
+                    const auto turns = gameplay::clockwiseQuarterTurns(endFacing, impact->direction);
+                    const auto rotation = turns == 1 ? render::QuarterTurn::r90
+                        : turns == 2 ? render::QuarterTurn::r180
+                        : turns == 3 ? render::QuarterTurn::r270
+                        : render::QuarterTurn::r0;
                     if (const auto* clip = runtimeVisualContent.animations.find(authoredEndAnimation)) {
-                        effects->spawnAnimation(impact->position, *clip, expired);
+                        effects->spawnAnimation(impact->position, *clip, expired, rotation);
                     }
                 } else if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);

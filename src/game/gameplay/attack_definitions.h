@@ -96,6 +96,11 @@ struct ProjectileDefinition final {
     // stuck in the ground). Empty = default impact behavior / nothing.
     simulation::DefinitionId impactAnimationId{};
     simulation::DefinitionId expireAnimationId{};
+    // Base orientation of each end animation's art; the runtime rotates
+    // the animation by the projectile's flight direction so a single
+    // spritesheet serves every angle.
+    gameplay::FacingDirection impactAnimationFacing{gameplay::FacingDirection::up};
+    gameplay::FacingDirection expireAnimationFacing{gameplay::FacingDirection::up};
     // Per-direction override of expireAnimationId (e.g. an arrow stuck in
     // the ground looks different per flight direction).
     DirectionalAnimations expireAnimations{};
