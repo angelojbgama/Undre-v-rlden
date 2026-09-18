@@ -633,6 +633,8 @@ TRANSLATIONS["pt-BR"].update({
         "Orientação base da imagem"
     ),
     "projectile_render_layer": "Camada (direção selecionada)",
+        "projectile_maximum_distance": "Limite de distância (px)",
+        "projectile_distance_unlimited": "Sem limite",
     "projectile_render_layer_actor": (
         "Na frente do player"
     ),
@@ -738,6 +740,8 @@ TRANSLATIONS["en-US"].update({
         "Base image orientation"
     ),
     "projectile_render_layer": "Layer (selected direction)",
+        "projectile_maximum_distance": "Distance limit (px)",
+        "projectile_distance_unlimited": "Unlimited",
     "projectile_render_layer_actor": (
         "In front of player"
     ),

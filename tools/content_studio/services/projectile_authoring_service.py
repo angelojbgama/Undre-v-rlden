@@ -61,6 +61,7 @@ class ProjectileAuthoringService:
         canonical_facing: str | None = None,
         render_layer: str | None = None,
         render_layers: dict[str, str] | None = None,
+        maximum_distance: int | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -125,6 +126,19 @@ class ProjectileAuthoringService:
                 data["renderLayers"] = normalized
             else:
                 data.pop("renderLayers", None)
+
+        if maximum_distance is not None:
+            maximum_distance = int(maximum_distance)
+
+            if maximum_distance < 0:
+                raise ValueError(
+                    "maximumDistancePixels must be zero or positive"
+                )
+
+            if maximum_distance > 0:
+                data["maximumDistancePixels"] = maximum_distance
+            else:
+                data.pop("maximumDistancePixels", None)
 
         self.workspace.upsert_definition_bundle(
             "Update Projectile Spawn Offsets",

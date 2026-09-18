@@ -80,6 +80,9 @@ struct ProjectileDefinition final {
     // When set, the projectile renders this authored animation in flight
     // (frame pacing authored on the animation) instead of the static sprite.
     simulation::DefinitionId animationId{};
+    // Optional travel cap in pixels (0 = unlimited: flies until collision
+    // or lifetime expiry).
+    int maximumDistancePixels{};
 };
 
 struct AttackDefinition final {

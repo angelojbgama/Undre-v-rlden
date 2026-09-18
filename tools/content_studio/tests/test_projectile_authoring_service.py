@@ -212,6 +212,66 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_update_maximum_distance(self) -> None:
+        temporary, workspace = make_workspace(workspace_data())
+        service = ProjectileAuthoringService(workspace)
+
+        try:
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                None,
+                None,
+                None,
+                90,
+            )
+
+            projectile = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert projectile is not None
+
+            self.assertEqual(90, projectile.data["maximumDistancePixels"])
+
+            # Zero removes the cap (unlimited).
+            service.update_spawn_offsets(
+                "projectile.player.arrow",
+                {
+                    direction: {"x": 0, "y": 0}
+                    for direction in ("down", "up", "left", "right")
+                },
+                None,
+                None,
+                None,
+                0,
+            )
+
+            stored = workspace.find(
+                "projectiles", "projectile.player.arrow")
+
+            assert stored is not None
+
+            self.assertNotIn(
+                "maximumDistancePixels", stored.data)
+
+            with self.assertRaises(ValueError):
+                service.update_spawn_offsets(
+                    "projectile.player.arrow",
+                    {
+                        direction: {"x": 0, "y": 0}
+                        for direction in ("down", "up", "left", "right")
+                    },
+                    None,
+                    None,
+                    None,
+                    -5,
+                )
+        finally:
+            temporary.cleanup()
+
     def test_update_rejects_invalid_render_layer(self) -> None:
         temporary, workspace = make_workspace(workspace_data())
         service = ProjectileAuthoringService(workspace)

@@ -94,6 +94,21 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                 projectile.attackDefinitionId});
             destroyed = true;
         }
+        // Authored travel cap: expire (without impact) once the projectile
+        // has flown its maximum distance in pixels.
+        if (!destroyed && projectile.definition != nullptr &&
+            projectile.definition->maximumDistancePixels > 0) {
+            const auto lifetime = projectile.definition->lifetimeTicks;
+            const auto elapsed = lifetime - std::min(lifetime, projectile.remainingTicks);
+            const auto traveled = elapsed * static_cast<std::uint32_t>(std::max(0, speed));
+            if (traveled >= static_cast<std::uint32_t>(projectile.definition->maximumDistancePixels)) {
+                events.emit(simulation::ProjectileImpact{
+                    projectile.handle, projectile.position,
+                    simulation::ProjectileImpactKind::expired,
+                    projectile.attackDefinitionId});
+                destroyed = true;
+            }
+        }
         if (destroyed) {
             projectile.remainingTicks = 0;
         }

@@ -1598,6 +1598,10 @@ class ProjectileSpawnEditorDialog(QDialog):
                 else self._render_layer_default
             )
 
+        self._maximum_distance = (
+            int(data.get("maximumDistancePixels", 0) or 0)
+        )
+
         self.setWindowTitle(
             self.translate("projectile_spawn_editor_title")
         )
@@ -1699,6 +1703,30 @@ class ProjectileSpawnEditorDialog(QDialog):
         )
 
         layer_row.addWidget(self.render_layer)
+
+        layer_row.addWidget(
+            QLabel(
+                self.translate("projectile_maximum_distance")
+            )
+        )
+
+        self.maximum_distance = QSpinBox()
+
+        self.maximum_distance.setRange(0, 9999)
+
+        self.maximum_distance.setValue(
+            self._maximum_distance
+        )
+
+        self.maximum_distance.setSpecialValueText(
+            self.translate("projectile_distance_unlimited")
+        )
+
+        self.maximum_distance.valueChanged.connect(
+            self._maximum_distance_changed
+        )
+
+        layer_row.addWidget(self.maximum_distance)
 
         layer_row.addStretch(1)
 
@@ -1824,6 +1852,11 @@ class ProjectileSpawnEditorDialog(QDialog):
             offsets["y"],
         )
 
+    def _maximum_distance_changed(self) -> None:
+        self._maximum_distance = int(
+            self.maximum_distance.value()
+        )
+
     def _render_layer_changed(self) -> None:
         layer = self.render_layer.currentData()
 
@@ -1926,6 +1959,7 @@ class ProjectileSpawnEditorDialog(QDialog):
                 self._canonical_facing,
                 None,
                 dict(self._render_layers),
+                self._maximum_distance,
             )
         except ValueError as error:
             QMessageBox.critical(
@@ -3387,6 +3421,13 @@ class AttackDefinitionDialog(QDialog):
             speed = int(
                 data.get("speedPixelsPerTick", 0) or 0
             )
+
+            maximum_distance = int(
+                data.get("maximumDistancePixels", 0) or 0
+            )
+
+            if maximum_distance > 0 and elapsed * speed >= maximum_distance:
+                return None, None, None, False
 
             direction = DIRECTION_VECTORS.get(
                 facing,
