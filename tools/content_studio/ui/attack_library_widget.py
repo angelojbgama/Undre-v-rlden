@@ -498,6 +498,10 @@ class AttackPreviewCanvas(QWidget):
 
         scale = max(1, int(self._zoom))
 
+        frame_width = frame.width() if frame is not None else 48
+
+        frame_height = frame.height() if frame is not None else 48
+
         # Feet-centered camera: the player's feet point sits at the middle
         # of the view so projectile flight paths are symmetric around it.
         anchor_x = self.width() // 2
