@@ -2099,9 +2099,14 @@ class AttackDefinitionDialog(QDialog):
             9999,
         )
 
-        self.visual_action = QLineEdit()
+        self.visual_action = QComboBox()
 
-        self.visual_action.textChanged.connect(
+        self.visual_action.setEditable(True)
+
+        for option in self._visual_action_options():
+            self.visual_action.addItem(option)
+
+        self.visual_action.editTextChanged.connect(
             self._refresh_visual
         )
 
@@ -2899,7 +2904,7 @@ class AttackDefinitionDialog(QDialog):
             )
         )
 
-        self.visual_action.setText(
+        self.visual_action.setCurrentText(
             str(data.get("visualActionId", ""))
         )
 
@@ -3230,7 +3235,7 @@ class AttackDefinitionDialog(QDialog):
 
         active = False
 
-        for tick, kind in sorted(self._events):
+        for tick, kind, *_rest in sorted(self._events):
             if tick > self._selected_tick:
                 break
 
@@ -3249,6 +3254,69 @@ class AttackDefinitionDialog(QDialog):
             ].items()
         }
 
+    def _visual_action_options(self) -> list[str]:
+        """Valid visual actions for this attack: the owning enemy's visual
+        actions when an enemy references the attack, otherwise the actions
+        authored across the player visual sets."""
+        options: list[str] = []
+
+        for enemy in self.workspace.definitions("enemies"):
+            attack_ids = enemy.data.get("attackIds")
+
+            if (
+                not isinstance(attack_ids, list)
+                or self.definition_id not in attack_ids
+            ):
+                continue
+
+            visual_set_id = enemy.data.get("visualSetId")
+
+            visual_set = (
+                self.workspace.find("enemyVisuals", visual_set_id)
+                if isinstance(visual_set_id, str)
+                else None
+            )
+
+            actions = (
+                visual_set.data.get("attacks")
+                if visual_set is not None
+                else None
+            )
+
+            for action in actions if isinstance(actions, list) else []:
+                if not isinstance(action, dict):
+                    continue
+
+                action_id = action.get("visualActionId")
+
+                if (
+                    isinstance(action_id, str)
+                    and action_id
+                    and action_id not in options
+                ):
+                    options.append(action_id)
+
+            if options:
+                return options
+
+        for player_visual in self.workspace.definitions("playerVisuals"):
+            actions = player_visual.data.get("actions")
+
+            for action in actions if isinstance(actions, list) else []:
+                if not isinstance(action, dict):
+                    continue
+
+                action_id = action.get("actionId")
+
+                if (
+                    isinstance(action_id, str)
+                    and action_id
+                    and action_id not in options
+                ):
+                    options.append(action_id)
+
+        return options
+
     def _refresh_visual(self) -> None:
         (
             animation_id,
@@ -3257,7 +3325,7 @@ class AttackDefinitionDialog(QDialog):
             self.definition_id,
             {
                 **self.data,
-                "visualActionId": self.visual_action.text().strip(),
+                "visualActionId": self.visual_action.currentText().strip(),
                 "kind": self.kind.currentData(),
             },
             str(self.facing.currentData() or "down"),
@@ -3642,7 +3710,7 @@ class AttackDefinitionDialog(QDialog):
             "cooldownTicks": self.cooldown_ticks.value(),
             "minimumRangePixels": self.minimum_range.value(),
             "maximumRangePixels": self.maximum_range.value(),
-            "visualActionId": self.visual_action.text().strip(),
+            "visualActionId": self.visual_action.currentText().strip(),
             "timeline": self._collect_timeline(),
         }
 
