@@ -291,9 +291,38 @@ void GamePresentation::renderProjectiles(render::Renderer2D& renderer,
             projectile.definition->renderLayers.forFacing(projectile.direction)
                 .value_or(projectile.definition->renderLayer);
         if (projectileLayer != layer) { continue; }
-        const auto& sprite = frame.staticSprites.require(projectile.definition->visualId);
         const auto rotation = projectileRotation(projectile.definition->canonicalFacing,
                                                   projectile.direction);
+
+        // Animated projectile: pick the clip frame by ticks since spawn,
+        // looping or clamping per the authored animation, and keep the
+        // same rotation/layer rules as the static sprite.
+        if (!projectile.definition->animationId.empty()) {
+            const auto* clipPtr = frame.animations.find(projectile.definition->animationId);
+            if (!clipPtr) { continue; }
+            const auto& clip = **clipPtr;
+            const auto& clipFrames = clip.frames();
+            if (clipFrames.empty()) { continue; }
+            const auto lifetime = projectile.definition->lifetimeTicks;
+            const auto elapsed = lifetime > 0
+                ? lifetime - std::min(lifetime, projectile.remainingTicks)
+                : std::uint32_t{0};
+            std::uint32_t cursor = elapsed;
+            if (clip.loops() && clip.durationTicks() > 0) { cursor %= clip.durationTicks(); }
+            const render::AnimationFrame* current = &clipFrames.back();
+            for (const auto& clipFrame : clipFrames) {
+                if (cursor < clipFrame.durationTicks) { current = &clipFrame; break; }
+                cursor -= clipFrame.durationTicks;
+            }
+            const auto anchor = rotatedAnchor(current->sprite.source, current->sprite.anchor, rotation);
+            renderer.drawImageRegionQuarterTurn(
+                clip.sheet().image(), current->sprite.source,
+                projectile.position.x - cameraPosition.x - anchor.x,
+                projectile.position.y - cameraPosition.y - anchor.y, rotation);
+            continue;
+        }
+
+        const auto& sprite = frame.staticSprites.require(projectile.definition->visualId);
         const auto anchor = rotatedAnchor(sprite.frame.source, sprite.frame.anchor, rotation);
         renderer.drawImageRegionQuarterTurn(
             sprite.sheet->image(), sprite.frame.source,

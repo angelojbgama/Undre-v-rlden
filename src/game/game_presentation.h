@@ -47,6 +47,7 @@ struct GamePresentationFrame final {
     const EnemyVisualCatalog& enemyVisualCatalog;
     const WorldObjectVisualCatalog& objectVisualCatalog;
     const presentation::RuntimeStaticSpriteCatalog& staticSprites;
+    const presentation::RuntimeAnimationCatalog& animations;
     const render::BitmapFont& font;
     const std::shared_ptr<const render::Image>& hudHeartImage;
     const std::shared_ptr<const render::Image>& hudMoneyImage;

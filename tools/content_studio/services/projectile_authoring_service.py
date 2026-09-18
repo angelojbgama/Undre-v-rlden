@@ -247,6 +247,7 @@ class ProjectileAuthoringService:
                         "right": {"x": 0, "y": 0},
                     },
                     "renderLayer": "actor",
+                    "animationId": normalized_animation,
                 },
             )
         )

@@ -545,6 +545,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "invalid_value", "projectile values must be positive", "projectile");
         if (hasVisualSchema && !contains(staticSprites, value.visualId))
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile static sprite does not exist", "visualId");
+        if (!value.animationId.empty() && !contains(animations, value.animationId))
+            error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile animation does not exist", "animationId");
     }
     for (const auto& value : pack.attacks) {
         validateAttack(value, animations, report);

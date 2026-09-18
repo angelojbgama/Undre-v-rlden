@@ -3451,15 +3451,6 @@ class AttackDefinitionDialog(QDialog):
             canonical if canonical in FACING_QUARTERS else "up"
         )
 
-        turns = quarter_turns(canonical, facing)
-
-        anchor = rotated_anchor(
-            visual.image.width(),
-            visual.image.height(),
-            (visual.anchor_x, visual.anchor_y),
-            turns,
-        )
-
         render_layers = data.get("renderLayers")
 
         render_layers = (
@@ -3478,6 +3469,8 @@ class AttackDefinitionDialog(QDialog):
         # Flight simulation: the projectile exists only from its
         # spawnProjectile tick, travels along the facing at the
         # definition's speed, and disappears after its lifetime.
+        elapsed = 0
+
         spawn_tick = min(
             (
                 event[0]
@@ -3515,8 +3508,94 @@ class AttackDefinitionDialog(QDialog):
                 offset[1] + direction[1] * speed * elapsed,
             )
 
+        visual_image = visual.image
+        visual_anchor = (visual.anchor_x, visual.anchor_y)
+
+        # Animated projectile: pick the animation frame by ticks since
+        # spawn, looping/clamping exactly like the runtime does. The
+        # per-frame tick pacing is authored on the animation itself.
+        animation_id = data.get("animationId")
+
+        if isinstance(animation_id, str) and animation_id:
+            animation = self.workspace.find(
+                "animations",
+                animation_id,
+            )
+
+            animation_frames = (
+                animation.data.get("frames")
+                if animation is not None
+                else None
+            )
+
+            animation_frames = (
+                animation_frames
+                if isinstance(animation_frames, list)
+                and animation_frames
+                else None
+            )
+
+            if animation_frames is None:
+                return None, None, None, False
+
+            durations = [
+                max(
+                    1,
+                    int(
+                        frame.get("durationTicks", 1) or 1
+                    ),
+                )
+                if isinstance(frame, dict)
+                else 1
+                for frame in animation_frames
+            ]
+
+            total = sum(durations)
+
+            cursor = elapsed % total if (
+                bool(animation.data.get("loop"))
+                and total > 0
+            ) else min(elapsed, total - 1)
+
+            index = 0
+
+            for duration in durations:
+                if cursor < duration:
+                    break
+
+                cursor -= duration
+                index += 1
+
+            index = min(index, len(animation_frames) - 1)
+
+            resolved = (
+                self._visual_resolver.visuals
+                .resolve_animation_frame(
+                    animation_id,
+                    index,
+                )
+            )
+
+            if resolved is None:
+                return None, None, None, False
+
+            visual_image = resolved.image
+            visual_anchor = (
+                resolved.anchor_x,
+                resolved.anchor_y,
+            )
+
+        turns = quarter_turns(canonical, facing)
+
+        anchor = rotated_anchor(
+            visual_image.width(),
+            visual_image.height(),
+            visual_anchor,
+            turns,
+        )
+
         return (
-            rotate_image_quarter_turns(visual.image, turns),
+            rotate_image_quarter_turns(visual_image, turns),
             anchor,
             offset,
             behind,

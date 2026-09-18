@@ -77,6 +77,9 @@ struct ProjectileDefinition final {
     DirectionalOffsets spawnOffsets{};
     ProjectileRenderLayer renderLayer{ProjectileRenderLayer::actor};
     DirectionalRenderLayers renderLayers{};
+    // When set, the projectile renders this authored animation in flight
+    // (frame pacing authored on the animation) instead of the static sprite.
+    simulation::DefinitionId animationId{};
 };
 
 struct AttackDefinition final {

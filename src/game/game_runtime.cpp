@@ -573,7 +573,7 @@ struct GameRuntime::State final {
             presentationFrame,
             session.projectiles(),
             tilesetVisuals, npcCatalogVisuals, npcVisuals, enemyVisualCatalog, objectVisualCatalog,
-            runtimeVisualContent.staticSprites, font, hudHeartImage, hudMoneyImage,
+            runtimeVisualContent.staticSprites, runtimeVisualContent.animations, font, hudHeartImage, hudMoneyImage,
             session.dialogue(), view, combatDebug, session.activeSword(),
             session.scenePresentation(), lastEvent, collisionOverlay});
     }
