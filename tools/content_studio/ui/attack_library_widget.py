@@ -348,10 +348,6 @@ class AttackPreviewCanvas(QWidget):
 
         self._hitbox: dict[str, int] | None = None
 
-        self._minimum_range = 0
-
-        self._maximum_range = 0
-
         self._knockback = 0
 
         self._damage_amount = 0
@@ -446,18 +442,12 @@ class AttackPreviewCanvas(QWidget):
         self,
         facing: str,
         hitbox: dict[str, int] | None,
-        minimum_range: int,
-        maximum_range: int,
         knockback: int,
         damage_amount: int = 0,
     ) -> None:
         self._facing = facing
 
         self._hitbox = hitbox
-
-        self._minimum_range = minimum_range
-
-        self._maximum_range = maximum_range
 
         self._knockback = knockback
 
@@ -576,9 +566,7 @@ class AttackPreviewCanvas(QWidget):
 
         summary = (
             f"{self.translate('attack_damage')}: {self._damage_amount}  "
-            f"{self.translate('attack_knockback')}: {self._knockback}px  "
-            f"{self.translate('attack_min_range')}: {self._minimum_range}px  "
-            f"{self.translate('attack_max_range')}: {self._maximum_range}px"
+            f"{self.translate('attack_knockback')}: {self._knockback}px"
         )
 
         painter.setPen(
@@ -597,58 +585,6 @@ class AttackPreviewCanvas(QWidget):
             self._facing,
             (0, 1),
         )
-
-        # Maximum range as a dashed line from the feet.
-        if self._maximum_range > 0:
-            painter.setPen(
-                QPen(
-                    QColor(110, 160, 230),
-                    2,
-                    Qt.PenStyle.DashLine,
-                )
-            )
-
-            painter.drawLine(
-                feet,
-                feet
-                + QPointF(
-                    direction_x
-                    * self._maximum_range
-                    * scale,
-                    direction_y
-                    * self._maximum_range
-                    * scale,
-                ),
-            )
-
-        # Minimum range as a short perpendicular marker.
-        if self._minimum_range > 0:
-            painter.setPen(
-                QPen(QColor(110, 160, 230), 3)
-            )
-
-            painter.drawLine(
-                feet
-                + QPointF(
-                    direction_x
-                    * self._minimum_range
-                    * scale,
-                    direction_y
-                    * self._minimum_range
-                    * scale,
-                )
-                - QPointF(direction_y, direction_x) * 6,
-                feet
-                + QPointF(
-                    direction_x
-                    * self._minimum_range
-                    * scale,
-                    direction_y
-                    * self._minimum_range
-                    * scale,
-                )
-                + QPointF(direction_y, direction_x) * 6,
-            )
 
         # Melee hitbox: translucent red rectangle relative to the feet.
         if self._hitbox is not None:
@@ -2088,18 +2024,6 @@ class AttackDefinitionDialog(QDialog):
             9999,
         )
 
-        self.minimum_range = QSpinBox()
-        self.minimum_range.setRange(
-            -999,
-            9999,
-        )
-
-        self.maximum_range = QSpinBox()
-        self.maximum_range.setRange(
-            -999,
-            9999,
-        )
-
         self.visual_action = QComboBox()
 
         self.visual_action.setEditable(True)
@@ -2167,22 +2091,6 @@ class AttackDefinitionDialog(QDialog):
             self._with_info(
                 self.cooldown_ticks,
                 "attack_cooldown_info",
-            ),
-        )
-
-        form.addRow(
-            self.translate("attack_min_range"),
-            self._with_info(
-                self.minimum_range,
-                "attack_min_range_info",
-            ),
-        )
-
-        form.addRow(
-            self.translate("attack_max_range"),
-            self._with_info(
-                self.maximum_range,
-                "attack_max_range_info",
             ),
         )
 
@@ -2554,14 +2462,6 @@ class AttackDefinitionDialog(QDialog):
             self._update_preview
         )
 
-        self.minimum_range.valueChanged.connect(
-            self._update_preview
-        )
-
-        self.maximum_range.valueChanged.connect(
-            self._update_preview
-        )
-
         self.total_ticks.valueChanged.connect(
             self._sync_timeline
         )
@@ -2887,20 +2787,6 @@ class AttackDefinitionDialog(QDialog):
         self.cooldown_ticks.setValue(
             int(
                 data.get("cooldownTicks", 0)
-                or 0
-            )
-        )
-
-        self.minimum_range.setValue(
-            int(
-                data.get("minimumRangePixels", 0)
-                or 0
-            )
-        )
-
-        self.maximum_range.setValue(
-            int(
-                data.get("maximumRangePixels", 0)
                 or 0
             )
         )
@@ -3381,8 +3267,6 @@ class AttackDefinitionDialog(QDialog):
         self.preview.set_overlay(
             str(self.facing.currentData() or "down"),
             self._active_hitbox(),
-            self.minimum_range.value(),
-            self.maximum_range.value(),
             self.knockback.value(),
             self.damage_amount.value(),
         )
@@ -3709,8 +3593,14 @@ class AttackDefinitionDialog(QDialog):
             },
             "totalTicks": self.total_ticks.value(),
             "cooldownTicks": self.cooldown_ticks.value(),
-            "minimumRangePixels": self.minimum_range.value(),
-            "maximumRangePixels": self.maximum_range.value(),
+            # Range fields stay engine-side (enemy AI) and are not edited
+            # in the Studio yet: the authored values are preserved as-is.
+            "minimumRangePixels": int(
+                self.data.get("minimumRangePixels", 0) or 0
+            ),
+            "maximumRangePixels": int(
+                self.data.get("maximumRangePixels", 0) or 0
+            ),
             "visualActionId": self.visual_action.currentText().strip(),
             "timeline": self._collect_timeline(),
         }
