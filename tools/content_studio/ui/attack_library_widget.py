@@ -1770,10 +1770,22 @@ class ProjectileSpawnEditorDialog(QDialog):
             else ""
         )
 
+        self._impact_animation_facing = (
+            data.get("impactAnimationFacing")
+            if data.get("impactAnimationFacing") in FACING_QUARTERS
+            else "up"
+        )
+
         self._expire_animation_id = (
             data.get("expireAnimationId")
             if isinstance(data.get("expireAnimationId"), str)
             else ""
+        )
+
+        self._expire_animation_facing = (
+            data.get("expireAnimationFacing")
+            if data.get("expireAnimationFacing") in FACING_QUARTERS
+            else "up"
         )
 
         raw_expire_animations = data.get("expireAnimations")
@@ -1985,6 +1997,32 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         layer_row.addWidget(self.end_animation)
 
+        layer_row.addWidget(
+            QLabel(
+                self.translate("projectile_end_facing")
+            )
+        )
+
+        self.impact_facing = QComboBox()
+
+        for direction in DIRECTIONS:
+            self.impact_facing.addItem(
+                direction.capitalize(),
+                direction,
+            )
+
+        self.impact_facing.setCurrentIndex(
+            self.impact_facing.findData(
+                self._impact_animation_facing
+            )
+        )
+
+        self.impact_facing.currentIndexChanged.connect(
+            self._impact_facing_changed
+        )
+
+        layer_row.addWidget(self.impact_facing)
+
         layer_row.addStretch(1)
 
         layout.addLayout(layer_row)
@@ -1999,9 +2037,79 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         expire_row.addWidget(self.expire_animation)
 
+        expire_row.addWidget(
+            QLabel(
+                self.translate("projectile_end_facing")
+            )
+        )
+
+        self.expire_facing = QComboBox()
+
+        for direction in DIRECTIONS:
+            self.expire_facing.addItem(
+                direction.capitalize(),
+                direction,
+            )
+
+        self.expire_facing.setCurrentIndex(
+            self.expire_facing.findData(
+                self._expire_animation_facing
+            )
+        )
+
+        self.expire_facing.currentIndexChanged.connect(
+            self._expire_facing_changed
+        )
+
+        expire_row.addWidget(self.expire_facing)
+
         expire_row.addStretch(1)
 
         layout.addLayout(expire_row)
+
+        # Animated previews of both end animations, rotated per their
+        # base orientation and the selected direction.
+        preview_row = QHBoxLayout()
+
+        self.impact_preview = QLabel()
+
+        self.impact_preview.setFixedSize(96, 96)
+
+        self.impact_preview.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.impact_preview.setStyleSheet(
+            "background: #161b22; border: 1px solid #4b5563;")
+
+        expire_preview = self.expire_preview = QLabel()
+
+        self.expire_preview.setFixedSize(96, 96)
+
+        self.expire_preview.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.expire_preview.setStyleSheet(
+            "background: #161b22; border: 1px solid #4b5563;")
+
+        preview_row.addWidget(self.impact_preview)
+
+        preview_row.addWidget(self.expire_preview)
+
+        preview_row.addStretch(1)
+
+        layout.addLayout(preview_row)
+
+        self._end_preview_state: dict = {}
+
+        self._end_preview_timer = QTimer(self)
+
+        self._end_preview_timer.timeout.connect(
+            self._advance_end_previews
+        )
+
+        self._end_preview_timer.start(120)
 
         self.canvas = ProjectileSpawnCanvas(translator)
 
@@ -2135,6 +2243,92 @@ class ProjectileSpawnEditorDialog(QDialog):
             offsets["x"],
             offsets["y"],
         )
+
+    def _impact_facing_changed(self) -> None:
+        value = self.impact_facing.currentData()
+
+        if isinstance(value, str) and value:
+            self._impact_animation_facing = value
+
+    def _expire_facing_changed(self) -> None:
+        value = self.expire_facing.currentData()
+
+        if isinstance(value, str) and value:
+            self._expire_animation_facing = value
+
+    def _advance_end_previews(self) -> None:
+        """Cycle both end animations on their preview labels, rotated per
+        the animation's base orientation and the selected direction."""
+        direction = self._current_direction or "down"
+
+        for combo, facing_attr, label in (
+            (self.end_animation, "_impact_animation_facing",
+             self.impact_preview),
+            (self.expire_animation, "_expire_animation_facing",
+             self.expire_preview),
+        ):
+            animation_id = combo.currentData()
+
+            frames = []
+
+            if isinstance(animation_id, str) and animation_id:
+                animation = self.workspace.find(
+                    "animations", animation_id)
+
+                raw = (
+                    animation.data.get("frames")
+                    if animation is not None
+                    else None
+                )
+
+                frames = raw if isinstance(raw, list) else []
+
+            if not frames:
+                label.setText("—")
+
+                continue
+
+            state = self._end_preview_state.setdefault(
+                label, {"index": 0, "cursor": 0})
+
+            index = state["index"]
+
+            frame = frames[index] if isinstance(
+                frames[index], dict) else {}
+
+            duration = max(
+                1, int(frame.get("durationTicks", 1) or 1))
+
+            state["cursor"] += 1
+
+            if state["cursor"] >= duration:
+                state["cursor"] = 0
+
+                index = (index + 1) % len(frames)
+
+                state["index"] = index
+
+            resolved = (
+                self._resolver.visuals
+                .resolve_animation_frame(
+                    animation_id, index)
+            )
+
+            facing = getattr(self, facing_attr)
+
+            turns = quarter_turns(facing, direction)
+
+            if resolved is not None:
+                rotated = rotate_image_quarter_turns(
+                    resolved.image, turns)
+
+                label.setPixmap(QPixmap.fromImage(
+                    rotated).scaled(
+                    96, 96,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.FastTransformation))
+            else:
+                label.setText("—")
 
     def _impact_animation_changed(self) -> None:
         value = self.end_animation.currentData()
@@ -2382,13 +2576,14 @@ class ProjectileSpawnEditorDialog(QDialog):
             ).update_spawn_offsets(
                 self.projectile_id,
                 self._offsets,
-                self._canonical_facing,
-                None,
-                dict(self._render_layers),
-                self._maximum_distance,
-                self._impact_animation_id,
-                None,
-                dict(self._expire_animations),
+                canonical_facing=self._canonical_facing,
+                render_layers=dict(self._render_layers),
+                maximum_distance=self._maximum_distance,
+                impact_animation=self._impact_animation_id,
+                impact_animation_facing=self._impact_animation_facing,
+                expire_animation=self._expire_animation_id,
+                expire_animation_facing=self._expire_animation_facing,
+                expire_animations=dict(self._expire_animations),
             )
         except ValueError as error:
             QMessageBox.critical(

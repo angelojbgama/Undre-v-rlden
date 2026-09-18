@@ -65,6 +65,8 @@ class ProjectileAuthoringService:
         impact_animation: str | None = None,
         expire_animation: str | None = None,
         expire_animations: dict[str, str] | None = None,
+        impact_animation_facing: str | None = None,
+        expire_animation_facing: str | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -169,6 +171,28 @@ class ProjectileAuthoringService:
                 data[field_name] = field
             else:
                 data.pop(field_name, None)
+
+        for facing_value, facing_field in (
+            (impact_animation_facing, "impactAnimationFacing"),
+            (expire_animation_facing, "expireAnimationFacing"),
+        ):
+            if facing_value is None:
+                continue
+
+            if facing_value not in (
+                "down",
+                "up",
+                "left",
+                "right",
+            ):
+                raise ValueError(
+                    f"{facing_field} must be one of down/up/left/right"
+                )
+
+            if facing_value == "up":
+                data.pop(facing_field, None)
+            else:
+                data[facing_field] = facing_value
 
         if expire_animations is not None:
             normalized_expire: dict[str, str] = {}
