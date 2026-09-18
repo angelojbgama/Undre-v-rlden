@@ -559,6 +559,13 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile expire animation does not exist", "expireAnimationId");
         if (!value.expireAnimationId.empty() && contains(loopingAnimations, value.expireAnimationId))
             error(report, ContentKind::projectile, value.id, "invalid_value", "projectile expire animation must not loop", "expireAnimationId");
+        for (const auto& entry : value.expireAnimations.values) {
+            if (!entry) { continue; }
+            if (!contains(animations, *entry))
+                error(report, ContentKind::projectile, value.id, "unknown_reference", "projectile expire animation does not exist", "expireAnimations");
+            else if (contains(loopingAnimations, *entry))
+                error(report, ContentKind::projectile, value.id, "invalid_value", "projectile expire animation must not loop", "expireAnimations");
+        }
     }
     for (const auto& value : pack.attacks) {
         validateAttack(value, animations, report);

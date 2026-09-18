@@ -289,7 +289,10 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                     for direction in ("down", "up", "left", "right")
                 },
                 impact_animation="anim.end.poof",
-                expire_animation="anim.end.poof",
+                expire_animations={
+                    "down": "anim.end.poof",
+                    "up": "anim.end.poof",
+                },
             )
 
             projectile = workspace.find(
@@ -302,8 +305,8 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                 projectile.data["impactAnimationId"],
             )
             self.assertEqual(
-                "anim.end.poof",
-                projectile.data["expireAnimationId"],
+                {"down": "anim.end.poof", "up": "anim.end.poof"},
+                projectile.data["expireAnimations"],
             )
 
             # Unknown animation is rejected.
@@ -326,6 +329,7 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
                 },
                 impact_animation="",
                 expire_animation="",
+                expire_animations={},
             )
 
             stored = workspace.find(
@@ -336,7 +340,7 @@ class ProjectileAuthoringServiceTests(unittest.TestCase):
             self.assertNotIn(
                 "impactAnimationId", stored.data)
             self.assertNotIn(
-                "expireAnimationId", stored.data)
+                "expireAnimations", stored.data)
         finally:
             temporary.cleanup()
 

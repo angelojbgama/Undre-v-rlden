@@ -64,6 +64,7 @@ class ProjectileAuthoringService:
         maximum_distance: int | None = None,
         impact_animation: str | None = None,
         expire_animation: str | None = None,
+        expire_animations: dict[str, str] | None = None,
     ) -> None:
         data = self.definition_data(definition_id)
 
@@ -168,6 +169,46 @@ class ProjectileAuthoringService:
                 data[field_name] = field
             else:
                 data.pop(field_name, None)
+
+        if expire_animations is not None:
+            normalized_expire: dict[str, str] = {}
+
+            for direction, animation_id in expire_animations.items():
+                if direction not in (
+                    "down",
+                    "up",
+                    "left",
+                    "right",
+                ):
+                    raise ValueError(
+                        "expireAnimations direction must be one of "
+                        "down/up/left/right"
+                    )
+
+                if not animation_id:
+                    continue
+
+                animation = self.workspace.find(
+                    "animations",
+                    animation_id,
+                )
+
+                if animation is None:
+                    raise ValueError(
+                        f"unknown animation: {animation_id}"
+                    )
+
+                if animation.data.get("loop"):
+                    raise ValueError(
+                        "expire animation must not loop"
+                    )
+
+                normalized_expire[direction] = animation_id
+
+            if normalized_expire:
+                data["expireAnimations"] = normalized_expire
+            else:
+                data.pop("expireAnimations", None)
 
         self.workspace.upsert_definition_bundle(
             "Update Projectile Spawn Offsets",

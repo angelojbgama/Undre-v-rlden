@@ -52,6 +52,13 @@ struct AttackTimelineEvent final {
     [[nodiscard]] constexpr bool operator==(const AttackTimelineEvent&) const noexcept = default;
 };
 
+struct DirectionalAnimations final {
+    std::array<std::optional<simulation::DefinitionId>, 4> values{}; // down, up, left, right
+    [[nodiscard]] std::optional<simulation::DefinitionId> forFacing(
+        FacingDirection facing) const noexcept;
+    [[nodiscard]] bool any() const noexcept;
+};
+
 enum class ProjectileRenderLayer {
     world, // drawn behind actors (below the player sprite)
     actor, // drawn in front of actors (default)
@@ -89,6 +96,9 @@ struct ProjectileDefinition final {
     // stuck in the ground). Empty = default impact behavior / nothing.
     simulation::DefinitionId impactAnimationId{};
     simulation::DefinitionId expireAnimationId{};
+    // Per-direction override of expireAnimationId (e.g. an arrow stuck in
+    // the ground looks different per flight direction).
+    DirectionalAnimations expireAnimations{};
 };
 
 struct AttackDefinition final {

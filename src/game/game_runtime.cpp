@@ -443,13 +443,14 @@ struct GameRuntime::State final {
                     ? nullptr
                     : content.projectiles().find(impact->projectileDefinitionId);
                 const bool expired = impact->kind == simulation::ProjectileImpactKind::expired;
-                const auto& authoredEndAnimation = expired
-                    ? projectileDefinition != nullptr
-                        ? projectileDefinition->expireAnimationId
-                        : simulation::DefinitionId{}
-                    : projectileDefinition != nullptr
+                const auto authoredEndAnimation = expired
+                    ? (projectileDefinition != nullptr
+                        ? projectileDefinition->expireAnimations.forFacing(impact->direction)
+                            .value_or(projectileDefinition->expireAnimationId)
+                        : simulation::DefinitionId{})
+                    : (projectileDefinition != nullptr
                         ? projectileDefinition->impactAnimationId
-                        : simulation::DefinitionId{};
+                        : simulation::DefinitionId{});
                 if (!authoredEndAnimation.empty()) {
                     // Authored per-end animation. Expire animations hold
                     // their last frame (e.g. an arrow stuck in the ground).

@@ -47,7 +47,10 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                 events.emit(simulation::ProjectileImpact{
                     projectile.handle, projectile.position,
                     simulation::ProjectileImpactKind::tile,
-                    projectile.attackDefinitionId});
+                    projectile.attackDefinitionId,
+                    projectile.definition != nullptr ? projectile.definition->id
+                                                     : simulation::DefinitionId{},
+                    projectile.direction});
                 destroyed = true;
                 break;
             }
@@ -68,7 +71,10 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     events.emit(simulation::ProjectileImpact{
                         projectile.handle, projectile.position,
                         simulation::ProjectileImpactKind::target,
-                        projectile.attackDefinitionId});
+                        projectile.attackDefinitionId,
+                        projectile.definition != nullptr ? projectile.definition->id
+                                                         : simulation::DefinitionId{},
+                        projectile.direction});
                     destroyed = true;
                     break;
                 }
@@ -80,7 +86,10 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                 events.emit(simulation::ProjectileImpact{
                     projectile.handle, projectile.position,
                     simulation::ProjectileImpactKind::worldObject,
-                    projectile.attackDefinitionId});
+                    projectile.attackDefinitionId,
+                    projectile.definition != nullptr ? projectile.definition->id
+                                                     : simulation::DefinitionId{},
+                    projectile.direction});
                 destroyed = true;
             }
         }
@@ -93,7 +102,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                 simulation::ProjectileImpactKind::expired,
                 projectile.attackDefinitionId,
                 projectile.definition != nullptr ? projectile.definition->id
-                                                 : simulation::DefinitionId{}});
+                                                 : simulation::DefinitionId{},
+                projectile.direction});
             destroyed = true;
         }
         // Authored travel cap: expire (without impact) once the projectile
@@ -109,7 +119,8 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     simulation::ProjectileImpactKind::expired,
                     projectile.attackDefinitionId,
                     projectile.definition != nullptr ? projectile.definition->id
-                                                     : simulation::DefinitionId{}});
+                                                     : simulation::DefinitionId{},
+                    projectile.direction});
                 destroyed = true;
             }
         }

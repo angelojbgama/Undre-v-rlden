@@ -3,6 +3,7 @@
 #include "engine/core/coordinates.h"
 #include "engine/simulation/entity_handle.h"
 #include "engine/simulation/definition_id.h"
+#include "game/gameplay/facing_direction.h"
 #include "engine/simulation/persistent_id.h"
 
 #include <cstdint>
@@ -13,6 +14,11 @@
 #include <utility>
 
 namespace underworld::simulation {
+
+// The simulation layer sits outside underworld::game, where gameplay
+// types live; alias it so event fields can qualify gameplay types.
+namespace gameplay = underworld::game::gameplay;
+
 
 struct EntityDamaged final {
     EntityHandle attacker{};
@@ -42,6 +48,8 @@ struct ProjectileImpact final {
     // Projectile definition that produced the impact, when known. Lets
     // consumers (e.g. end animations) react per projectile type.
     DefinitionId projectileDefinitionId{};
+    // Flight direction of the projectile, for directional end animations.
+    gameplay::FacingDirection direction{gameplay::FacingDirection::down};
 };
 
 enum class PickupPayloadKind { health, currency, item };

@@ -636,7 +636,7 @@ TRANSLATIONS["pt-BR"].update({
         "projectile_maximum_distance": "Limite de distância (px)",
         "projectile_distance_unlimited": "Sem limite",
         "projectile_impact_animation": "Animação de colisão",
-        "projectile_expire_animation": "Animação de fim (limite)",
+        "projectile_expire_animation": "Animação de fim (direção selecionada)",
         "projectile_end_animation_none": "Nenhuma",
     "projectile_render_layer_actor": (
         "Na frente do player"
@@ -746,7 +746,7 @@ TRANSLATIONS["en-US"].update({
         "projectile_maximum_distance": "Distance limit (px)",
         "projectile_distance_unlimited": "Unlimited",
         "projectile_impact_animation": "Impact animation",
-        "projectile_expire_animation": "Expire animation",
+        "projectile_expire_animation": "Expire animation (selected direction)",
         "projectile_end_animation_none": "None",
     "projectile_render_layer_actor": (
         "In front of player"

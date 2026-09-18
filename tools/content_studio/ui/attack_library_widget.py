@@ -1762,6 +1762,26 @@ class ProjectileSpawnEditorDialog(QDialog):
             else ""
         )
 
+        raw_expire_animations = data.get("expireAnimations")
+
+        raw_expire_animations = (
+            raw_expire_animations
+            if isinstance(raw_expire_animations, dict)
+            else {}
+        )
+
+        self._expire_animations: dict[str, str] = {}
+
+        for direction in DIRECTIONS:
+            expire_animation = raw_expire_animations.get(direction)
+
+            self._expire_animations[direction] = (
+                expire_animation
+                if isinstance(expire_animation, str)
+                and expire_animation
+                else self._expire_animation_id
+            )
+
         self.setWindowTitle(
             self.translate("projectile_spawn_editor_title")
         )
@@ -2084,6 +2104,19 @@ class ProjectileSpawnEditorDialog(QDialog):
 
         self.render_layer.blockSignals(False)
 
+        self.expire_animation.blockSignals(True)
+
+        self.expire_animation.setCurrentIndex(
+            max(
+                0,
+                self.expire_animation.findData(
+                    self._expire_animations[direction]
+                ),
+            )
+        )
+
+        self.expire_animation.blockSignals(False)
+
         self.canvas.set_offset(
             offsets["x"],
             offsets["y"],
@@ -2099,9 +2132,10 @@ class ProjectileSpawnEditorDialog(QDialog):
     def _expire_animation_changed(self) -> None:
         value = self.expire_animation.currentData()
 
-        self._expire_animation_id = (
-            value if isinstance(value, str) else ""
-        )
+        if self._current_direction:
+            self._expire_animations[self._current_direction] = (
+                value if isinstance(value, str) else ""
+            )
 
     def _maximum_distance_changed(self) -> None:
         self._maximum_distance = int(
@@ -2212,7 +2246,8 @@ class ProjectileSpawnEditorDialog(QDialog):
                 dict(self._render_layers),
                 self._maximum_distance,
                 self._impact_animation_id,
-                self._expire_animation_id,
+                None,
+                dict(self._expire_animations),
             )
         except ValueError as error:
             QMessageBox.critical(

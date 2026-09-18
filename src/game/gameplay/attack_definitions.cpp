@@ -138,6 +138,16 @@ bool DirectionalRenderLayers::any() const noexcept {
                        [](const auto& layer) { return layer.has_value(); });
 }
 
+std::optional<simulation::DefinitionId> DirectionalAnimations::forFacing(
+    FacingDirection facing) const noexcept {
+    return values[facingIndex(facing)];
+}
+
+bool DirectionalAnimations::any() const noexcept {
+    return std::any_of(values.begin(), values.end(),
+                       [](const auto& entry) { return entry.has_value(); });
+}
+
 bool AttackDefinition::hasCollisionSamples(
     FacingDirection facing) const noexcept {
     const auto index = facingIndex(facing);
