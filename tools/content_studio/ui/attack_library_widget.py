@@ -40,6 +40,9 @@ from ..services.attack_authoring_service import (
     TIMELINE_KINDS,
 )
 from ..services.localization import Translator
+from ..ui.animation_frame_alignment_dialog import (
+    AnimationFrameAlignmentDialog,
+)
 from ..services.projectile_authoring_service import (
     ProjectileAuthoringService,
 )
@@ -2374,6 +2377,12 @@ class AttackDefinitionDialog(QDialog):
             self.translate("attack_timeline_play")
         )
 
+        self.edit_frames_button = QPushButton(
+            self.translate("edit_animation_frames")
+        )
+
+        self.edit_frames_button.setEnabled(False)
+
         event_row.addWidget(
             QLabel(
                 self.translate("attack_event_tick")
@@ -2410,6 +2419,10 @@ class AttackDefinitionDialog(QDialog):
 
         event_row.addWidget(
             self.play_button
+        )
+
+        event_row.addWidget(
+            self.edit_frames_button
         )
 
         timeline_layout.addLayout(
@@ -2569,6 +2582,10 @@ class AttackDefinitionDialog(QDialog):
 
         self.play_button.clicked.connect(
             self._toggle_play
+        )
+
+        self.edit_frames_button.clicked.connect(
+            self._edit_animation_frames
         )
 
         self.kind.currentIndexChanged.connect(
@@ -3183,6 +3200,68 @@ class AttackDefinitionDialog(QDialog):
 
         self._update_preview()
 
+    def _edit_animation_frames(self) -> None:
+        animation_id = self._visual_animation_id
+
+        if not animation_id or self.workspace is None:
+            return
+
+        animation = self.workspace.find(
+            "animations",
+            animation_id,
+        )
+
+        if animation is None:
+            return
+
+        image_id = str(animation.data.get("imageId", ""))
+
+        image_definition = self.workspace.find(
+            "visualImages",
+            image_id,
+        )
+
+        root = (
+            self.asset_root
+            if image_definition is not None
+            and image_definition.data.get("root") == "gameAssets"
+            else self.workspace.root
+        )
+
+        relative = (
+            image_definition.data.get("relativePath")
+            if image_definition is not None
+            else None
+        )
+
+        image_path = (
+            Path(root) / relative
+            if root is not None and isinstance(relative, str)
+            else None
+        )
+
+        image = (
+            QImage(str(image_path))
+            if image_path is not None
+            else QImage()
+        )
+
+        if image_path is None or image.isNull():
+            return
+
+        dialog = AnimationFrameAlignmentDialog(
+            self.workspace,
+            animation,
+            image,
+            image_path,
+            self.asset_root,
+            self.translate,
+            self,
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_visual()
+
     def _toggle_play(self) -> None:
         if self.play_timer.isActive():
             self.play_timer.stop()
@@ -3252,6 +3331,10 @@ class AttackDefinitionDialog(QDialog):
         self._visual_frames = frames
 
         self._visual_loaded = True
+
+        self.edit_frames_button.setEnabled(
+            bool(self._visual_animation_id)
+        )
 
         self._sync_timeline()
 
