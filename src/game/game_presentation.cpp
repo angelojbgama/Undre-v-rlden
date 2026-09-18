@@ -337,7 +337,22 @@ void GamePresentation::renderEffects(render::Renderer2D& renderer,
                                      core::WorldPointI cameraPosition) const {
     for (const auto& effect : frame.effects.effects()) {
         const auto logical = toLogical(effect.position, cameraPosition);
-        render::drawAnimator(renderer, effect.animator, {logical.x, logical.y});
+        if (effect.rotation != render::QuarterTurn::r0) {
+            const auto& clipFrame = effect.animator.currentFrame();
+            const auto anchor = rotatedAnchor(clipFrame.sprite.source, clipFrame.sprite.anchor, effect.rotation);
+            const int outputWidth = effect.rotation == render::QuarterTurn::r90 ||
+                effect.rotation == render::QuarterTurn::r270
+                ? clipFrame.sprite.source.height
+                : clipFrame.sprite.source.width;
+            const auto drawX = effect.flipX
+                ? logical.x - (outputWidth - 1 - anchor.x)
+                : logical.x - anchor.x;
+            renderer.drawImageRegionQuarterTurn(
+                effect.animator.clip().sheet().image(), clipFrame.sprite.source,
+                drawX, logical.y - anchor.y, effect.rotation, effect.flipX);
+            continue;
+        }
+        render::drawAnimator(renderer, effect.animator, {logical.x, logical.y}, effect.flipX);
     }
 }
 

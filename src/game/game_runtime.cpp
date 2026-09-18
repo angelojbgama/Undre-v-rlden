@@ -472,7 +472,10 @@ struct GameRuntime::State final {
                         : turns == 3 ? render::QuarterTurn::r270
                         : render::QuarterTurn::r0;
                     if (const auto* clip = runtimeVisualContent.animations.find(authoredEndAnimation)) {
-                        effects->spawnAnimation(impact->position, *clip, expired, rotation);
+                        const auto flip = projectileDefinition != nullptr
+                            ? projectileDefinition->flipXForFacing(impact->direction)
+                            : false;
+                        effects->spawnAnimation(impact->position, *clip, expired, rotation, flip);
                     }
                 } else if (impact->kind != simulation::ProjectileImpactKind::expired) {
                     effects->spawnImpact(impact->position);

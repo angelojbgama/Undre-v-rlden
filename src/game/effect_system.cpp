@@ -20,7 +20,8 @@ void EffectSystem::spawnImpact(core::WorldPointI position) {
 void EffectSystem::spawnAnimation(core::WorldPointI position,
                                   std::shared_ptr<const render::AnimationClip> clip,
                                   bool holdLastFrame,
-                                  render::QuarterTurn rotation) {
+                                  render::QuarterTurn rotation,
+                                  bool flipX) {
     if (!clip || clip->loops()) {
         // Looping clips would never finish, so they can never be cleaned up.
         return;
@@ -28,6 +29,7 @@ void EffectSystem::spawnAnimation(core::WorldPointI position,
     EffectInstance effect{position, {}, rotation};
     effect.animator.play(std::move(clip));
     effect.holdLastFrame = holdLastFrame;
+    effect.flipX = flipX;
     effects_.push_back(std::move(effect));
 }
 

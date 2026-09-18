@@ -13,6 +13,7 @@ struct EffectInstance final {
     core::WorldPointI position{};
     render::Animator animator{};
     render::QuarterTurn rotation{render::QuarterTurn::r0};
+    bool flipX{false};
     // When set the effect never erases: it keeps drawing the animation's
     // last frame in place (e.g. an arrow stuck in the ground).
     bool holdLastFrame{false};
@@ -26,7 +27,8 @@ public:
     void spawnAnimation(core::WorldPointI position,
                         std::shared_ptr<const render::AnimationClip> clip,
                         bool holdLastFrame = false,
-                        render::QuarterTurn rotation = render::QuarterTurn::r0);
+                        render::QuarterTurn rotation = render::QuarterTurn::r0,
+                        bool flipX = false);
     void update(std::uint64_t ticks = 1);
     void clear() noexcept { effects_.clear(); }
     [[nodiscard]] const std::vector<EffectInstance>& effects() const noexcept { return effects_; }
