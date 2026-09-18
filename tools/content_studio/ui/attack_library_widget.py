@@ -1750,6 +1750,20 @@ class ProjectileSpawnEditorDialog(QDialog):
             int(data.get("maximumDistancePixels", 0) or 0)
         )
 
+        self._flight_animation_id = (
+            data.get("animationId")
+            if isinstance(data.get("animationId"), str)
+            else ""
+        )
+
+        self._flight_frame_index = 0
+
+        self._flight_timer = QTimer(self)
+
+        self._flight_timer.timeout.connect(
+            self._advance_flight_frame
+        )
+
         self._impact_animation_id = (
             data.get("impactAnimationId")
             if isinstance(data.get("impactAnimationId"), str)
@@ -2163,14 +2177,80 @@ class ProjectileSpawnEditorDialog(QDialog):
             self._apply_canvas_projectile()
 
     def _apply_canvas_projectile(self) -> None:
+        direction = self._current_direction or "down"
+
+        behind = self._render_layers.get(
+            direction,
+            self._render_layer_default,
+        ) == "world"
+
+        # Animation-backed projectiles play their flight animation right on
+        # the canvas, rotated per the base orientation + direction, so the
+        # base orientation can be defined while watching it move.
+        if self._flight_animation_id:
+            animation = self.workspace.find(
+                "animations",
+                self._flight_animation_id,
+            )
+
+            frames = (
+                animation.data.get("frames")
+                if animation is not None
+                else None
+            )
+
+            frames = (
+                frames
+                if isinstance(frames, list) and frames
+                else []
+            )
+
+            if frames:
+                self._start_flight_playback(frames)
+
+                index = min(
+                    self._flight_frame_index,
+                    len(frames) - 1,
+                )
+
+                resolved = (
+                    self._resolver.visuals
+                    .resolve_animation_frame(
+                        self._flight_animation_id,
+                        index,
+                    )
+                )
+
+                if resolved is not None:
+                    turns = quarter_turns(
+                        self._canonical_facing,
+                        direction,
+                    )
+
+                    anchor = rotated_anchor(
+                        resolved.image.width(),
+                        resolved.image.height(),
+                        (resolved.anchor_x, resolved.anchor_y),
+                        turns,
+                    )
+
+                    self.canvas.set_projectile(
+                        rotate_image_quarter_turns(
+                            resolved.image,
+                            turns,
+                        ),
+                        anchor,
+                        behind,
+                    )
+
+                    return
+
         visual = self._projectile_visual
 
         if visual is None:
             self.canvas.set_projectile(None, (8, 8))
 
             return
-
-        direction = self._current_direction or "down"
 
         turns = quarter_turns(
             self._canonical_facing,
@@ -2187,12 +2267,73 @@ class ProjectileSpawnEditorDialog(QDialog):
         self.canvas.set_projectile(
             rotate_image_quarter_turns(visual.image, turns),
             anchor,
-            self._render_layers.get(
-                direction,
-                self._render_layer_default,
-            )
-            == "world",
+            behind,
         )
+
+    def _start_flight_playback(self, frames: list) -> None:
+        if not self._flight_timer.isActive():
+            self._flight_frame_index = 0
+
+            self._flight_timer.start(
+                self._flight_frame_interval(frames)
+            )
+
+    def _flight_frame_interval(self, frames: list) -> int:
+        index = min(
+            self._flight_frame_index,
+            len(frames) - 1,
+        )
+
+        frame = frames[index]
+
+        duration = (
+            max(1, int(frame.get("durationTicks", 1) or 1))
+            if isinstance(frame, dict)
+            else 1
+        )
+
+        return max(33, duration * 16)
+
+    def _advance_flight_frame(self) -> None:
+        animation = (
+            self.workspace.find(
+                "animations",
+                self._flight_animation_id,
+            )
+            if self._flight_animation_id
+            else None
+        )
+
+        frames = (
+            animation.data.get("frames")
+            if animation is not None
+            else None
+        )
+
+        frames = frames if isinstance(frames, list) else []
+
+        if not frames:
+            self._flight_timer.stop()
+
+            return
+
+        next_index = self._flight_frame_index + 1
+
+        if next_index >= len(frames):
+            if bool(animation.data.get("loop")):
+                next_index = 0
+            else:
+                self._flight_timer.stop()
+
+                return
+
+        self._flight_frame_index = next_index
+
+        self._flight_timer.setInterval(
+            self._flight_frame_interval(frames)
+        )
+
+        self._apply_canvas_projectile()
 
     def _offset_from_spins(self) -> None:
         direction = self._current_direction
