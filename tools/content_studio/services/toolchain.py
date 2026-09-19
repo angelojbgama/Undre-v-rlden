@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -10,6 +11,11 @@ from ..formats.dmap import safe_dmap_filename
 from ..formats.json_io import encode_json
 from ..model.types import Diagnostic, ToolResult
 from .world_export_service import WorldExportService
+
+# content_check prints lines as "[severity] message"; summary counts are
+# informational and must not present themselves as warnings (audit S2).
+_SEVERITY_LINE = re.compile(r"^\[(?P<severity>error|warning|info)\]\s*(?P<message>.*)$")
+_SUMMARY_LINE = re.compile(r"^(?:files|definitions|maps):\s*\d+$", re.IGNORECASE)
 
 
 def find_cpp_tool(repository_root: Path, name: str) -> Path | None:
@@ -63,9 +69,23 @@ class CppToolchain:
         diagnostics: list[Diagnostic] = []
         text = "\n".join(part for part in (result.stderr, result.stdout) if part)
         for line in text.splitlines():
-            if not line.strip() or line.strip() == "PASS":
+            stripped = line.strip()
+            if not stripped or stripped == "PASS":
                 continue
-            diagnostics.append(Diagnostic("error" if not result.ok else "warning", line, source_path=source_path, code="cpp_tool"))
+            message = stripped
+            if source_path is not None:
+                prefix = str(source_path)
+                if message.startswith(prefix):
+                    message = message[len(prefix):].lstrip(":").strip()
+            severity_match = _SEVERITY_LINE.match(message)
+            if severity_match is not None:
+                severity = severity_match.group("severity")
+                message = severity_match.group("message")
+            else:
+                severity = "error" if not result.ok else "warning"
+            if _SUMMARY_LINE.match(message):
+                severity = "info"
+            diagnostics.append(Diagnostic(severity, message, source_path=source_path, code="cpp_tool"))
         if not result.ok and not diagnostics:
             diagnostics.append(Diagnostic("error", f"C++ tool failed with exit code {result.returncode}", source_path=source_path, code="cpp_tool"))
         return diagnostics

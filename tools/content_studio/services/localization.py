@@ -1233,3 +1233,28 @@ TRANSLATIONS["en-US"].update({
     "category_worldRules": "World rule",
     "category_encounters": "Encounter",
 })
+
+# diagnostics-panel-localization-v1 (audit S2)
+TRANSLATIONS["pt-BR"].update({
+    "diagnostics_title": "Diagnósticos",
+    "diagnostics_empty": "Nenhum problema encontrado",
+    "diagnostics_counts": "Erros: {error} · Avisos: {warning} · Info: {info}",
+    "filter_all": "Todos",
+    "filter_errors": "Erros",
+    "filter_warnings": "Avisos",
+    "filter_info": "Info",
+    "definition_opened": "Abrindo {definition_id}",
+    "definition_not_found": "Definição não encontrada: {definition_id}",
+})
+
+TRANSLATIONS["en-US"].update({
+    "diagnostics_title": "Diagnostics",
+    "diagnostics_empty": "No problems found",
+    "diagnostics_counts": "Errors: {error} · Warnings: {warning} · Info: {info}",
+    "filter_all": "All",
+    "filter_errors": "Errors",
+    "filter_warnings": "Warnings",
+    "filter_info": "Info",
+    "definition_opened": "Opening {definition_id}",
+    "definition_not_found": "Definition not found: {definition_id}",
+})

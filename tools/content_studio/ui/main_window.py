@@ -7,7 +7,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
-    QMessageBox, QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar,
+    QMessageBox, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar,
     QTabWidget, QToolBar, QVBoxLayout, QWidget,
 )
 
@@ -34,6 +34,7 @@ from ..services.toolchain import CppToolchain, PlaytestService
 from ..services.world_export_service import WorldExportService
 from .icon_registry import IconSize, icon
 from . import theme
+from .diagnostics_panel import DiagnosticsPanel
 from .map_canvas import MapCanvas
 from .map_properties_dialog import MapPropertiesDialog
 from .preview import PreviewWidget
@@ -382,7 +383,6 @@ class MainWindow(QMainWindow):
         self._workspace_pages.addWidget(content_split)
         self._mode_section_indexes = [0, 0]
         self.mode_tabs.currentChanged.connect(self._select_mode)
-        self.diagnostics_view = QPlainTextEdit(); self.diagnostics_view.setReadOnly(True); self.diagnostics_view.setMaximumHeight(150)
         workspace = QWidget()
         workspace_layout = QVBoxLayout(workspace)
         workspace_layout.setContentsMargins(0, 0, 0, 0)
@@ -395,7 +395,10 @@ class MainWindow(QMainWindow):
         sections_layout.addWidget(self._section_sidebar)
         sections_layout.addWidget(self._workspace_pages, 1)
         workspace_layout.addWidget(sections_body, 1)
-        root = QSplitter(Qt.Orientation.Vertical); root.addWidget(workspace); root.addWidget(self.diagnostics_view); root.setStretchFactor(0, 1)
+        self.diagnostics_panel = DiagnosticsPanel(translator=self.translator)
+        self.diagnostics_panel.setMaximumHeight(190)
+        self.diagnostics_panel.definition_requested.connect(self._navigate_to_definition)
+        root = QSplitter(Qt.Orientation.Vertical); root.addWidget(workspace); root.addWidget(self.diagnostics_panel); root.setStretchFactor(0, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage(self.translator("ready"))
         self._retranslate_ui()
@@ -511,6 +514,7 @@ class MainWindow(QMainWindow):
         self.scene_editor.retranslate(self.translator)
         self.layers.retranslate(self.translator)
         self.asset_browser.retranslate(self.translator)
+        self.diagnostics_panel.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
         self.map_browser.set_translator(self.translator)
         self.mode_tabs.setTabText(0, self.translator("maps_mode"))
@@ -1755,7 +1759,19 @@ class MainWindow(QMainWindow):
 
     def _refresh_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
         self.diagnostics = diagnostics
-        self.diagnostics_view.setPlainText("\n".join(_format_diagnostic(issue) for issue in diagnostics) or self.translator("no_diagnostics"))
+        self.diagnostics_panel.set_diagnostics(diagnostics)
+
+    def _navigate_to_definition(self, definition_id: str) -> None:
+        """Open the definition referenced by a diagnostic (audit S2)."""
+        if not self.workspace:
+            return
+        for category in self.workspace.category_counts():
+            if self.workspace.find(category, definition_id) is not None:
+                self.mode_tabs.setCurrentIndex(1)
+                self.content_browser.select_definition(category, definition_id)
+                self.set_status(self.translator("definition_opened").format(definition_id=definition_id))
+                return
+        self.set_status(self.translator("definition_not_found").format(definition_id=definition_id))
 
     def has_unsaved_changes(self) -> bool:
         return self.project.has_unsaved_changes() or bool(self.workspace and self.workspace.dirty)
@@ -1782,12 +1798,6 @@ class MainWindow(QMainWindow):
 
     def show_error(self, message: str) -> None:
         QMessageBox.critical(self, "Content Studio", message)
-
-
-def _format_diagnostic(issue: Diagnostic) -> str:
-    prefix = f"{issue.source_path}: " if issue.source_path else ""
-    location = f"{issue.path}: " if issue.path else ""
-    return f"{prefix}{location}[{issue.severity}] {issue.message}"
 
 
 def _open_repository_workspace(repository_root: Path) -> ContentWorkspace:

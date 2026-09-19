@@ -73,6 +73,10 @@ TABLER_ICONS: dict[str, str] = {
     # Canvas HUD
     "zoom_in": "zoom-in.svg",
     "zoom_out": "zoom-out.svg",
+    # Diagnostics severity
+    "diag_error": "circle-x.svg",
+    "diag_warning": "alert-triangle.svg",
+    "diag_info": "info-circle.svg",
     # Frequent actions
     "add": "plus.svg",
     "delete": "trash.svg",

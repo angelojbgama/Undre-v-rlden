@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -45,7 +45,7 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
 | S1 ✅ | P2 | **Painel direito desperdiçado sem seleção:** "No selection" + botão "Excluir" desabilitado ocupam a coluna inteira. | Estado vazio compacto com dica ("Selecione um tile, objeto ou região no mapa") e colapsar editores contextuais (porta/transição) quando vazios. |
-| S2 | P2 | **Diagnósticos como texto cru:** caminhos absolutos, severidade entre colchetes, sem cor, sem filtro, sem clique-para-abrir definição; contagens ("files: 1", "definitions: 313") aparecem como *warning*. | Lista estruturada (ícone por severidade, caminho relativo clicável, filtro por severidade); contagens como info, não warning. |
+| S2 ✅ | P2 | **Diagnósticos como texto cru:** caminhos absolutos, severidade entre colchetes, sem cor, sem filtro, sem clique-para-abrir definição; contagens ("files: 1", "definitions: 313") aparecem como *warning*. | Lista estruturada (ícone por severidade, caminho relativo clicável, filtro por severidade); contagens como info, não warning. |
 | S3 | P3 | Toolbar some no modo Conteúdos sem explicação; abas de modo não indicam conteúdo ("Mapas"/"Conteúdos" sem ícones). | Ícones nas abas de modo; considerar manter toolbar visível (desabilitando tools de mapa). |
 | S4 | P3 | Título usa "*" para dirty — único indicador de mudanças não salvas. | Indicador por documento nos browsers (mapa/definição com dot) + "Salvar tudo" destacado quando dirty. |
 
@@ -189,6 +189,7 @@ Fase 2 — **Fluxos de alta frequência**:
 6. ✅ **G4/C2** Banner de modo de colocação no canvas.
 6. ✅ **G4/C2** Banner de modo de colocação no canvas.
 7. ✅ **IN1** Inspetor genérico humanizado (labels, títulos, larguras). **IN2** (validação inline) permanece no backlog.
+8. ✅ **S2** Diagnósticos estruturados com severidade, filtro e navegação.
 8. **S2** Diagnósticos estruturados com navegação.
 
 Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
