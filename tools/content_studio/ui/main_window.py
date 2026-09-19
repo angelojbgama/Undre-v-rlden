@@ -6,9 +6,9 @@ from pathlib import Path
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QMainWindow, QMessageBox,
-    QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar, QTabWidget,
-    QToolBar, QVBoxLayout, QWidget,
+    QApplication, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
+    QMessageBox, QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar,
+    QTabWidget, QToolBar, QVBoxLayout, QWidget,
 )
 
 from ..model.content_workspace import ContentWorkspace
@@ -306,6 +306,13 @@ class MainWindow(QMainWindow):
         map_inspector_layout.setContentsMargins(0, 0, 0, 0)
         map_inspector_layout.addWidget(self.door_instance_editor)
         map_inspector_layout.addWidget(self.object_transition_editor)
+        # Empty state (audit S1): guide the author instead of a bare title.
+        self.map_inspector_empty = QLabel(self.translator("inspector_empty_hint"))
+        self.map_inspector_empty.setWordWrap(True)
+        self.map_inspector_empty.setProperty("muted", True)
+        self.map_inspector_empty.setVisible(True)
+        self.map_inspector.setVisible(False)
+        map_inspector_layout.addWidget(self.map_inspector_empty)
         map_inspector_layout.addWidget(self.map_inspector, 1)
         map_inspector_layout.addWidget(self.delete_map_selection_button)
         self._map_panels = QStackedWidget()
@@ -362,23 +369,32 @@ class MainWindow(QMainWindow):
         content_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
         self.mode_tabs.addTab(self.translator("maps_mode"))
         self.mode_tabs.addTab(self.translator("content_mode"))
-        self._section_tabs = QTabBar()
-        self._section_tabs.setExpanding(False)
-        self._section_tabs.setDrawBase(True)
+        # Vertical section rail (audit G2): 15 sections never fit as
+        # horizontal tabs; a sidebar keeps every section reachable.
+        self._section_sidebar = QListWidget()
+        self._section_sidebar.setObjectName("sectionSidebar")
+        self._section_sidebar.setIconSize(IconSize.NORMAL)
+        self._section_sidebar.setFixedWidth(216)
+        self._section_sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._section_sidebar.currentRowChanged.connect(self._section_row_changed)
         self._workspace_pages = QStackedWidget()
         self._workspace_pages.addWidget(map_split)
         self._workspace_pages.addWidget(content_split)
         self._mode_section_indexes = [0, 0]
         self.mode_tabs.currentChanged.connect(self._select_mode)
-        self._section_tabs.currentChanged.connect(self._select_section)
         self.diagnostics_view = QPlainTextEdit(); self.diagnostics_view.setReadOnly(True); self.diagnostics_view.setMaximumHeight(150)
         workspace = QWidget()
         workspace_layout = QVBoxLayout(workspace)
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
         workspace_layout.addWidget(self.mode_tabs)
-        workspace_layout.addWidget(self._section_tabs)
-        workspace_layout.addWidget(self._workspace_pages, 1)
+        sections_body = QWidget()
+        sections_layout = QHBoxLayout(sections_body)
+        sections_layout.setContentsMargins(0, 0, 0, 0)
+        sections_layout.setSpacing(0)
+        sections_layout.addWidget(self._section_sidebar)
+        sections_layout.addWidget(self._workspace_pages, 1)
+        workspace_layout.addWidget(sections_body, 1)
         root = QSplitter(Qt.Orientation.Vertical); root.addWidget(workspace); root.addWidget(self.diagnostics_view); root.setStretchFactor(0, 1)
         self.setCentralWidget(root)
         self.statusBar().showMessage(self.translator("ready"))
@@ -401,14 +417,37 @@ class MainWindow(QMainWindow):
             policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
             panel.setSizePolicy(policy)
 
+    _SECTION_KEYS = {
+        0: ("maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
+            "doors_tab", "players_tab", "items_tab", "smart_terrain", "semantic_editor",
+            "semantics_stamps", "map_elements", "entities", "scenes", "rules_links"),
+        1: ("definitions", "assets"),
+    }
+
+    _SECTION_ICONS = {
+        "maps": "map", "layers": "layers", "tiles": "tiles",
+        "spritesheets_animations": "spritesheet", "objects_tab": "object",
+        "doors_tab": "door", "players_tab": "player", "items_tab": "items",
+        "smart_terrain": "terrain", "semantic_editor": "tag",
+        "semantics_stamps": "stamp", "map_elements": "place",
+        "entities": "entities", "scenes": "scenes", "rules_links": "links",
+        "definitions": "definitions", "assets": "assets",
+    }
+
+    def _section_keys(self, mode_index: int) -> tuple[str, ...]:
+        return self._SECTION_KEYS.get(mode_index, ())
+
     def _section_labels(self, mode_index: int) -> tuple[str, ...]:
-        if mode_index == 0:
-            return tuple(self.translator(key) for key in (
-                "maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-                "doors_tab", "players_tab", "items_tab", "smart_terrain", "semantic_editor",
-                "semantics_stamps", "map_elements", "entities", "scenes", "rules_links",
-            ))
-        return (self.translator("definitions"), self.translator("assets"))
+        return tuple(self.translator(key) for key in self._section_keys(mode_index))
+
+    def _rebuild_section_sidebar(self, mode_index: int) -> None:
+        self._section_sidebar.blockSignals(True)
+        self._section_sidebar.clear()
+        for key in self._section_keys(mode_index):
+            item = QListWidgetItem(icon(self._SECTION_ICONS.get(key, "map")), self.translator(key))
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            self._section_sidebar.addItem(item)
+        self._section_sidebar.blockSignals(False)
 
     def _select_mode(self, mode_index: int) -> None:
         if mode_index < 0:
@@ -419,13 +458,16 @@ class MainWindow(QMainWindow):
         self._toolbar.setVisible(map_mode)
         for action_key in ("grid", "snap", "frame"):
             self.actions[action_key].setEnabled(map_mode)
-        while self._section_tabs.count():
-            self._section_tabs.removeTab(0)
-        for label in self._section_labels(mode_index):
-            self._section_tabs.addTab(label)
-        section_index = min(self._mode_section_indexes[mode_index], self._section_tabs.count() - 1)
-        self._section_tabs.setCurrentIndex(section_index)
+        self._rebuild_section_sidebar(mode_index)
+        section_index = min(self._mode_section_indexes[mode_index], self._section_sidebar.count() - 1)
+        self._section_sidebar.blockSignals(True)
+        self._section_sidebar.setCurrentRow(section_index)
+        self._section_sidebar.blockSignals(False)
         self._select_section(section_index)
+
+    def _section_row_changed(self, row: int) -> None:
+        if row >= 0:
+            self._select_section(row)
 
     def _select_section(self, section_index: int) -> None:
         mode_index = self.mode_tabs.currentIndex()
@@ -473,8 +515,11 @@ class MainWindow(QMainWindow):
         self.map_browser.set_translator(self.translator)
         self.mode_tabs.setTabText(0, self.translator("maps_mode"))
         self.mode_tabs.setTabText(1, self.translator("content_mode"))
-        for index, label in enumerate(self._section_labels(self.mode_tabs.currentIndex())):
-            self._section_tabs.setTabText(index, label)
+        for index, key in enumerate(self._section_keys(self.mode_tabs.currentIndex())):
+            item = self._section_sidebar.item(index)
+            if item is not None:
+                item.setText(self.translator(key))
+        self.map_inspector_empty.setText(self.translator("inspector_empty_hint"))
         self.entity_browser.set_translator(self.translator)
         self.content_browser.set_translator(self.translator)
         self.map_elements.retranslate({
@@ -650,6 +695,8 @@ class MainWindow(QMainWindow):
             self.door_instance_editor.clear()
             self.object_transition_editor.clear()
             self.delete_map_selection_button.setEnabled(False)
+            self.map_inspector_empty.setVisible(True)
+            self.map_inspector.setVisible(False)
             return
 
         category, identifier = selection
@@ -753,6 +800,8 @@ class MainWindow(QMainWindow):
                     None,
                 )
 
+        self.map_inspector_empty.setVisible(False)
+        self.map_inspector.setVisible(True)
         self.map_inspector.set_object(
             f"{category}: {identifier}",
             inspector_value,

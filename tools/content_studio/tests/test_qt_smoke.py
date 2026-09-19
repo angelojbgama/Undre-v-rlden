@@ -384,17 +384,17 @@ class QtSmokeTests(unittest.TestCase):
 
             self.assertEqual("Mapas", window.mode_tabs.tabText(0))
             self.assertEqual("Conteúdos", window.mode_tabs.tabText(1))
-            self.assertEqual("Mapas", window._section_tabs.tabText(0))
+            self.assertEqual("Mapas", window._section_sidebar.item(0).text())
 
             window.mode_tabs.setCurrentIndex(1)
-            self.assertEqual("Definições", window._section_tabs.tabText(0))
-            self.assertEqual("Assets", window._section_tabs.tabText(1))
+            self.assertEqual("Definições", window._section_sidebar.item(0).text())
+            self.assertEqual("Assets", window._section_sidebar.item(1).text())
             self.assertFalse(window._toolbar.isVisible())
-            window._section_tabs.setCurrentIndex(1)
+            window._section_sidebar.setCurrentRow(1)
             self.assertIs(window.asset_browser, window._content_panels.currentWidget())
 
             window.mode_tabs.setCurrentIndex(0)
-            self.assertEqual("Mapas", window._section_tabs.tabText(0))
+            self.assertEqual("Mapas", window._section_sidebar.item(0).text())
             self.assertIs(window._map_split, window._workspace_pages.currentWidget())
             self.assertFalse(window.delete_map_selection_button.isEnabled())
 
@@ -1235,9 +1235,9 @@ class QtSmokeTests(unittest.TestCase):
             )
 
             labels = [
-                window._section_tabs.tabText(index)
+                window._section_sidebar.item(index).text()
                 for index in range(
-                    window._section_tabs.count()
+                    window._section_sidebar.count()
                 )
             ]
 
@@ -1254,7 +1254,7 @@ class QtSmokeTests(unittest.TestCase):
                 item_label
             )
 
-            window._section_tabs.setCurrentIndex(
+            window._section_sidebar.setCurrentRow(
                 item_index
             )
 

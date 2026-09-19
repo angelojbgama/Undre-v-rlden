@@ -1,7 +1,7 @@
 # Content Studio — Auditoria de UI/UX por tela
 
-> Status: auditoria de levantamento (backlog). Nada aqui foi implementado ainda;
-> cada item deve virar um plano de conserto individual por tela.
+> Status: backlog de refatoração. Itens já implementados ficam marcados com
+> ✅ e o commit correspondente; os demais aguardam o plano por tela.
 
 Data: 2026-09-19
 Método: inspeção de código + renderização offscreen de **todas as telas** com o
@@ -17,6 +17,8 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 neste commit.
+
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
 ---
@@ -25,14 +27,14 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| G1 | P1 | **Idioma misturado PT/EN.** ContentBrowser ("Create/Delete/Duplicate/Place in Map/Find Usages/Back"), LayersPanel ("Add/Rename/Move Up/…"), SceneEditor inteiro em EN, StructuredInspector ("Add", "Remove Last", "Delete item", "(empty collection)"), status bar ("Tool: select"), diagnósticos ("No diagnostics"), buscas ("Search display name / definitionId"). | Migrar todas as strings para o `Translator` (pt-BR/en-US), como já feito nos painéis de tileset/porta. |
-| G2 | P1 | **Navegação em 3–4 níveis de abas** (Modo → Seção → Coleções → [+ abas internas]) e as **15 abas de seção não cabem** — "Regras / Links" fica cortada atrás de setas de scroll discretas. | Sidebar vertical de seções com ícone + texto (ou dropdown agrupado por domínio: Mapa, Tiles, Conteúdo, Mundo); reduzir número de abas de topo. |
+| G1 ✅ | P1 | **Idioma misturado PT/EN.** ContentBrowser ("Create/Delete/Duplicate/Place in Map/Find Usages/Back"), LayersPanel ("Add/Rename/Move Up/…"), SceneEditor inteiro em EN, StructuredInspector ("Add", "Remove Last", "Delete item", "(empty collection)"), status bar ("Tool: select"), diagnósticos ("No diagnostics"), buscas ("Search display name / definitionId"). | Migrar todas as strings para o `Translator` (pt-BR/en-US), como já feito nos painéis de tileset/porta. |
+| G2 ✅ | P1 | **Navegação em 3–4 níveis de abas** (Modo → Seção → Coleções → [+ abas internas]) e as **15 abas de seção não cabem** — "Regras / Links" fica cortada atrás de setas de scroll discretas. | Sidebar vertical de seções com ícone + texto (ou dropdown agrupado por domínio: Mapa, Tiles, Conteúdo, Mundo); reduzir número de abas de topo. |
 | G3 | P2 | **Empty states sem orientação.** Painéis grandes e vazios sem dizer o que fazer (Links, Scenes, Semantics, Layers). Alguns já têm ("Nenhum item criado", "Arraste um elemento…"). | Padronizar empty state com texto de ação (ex.: "Nenhuma porta ainda — crie um objeto com capability door em Objetos") + botão de ação primária. |
 | G4 | P2 | **Feedback só na status bar.** Mensagens críticas de modo ("Placement active: X. Click the map or press Escape") somem; fácil perder o estado da ferramenta. | Banner/overlay persistente no canvas enquanto um modo de colocação estiver ativo (nome do conteúdo + Esc para cancelar). |
-| G5 | P2 | **Ações destrutivas sem confirmação.** "Excluir mapa" (`remove_map`) apaga na hora; Layers "Remove"; Scenes "Delete". (Itens e conteúdo já confirmam.) | Padronizar `QMessageBox.question` com o nome do que será apagado, incluindo efeitos ("O mapa X será removido do projeto"). |
-| G6 | P2 | **Botões truncados** em larguras padrão de painel: Objetos ("Configurar obje…", "Colocar no ma…"), Itens ("Excluir Iter…", "Colocar no m…"). | Layout de botões em grid 2×N com size policy adequada ou botões só-ícone com tooltip; testar em 260 px (largura salva nas preferences). |
+| G5 ✅ | P2 | **Ações destrutivas sem confirmação.** "Excluir mapa" (`remove_map`) apaga na hora; Layers "Remove"; Scenes "Delete". (Itens e conteúdo já confirmam.) | Padronizar `QMessageBox.question` com o nome do que será apagado, incluindo efeitos ("O mapa X será removido do projeto"). |
+| G6 ✅ | P2 | **Botões truncados** em larguras padrão de painel: Objetos ("Configurar obje…", "Colocar no ma…"), Itens ("Excluir Iter…", "Colocar no m…"). | Layout de botões em grid 2×N com size policy adequada ou botões só-ícone com tooltip; testar em 260 px (largura salva nas preferences). |
 | G7 | P2 | **Sem discoverability de atalhos/recursos:** Frame Map é só `Home` (nenhum botão), zoom só no scroll do mouse (sem `+`/`-`/botões), undo/redo só no menu. | Adicionar actions de Zoom In/Out (+ botões), tooltip com atalho nas actions ("Enquadrar Mapa (Home)"), botões de undo/redo na toolbar. |
-| G8 | P2 | **Acentuação faltando em PT-BR** em strings novas (editor de porta): "Configuracao da porta", "Chave necessaria", "Persistencia", "Aplicar configuracao". | Revisar TODO o arquivo de traduções; adicionar teste que(strings pt-BR contenham acentos esperados?) ou revisão manual guiada. |
+| G8 ✅ | P2 | **Acentuação faltando em PT-BR** em strings novas (editor de porta): "Configuracao da porta", "Chave necessaria", "Persistencia", "Aplicar configuracao". | Revisar TODO o arquivo de traduções; adicionar teste que(strings pt-BR contenham acentos esperados?) ou revisão manual guiada. |
 | G9 | P3 | **Buscas inconsistentes:** placeholders variados ("Procurar", "Procurar objetos", "Search display name / definitionId"), alguns sem filtro de categoria. | Padronizar placeholder e comportamento (filtrar por id + display name + tooltip). |
 | G10 | P3 | **Sem menu de projetos recentes** (`preferences.lastProject` já é salvo mas não é usado na UI). | Menu Arquivo > Abrir Recente (5 itens). |
 | G11 | P3 | **Sem tela de Settings** (asset root só via arquivo de preferências/CLI; idioma e tema espalhados em menus). | Diálogo único de preferências (idioma, tema, asset root, larguras). |
@@ -42,7 +44,7 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| S1 | P2 | **Painel direito desperdiçado sem seleção:** "No selection" + botão "Excluir" desabilitado ocupam a coluna inteira. | Estado vazio compacto com dica ("Selecione um tile, objeto ou região no mapa") e colapsar editores contextuais (porta/transição) quando vazios. |
+| S1 ✅ | P2 | **Painel direito desperdiçado sem seleção:** "No selection" + botão "Excluir" desabilitado ocupam a coluna inteira. | Estado vazio compacto com dica ("Selecione um tile, objeto ou região no mapa") e colapsar editores contextuais (porta/transição) quando vazios. |
 | S2 | P2 | **Diagnósticos como texto cru:** caminhos absolutos, severidade entre colchetes, sem cor, sem filtro, sem clique-para-abrir definição; contagens ("files: 1", "definitions: 313") aparecem como *warning*. | Lista estruturada (ícone por severidade, caminho relativo clicável, filtro por severidade); contagens como info, não warning. |
 | S3 | P3 | Toolbar some no modo Conteúdos sem explicação; abas de modo não indicam conteúdo ("Mapas"/"Conteúdos" sem ícones). | Ícones nas abas de modo; considerar manter toolbar visível (desabilitando tools de mapa). |
 | S4 | P3 | Título usa "*" para dirty — único indicador de mudanças não salvas. | Indicador por documento nos browsers (mapa/definição com dot) + "Salvar tudo" destacado quando dirty. |
@@ -176,11 +178,11 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 
 ## 8. Backlog consolidado (ordem sugerida para o plano de conserto)
 
-Fase 1 — **Fundação transversal** (desbloqueia o resto):
-1. **G1** Tradução completa (incl. SC1, SS2, CO1) + **G8** acentos.
-2. **G2/S1** Navegação: sidebar de seções com ícones; estados vazios do painel direito.
-3. **G5** Confirmações destrutivas padronizadas.
-4. **G6** Correção de botões truncados (Objetos/Itens).
+Fase 1 — **Fundação transversal** (desbloqueia o resto) — ✅ concluída:
+1. ✅ **G1** Tradução completa (incl. SC1, SS2, CO1) + **G8** acentos.
+2. ✅ **G2/S1** Navegação: sidebar de seções com ícones; estados vazios do painel direito.
+3. ✅ **G5** Confirmações destrutivas padronizadas.
+4. ✅ **G6** Correção de botões truncados (Objetos/Itens).
 
 Fase 2 — **Fluxos de alta frequência**:
 5. **C1/G7** Zoom + coordenadas + dica de atalhos no canvas.

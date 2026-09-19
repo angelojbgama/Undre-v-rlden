@@ -483,9 +483,9 @@ class DoorLibraryWidgetTests(
             )
 
             labels = [
-                window._section_tabs.tabText(index)
+                window._section_sidebar.item(index).text()
                 for index in range(
-                    window._section_tabs.count()
+                    window._section_sidebar.count()
                 )
             ]
 
@@ -502,7 +502,7 @@ class DoorLibraryWidgetTests(
                 door_label
             )
 
-            window._section_tabs.setCurrentIndex(
+            window._section_sidebar.setCurrentRow(
                 door_index
             )
 

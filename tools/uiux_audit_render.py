@@ -65,7 +65,7 @@ def main() -> int:
     window._select_mode(0)
     sections = window._section_labels(0)
     for index in range(len(sections)):
-        window._section_tabs.setCurrentIndex(index)
+        window._section_sidebar.setCurrentRow(index)
         app.processEvents()
         panel = window._map_panels.currentWidget()
         grab(panel, output_dir, f"map_{index:02d}_{panel.__class__.__name__}")
@@ -90,8 +90,8 @@ def main() -> int:
     # --- Content mode ------------------------------------------------------
     window._select_mode(1)
     app.processEvents()
-    for index in range(window._section_tabs.count()):
-        window._section_tabs.setCurrentIndex(index)
+    for index in range(window._section_sidebar.count()):
+        window._section_sidebar.setCurrentRow(index)
         app.processEvents()
         panel = window._content_panels.currentWidget()
         grab(panel, output_dir, f"content_{index}_{panel.__class__.__name__}")
@@ -171,7 +171,7 @@ def main() -> int:
     # --- Dark theme context shot -------------------------------------------
     theme.apply_theme("dark")
     window._select_mode(0)
-    window._section_tabs.setCurrentIndex(2)  # tilesets section, busy panel
+    window._section_sidebar.setCurrentRow(2)  # tilesets section, busy panel
     app.processEvents()
     grab(window, output_dir, "mapmode_full_dark")
 

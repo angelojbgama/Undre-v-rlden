@@ -1046,3 +1046,11 @@ TRANSLATIONS["en-US"].update({
     "map_not_found": "map was not found",
     "placement_active": "Placement active: {definition_id}. Click the map or press Escape.",
 })
+
+TRANSLATIONS["pt-BR"].update({
+    "inspector_empty_hint": "Selecione um tile, objeto, porta ou região no mapa para editar suas propriedades. As ferramentas Selecionar e Apagar ficam na barra acima do mapa.",
+})
+
+TRANSLATIONS["en-US"].update({
+    "inspector_empty_hint": "Select a tile, object, door or region on the map to edit its properties. Select and Erase tools live on the toolbar above the map.",
+})

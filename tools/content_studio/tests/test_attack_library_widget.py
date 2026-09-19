@@ -158,9 +158,9 @@ class AttackLibraryWidgetTests(unittest.TestCase):
         window.mode_tabs.setCurrentIndex(0)
 
         labels = [
-            window._section_tabs.tabText(index)
+            window._section_sidebar.item(index).text()
             for index in range(
-                window._section_tabs.count()
+                window._section_sidebar.count()
             )
         ]
 
@@ -172,7 +172,7 @@ class AttackLibraryWidgetTests(unittest.TestCase):
 
         items_index = labels.index(items_tab)
 
-        window._section_tabs.setCurrentIndex(
+        window._section_sidebar.setCurrentRow(
             items_index
         )
 
