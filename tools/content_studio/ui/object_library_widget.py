@@ -17,6 +17,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
 from ..services.object_authoring_service import ObjectAuthoringRequest, ObjectAuthoringService
+from .icon_registry import icon
 from .shape_mask_editor import ShapeMaskEditorDialog
 from .widgets import PayloadListWidget
 
@@ -761,9 +762,9 @@ class ObjectLibraryWidget(QWidget):
         self.objects.currentItemChanged.connect(self._selection_changed)
         self.objects.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.objects.customContextMenuRequested.connect(self._context_menu)
-        self.create_button = QPushButton(); self.create_button.clicked.connect(self.create_object)
-        self.configure_button = QPushButton(); self.configure_button.clicked.connect(self.configure_current)
-        self.place_button = QPushButton(); self.place_button.clicked.connect(self.place_current)
+        self.create_button = QPushButton(); self.create_button.setIcon(icon("add")); self.create_button.clicked.connect(self.create_object)
+        self.configure_button = QPushButton(); self.configure_button.setIcon(icon("configure")); self.configure_button.clicked.connect(self.configure_current)
+        self.place_button = QPushButton(); self.place_button.setIcon(icon("place")); self.place_button.clicked.connect(self.place_current)
         self.preview = QLabel(self.translate("no_image"))
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumSize(360, 360)

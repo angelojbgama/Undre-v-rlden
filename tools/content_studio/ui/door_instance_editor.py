@@ -15,6 +15,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import MapDocument
 from ..services.door_instance_service import DoorInstanceService
 from ..services.localization import Translator
+from .icon_registry import icon
 
 
 class DoorInstanceEditor(QGroupBox):
@@ -81,6 +82,9 @@ class DoorInstanceEditor(QGroupBox):
         )
 
         self.apply_button = QPushButton()
+        self.apply_button.setIcon(
+            icon("apply")
+        )
         self.apply_button.setObjectName(
             "doorApplyConfiguration"
         )

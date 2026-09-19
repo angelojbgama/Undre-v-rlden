@@ -36,6 +36,7 @@ from ..services.item_visual_service import (
     ItemVisualSelection,
     ItemVisualService,
 )
+from .icon_registry import icon
 from .item_visual_picker import ItemVisualPickerDialog
 from .widgets import PayloadListWidget
 
@@ -625,12 +626,20 @@ class ItemLibraryWidget(QWidget):
             self
         )
 
+        self.create_button.setIcon(
+            icon("add")
+        )
+
         self.create_button.clicked.connect(
             self.create_item
         )
 
         self.configure_button = QPushButton(
             self
+        )
+
+        self.configure_button.setIcon(
+            icon("configure")
         )
 
         self.configure_button.clicked.connect(
@@ -641,12 +650,20 @@ class ItemLibraryWidget(QWidget):
             self
         )
 
+        self.delete_button.setIcon(
+            icon("delete")
+        )
+
         self.delete_button.clicked.connect(
             self.delete_current
         )
 
         self.place_button = QPushButton(
             self
+        )
+
+        self.place_button.setIcon(
+            icon("place")
         )
 
         self.place_button.clicked.connect(

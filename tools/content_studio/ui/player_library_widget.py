@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
+from .icon_registry import icon
 from ..services.player_authoring_service import (
     FrameMaskSpec, FrameSequenceSpec, PlayerAuthoringRequest,
     PlayerAuthoringService, PlayerCollisionMaskSpec,
@@ -1083,6 +1084,9 @@ class PlayerLibraryWidget(QWidget):
         self.add_button = QPushButton("Adicionar Player...")
         self.edit_button = QPushButton("Configurar Player...")
         self.delete_button = QPushButton(self.translate("delete"))
+        self.add_button.setIcon(icon("add"))
+        self.edit_button.setIcon(icon("configure"))
+        self.delete_button.setIcon(icon("delete"))
         self.add_button.clicked.connect(self.add_player)
         self.edit_button.clicked.connect(self.edit_selected)
         self.delete_button.clicked.connect(self.delete_selected)

@@ -32,6 +32,7 @@ from ..services.legacy_tile_collision_migration import LegacyTileCollisionMigrat
 from ..services.preferences import load_preferences, save_preferences
 from ..services.toolchain import CppToolchain, PlaytestService
 from ..services.world_export_service import WorldExportService
+from .icon_registry import IconSize, icon
 from .map_canvas import MapCanvas
 from .map_properties_dialog import MapPropertiesDialog
 from .preview import PreviewWidget
@@ -112,19 +113,33 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu(self.translator("view"))
         self._menus = {"file": file_menu, "edit": edit_menu, "view": view_menu}
         self.actions: dict[str, QAction] = {}
-        for key, title, callback in (("new", "New Project", self.new_project), ("open", "Open Project...", self.open_project), ("save", "Save", self.save), ("save_as", "Save As...", self.save_as), ("save_all", "Save All", self.save_all), ("validate", "Validate Workspace", self.validate), ("export", "Export DMAP", self.export_maps), ("playtest", "Playtest", self.toggle_playtest), ("import_tileset", "Import Tileset...", self.import_tileset), ("quit", "Exit", self.close)):
-            action = QAction(title, self); action.triggered.connect(callback); self.actions[key] = action; file_menu.addAction(action)
+        for key, title, icon_name, callback in (
+            ("new", "New Project", "new", self.new_project),
+            ("open", "Open Project...", "open", self.open_project),
+            ("save", "Save", "save", self.save),
+            ("save_as", "Save As...", "save_as", self.save_as),
+            ("save_all", "Save All", "save_all", self.save_all),
+            ("validate", "Validate Workspace", "validate", self.validate),
+            ("export", "Export DMAP", "export", self.export_maps),
+            ("playtest", "Playtest", "playtest", self.toggle_playtest),
+            ("import_tileset", "Import Tileset...", "import", self.import_tileset),
+            ("quit", "Exit", "exit", self.close),
+        ):
+            action = QAction(icon(icon_name), title, self)
+            action.triggered.connect(callback)
+            self.actions[key] = action
+            file_menu.addAction(action)
         self.actions["new"].setShortcut("Ctrl+Shift+N")
         self.actions["open"].setShortcut("Ctrl+O")
         self.actions["save"].setShortcut("Ctrl+S")
         self.actions["save_as"].setShortcut("Ctrl+Shift+S")
         self.actions["validate"].setShortcut("F7")
         self.actions["playtest"].setShortcut("F5")
-        self.actions["undo"] = QAction("Undo", self); self.actions["undo"].setShortcut("Ctrl+Z"); self.actions["undo"].triggered.connect(self.undo); edit_menu.addAction(self.actions["undo"])
-        self.actions["redo"] = QAction("Redo", self); self.actions["redo"].setShortcut("Ctrl+Y"); self.actions["redo"].triggered.connect(self.redo); edit_menu.addAction(self.actions["redo"])
-        grid = QAction(self.translator("grid"), self, checkable=True, checked=True); grid.triggered.connect(self.map_canvas_grid); view_menu.addAction(grid); self.actions["grid"] = grid
-        snap = QAction(self.translator("snap"), self, checkable=True, checked=True); snap.triggered.connect(self.map_canvas_snap); view_menu.addAction(snap); self.actions["snap"] = snap
-        frame = QAction("Frame Map", self); frame.setShortcut("Home"); frame.triggered.connect(lambda: self.map_canvas.fit_map()); view_menu.addAction(frame); self.actions["frame"] = frame
+        self.actions["undo"] = QAction(icon("undo"), "Undo", self); self.actions["undo"].setShortcut("Ctrl+Z"); self.actions["undo"].triggered.connect(self.undo); edit_menu.addAction(self.actions["undo"])
+        self.actions["redo"] = QAction(icon("redo"), "Redo", self); self.actions["redo"].setShortcut("Ctrl+Y"); self.actions["redo"].triggered.connect(self.redo); edit_menu.addAction(self.actions["redo"])
+        grid = QAction(icon("grid"), self.translator("grid"), self, checkable=True, checked=True); grid.triggered.connect(self.map_canvas_grid); view_menu.addAction(grid); self.actions["grid"] = grid
+        snap = QAction(icon("snap"), self.translator("snap"), self, checkable=True, checked=True); snap.triggered.connect(self.map_canvas_snap); view_menu.addAction(snap); self.actions["snap"] = snap
+        frame = QAction(icon("frame_map"), "Frame Map", self); frame.setShortcut("Home"); frame.triggered.connect(lambda: self.map_canvas.fit_map()); view_menu.addAction(frame); self.actions["frame"] = frame
         language = view_menu.addMenu(self.translator("language")); self._language_menu = language
         for code, name in (("pt-BR", "Português (Brasil)"), ("en-US", "English")):
             action = QAction(name, self); action.triggered.connect(lambda checked=False, value=code: self.set_language(value)); language.addAction(action)
@@ -132,17 +147,18 @@ class MainWindow(QMainWindow):
     def _build_ui(self) -> None:
         toolbar = QToolBar(self.translator("tools"), self)
         self._toolbar = toolbar
+        toolbar.setIconSize(IconSize.TOOLBAR)
         self.addToolBar(toolbar)
         tool_group = QActionGroup(self)
         tool_group.setExclusionPolicy(QActionGroup.ExclusionPolicy.ExclusiveOptional)
         self._tool_group = tool_group
         self._tool_keys: list[str] = []
-        select = QAction(self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.toggled.connect(self._select_tool_toggled); tool_group.addAction(select); toolbar.addAction(select); self.actions["select"] = select
+        select = QAction(icon("select"), self.translator("select"), self); select.setCheckable(True); select.setChecked(True); select.toggled.connect(self._select_tool_toggled); tool_group.addAction(select); toolbar.addAction(select); self.actions["select"] = select
         toolbar.addAction(self.actions["grid"])
         toolbar.addAction(self.actions["snap"])
         toolbar.addSeparator()
         toolbar.addAction(self.actions["playtest"])
-        erase_tiles = QAction(self.translator("tools_erase"), self)
+        erase_tiles = QAction(icon("erase"), self.translator("tools_erase"), self)
         erase_tiles.setCheckable(True)
         erase_tiles.toggled.connect(self._erase_tool_toggled)
         tool_group.addAction(erase_tiles)
@@ -260,6 +276,7 @@ class MainWindow(QMainWindow):
             self.set_status)
 
         self.delete_map_selection_button = QPushButton(self.translator("delete"))
+        self.delete_map_selection_button.setIcon(icon("delete"))
         self.delete_map_selection_button.setEnabled(False)
         self.delete_map_selection_button.clicked.connect(self._delete_map_selection)
         map_inspector_panel = QWidget()
@@ -1477,9 +1494,15 @@ class MainWindow(QMainWindow):
         self._refresh_diagnostics(issues)
         self.set_status("DMAP export completed" if result.ok else "DMAP export failed")
 
+    def _update_playtest_icon(self) -> None:
+        """Mirror the playtest state on the toolbar icon (play/stop)."""
+        running = self.playtest.process is not None and self.playtest.process.poll() is None
+        self.actions["playtest"].setIcon(icon("stop" if running else "playtest"))
+
     def toggle_playtest(self) -> None:
         if self.playtest.process and self.playtest.process.poll() is None:
             self.playtest.stop()
+            self._update_playtest_icon()
             self.set_status("Playtest stopped")
             return
 
@@ -1503,7 +1526,7 @@ class MainWindow(QMainWindow):
             return
 
         success, issues = self.playtest.start(self.project, self.workspace, self.asset_root)
-        self._refresh_diagnostics(issues); self.set_status("Playtest started" if success else "Playtest failed")
+        self._refresh_diagnostics(issues); self._update_playtest_icon(); self.set_status("Playtest started" if success else "Playtest failed")
 
     def undo(self) -> None:
         changed = self.command_coordinator.undo(self.project.active_map, self.workspace)

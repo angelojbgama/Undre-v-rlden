@@ -47,6 +47,7 @@ from ..ui.animation_frame_alignment_dialog import (
 from ..services.projectile_authoring_service import (
     ProjectileAuthoringService,
 )
+from .icon_registry import icon
 from .studio_visual_resolver import StudioVisualResolver
 
 STATUS_KEYS = {
@@ -5067,14 +5068,17 @@ class AttackLibraryWidget(QWidget):
         )
 
         self.add_button = QPushButton()
+        self.add_button.setIcon(icon("add"))
         self.add_button.clicked.connect(self._add)
 
         self.edit_button = QPushButton()
+        self.edit_button.setIcon(icon("edit"))
         self.edit_button.clicked.connect(
             self._edit_selected
         )
 
         self.delete_button = QPushButton()
+        self.delete_button.setIcon(icon("delete"))
         self.delete_button.clicked.connect(
             self._delete_selected
         )

@@ -25,6 +25,7 @@ from ..services.door_authoring_service import (
     DoorFamilyMetadata,
 )
 from ..services.localization import Translator
+from .icon_registry import icon
 
 
 def _frame_pixmap(
@@ -256,6 +257,10 @@ class DoorLibraryWidget(QWidget):
         )
 
         self.place_button = QPushButton()
+
+        self.place_button.setIcon(
+            icon("place")
+        )
 
         self.place_button.setEnabled(
             False

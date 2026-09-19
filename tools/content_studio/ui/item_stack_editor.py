@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from ..model.content_workspace import ContentWorkspace
 from ..services.item_authoring_service import ItemAuthoringService
+from .icon_registry import icon
 
 
 class ItemStackEditor(QWidget):
@@ -94,6 +95,10 @@ class ItemStackEditor(QWidget):
             self.action_button.setText(
                 "Add Item"
             )
+
+            self.action_button.setIcon(
+                icon("add")
+            )
         else:
             self.item_picker.setObjectName(
                 "initialContentsRequiredItemReference"
@@ -109,6 +114,10 @@ class ItemStackEditor(QWidget):
 
             self.action_button.setText(
                 "Remove"
+            )
+
+            self.action_button.setIcon(
+                icon("delete")
             )
 
         layout = QHBoxLayout(

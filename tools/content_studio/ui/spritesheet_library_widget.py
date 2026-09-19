@@ -13,6 +13,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..services.localization import Translator
 from .animation_frame_alignment_dialog import AnimationFrameAlignmentDialog
 from .frame_grid_preview import FrameGridPreview
+from .icon_registry import icon
 from .spritesheet_import_dialog import SpritesheetImportDialog
 
 
@@ -33,8 +34,8 @@ class SpritesheetLibraryWidget(QWidget):
         self.animations.itemDoubleClicked.connect(lambda unused: self.edit_frames())
         self.animations.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.animations.customContextMenuRequested.connect(self._show_context_menu)
-        self.import_button = QPushButton(); self.import_button.clicked.connect(self.import_spritesheet)
-        self.edit_button = QPushButton(); self.edit_button.clicked.connect(self.edit_frames)
+        self.import_button = QPushButton(); self.import_button.setIcon(icon("import")); self.import_button.clicked.connect(self.import_spritesheet)
+        self.edit_button = QPushButton(); self.edit_button.setIcon(icon("edit")); self.edit_button.clicked.connect(self.edit_frames)
         self.preview = FrameGridPreview(self.translate("no_image"))
         self.animation_preview = QLabel(self.translate("no_image"))
         self.animation_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)

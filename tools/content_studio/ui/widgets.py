@@ -20,6 +20,7 @@ from ..model.types import ContentDefinition, JsonValue
 from ..interaction.drag_payload import StudioDragPayload
 from ..services.assets import AssetCatalog
 from ..services.localization import Translator
+from .icon_registry import icon
 from .item_stack_editor import ItemStackEditor
 
 _PATH_PART = re.compile(r"([^.[\]]+)|\[([0-9]+)\]")
@@ -213,6 +214,7 @@ class StructuredInspector(QWidget):
                     if isinstance(child, list):
                         self._collection_buttons(group_layout, child_path)
                     remove = QPushButton("Delete item")
+                    remove.setIcon(icon("delete"))
                     remove.clicked.connect(lambda unused=False, p=path, i=index: self.collection_changed.emit(p, f"remove_at:{i}"))
                     group_layout.addWidget(remove)
                     form.addRow(group)
@@ -350,6 +352,7 @@ class StructuredInspector(QWidget):
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.addWidget(editor, 1)
         remove = QPushButton("×")
+        remove.setIcon(icon("close"))
         remove.setToolTip("Delete item")
         remove.clicked.connect(
             lambda unused=False, p=remove_from[0], i=remove_from[1]:
@@ -368,6 +371,8 @@ class StructuredInspector(QWidget):
         buttons = QHBoxLayout()
         add = QPushButton("Add")
         remove = QPushButton("Remove Last")
+        add.setIcon(icon("add"))
+        remove.setIcon(icon("delete"))
 
         add.clicked.connect(
             lambda unused=False, value=path:
@@ -608,6 +613,13 @@ class ContentBrowser(QWidget):
         self.place_button = QPushButton("Place in Map")
         self.usages_button = QPushButton("Find Usages")
         self.back_button = QPushButton("Back")
+        self.create_button.setIcon(icon("add"))
+        self.delete_button.setIcon(icon("delete"))
+        self.duplicate_button.setIcon(icon("duplicate"))
+        self.rename_button.setIcon(icon("rename"))
+        self.place_button.setIcon(icon("place"))
+        self.usages_button.setIcon(icon("find_usages"))
+        self.back_button.setIcon(icon("back"))
         self.create_button.clicked.connect(self._create)
         self.delete_button.clicked.connect(self._delete)
         self.duplicate_button.clicked.connect(self._duplicate)
@@ -1104,6 +1116,10 @@ class MapBrowser(QWidget):
         self.import_button = QPushButton("Import UMAP")
         self.remove_button = QPushButton("Remove Map")
         self.entry_button = QPushButton("Set Entry")
+        self.new_button.setIcon(icon("new_map"))
+        self.import_button.setIcon(icon("import"))
+        self.remove_button.setIcon(icon("delete"))
+        self.entry_button.setIcon(icon("set_entry"))
         self.new_button.clicked.connect(self.new_requested.emit)
         self.import_button.clicked.connect(self.import_requested.emit)
         self.remove_button.clicked.connect(lambda: self._emit_current(self.remove_requested))
@@ -1203,6 +1219,12 @@ class LayersPanel(QWidget):
         self.down_button = QPushButton("Move Down")
         self.visibility_button = QPushButton("Hide/Show")
         self.remove_button = QPushButton("Remove")
+        self.add_button.setIcon(icon("add"))
+        self.rename_button.setIcon(icon("rename"))
+        self.up_button.setIcon(icon("move_up"))
+        self.down_button.setIcon(icon("move_down"))
+        self.visibility_button.setIcon(icon("visibility"))
+        self.remove_button.setIcon(icon("delete"))
         self.add_button.clicked.connect(self._add)
         self.rename_button.clicked.connect(self._rename)
         self.up_button.clicked.connect(lambda: self._move(-1))

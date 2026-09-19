@@ -15,6 +15,7 @@ from ...services.import_service import SUPPORTED_IMAGE_SUFFIXES
 from ...services.localization import Translator
 from ...services.tile_collision_service import TileCollisionService
 from ...services.tileset_library import TilesetLibrary
+from ..icon_registry import icon
 from ..tileset_import_dialog import TilesetImportDialog
 from .tile_atlas_widget import TileAtlasWidget
 from .tileset_properties_dialog import TilesetPropertiesDialog
@@ -114,10 +115,10 @@ class TilesetLibraryWidget(QWidget):
         self.atlas = TileAtlasWidget(); self.atlas.set_family_label(self.translate("family")); self.atlas.selected.connect(self.selected); self.atlas.brush_selected.connect(self.brush_selected)
         self.atlas.tiles.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.atlas.tiles.customContextMenuRequested.connect(self._atlas_context_menu)
-        self.add_files_button = QPushButton(self.translate("import_tileset")); self.add_files_button.clicked.connect(self.add_files)
-        self.new_folder_button = QPushButton(self.translate("new_tileset_folder")); self.new_folder_button.clicked.connect(self.create_tileset_folder)
-        self.reimport_button = QPushButton(self.translate("reimport")); self.reimport_button.clicked.connect(self.reimport_selected)
-        self.delete_button = QPushButton(self.translate("delete")); self.delete_button.clicked.connect(self.delete_selected)
+        self.add_files_button = QPushButton(self.translate("import_tileset")); self.add_files_button.setIcon(icon("import")); self.add_files_button.clicked.connect(self.add_files)
+        self.new_folder_button = QPushButton(self.translate("new_tileset_folder")); self.new_folder_button.setIcon(icon("new_folder")); self.new_folder_button.clicked.connect(self.create_tileset_folder)
+        self.reimport_button = QPushButton(self.translate("reimport")); self.reimport_button.setIcon(icon("refresh")); self.reimport_button.clicked.connect(self.reimport_selected)
+        self.delete_button = QPushButton(self.translate("delete")); self.delete_button.setIcon(icon("delete")); self.delete_button.clicked.connect(self.delete_selected)
         buttons = QGridLayout()
         for index, button in enumerate((self.add_files_button, self.new_folder_button, self.reimport_button, self.delete_button)):
             buttons.addWidget(button, index // 2, index % 2)

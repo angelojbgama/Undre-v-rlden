@@ -15,6 +15,7 @@ from ..model.map_document import MapDocument
 from ..model.world_project import WorldProject
 from ..services.localization import Translator
 from ..services.object_transition_service import ObjectTransitionService
+from .icon_registry import icon
 
 
 class ObjectTransitionEditor(QGroupBox):
@@ -58,6 +59,9 @@ class ObjectTransitionEditor(QGroupBox):
         )
 
         self.apply_button = QPushButton()
+        self.apply_button.setIcon(
+            icon("apply")
+        )
         self.apply_button.setObjectName(
             "objectTransitionApply"
         )
