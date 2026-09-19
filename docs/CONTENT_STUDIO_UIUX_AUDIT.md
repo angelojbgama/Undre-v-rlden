@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2 e IN2 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -151,7 +151,7 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
 | IN1 ✅ | P1 | **Renderiza dados crus:** chaves técnicas (`definitionId`, `visualSetId`), `objects: 1` como título, posição x/y com spinboxes esticados, "(empty collection)" cortado com scrollbars. | Labels humanizadas (dicionário pt/en), layouts com largura máxima, grupos (Posição/Visual/Comportamento), widgets dedicados para campos conhecidos (position, facing, visualSetId já têm referências). |
-| IN2 | P2 | Sem validação inline nem feedback de erro por campo (erros vão para o painel de diagnósticos). | Bordas/tooltips de erro por campo quando `validate_local` falhar. |
+| IN2 ✅ | P2 | Sem validação inline nem feedback de erro por campo (erros vão para o painel de diagnósticos). | Bordas/tooltips de erro por campo quando `validate_local` falhar. |
 | IN3 | P3 | Remoção com "×" minúsculo e "Delete item" EN (G1). | Botão com ícone lixeira + confirm quando destrutivo. |
 
 ## 6. Modo Conteúdos
@@ -188,7 +188,7 @@ Fase 2 — **Fluxos de alta frequência**:
 5. ✅ **C1/G7** Zoom + coordenadas + dica de atalhos no canvas.
 6. ✅ **G4/C2** Banner de modo de colocação no canvas.
 6. ✅ **G4/C2** Banner de modo de colocação no canvas.
-7. ✅ **IN1** Inspetor genérico humanizado (labels, títulos, larguras). **IN2** (validação inline) permanece no backlog.
+7. ✅ **IN1/IN2** Inspetor genérico humanizado com validação inline por campo (borda vermelha + tooltip; erros sem campo vão para faixa própria).
 8. ✅ **S2** Diagnósticos estruturados com severidade, filtro e navegação.
 8. **S2** Diagnósticos estruturados com navegação.
 

@@ -603,6 +603,7 @@ class MainWindow(QMainWindow):
         self.selected_definition = definition
         if definition:
             self.content_inspector.set_object(f"{definition.display_name} [{definition.origin}]", definition.data)
+            self._refresh_content_field_errors()
             self.preview.show_definition(definition, self.workspace, self.asset_root)
             self._clear_toolbar_tools()
             self.map_canvas.set_entity_selection(definition.category, definition.definition_id)
@@ -616,7 +617,24 @@ class MainWindow(QMainWindow):
         self.selected_definition = definition
         if definition:
             self.content_inspector.set_object(f"{definition.display_name} [{definition.origin}]", definition.data)
+            self._refresh_content_field_errors()
             self.preview.show_definition(definition, self.workspace, self.asset_root)
+
+    def _refresh_content_field_errors(self) -> None:
+        """Inline validation for the selected definition (audit IN2)."""
+        if not (self.workspace and self.selected_definition):
+            self.content_inspector.set_field_errors({})
+            return
+        issues = self.workspace.validate_local(self.selected_definition)
+        # validate_local paths start with the category; inspector paths do not.
+        category_prefix = f"{self.selected_definition.category}."
+        errors: dict[str, str] = {}
+        for issue in issues:
+            if not issue.path:
+                continue
+            relative = issue.path[len(category_prefix):] if issue.path.startswith(category_prefix) else issue.path
+            errors[relative] = issue.message
+        self.content_inspector.set_field_errors(errors)
 
     def _show_usages(self, definition: object) -> None:
         if not self.workspace or not isinstance(definition, ContentDefinition):
@@ -679,6 +697,7 @@ class MainWindow(QMainWindow):
                 self.set_status(self.translator("definition_edited"))
                 self._refresh_diagnostics(self.workspace.validate_local(self.selected_definition))
                 self._refresh_all()
+                self._refresh_content_field_errors()
             except (KeyError, TypeError, ValueError) as error:
                 self.set_status(str(error))
 

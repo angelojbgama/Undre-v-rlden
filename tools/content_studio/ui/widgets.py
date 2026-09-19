@@ -125,8 +125,15 @@ class StructuredInspector(QWidget):
         body = QWidget()
         body.setLayout(self._form)
         self._scroll.setWidget(body)
+        self._editors: list[tuple[str, QWidget]] = []
+        self._field_errors: dict[str, str] = {}
+        self._error_strip = QLabel()
+        self._error_strip.setWordWrap(True)
+        self._error_strip.setStyleSheet("color: #e5534b;")
+        self._error_strip.setVisible(False)
         layout = QVBoxLayout(self)
         layout.addWidget(self._title)
+        layout.addWidget(self._error_strip)
         layout.addWidget(self._scroll, 1)
 
     def clear(self, title: str | None = None) -> None:
@@ -138,8 +145,36 @@ class StructuredInspector(QWidget):
         self._root = value
         self._prefix = prefix
         self._title.setText(title)
+        self._field_errors = {}
         self._clear_form()
         self._populate(value, "")
+        self._error_strip.setVisible(False)
+
+    def set_field_errors(self, errors: dict[str, str]) -> None:
+        """Inline field validation (audit IN2): path -> error message.
+
+        Editors whose path matches get a red border plus the message as
+        tooltip; errors without a matching editor land in a strip above
+        the form (missing fields have no editor to decorate).
+        """
+        self._field_errors = dict(errors)
+        self._apply_field_errors()
+
+    def _apply_field_errors(self) -> None:
+        unmatched = dict(self._field_errors)
+        for path, editor in self._editors:
+            message = self._field_errors.get(path)
+            if message is not None:
+                unmatched.pop(path, None)
+                editor.setStyleSheet("border: 1px solid #e5534b;")
+                editor.setToolTip(message)
+            else:
+                editor.setStyleSheet("")
+        if unmatched:
+            self._error_strip.setText("\n".join(unmatched.values()))
+            self._error_strip.setVisible(True)
+        else:
+            self._error_strip.setVisible(False)
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self._workspace = workspace
@@ -150,6 +185,7 @@ class StructuredInspector(QWidget):
     def _clear_form(self) -> None:
         while self._form.rowCount():
             self._form.removeRow(0)
+        self._editors = []
 
     def _populate(self, value: JsonValue, path: str) -> None:
         if isinstance(value, dict):
@@ -349,6 +385,7 @@ class StructuredInspector(QWidget):
         # spinboxes/line edits stretched absurdly under ExpandingFieldsGrow.
         if isinstance(editor, (QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox)):
             editor.setMaximumWidth(240)
+        self._editors.append((path, editor))
         if remove_from is None:
             form.addRow(QLabel(self._field_title(label)), editor)
             return
