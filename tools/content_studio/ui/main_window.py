@@ -802,10 +802,19 @@ class MainWindow(QMainWindow):
 
         self.map_inspector_empty.setVisible(False)
         self.map_inspector.setVisible(True)
-        self.map_inspector.set_object(
-            f"{category}: {identifier}",
-            inspector_value,
+        category_labels = {
+            "objects": "category_objects", "enemies": "category_enemies",
+            "npcs": "category_npcs", "pickups": "category_pickups",
+            "links": "category_links", "playerSpawns": "category_playerSpawns",
+            "regions": "category_regions", "worldRules": "category_worldRules",
+            "encounters": "category_encounters",
+        }
+        label_key = category_labels.get(category)
+        title = self.translator("inspector_title").format(
+            label=self.translator(label_key) if label_key else category,
+            id=identifier,
         )
+        self.map_inspector.set_object(title, inspector_value)
 
     def _configure_selected_door(
             self,

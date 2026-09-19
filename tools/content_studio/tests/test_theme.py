@@ -132,6 +132,12 @@ class ThemeTests(unittest.TestCase):
                 self.assertEqual(set(theme.THEME_MODES), set(window._theme_actions))
                 self.assertTrue(window._theme_actions[window._theme_mode].isChecked())
 
+                # The saved user preference must not influence this test:
+                # pin the starting mode so the dark trigger is a real switch.
+                window._theme_mode = theme.THEME_SYSTEM
+                for mode, action in window._theme_actions.items():
+                    action.setChecked(mode == theme.THEME_SYSTEM)
+
                 window._theme_actions["dark"].trigger()
                 self.assertEqual("dark", window._theme_mode)
                 self.assertEqual(["dark"], saved)

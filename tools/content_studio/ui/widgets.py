@@ -8,7 +8,7 @@ from typing import Any
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDrag, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QTabWidget,
 )
@@ -156,7 +156,7 @@ class StructuredInspector(QWidget):
             for key, child in value.items():
                 child_path = f"{path}.{key}" if path else key
                 if isinstance(child, (dict, list)):
-                    group = QGroupBox(key)
+                    group = QGroupBox(self._field_title(key))
                     if isinstance(child, list):
                         group_layout = QVBoxLayout(group)
                         group_form = QFormLayout()
@@ -179,7 +179,7 @@ class StructuredInspector(QWidget):
             for key, child in value.items():
                 child_path = f"{path}.{key}" if path else key
                 if isinstance(child, (dict, list)):
-                    group = QGroupBox(key)
+                    group = QGroupBox(self._field_title(key))
                     if isinstance(child, list):
                         group_layout = QVBoxLayout(group)
                         nested = QFormLayout()
@@ -345,8 +345,12 @@ class StructuredInspector(QWidget):
         else:
             editor = QLineEdit(str(value))
             editor.editingFinished.connect(lambda p=path, control=editor: self._commit(p, control.text()))  # type: ignore[attr-defined]
+        # Scalar editors stay compact inside the dock (audit IN1): full-width
+        # spinboxes/line edits stretched absurdly under ExpandingFieldsGrow.
+        if isinstance(editor, (QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox)):
+            editor.setMaximumWidth(240)
         if remove_from is None:
-            form.addRow(QLabel(pretty_path(label)), editor)
+            form.addRow(QLabel(self._field_title(label)), editor)
             return
         row = QWidget()
         row_layout = QHBoxLayout(row)
@@ -359,7 +363,15 @@ class StructuredInspector(QWidget):
             lambda unused=False, p=remove_from[0], i=remove_from[1]:
             self.collection_changed.emit(p, f"remove_at:{i}"))
         row_layout.addWidget(remove)
-        form.addRow(QLabel(pretty_path(label)), row)
+        form.addRow(QLabel(self._field_title(label)), row)
+
+    def _field_title(self, key: str) -> str:
+        """Humanized field label (audit IN1); falls back to the raw path."""
+        field = key.rsplit(".", 1)[-1].split("[")[0]
+        translation_key = f"field_{field}"
+        if field and self.translate.has(translation_key):
+            return self.translate(translation_key)
+        return pretty_path(key)
 
     def _collection_buttons(self, layout: QVBoxLayout, path: str) -> None:
         if path.rsplit(".", 1)[-1] == "initialContents":
