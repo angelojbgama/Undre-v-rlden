@@ -3,8 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QListWidget, QPushButton,
-    QScrollArea, QSlider, QSplitter, QVBoxLayout, QWidget,
+    QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QListWidget, QMessageBox,
+    QPushButton, QScrollArea, QSlider, QSplitter, QVBoxLayout, QWidget,
 )
 
 from ..model.map_document import MapDocument
@@ -14,6 +14,7 @@ from ..model.scene_timeline import (
     new_scene, remove_clip, remove_marker, rename_marker, validate_scene,
 )
 from ..model.types import JsonValue
+from ..services.localization import Translator
 from .widgets import StructuredInspector, set_path
 
 
@@ -32,6 +33,7 @@ class TimelineWidget(QWidget):
         self.header_height = 26
         self.left_width = 170
         self._drag: tuple[int, int, int, int] | None = None
+        self.translate = Translator()
         self.setMinimumHeight(130)
         self.setMouseTracking(True)
 
@@ -60,7 +62,7 @@ class TimelineWidget(QWidget):
         painter.fillRect(self.rect(), QColor("#20252b"))
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         if not self.scene:
-            painter.setPen(QColor("#aeb8c4")); painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No scene selected")
+            painter.setPen(QColor("#aeb8c4")); painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.translate("no_scene_selected"))
             painter.end(); return
         duration = int(self.scene.get("durationTicks", 1))
         painter.setPen(QPen(QColor("#6f7c88"), 1))
@@ -130,6 +132,7 @@ class TimelineWidget(QWidget):
 class ScenePreviewWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent); self.scene: dict[str, JsonValue] | None = None; self.tick = 0; self.setMinimumHeight(110)
+        self.translate = Translator()
 
     def set_state(self, scene: dict[str, JsonValue] | None, tick: int) -> None:
         self.scene = scene; self.tick = tick; self.update()
@@ -147,53 +150,84 @@ class ScenePreviewWidget(QWidget):
                     color = QColor("#72b7f2") if actor.get("kind") == "player" else QColor("#e68181")
                     painter.setBrush(color); painter.setPen(Qt.PenStyle.NoPen); painter.drawEllipse(point, 8, 8)
                     painter.setPen(QColor("#e8edf2")); painter.drawText(point + QPoint(12, 4), str(actor.get("slotId", index)))
-        painter.setPen(QColor("#aeb8c4")); painter.drawText(8, 18, f"Preview: {self.tick} ticks"); painter.end()
+        painter.setPen(QColor("#aeb8c4")); painter.drawText(8, 18, self.translate("preview_ticks").format(ticks=self.tick)); painter.end()
 
 
 class SceneEditorWidget(QWidget):
     changed = Signal()
     diagnostics_changed = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent); self.document: MapDocument | None = None; self.selected_clip: tuple[int, int] | None = None; self.selected_marker = -1
+        self.translate = translator or Translator()
         self.scenes = QListWidget(); self.scenes.currentRowChanged.connect(self._scene_changed)
-        self.new_button = QPushButton("New Scene"); self.duplicate_button = QPushButton("Duplicate"); self.delete_button = QPushButton("Delete")
+        self.new_button = QPushButton(self.translate("new_scene")); self.duplicate_button = QPushButton(self.translate("duplicate")); self.delete_button = QPushButton(self.translate("delete"))
         self.new_button.clicked.connect(self._new_scene); self.duplicate_button.clicked.connect(self._duplicate_scene); self.delete_button.clicked.connect(self._delete_scene)
         scene_buttons = QGridLayout()
         for index, button in enumerate((self.new_button, self.duplicate_button, self.delete_button)):
             scene_buttons.addWidget(button, index // 2, index % 2)
-        left = QVBoxLayout(); left.addWidget(QLabel("Scenes")); left.addWidget(self.scenes, 1); left.addLayout(scene_buttons)
+        left = QVBoxLayout(); left.addWidget(QLabel(self.translate("scenes"))); left.addWidget(self.scenes, 1); left.addLayout(scene_buttons)
         left_widget = QWidget(); left_widget.setLayout(left)
 
-        self.inspector = StructuredInspector(); self.inspector.changed.connect(self._edit_field)
+        self.inspector = StructuredInspector(translator=self.translate); self.inspector.changed.connect(self._edit_field)
         self.timeline = TimelineWidget(); self.timeline.clip_selected.connect(self._clip_selected); self.timeline.clip_moved.connect(self._clip_moved)
+        self.timeline.translate = self.translate
         self.timeline_scroll = QScrollArea(); self.timeline_scroll.setWidgetResizable(False); self.timeline_scroll.setWidget(self.timeline)
         self.timeline_zoom = QSlider(Qt.Orientation.Horizontal); self.timeline_zoom.setRange(5, 80); self.timeline_zoom.setValue(20); self.timeline_zoom.valueChanged.connect(lambda value: self.timeline.set_zoom(value / 10))
         self.playhead = QSlider(Qt.Orientation.Horizontal); self.playhead.setRange(0, 1); self.playhead.valueChanged.connect(self._playhead_changed)
-        self.preview = ScenePreviewWidget(); self.status = QLabel("No scene selected")
-        self.play_button = QPushButton("Play"); self.restart_button = QPushButton("Restart"); self.play_button.clicked.connect(self._toggle_play); self.restart_button.clicked.connect(self._restart)
+        self.preview = ScenePreviewWidget(); self.preview.translate = self.translate; self.status = QLabel(self.translate("no_scene_selected"))
+        self.play_button = QPushButton(self.translate("play")); self.restart_button = QPushButton(self.translate("restart")); self.play_button.clicked.connect(self._toggle_play); self.restart_button.clicked.connect(self._restart)
         self.play_timer = QTimer(self); self.play_timer.setInterval(33); self.play_timer.timeout.connect(self._advance_playhead)
         self.track_selector = QComboBox(); self.track_selector.currentIndexChanged.connect(self._track_changed)
         self.clip_kind = QComboBox()
-        self.add_clip_button = QPushButton("Add Clip"); self.duplicate_clip_button = QPushButton("Duplicate Clip"); self.remove_clip_button = QPushButton("Remove Clip"); self.add_track_button = QPushButton("Add Track")
+        self.add_clip_button = QPushButton(self.translate("add_clip")); self.duplicate_clip_button = QPushButton(self.translate("duplicate_clip")); self.remove_clip_button = QPushButton(self.translate("remove_clip")); self.add_track_button = QPushButton(self.translate("add_track"))
         self.add_clip_button.clicked.connect(self._add_clip); self.duplicate_clip_button.clicked.connect(self._duplicate_clip); self.remove_clip_button.clicked.connect(self._remove_clip); self.add_track_button.clicked.connect(self._add_track)
         controls = QGridLayout()
         for index, widget in enumerate((self.track_selector, self.clip_kind, self.add_clip_button, self.duplicate_clip_button, self.remove_clip_button, self.add_track_button)):
             controls.addWidget(widget, index // 3, index % 3)
-        self.add_marker_button = QPushButton("Add Marker"); self.rename_marker_button = QPushButton("Rename Marker"); self.remove_marker_button = QPushButton("Remove Marker"); self.fit_button = QPushButton("Fit Duration"); self.activation_button = QPushButton("Add Activation")
+        self.add_marker_button = QPushButton(self.translate("add_marker")); self.rename_marker_button = QPushButton(self.translate("rename_marker")); self.remove_marker_button = QPushButton(self.translate("remove_marker")); self.fit_button = QPushButton(self.translate("fit_duration")); self.activation_button = QPushButton(self.translate("add_activation"))
         self.add_marker_button.clicked.connect(self._add_marker); self.rename_marker_button.clicked.connect(self._rename_marker); self.remove_marker_button.clicked.connect(self._remove_marker); self.fit_button.clicked.connect(self._fit_duration); self.activation_button.clicked.connect(self._add_activation)
         marker_controls = QGridLayout()
         for index, widget in enumerate((self.add_marker_button, self.rename_marker_button, self.remove_marker_button, self.fit_button, self.activation_button)):
             marker_controls.addWidget(widget, index // 3, index % 3)
         self.markers = QListWidget(); self.markers.currentRowChanged.connect(self._marker_selected)
-        self.actors = QListWidget(); self.add_actor_button = QPushButton("Add Actor"); self.remove_actor_button = QPushButton("Remove Actor"); self.add_actor_button.clicked.connect(self._add_actor); self.remove_actor_button.clicked.connect(self._remove_actor)
+        self.actors = QListWidget(); self.add_actor_button = QPushButton(self.translate("add_actor")); self.remove_actor_button = QPushButton(self.translate("remove_actor")); self.add_actor_button.clicked.connect(self._add_actor); self.remove_actor_button.clicked.connect(self._remove_actor)
         actor_controls = QHBoxLayout(); actor_controls.addWidget(self.add_actor_button); actor_controls.addWidget(self.remove_actor_button)
-        playback = QHBoxLayout(); playback.addWidget(self.play_button); playback.addWidget(self.restart_button); playback.addWidget(QLabel("Timeline zoom")); playback.addWidget(self.timeline_zoom); playback.addWidget(QLabel("Playhead")); playback.addWidget(self.playhead)
-        center = QVBoxLayout(); center.addWidget(self.inspector, 2); center.addWidget(QLabel("Actors")); center.addWidget(self.actors); center.addLayout(actor_controls); center.addWidget(QLabel("Timeline")); center.addLayout(controls); center.addWidget(self.timeline_scroll, 2); center.addLayout(playback); center.addWidget(QLabel("Markers")); center.addWidget(self.markers); center.addLayout(marker_controls); center.addWidget(self.preview, 1); center.addWidget(self.status)
+        self.timeline_zoom_label = QLabel(self.translate("timeline_zoom")); self.playhead_label = QLabel(self.translate("playhead"))
+        self.actors_label = QLabel(self.translate("actors")); self.timeline_label = QLabel(self.translate("timeline")); self.markers_label = QLabel(self.translate("markers"))
+        playback = QHBoxLayout(); playback.addWidget(self.play_button); playback.addWidget(self.restart_button); playback.addWidget(self.timeline_zoom_label); playback.addWidget(self.timeline_zoom); playback.addWidget(self.playhead_label); playback.addWidget(self.playhead)
+        center = QVBoxLayout(); center.addWidget(self.inspector, 2); center.addWidget(self.actors_label); center.addWidget(self.actors); center.addLayout(actor_controls); center.addWidget(self.timeline_label); center.addLayout(controls); center.addWidget(self.timeline_scroll, 2); center.addLayout(playback); center.addWidget(self.markers_label); center.addWidget(self.markers); center.addLayout(marker_controls); center.addWidget(self.preview, 1); center.addWidget(self.status)
         center_widget = QWidget(); center_widget.setLayout(center)
         splitter = QSplitter(Qt.Orientation.Horizontal); splitter.setHandleWidth(8); splitter.setChildrenCollapsible(True)
         splitter.addWidget(left_widget); splitter.addWidget(center_widget); splitter.setStretchFactor(1, 1); splitter.setSizes([220, 700])
         layout = QHBoxLayout(self); layout.addWidget(splitter)
+
+    def retranslate(self, translator: Translator) -> None:
+        """Swap the translator and refresh every static label (theme menu pattern)."""
+        self.translate = translator
+        self.timeline.translate = translator
+        self.preview.translate = translator
+        self.new_button.setText(self.translate("new_scene"))
+        self.duplicate_button.setText(self.translate("duplicate"))
+        self.delete_button.setText(self.translate("delete"))
+        self.play_button.setText(self.translate("play"))
+        self.restart_button.setText(self.translate("restart"))
+        self.add_clip_button.setText(self.translate("add_clip"))
+        self.duplicate_clip_button.setText(self.translate("duplicate_clip"))
+        self.remove_clip_button.setText(self.translate("remove_clip"))
+        self.add_track_button.setText(self.translate("add_track"))
+        self.add_marker_button.setText(self.translate("add_marker"))
+        self.rename_marker_button.setText(self.translate("rename_marker"))
+        self.remove_marker_button.setText(self.translate("remove_marker"))
+        self.fit_button.setText(self.translate("fit_duration"))
+        self.activation_button.setText(self.translate("add_activation"))
+        self.add_actor_button.setText(self.translate("add_actor"))
+        self.remove_actor_button.setText(self.translate("remove_actor"))
+        self.timeline_zoom_label.setText(self.translate("timeline_zoom"))
+        self.playhead_label.setText(self.translate("playhead"))
+        self.actors_label.setText(self.translate("actors"))
+        self.timeline_label.setText(self.translate("timeline"))
+        self.markers_label.setText(self.translate("markers"))
 
     def set_document(self, document: MapDocument | None) -> None:
         self.document = document; self.refresh()
@@ -218,7 +252,7 @@ class SceneEditorWidget(QWidget):
     def _scene_changed(self, row: int) -> None:
         del row; scene = self._current(); self.selected_clip = None; self.selected_marker = -1
         if scene is None:
-            self.inspector.clear("No scene selected"); self.timeline.set_scene(None); self.markers.clear(); self.actors.clear(); self.status.setText("No scene selected"); return
+            self.inspector.clear(self.translate("no_scene_selected")); self.timeline.set_scene(None); self.markers.clear(); self.actors.clear(); self.status.setText(self.translate("no_scene_selected")); return
         self.inspector.set_object(str(scene.get("id", "Scene")), scene); duration = max(1, int(scene.get("durationTicks", 1))); self.playhead.setRange(0, duration); self.playhead.setValue(0)
         self.actors.clear(); [self.actors.addItem(f"{actor.get('slotId', '')} ({actor.get('kind', 'player')})") for actor in scene.get("actors", []) if isinstance(actor, dict)] if isinstance(scene.get("actors"), list) else None
         self.track_selector.blockSignals(True); self.track_selector.clear();
@@ -227,7 +261,7 @@ class SceneEditorWidget(QWidget):
         self.track_selector.blockSignals(False); self._track_changed(self.track_selector.currentIndex()); self.markers.clear()
         for marker in scene.get("markers", []) if isinstance(scene.get("markers"), list) else []:
             if isinstance(marker, dict): self.markers.addItem(f"{marker.get('name', 'marker')} @ {marker.get('tick', 0)}")
-        self._refresh_timeline(); self.preview.set_state(scene, 0); issues = validate_scene(scene, self.document.width * self.document.tile_size, self.document.height * self.document.tile_size); self.diagnostics_changed.emit(issues); self.status.setText(f"Scene {scene.get('id', '')} — {len(issues)} diagnostic(s)")
+        self._refresh_timeline(); self.preview.set_state(scene, 0); issues = validate_scene(scene, self.document.width * self.document.tile_size, self.document.height * self.document.tile_size); self.diagnostics_changed.emit(issues); self.status.setText(self.translate("scene_status").format(scene=scene.get("id", ""), count=len(issues)))
 
     def _refresh_timeline(self) -> None: self.timeline.set_scene(self._current(), self.selected_clip)
     def _clip_selected(self, track: int, clip: int) -> None: self.selected_clip = (track, clip); self._refresh_timeline()
@@ -273,14 +307,23 @@ class SceneEditorWidget(QWidget):
 
     def _delete_scene(self) -> None:
         if self.document and self.scenes.currentRow() >= 0:
+            scene = self._current()
+            scene_id = str(scene.get("id", "")) if scene else ""
+            answer = QMessageBox.question(
+                self, self.translate("delete"),
+                self.translate("scene_delete_confirm").format(scene_id=scene_id),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
             row = self.scenes.currentRow(); self.document.mutate("Delete Scene", lambda: self.document.data.get("scenes", []).pop(row)); self.refresh(); self.changed.emit()
 
     def _add_actor(self) -> None:
         scene = self._current()
         if not self.document or scene is None: return
-        slot, accepted = QInputDialog.getText(self, "Add Scene Actor", "Slot ID:")
+        slot, accepted = QInputDialog.getText(self, self.translate("add_scene_actor"), self.translate("scene_actor_slot"))
         if not accepted or not slot.strip(): return
-        kind, accepted = QInputDialog.getItem(self, "Add Scene Actor", "Kind:", list(SCENE_ACTOR_KINDS), 1, False)
+        kind, accepted = QInputDialog.getItem(self, self.translate("add_scene_actor"), self.translate("scene_kind"), list(SCENE_ACTOR_KINDS), 1, False)
         if accepted:
             instance_id: int | None = None
             if kind in {"npc", "enemy"}:
@@ -289,9 +332,9 @@ class SceneEditorWidget(QWidget):
                 choices = [f"{value.get('id')}: {value.get('definitionId', '')}"
                            for value in values if isinstance(value, dict) and isinstance(value.get("id"), int)] if isinstance(values, list) else []
                 if not choices:
-                    self.status.setText(f"Place an {kind} instance on the map first")
+                    self.status.setText(self.translate("scene_actor_requires_instance").format(kind=kind))
                     return
-                chosen, accepted = QInputDialog.getItem(self, "Add Scene Actor", "Instance:", choices, 0, False)
+                chosen, accepted = QInputDialog.getItem(self, self.translate("add_scene_actor"), self.translate("scene_actor_instance"), choices, 0, False)
                 if not accepted:
                     return
                 instance_id = int(chosen.split(":", 1)[0])
@@ -306,15 +349,15 @@ class SceneEditorWidget(QWidget):
     def _add_track(self) -> None:
         scene = self._current()
         if not self.document or scene is None: return
-        kind, accepted = QInputDialog.getItem(self, "Add Scene Track", "Kind:", list(SCENE_TRACK_KINDS), 0, False)
+        kind, accepted = QInputDialog.getItem(self, self.translate("add_scene_track"), self.translate("scene_kind"), list(SCENE_TRACK_KINDS), 0, False)
         if accepted:
             actor_slot = ""
             if kind == "actor":
                 actors = [str(value.get("slotId", "")) for value in scene.get("actors", []) if isinstance(value, dict) and value.get("slotId")]
                 if not actors:
-                    self.status.setText("Add a scene actor before adding an actor track")
+                    self.status.setText(self.translate("scene_actor_track_requires_actor"))
                     return
-                actor_slot, accepted = QInputDialog.getItem(self, "Add Scene Track", "Actor:", actors, 0, False)
+                actor_slot, accepted = QInputDialog.getItem(self, self.translate("add_scene_track"), self.translate("actors"), actors, 0, False)
                 if not accepted:
                     return
             self.document.mutate("Add Scene Track", lambda: add_track(scene, kind, actor_slot)); self.changed.emit(); self._scene_changed(self.scenes.currentRow())
@@ -322,9 +365,9 @@ class SceneEditorWidget(QWidget):
     def _add_clip(self) -> None:
         scene = self._current(); track = self.track_selector.currentData()
         if not self.document or scene is None or not isinstance(track, int): return
-        start, accepted = QInputDialog.getInt(self, "Add Clip", "Start tick:", self.playhead.value(), 0, 2_147_483_647, 1)
+        start, accepted = QInputDialog.getInt(self, self.translate("add_clip"), self.translate("scene_start_tick"), self.playhead.value(), 0, 2_147_483_647, 1)
         if not accepted: return
-        duration, accepted = QInputDialog.getInt(self, "Add Clip", "Duration ticks:", 20, 0, 2_147_483_647, 1)
+        duration, accepted = QInputDialog.getInt(self, self.translate("add_clip"), self.translate("scene_duration_ticks"), 20, 0, 2_147_483_647, 1)
         if not accepted: return
         kind = str(self.clip_kind.currentText())
         tracks = scene.get("tracks", [])
@@ -364,7 +407,7 @@ class SceneEditorWidget(QWidget):
     def _add_marker(self) -> None:
         scene = self._current()
         if not self.document or scene is None: return
-        name, accepted = QInputDialog.getText(self, "Add Marker", "Name:")
+        name, accepted = QInputDialog.getText(self, self.translate("add_marker"), self.translate("scene_marker_name"))
         if accepted and name.strip(): self.document.mutate("Add Scene Marker", lambda: add_marker(scene, name, self.playhead.value())); self.changed.emit(); self._scene_changed(self.scenes.currentRow())
 
     def _marker_selected(self, row: int) -> None:
@@ -374,7 +417,7 @@ class SceneEditorWidget(QWidget):
     def _rename_marker(self) -> None:
         scene = self._current(); markers = scene.get("markers", []) if scene else []
         if not self.document or not scene or self.selected_marker < 0 or not isinstance(markers, list) or self.selected_marker >= len(markers): return
-        old = markers[self.selected_marker]; name, accepted = QInputDialog.getText(self, "Rename Marker", "Name:", text=str(old.get("name", "marker")) if isinstance(old, dict) else "marker")
+        old = markers[self.selected_marker]; name, accepted = QInputDialog.getText(self, self.translate("rename_marker"), self.translate("scene_marker_name"), text=str(old.get("name", "marker")) if isinstance(old, dict) else "marker")
         if accepted and name.strip(): self.document.mutate("Rename Scene Marker", lambda: rename_marker(scene, self.selected_marker, name)); self.changed.emit(); self._scene_changed(self.scenes.currentRow())
 
     def _remove_marker(self) -> None:
@@ -393,7 +436,7 @@ class SceneEditorWidget(QWidget):
         scene_id = str(scene.get("id", ""))
         rules = self.document.data.setdefault("worldRules", [])
         if not isinstance(rules, list):
-            self.status.setText("Map world rules are not an array")
+            self.status.setText(self.translate("scene_world_rules_invalid"))
             return
         existing_ids = {str(value.get("id")) for value in rules if isinstance(value, dict)}
         number = len(rules) + 1
@@ -405,13 +448,13 @@ class SceneEditorWidget(QWidget):
                 "conditions": [], "actions": [{"kind": "startScene", "target": scene_id}]}
         self.document.mutate("Add Scene Activation", lambda: rules.append(rule))
         self.changed.emit()
-        self.status.setText(f"Activation added for {scene_id}")
+        self.status.setText(self.translate("scene_activation_added").format(scene=scene_id))
 
     def _playhead_changed(self, value: int) -> None: self.preview.set_state(self._current(), value)
     def _toggle_play(self) -> None:
-        if self.play_timer.isActive(): self.play_timer.stop(); self.play_button.setText("Play")
-        else: self.play_timer.start(); self.play_button.setText("Pause")
-    def _restart(self) -> None: self.playhead.setValue(0); self.play_timer.stop(); self.play_button.setText("Play")
+        if self.play_timer.isActive(): self.play_timer.stop(); self.play_button.setText(self.translate("play"))
+        else: self.play_timer.start(); self.play_button.setText(self.translate("pause"))
+    def _restart(self) -> None: self.playhead.setValue(0); self.play_timer.stop(); self.play_button.setText(self.translate("play"))
     def _advance_playhead(self) -> None:
         if self.playhead.value() >= self.playhead.maximum(): self._restart()
         else: self.playhead.setValue(self.playhead.value() + 1)

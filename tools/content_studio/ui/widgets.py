@@ -108,8 +108,9 @@ class StructuredInspector(QWidget):
     collection_changed = Signal(str, str)
     collection_value_requested = Signal(str, object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent)
+        self.translate = translator or Translator()
         self._root: JsonValue | None = None
         self._prefix = ""
         self._workspace: ContentWorkspace | None = None
@@ -128,9 +129,9 @@ class StructuredInspector(QWidget):
         layout.addWidget(self._title)
         layout.addWidget(self._scroll, 1)
 
-    def clear(self, title: str = "No selection") -> None:
+    def clear(self, title: str | None = None) -> None:
         self._root = None
-        self._title.setText(title)
+        self._title.setText(title if title is not None else self.translate("no_selection"))
         self._clear_form()
 
     def set_object(self, title: str, value: JsonValue, prefix: str = "") -> None:
@@ -213,7 +214,7 @@ class StructuredInspector(QWidget):
                     group_layout.addLayout(nested)
                     if isinstance(child, list):
                         self._collection_buttons(group_layout, child_path)
-                    remove = QPushButton("Delete item")
+                    remove = QPushButton(self.translate("delete_item"))
                     remove.setIcon(icon("delete"))
                     remove.clicked.connect(lambda unused=False, p=path, i=index: self.collection_changed.emit(p, f"remove_at:{i}"))
                     group_layout.addWidget(remove)
@@ -221,7 +222,7 @@ class StructuredInspector(QWidget):
                 else:
                     self._add_editor(form, f"[{index}]", child_path, child, (path, index))
             if not value:
-                form.addRow(QLabel("(empty collection)"))
+                form.addRow(QLabel(self.translate("empty_collection")))
         else:
             self._add_editor(form, path, path, value)
 
@@ -233,7 +234,7 @@ class StructuredInspector(QWidget):
         if not value:
             form.addRow(
                 QLabel(
-                    "(empty collection)"
+                    self.translate("empty_collection")
                 )
             )
             return
@@ -353,7 +354,7 @@ class StructuredInspector(QWidget):
         row_layout.addWidget(editor, 1)
         remove = QPushButton("×")
         remove.setIcon(icon("close"))
-        remove.setToolTip("Delete item")
+        remove.setToolTip(self.translate("delete_item"))
         remove.clicked.connect(
             lambda unused=False, p=remove_from[0], i=remove_from[1]:
             self.collection_changed.emit(p, f"remove_at:{i}"))
@@ -369,8 +370,8 @@ class StructuredInspector(QWidget):
             return
 
         buttons = QHBoxLayout()
-        add = QPushButton("Add")
-        remove = QPushButton("Remove Last")
+        add = QPushButton(self.translate("add"))
+        remove = QPushButton(self.translate("remove_last"))
         add.setIcon(icon("add"))
         remove.setIcon(icon("delete"))
 
@@ -599,20 +600,20 @@ class ContentBrowser(QWidget):
         self.index = AuthoredEntityIndex(workspace)
         self._selected: ContentDefinition | None = None
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search display name / definitionId")
+        self.search.setPlaceholderText(self.translate("search_definitions"))
         self.search.textChanged.connect(self.refresh)
         self.category = QComboBox()
         self.category.currentIndexChanged.connect(self.refresh)
         self.list = PayloadListWidget()
         self.list.payload_factory = self._drag_payload
         self.list.currentItemChanged.connect(self._selection_changed)
-        self.create_button = QPushButton("Create")
-        self.delete_button = QPushButton("Delete")
-        self.duplicate_button = QPushButton("Duplicate")
+        self.create_button = QPushButton(self.translate("create"))
+        self.delete_button = QPushButton(self.translate("delete"))
+        self.duplicate_button = QPushButton(self.translate("duplicate"))
         self.rename_button = QPushButton(self.translate("rename"))
-        self.place_button = QPushButton("Place in Map")
-        self.usages_button = QPushButton("Find Usages")
-        self.back_button = QPushButton("Back")
+        self.place_button = QPushButton(self.translate("place_in_map"))
+        self.usages_button = QPushButton(self.translate("find_usages"))
+        self.back_button = QPushButton(self.translate("back"))
         self.create_button.setIcon(icon("add"))
         self.delete_button.setIcon(icon("delete"))
         self.duplicate_button.setIcon(icon("duplicate"))
@@ -657,7 +658,14 @@ class ContentBrowser(QWidget):
 
     def set_translator(self, translator: Translator) -> None:
         self.translate = translator
+        self.search.setPlaceholderText(self.translate("search_definitions"))
+        self.create_button.setText(self.translate("create"))
+        self.delete_button.setText(self.translate("delete"))
+        self.duplicate_button.setText(self.translate("duplicate"))
         self.rename_button.setText(self.translate("rename"))
+        self.place_button.setText(self.translate("place_in_map"))
+        self.usages_button.setText(self.translate("find_usages"))
+        self.back_button.setText(self.translate("back"))
 
     def select_definition(self, category: str, definition_id: str) -> None:
         if self.allowed and category not in self.allowed:
@@ -771,7 +779,7 @@ class ContentBrowser(QWidget):
         if self.workspace and self._selected and self._selected.origin == "project":
             answer = QMessageBox.question(
                 self, self.translate("delete"),
-                f"Delete {self._selected.definition_id}?",
+                self.translate("delete_definition_confirm").format(definition_id=self._selected.definition_id),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
@@ -920,7 +928,7 @@ class TilePalette(QWidget):
         self.tiles.setIconSize(QPixmap(32, 32).size())
         self.tiles.setGridSize(QPixmap(40, 40).size())
         self.tiles.itemSelectionChanged.connect(self._palette_selection_changed)
-        self.preview = QLabel("No tileset selected")
+        self.preview = QLabel(self.translate("no_tileset_selected"))
         self.preview.setWordWrap(True)
         self.preview.setMinimumHeight(44)
         layout = QFormLayout(self)
@@ -1013,19 +1021,33 @@ class SemanticPalette(QWidget):
     tile_selected = Signal(str, int, int)
     stamp_selected = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent)
+        self.translate = translator or Translator()
         self.workspace: ContentWorkspace | None = None
         self.family = QComboBox(); self.family.currentTextChanged.connect(self.refresh)
         self.tiles = QListWidget(); self.tiles.currentItemChanged.connect(self._tile_selected)
         self.stamps = QListWidget(); self.stamps.currentItemChanged.connect(self._stamp_selected)
-        tile_box = QVBoxLayout(); tile_box.addWidget(QLabel("Semantic Tiles")); tile_box.addWidget(self.family); tile_box.addWidget(self.tiles, 1)
-        stamp_box = QVBoxLayout(); stamp_box.addWidget(QLabel("Stamps")); stamp_box.addWidget(self.stamps, 1)
-        tabs = QTabWidget(); tile_widget = QWidget(); tile_widget.setLayout(tile_box); stamp_widget = QWidget(); stamp_widget.setLayout(stamp_box); tabs.addTab(tile_widget, "Semantics"); tabs.addTab(stamp_widget, "Stamps")
+        self._tiles_label = QLabel(self.translate("semantic_tiles"))
+        self._stamps_label = QLabel(self.translate("stamps"))
+        tile_box = QVBoxLayout(); tile_box.addWidget(self._tiles_label); tile_box.addWidget(self.family); tile_box.addWidget(self.tiles, 1)
+        stamp_box = QVBoxLayout(); stamp_box.addWidget(self._stamps_label); stamp_box.addWidget(self.stamps, 1)
+        tabs = QTabWidget(); tile_widget = QWidget(); tile_widget.setLayout(tile_box); stamp_widget = QWidget(); stamp_widget.setLayout(stamp_box); tabs.addTab(tile_widget, self.translate("semantics")); tabs.addTab(stamp_widget, self.translate("stamps"))
+        self._tabs = tabs
         layout = QVBoxLayout(self); layout.addWidget(tabs)
 
+    def retranslate(self, translator: Translator) -> None:
+        self.translate = translator
+        self._tiles_label.setText(self.translate("semantic_tiles"))
+        self._stamps_label.setText(self.translate("stamps"))
+        self._tabs.setTabText(0, self.translate("semantics"))
+        self._tabs.setTabText(1, self.translate("stamps"))
+        self.preview.setText(self.translate("no_tileset_selected"))
+        if self.family.count():
+            self.family.setItemText(0, self.translate("all"))
+
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
-        self.workspace = workspace; self.family.blockSignals(True); self.family.clear(); self.family.addItem("All")
+        self.workspace = workspace; self.family.blockSignals(True); self.family.clear(); self.family.addItem(self.translate("all"), "All")
         families: set[str] = set()
         if workspace:
             families = {str(value.data.get("family", "")) for value in workspace.definitions("tileSemantics") if value.data.get("family")}
@@ -1034,7 +1056,9 @@ class SemanticPalette(QWidget):
     def refresh(self) -> None:
         self.tiles.clear(); self.stamps.clear()
         if not self.workspace: return
-        selected_family = self.family.currentText()
+        selected_family = self.family.currentData()
+        if selected_family is None:
+            selected_family = self.family.currentText()
         for definition in self.workspace.definitions("tileSemantics"):
             if selected_family != "All" and str(definition.data.get("family", "")) != selected_family: continue
             item = QListWidgetItem(f"{definition.display_name} [{definition.definition_id}]"); item.setData(Qt.ItemDataRole.UserRole, definition.definition_id); self.tiles.addItem(item)
@@ -1209,16 +1233,17 @@ class LayersPanel(QWidget):
     changed = Signal()
     selected = Signal(int)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent)
+        self.translate = translator or Translator()
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._row_changed)
-        self.add_button = QPushButton("Add")
-        self.rename_button = QPushButton("Rename")
-        self.up_button = QPushButton("Move Up")
-        self.down_button = QPushButton("Move Down")
-        self.visibility_button = QPushButton("Hide/Show")
-        self.remove_button = QPushButton("Remove")
+        self.add_button = QPushButton(self.translate("add"))
+        self.rename_button = QPushButton(self.translate("rename"))
+        self.up_button = QPushButton(self.translate("move_up"))
+        self.down_button = QPushButton(self.translate("move_down"))
+        self.visibility_button = QPushButton(self.translate("hide_show"))
+        self.remove_button = QPushButton(self.translate("remove"))
         self.add_button.setIcon(icon("add"))
         self.rename_button.setIcon(icon("rename"))
         self.up_button.setIcon(icon("move_up"))
@@ -1305,11 +1330,28 @@ class LayersPanel(QWidget):
     def _remove(self) -> None:
         if not self.document or self.list.currentRow() < 0:
             return
+        layer = self.document.layers[self.list.currentRow()]  # type: ignore[attr-defined]
+        answer = QMessageBox.question(
+            self, self.translate("remove"),
+            self.translate("layer_remove_confirm").format(name=layer.get("name", "")),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
         try:
             self.document.remove_layer(self.list.currentRow())  # type: ignore[attr-defined]
         except ValueError:
             return
         self.refresh(); self.changed.emit()
+
+    def retranslate(self, translator: Translator) -> None:
+        self.translate = translator
+        self.add_button.setText(self.translate("add"))
+        self.rename_button.setText(self.translate("rename"))
+        self.up_button.setText(self.translate("move_up"))
+        self.down_button.setText(self.translate("move_down"))
+        self.visibility_button.setText(self.translate("hide_show"))
+        self.remove_button.setText(self.translate("remove"))
 
 
 class CollectionPanel(QWidget):
@@ -1321,15 +1363,17 @@ class CollectionPanel(QWidget):
 
     changed = Signal()
 
-    def __init__(self, collection: str, label: str, parent: QWidget | None = None) -> None:
+    def __init__(self, collection: str, label: str, parent: QWidget | None = None,
+                 translator: Translator | None = None) -> None:
         super().__init__(parent)
         self.collection = collection
         self.setWindowTitle(label)
         self.document = None
+        self.translate = translator or Translator()
         self.entries = QListWidget()
-        self.inspector = StructuredInspector()
-        self.add_button = QPushButton("Add")
-        self.delete_button = QPushButton("Delete")
+        self.inspector = StructuredInspector(translator=self.translate)
+        self.add_button = QPushButton(self.translate("add"))
+        self.delete_button = QPushButton(self.translate("delete"))
         self.add_button.clicked.connect(self._add)
         self.delete_button.clicked.connect(self._delete)
         self.entries.currentRowChanged.connect(lambda unused: self._selection_changed())
@@ -1433,15 +1477,21 @@ class AssetBrowser(QWidget):
     selected = Signal(object)
     assign_requested = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translator: Translator | None = None) -> None:
         super().__init__(parent)
+        self.translate = translator or Translator()
         self.catalog = AssetCatalog()
-        self.search = QLineEdit(); self.search.setPlaceholderText("Search assets")
+        self.search = QLineEdit(); self.search.setPlaceholderText(self.translate("search_assets"))
         self.search.textChanged.connect(self.refresh)
         self.list = QListWidget(); self.list.currentItemChanged.connect(self._selected)
-        self.assign_button = QPushButton("Assign to selected definition")
+        self.assign_button = QPushButton(self.translate("assign_to_definition"))
         self.assign_button.clicked.connect(self._assign)
         layout = QVBoxLayout(self); layout.addWidget(self.search); layout.addWidget(self.list); layout.addWidget(self.assign_button)
+
+    def retranslate(self, translator: Translator) -> None:
+        self.translate = translator
+        self.search.setPlaceholderText(self.translate("search_assets"))
+        self.assign_button.setText(self.translate("assign_to_definition"))
 
     def set_roots(self, game_root: Path | None, content_root: Path | None) -> None:
         self.catalog.refresh(game_root, content_root); self.refresh()

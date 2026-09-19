@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -698,22 +699,37 @@ class ItemLibraryWidget(QWidget):
             True
         )
 
-        buttons = QHBoxLayout()
+        # Full-width rows keep the PT labels readable at the default
+        # narrow panel width; destructive action goes last
+        # (see UI/UX audit G6).
+        buttons = QGridLayout()
 
         buttons.addWidget(
-            self.create_button
+            self.create_button,
+            0,
+            0,
         )
 
         buttons.addWidget(
-            self.configure_button
+            self.configure_button,
+            0,
+            1,
         )
 
         buttons.addWidget(
-            self.delete_button
+            self.place_button,
+            1,
+            0,
+            1,
+            2,
         )
 
         buttons.addWidget(
-            self.place_button
+            self.delete_button,
+            2,
+            0,
+            1,
+            2,
         )
 
         left = QWidget(

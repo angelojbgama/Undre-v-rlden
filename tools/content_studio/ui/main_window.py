@@ -206,7 +206,7 @@ class MainWindow(QMainWindow):
         self.map_browser.remove_requested.connect(self.remove_map)
         self.map_browser.entry_requested.connect(self.set_entry_map)
         self.map_browser.edit_requested.connect(self.edit_map)
-        self.layers = LayersPanel()
+        self.layers = LayersPanel(translator=self.translator)
         self.layers.changed.connect(self._map_changed)
         self.layers.selected.connect(self._layer_selected)
         self.tileset_library = TilesetLibraryWidget(self.workspace, self.project, self.asset_root, self.translator)
@@ -250,7 +250,7 @@ class MainWindow(QMainWindow):
         self.item_library.status_changed.connect(self.set_status)
         # Compatibility alias for integrations that used the old palette name.
         self.tile_palette = self.tileset_library
-        self.semantic_palette = SemanticPalette()
+        self.semantic_palette = SemanticPalette(translator=self.translator)
         self.semantic_palette.tile_selected.connect(self._tile_selected)
         self.semantic_palette.stamp_selected.connect(self._stamp_selected)
         self.semantic_editor = TileSemanticEditor(self.workspace, self.semantic_catalog, self.translator)
@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         })
         self.map_elements.selected.connect(self._map_element_selected)
         self.map_collections = {
-            name: CollectionPanel(name, label)
+            name: CollectionPanel(name, label, translator=self.translator)
             for name, label in (("links", "Map Links"), ("playerSpawns", "Player Spawns"), ("regions", "Regions"), ("worldRules", "World Rules"), ("encounters", "Encounters"))
         }
         for panel in self.map_collections.values():
@@ -273,7 +273,7 @@ class MainWindow(QMainWindow):
         self.entity_browser.selected.connect(self._entity_selected)
         self.entity_browser.place_requested.connect(self._place_definition)
         self.entity_browser.definition_changed.connect(self._content_changed)
-        self.map_inspector = StructuredInspector()
+        self.map_inspector = StructuredInspector(translator=self.translator)
         self.map_inspector.changed.connect(self._edit_map_field)
         self.map_inspector.collection_changed.connect(self._edit_map_collection)
         self.map_inspector.collection_value_requested.connect(
@@ -322,7 +322,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.semantic_palette)
         self._map_panels.addWidget(self.map_elements)
         self._map_panels.addWidget(self.entity_browser)
-        self.scene_editor = SceneEditorWidget()
+        self.scene_editor = SceneEditorWidget(translator=self.translator)
         self.scene_editor.changed.connect(self._map_changed)
         self.scene_editor.diagnostics_changed.connect(self._refresh_diagnostics)
         self._map_panels.addWidget(self.scene_editor)
@@ -344,10 +344,10 @@ class MainWindow(QMainWindow):
         self.content_browser.find_usages_requested.connect(self._show_usages)
         self.content_browser.back_requested.connect(self._back_definition)
         self.content_browser.definition_changed.connect(self._content_changed)
-        self.content_inspector = StructuredInspector()
+        self.content_inspector = StructuredInspector(translator=self.translator)
         self.content_inspector.changed.connect(self._edit_content_field)
         self.content_inspector.collection_changed.connect(self._edit_content_collection)
-        self.asset_browser = AssetBrowser()
+        self.asset_browser = AssetBrowser(translator=self.translator)
         self.asset_browser.selected.connect(self._asset_selected)
         self.asset_browser.assign_requested.connect(self._assign_asset)
         self.preview = PreviewWidget()
@@ -466,6 +466,9 @@ class MainWindow(QMainWindow):
         self.attack_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
+        self.scene_editor.retranslate(self.translator)
+        self.layers.retranslate(self.translator)
+        self.asset_browser.retranslate(self.translator)
         self.map_canvas.set_translator(self.translator)
         self.map_browser.set_translator(self.translator)
         self.mode_tabs.setTabText(0, self.translator("maps_mode"))
@@ -571,7 +574,7 @@ class MainWindow(QMainWindow):
             return
         usages = self.workspace.find_usages(definition.definition_id)
         if not usages:
-            self.set_status("No usages found")
+            self.set_status(self.translator("no_usages_found"))
             return
         labels = [f"{item.display_name} [{item.category}:{item.definition_id}]" for item in usages]
         chosen, accepted = QInputDialog.getItem(self, "Find Usages", "Referenced by:", labels, 0, False)
@@ -582,7 +585,7 @@ class MainWindow(QMainWindow):
 
     def _back_definition(self) -> None:
         if not self._definition_history:
-            self.set_status("No previous definition")
+            self.set_status(self.translator("no_previous_definition"))
             return
         category, definition_id = self._definition_history.pop()
         self._last_content_definition = None
@@ -591,7 +594,7 @@ class MainWindow(QMainWindow):
     def _asset_selected(self, entry: object) -> None:
         if entry is None:
             self.preview.show_asset(None)
-            self.set_status("No asset selected")
+            self.set_status(self.translator("no_asset_selected"))
             return
         self.preview.show_asset(entry)  # type: ignore[arg-type]
         self.set_status(str(entry.relative_path))  # type: ignore[attr-defined]
@@ -601,7 +604,7 @@ class MainWindow(QMainWindow):
             return
         definition = self.workspace.find(self.selected_definition.category, self.selected_definition.definition_id)
         if definition is None or definition.origin != "project":
-            self.set_status("Builtin definitions are read-only")
+            self.set_status(self.translator("builtin_read_only"))
             return
         try:
             if definition.category == "visualImages":
@@ -613,9 +616,9 @@ class MainWindow(QMainWindow):
                     return
                 self.workspace.update(definition, "relativeAssetPath", entry.relative_path.as_posix())  # type: ignore[attr-defined]
             else:
-                self.set_status("Select a Visual Image or Tileset definition to assign an asset")
+                self.set_status(self.translator("select_visual_or_tileset"))
                 return
-            self._refresh_all(); self.set_status("Asset assigned")
+            self._refresh_all(); self.set_status(self.translator("asset_assigned"))
         except (KeyError, TypeError, ValueError) as error:
             self.set_status(str(error))
 
@@ -624,7 +627,7 @@ class MainWindow(QMainWindow):
             try:
                 self.command_coordinator.mark("content")
                 self.workspace.update(self.selected_definition, path, value)
-                self.set_status("Definition edited")
+                self.set_status(self.translator("definition_edited"))
                 self._refresh_diagnostics(self.workspace.validate_local(self.selected_definition))
                 self._refresh_all()
             except (KeyError, TypeError, ValueError) as error:
@@ -636,14 +639,14 @@ class MainWindow(QMainWindow):
         try:
             self.command_coordinator.mark("content")
             self.workspace.mutate_collection(self.selected_definition, path, action)
-            self.set_status("Collection updated")
+            self.set_status(self.translator("collection_updated"))
             self._refresh_all()
         except (KeyError, TypeError, ValueError) as error:
             self.set_status(str(error))
 
     def _map_selection_changed(self, selection: object) -> None:
         if not selection:
-            self.map_inspector.clear("No selection")
+            self.map_inspector.clear()
             self.door_instance_editor.clear()
             self.object_transition_editor.clear()
             self.delete_map_selection_button.setEnabled(False)
@@ -1267,7 +1270,7 @@ class MainWindow(QMainWindow):
         self.mode_tabs.setCurrentIndex(0)
         self._clear_toolbar_tools()
         self.map_canvas.set_entity_selection(category, definition_id)
-        self.set_status(f"Placement active: {definition_id}. Click the map or press Escape.")
+        self.set_status(self.translator("placement_active").format(definition_id=definition_id))
 
     def _migrate_legacy_tile_collision(self):
         if self.workspace is None:
@@ -1285,7 +1288,9 @@ class MainWindow(QMainWindow):
 
     def set_tool(self, tool: str) -> None:
         self.map_canvas.set_tool(tool)
-        self.set_status(f"Tool: {tool}")
+        tool_names = {"select": "tools_select", "erase": "tools_erase", "none": "tool_none"}
+        self.set_status(self.translator("tool_status").format(
+            tool=self.translator(tool_names.get(tool, "tool_none"))))
 
     def _select_tool_toggled(self, checked: bool) -> None:
         if checked:
@@ -1329,7 +1334,7 @@ class MainWindow(QMainWindow):
 
     def import_tileset(self) -> None:
         if self.workspace is None:
-            self.show_error("The repository content directory is unavailable")
+            self.show_error(self.translator("content_directory_unavailable"))
             return
         self.tileset_library.add_files()
 
@@ -1371,7 +1376,7 @@ class MainWindow(QMainWindow):
             return
         self.project = WorldProject.new()
         self.project.path = self.default_project_path
-        self._refresh_all(); self.set_status("New blank project")
+        self._refresh_all(); self.set_status(self.translator("new_blank_project"))
 
     def new_map(self) -> None:
         folders = self._map_folders()
@@ -1393,7 +1398,7 @@ class MainWindow(QMainWindow):
     def edit_map(self, map_id: str) -> None:
         document = self.project.map_by_id(map_id)
         if document is None:
-            self.show_error("map was not found")
+            self.show_error(self.translator("map_not_found"))
             return
         folders = self._map_folders()
         dialog = MapPropertiesDialog(
@@ -1453,7 +1458,7 @@ class MainWindow(QMainWindow):
                 return
             self.project.save()
             if self.workspace: self.workspace.save_all()
-            self.set_status("Saved")
+            self.set_status(self.translator("saved"))
         except (OSError, ValueError) as error:
             self.show_error(str(error))
 
@@ -1467,7 +1472,7 @@ class MainWindow(QMainWindow):
                 if old_key != new_key and old_key in self.preferences.map_folders:
                     self.preferences.map_folders[new_key] = self.preferences.map_folders.pop(old_key)
                     save_preferences(self.preferences)
-                self.set_status("Saved")
+                self.set_status(self.translator("saved"))
             except (OSError, ValueError) as error: self.show_error(str(error))
 
     def save_all(self) -> None:
@@ -1490,12 +1495,12 @@ class MainWindow(QMainWindow):
         else:
             issues.append(Diagnostic("error", "no content workspace selected", code="workspace_missing"))
         self._refresh_diagnostics(issues)
-        self.set_status("Validation passed" if not any(issue.is_error for issue in issues) else "Validation failed")
+        self.set_status(self.translator("validation_passed") if not any(issue.is_error for issue in issues) else self.translator("validation_failed"))
 
     def export_maps(self) -> None:
         if not self.workspace:
             self.show_error(
-                "Open a project content workspace before exporting"
+                self.translator("workspace_required_export")
             )
             return
 
@@ -1517,7 +1522,7 @@ class MainWindow(QMainWindow):
         result, issues = WorldExportService().export(
             self.project, Path(directory), self.workspace)
         self._refresh_diagnostics(issues)
-        self.set_status("DMAP export completed" if result.ok else "DMAP export failed")
+        self.set_status(self.translator("export_completed") if result.ok else self.translator("export_failed"))
 
     def _update_playtest_icon(self) -> None:
         """Mirror the playtest state on the toolbar icon (play/stop)."""
@@ -1528,7 +1533,7 @@ class MainWindow(QMainWindow):
         if self.playtest.process and self.playtest.process.poll() is None:
             self.playtest.stop()
             self._update_playtest_icon()
-            self.set_status("Playtest stopped")
+            self.set_status(self.translator("playtest_stopped"))
             return
 
         if not self.workspace:
@@ -1551,7 +1556,7 @@ class MainWindow(QMainWindow):
             return
 
         success, issues = self.playtest.start(self.project, self.workspace, self.asset_root)
-        self._refresh_diagnostics(issues); self._update_playtest_icon(); self.set_status("Playtest started" if success else "Playtest failed")
+        self._refresh_diagnostics(issues); self._update_playtest_icon(); self.set_status(self.translator("playtest_started") if success else self.translator("playtest_failed"))
 
     def undo(self) -> None:
         changed = self.command_coordinator.undo(self.project.active_map, self.workspace)
@@ -1598,6 +1603,13 @@ class MainWindow(QMainWindow):
             )
 
     def remove_map(self, map_id: str) -> None:
+        answer = QMessageBox.question(
+            self, self.translator("map_remove"),
+            self.translator("map_remove_confirm").format(map_id=map_id),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
         try:
             self.project.remove_map(map_id)
             self._map_folders().pop(map_id, None)
@@ -1676,7 +1688,7 @@ class MainWindow(QMainWindow):
         try:
             paths = autosave(self.project, self.workspace)
             if paths:
-                self.set_status(f"Autosave written ({len(paths)} file(s))")
+                self.set_status(self.translator("autosave_written").format(count=len(paths)))
         except OSError as error:
             self._refresh_diagnostics([Diagnostic("error", f"autosave failed: {error}", code="autosave")])
 
@@ -1685,7 +1697,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
         self.diagnostics = diagnostics
-        self.diagnostics_view.setPlainText("\n".join(_format_diagnostic(issue) for issue in diagnostics) or "No diagnostics")
+        self.diagnostics_view.setPlainText("\n".join(_format_diagnostic(issue) for issue in diagnostics) or self.translator("no_diagnostics"))
 
     def has_unsaved_changes(self) -> bool:
         return self.project.has_unsaved_changes() or bool(self.workspace and self.workspace.dirty)

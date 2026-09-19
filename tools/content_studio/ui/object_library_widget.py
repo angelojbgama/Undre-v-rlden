@@ -779,7 +779,10 @@ class ObjectLibraryWidget(QWidget):
         self._timer = QTimer(self); self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._advance)
 
-        buttons = QHBoxLayout(); buttons.addWidget(self.create_button)
+        # Full-width stacked buttons keep the PT labels readable at the
+        # default narrow panel width (see UI/UX audit G6).
+        buttons = QVBoxLayout()
+        buttons.addWidget(self.create_button)
         buttons.addWidget(self.configure_button)
         buttons.addWidget(self.place_button)
         left = QWidget(); left_layout = QVBoxLayout(left)

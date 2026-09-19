@@ -54,6 +54,10 @@ def main() -> int:
     window.resize(1440, 900)
     window.show()
     app.processEvents()
+    # Deterministic panel widths: saved user preferences may collapse panels.
+    window._map_split.setSizes([320, 860, 340])
+    window._content_split.setSizes([320, 860, 340])
+    app.processEvents()
 
     # --- Map mode: every section tab -------------------------------------
     theme.apply_theme("light")
