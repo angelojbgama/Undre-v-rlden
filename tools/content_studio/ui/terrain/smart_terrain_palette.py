@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QImage, QIcon, QPixmap
+from PySide6.QtGui import QFontMetrics, QImage, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup, QFrame, QGridLayout, QLabel, QPushButton, QScrollArea,
     QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
@@ -14,6 +14,7 @@ from ...model.tile_semantics import TerrainFamily, TerrainProfile, TerrainSelect
 from ...services.localization import Translator
 from ...services.terrain_rule_service import RULE_SLOTS, TerrainRuleService
 from ...services.tile_semantic_catalog import TileSemanticCatalog
+from ..tile_thumbnails import tile_pixmap
 
 
 class TerrainFamilyCard(QToolButton):
@@ -27,17 +28,25 @@ class TerrainFamilyCard(QToolButton):
         self.setCheckable(True)
         self.setFixedSize(96, 96)
         self.setIcon(icon)
-        self.setIconSize(QSize(52, 52))
-        self.setText(family.removeprefix("terrain.") or family)
+        self.setIconSize(QSize(48, 48))
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         # A native tooltip would compete with the richer 3x3 preview window.
         self.setStatusTip(tooltip)
         self.setAccessibleDescription(tooltip)
+        self.setFamilyLabel(family)
         self.setStyleSheet(
             "QToolButton { border: 1px solid palette(mid); border-radius: 7px; padding: 5px; }"
             "QToolButton:hover { border-color: palette(highlight); background: palette(alternate-base); }"
             "QToolButton:checked { border: 2px solid palette(highlight); background: palette(alternate-base); }"
         )
+
+    def setFamilyLabel(self, label: str) -> None:  # noqa: N802 - Qt naming
+        # Long family ids wrapped and overlapped inside the fixed card
+        # (audit ST1): elide to a single line and keep the full name in
+        # the hover preview.
+        display = label.removeprefix("terrain.") or label
+        metrics = QFontMetrics(self.font())
+        self.setText(metrics.elidedText(display, Qt.TextElideMode.ElideRight, self.width() - 14))
 
     def enterEvent(self, event: object) -> None:
         self.preview_requested.emit(self.family, self)
@@ -122,9 +131,11 @@ class SmartTerrainPalette(QWidget):
         self.seed = QSpinBox()
         self.seed.setRange(-2_147_483_648, 2_147_483_647)
         self.seed.setValue(0)
+        self.seed.setToolTip(self.translate("terrain_seed_tip"))
         self.seed.valueChanged.connect(self._selection_changed)
         self.room = QPushButton(self.translate("room_brush"))
         self.room.setEnabled(False)
+        self.room.setToolTip(self.translate("room_brush_tip"))
         self.room.clicked.connect(self._room_requested)
         self.status = QLabel()
         self.status.setWordWrap(True)
@@ -208,8 +219,12 @@ class SmartTerrainPalette(QWidget):
         previous = self._selected_family
         while self.family_grid.count():
             item = self.family_grid.takeAt(0)
-            if item.widget() is not None:
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                # Detach now: deleteLater alone leaves the old card visible
+                # (stacked over the new one) until deferred deletion runs.
+                widget.setParent(None)
+                widget.deleteLater()
         self.family_cards.clear()
         self.family_group.deleteLater()
         self.family_group = QButtonGroup(self)
@@ -258,27 +273,7 @@ class SmartTerrainPalette(QWidget):
         return best
 
     def _tile_pixmap(self, tileset_id: str, source_index: int) -> QPixmap | None:
-        if self.workspace is None or self.asset_root is None:
-            return None
-        definition = self.workspace.find("tilesets", tileset_id)
-        if definition is None:
-            return None
-        relative = definition.data.get("relativeAssetPath")
-        if not isinstance(relative, str):
-            return None
-        image = self._image_cache.get(tileset_id)
-        if image is None:
-            image = QImage(str(self.asset_root / relative))
-            self._image_cache[tileset_id] = image
-        if image.isNull():
-            return None
-        columns = max(1, int(definition.data.get("columns", 1)))
-        tile_size = max(1, int(definition.data.get("tileSize", 16)))
-        tile = image.copy(
-            source_index % columns * tile_size,
-            source_index // columns * tile_size,
-            tile_size, tile_size)
-        return QPixmap.fromImage(tile) if not tile.isNull() else None
+        return tile_pixmap(self.workspace, self.asset_root, tileset_id, source_index, self._image_cache)
 
     def _show_preview(self, family: str, anchor: object) -> None:
         if isinstance(anchor, QWidget):
@@ -307,6 +302,10 @@ class SmartTerrainPalette(QWidget):
                 family=selection.family,
                 role=self.translate(selection.role),
             ))
+        elif self.family_cards:
+            # Families exist but none is picked yet (audit ST2): the old
+            # "none available" message contradicted the visible cards.
+            self.status.setText(self.translate("terrain_no_selection"))
         else:
             self.status.setText(self.translate("no_terrain_family"))
 

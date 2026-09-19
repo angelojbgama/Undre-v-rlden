@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2 e IN2 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 neste commit; SS1, ST1-ST3 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -108,9 +108,9 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 ### 4.9 Smart Terrain (SmartTerrainPalette)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| ST1 | P1 | **Cards com texto sobreposto** ("imported2" renderiza sobre outro rótulo) e mostram **ids crus** em vez de nomes de família. | Card com nome de exibição + mini-preview 3×3; corrigir layout/overlap. |
-| ST2 | P2 | Mensagem contraditória: cards existem em cima e embaixo lê-se "Nenhuma família semântica disponível". | Mostrar estado real ("família sem regra completa — clique para editar") ou ocultar. |
-| ST3 | P3 | "Seed determinística" e "Room / Area Brush" sem explicação (desabilitado sem motivo visível). | Tooltip + habilitar quando família selecionada com regra completa. |
+| ST1 ✅ | P1 | **Cards com texto sobreposto** ("imported2" renderiza sobre outro rótulo) e mostram **ids crus** em vez de nomes de família. | Card com nome de exibição + mini-preview 3×3; corrigir layout/overlap. |
+| ST2 ✅ | P2 | Mensagem contraditória: cards existem em cima e embaixo lê-se "Nenhuma família semântica disponível". | Mostrar estado real ("família sem regra completa — clique para editar") ou ocultar. |
+| ST3 ✅ | P3 | "Seed determinística" e "Room / Area Brush" sem explicação (desabilitado sem motivo visível). | Tooltip + habilitar quando família selecionada com regra completa. |
 
 ### 4.10 Editor de Tile Semântico (TileSemanticEditor)
 | ID | Pri | Problema | Proposta |
@@ -121,7 +121,7 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 ### 4.11 Semântica / Stamps (SemanticPalette)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| SS1 | P1 | Lista de **ids crus gigantes** (`semantic.rule.terrain.imported.wall.tileset.imported.outerCorner.north_west.40`) sem miniatura; inutilizável para escolher um stamp. | Lista por família/papel com miniatura do tile e nome curto; busca. |
+| SS1 ✅ | P1 | Lista de **ids crus gigantes** (`semantic.rule.terrain.imported.wall.tileset.imported.outerCorner.north_west.40`) sem miniatura; inutilizável para escolher um stamp. | Lista por família/papel com miniatura do tile e nome curto; busca. |
 | SS2 | P3 | Tabs internas "Semantics"/"Stamps" em EN (G1). | Traduzir. |
 
 ### 4.12 Elementos do Mapa (MapElementsPalette)
@@ -193,7 +193,7 @@ Fase 2 — **Fluxos de alta frequência**:
 8. **S2** Diagnósticos estruturados com navegação.
 
 Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
-9. **SS1/ST1** Semântica/Stamps e Smart Terrain (ids crus, overlap).
+9. ✅ **SS1/ST1-ST3** Semântica/Stamps (miniaturas, rótulos, busca) e Smart Terrain (overlap fantasma, status, tooltips).
 10. **SP1** Agrupamento de animações por spritesheet.
 11. **SE1** Grid 3×3 no editor semântico (reusar TerrainRuleDialog).
 12. **M1/L1/T2** Melhorias de MapBrowser/Layers/atlas.

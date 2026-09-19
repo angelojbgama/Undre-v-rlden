@@ -554,6 +554,7 @@ class MainWindow(QMainWindow):
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)
         self.semantic_palette.set_workspace(self.workspace)
+        self.semantic_palette.set_asset_root(self.asset_root)
         self.semantic_editor.set_workspace(self.workspace)
         self.smart_terrain.set_workspace(self.workspace)
         self.smart_terrain.set_asset_root(self.asset_root)

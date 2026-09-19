@@ -21,6 +21,7 @@ from ..interaction.drag_payload import StudioDragPayload
 from ..services.assets import AssetCatalog
 from ..services.localization import Translator
 from .icon_registry import icon
+from .tile_thumbnails import tile_pixmap
 from .item_stack_editor import ItemStackEditor
 
 _PATH_PART = re.compile(r"([^.[\]]+)|\[([0-9]+)\]")
@@ -1074,16 +1075,28 @@ class SemanticPalette(QWidget):
         super().__init__(parent)
         self.translate = translator or Translator()
         self.workspace: ContentWorkspace | None = None
+        self._asset_root: Path | None = None
+        self._thumb_cache: dict[str, QImage] = {}
         self.family = QComboBox(); self.family.currentTextChanged.connect(self.refresh)
         self.tiles = QListWidget(); self.tiles.currentItemChanged.connect(self._tile_selected)
         self.stamps = QListWidget(); self.stamps.currentItemChanged.connect(self._stamp_selected)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(self.translate("search_semantics"))
+        self.search.textChanged.connect(lambda _text: self.refresh())
         self._tiles_label = QLabel(self.translate("semantic_tiles"))
         self._stamps_label = QLabel(self.translate("stamps"))
         tile_box = QVBoxLayout(); tile_box.addWidget(self._tiles_label); tile_box.addWidget(self.family); tile_box.addWidget(self.tiles, 1)
         stamp_box = QVBoxLayout(); stamp_box.addWidget(self._stamps_label); stamp_box.addWidget(self.stamps, 1)
         tabs = QTabWidget(); tile_widget = QWidget(); tile_widget.setLayout(tile_box); stamp_widget = QWidget(); stamp_widget.setLayout(stamp_box); tabs.addTab(tile_widget, self.translate("semantics")); tabs.addTab(stamp_widget, self.translate("stamps"))
         self._tabs = tabs
-        layout = QVBoxLayout(self); layout.addWidget(tabs)
+        layout = QVBoxLayout(self); layout.addWidget(self.search); layout.addWidget(tabs)
+
+    def set_asset_root(self, asset_root: Path | None) -> None:
+        if asset_root == self._asset_root:
+            return
+        self._asset_root = asset_root
+        self._thumb_cache.clear()
+        self.refresh()
 
     def retranslate(self, translator: Translator) -> None:
         self.translate = translator
@@ -1091,12 +1104,14 @@ class SemanticPalette(QWidget):
         self._stamps_label.setText(self.translate("stamps"))
         self._tabs.setTabText(0, self.translate("semantics"))
         self._tabs.setTabText(1, self.translate("stamps"))
-        self.preview.setText(self.translate("no_tileset_selected"))
+        self.search.setPlaceholderText(self.translate("search_semantics"))
         if self.family.count():
             self.family.setItemText(0, self.translate("all"))
 
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
-        self.workspace = workspace; self.family.blockSignals(True); self.family.clear(); self.family.addItem(self.translate("all"), "All")
+        self.workspace = workspace
+        self._thumb_cache.clear()
+        self.family.blockSignals(True); self.family.clear(); self.family.addItem(self.translate("all"), "All")
         families: set[str] = set()
         if workspace:
             families = {str(value.data.get("family", "")) for value in workspace.definitions("tileSemantics") if value.data.get("family")}
@@ -1108,11 +1123,37 @@ class SemanticPalette(QWidget):
         selected_family = self.family.currentData()
         if selected_family is None:
             selected_family = self.family.currentText()
+        needle = self.search.text().strip().lower()
         for definition in self.workspace.definitions("tileSemantics"):
-            if selected_family != "All" and str(definition.data.get("family", "")) != selected_family: continue
-            item = QListWidgetItem(f"{definition.display_name} [{definition.definition_id}]"); item.setData(Qt.ItemDataRole.UserRole, definition.definition_id); self.tiles.addItem(item)
+            family = str(definition.data.get("family", ""))
+            if selected_family != "All" and family != selected_family: continue
+            item = self._semantic_item(definition)
+            if needle and needle not in item.text().lower() and needle not in definition.definition_id.lower(): continue
+            self.tiles.addItem(item)
         for definition in self.workspace.definitions("stamps"):
-            item = QListWidgetItem(f"{definition.display_name} [{definition.definition_id}]"); item.setData(Qt.ItemDataRole.UserRole, definition.definition_id); self.stamps.addItem(item)
+            item = QListWidgetItem(definition.display_name)
+            item.setData(Qt.ItemDataRole.UserRole, definition.definition_id)
+            item.setToolTip(definition.definition_id)
+            if needle and needle not in item.text().lower() and needle not in definition.definition_id.lower(): continue
+            self.stamps.addItem(item)
+
+    def _semantic_item(self, definition: ContentDefinition) -> QListWidgetItem:
+        """Human tile label + thumbnail instead of the raw semantic id (SS1)."""
+        data = definition.data
+        role = str(data.get("role", ""))
+        topology = str(data.get("topology", ""))
+        role_text = self.translate(f"role_{role}") if role and self.translate.has(f"role_{role}") else role
+        topology_text = self.translate(f"topology_{topology}") if topology and self.translate.has(f"topology_{topology}") else topology
+        raw_index = data.get("sourceIndex", 0)
+        source_index = int(raw_index) if isinstance(raw_index, (int, float)) else 0
+        parts = " · ".join(part for part in (role_text, topology_text) if part)
+        item = QListWidgetItem(f"{parts}  #{source_index}".strip())
+        item.setData(Qt.ItemDataRole.UserRole, definition.definition_id)
+        item.setToolTip(f"{definition.definition_id}\n{data.get('family', '')}")
+        pixmap = tile_pixmap(self.workspace, self._asset_root, str(data.get("tilesetId", "")), source_index, self._thumb_cache)
+        if pixmap is not None:
+            item.setIcon(QIcon(pixmap))
+        return item
 
     def _tile_selected(self, item: QListWidgetItem | None, unused: QListWidgetItem | None) -> None:
         del unused

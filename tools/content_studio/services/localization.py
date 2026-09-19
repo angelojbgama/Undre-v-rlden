@@ -1258,3 +1258,54 @@ TRANSLATIONS["en-US"].update({
     "definition_opened": "Opening {definition_id}",
     "definition_not_found": "Definition not found: {definition_id}",
 })
+
+# semantic-palette-localization-v1 (audit SS1/ST1-ST3)
+TRANSLATIONS["pt-BR"].update({
+    "search_semantics": "Procurar semântica ou stamp",
+    "terrain_no_selection": "Selecione uma família para pintar com o Smart Terrain.",
+    "terrain_seed_tip": "Semente determinística: mesma semente e família geram sempre a mesma variação de tiles.",
+    "room_brush_tip": "Pinta piso e paredes de uma sala inteira. Requer família com papéis de piso e parede.",
+    "role_floor": "Piso",
+    "role_wall": "Parede",
+    "role_decoration": "Decoração",
+    "role_water": "Água",
+    "role_unknown": "Indefinido",
+    "topology_interior": "Interno",
+    "topology_north": "Norte",
+    "topology_east": "Leste",
+    "topology_south": "Sul",
+    "topology_west": "Oeste",
+    "topology_corner": "Canto",
+    "topology_unknown": "Indefinido",
+})
+
+TRANSLATIONS["en-US"].update({
+    "search_semantics": "Search semantics or stamps",
+    "terrain_no_selection": "Select a family to paint with Smart Terrain.",
+    "terrain_seed_tip": "Deterministic seed: the same seed and family always produce the same tile variation.",
+    "room_brush_tip": "Paints the floor and walls of a whole room. Requires a family with floor and wall roles.",
+    "role_floor": "Floor",
+    "role_wall": "Wall",
+    "role_decoration": "Decoration",
+    "role_water": "Water",
+    "role_unknown": "Undefined",
+    "topology_interior": "Interior",
+    "topology_north": "North",
+    "topology_east": "East",
+    "topology_south": "South",
+    "topology_west": "West",
+    "topology_corner": "Corner",
+    "topology_unknown": "Undefined",
+})
+
+TRANSLATIONS["pt-BR"].update({
+    "topology_outerCorner": "Canto externo",
+    "topology_straightHorizontal": "Horizontal",
+    "topology_straightVertical": "Vertical",
+})
+
+TRANSLATIONS["en-US"].update({
+    "topology_outerCorner": "Outer corner",
+    "topology_straightHorizontal": "Horizontal",
+    "topology_straightVertical": "Vertical",
+})
