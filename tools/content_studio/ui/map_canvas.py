@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QMouseEvent, QPainter, QWheelEvent
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QKeySequence, QMouseEvent, QPainter, QPen, QWheelEvent
+from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
 from ..interaction.drag_payload import StudioDragPayload
 from ..interaction.interaction_controller import InteractionController, InteractionResult
@@ -15,6 +15,8 @@ from ..model.map_document import ENTITY_CATEGORIES, MapDocument
 from ..model.tile_semantics import TerrainProfile, TerrainSelection
 from .canvas_camera import CanvasCamera
 from .canvas_renderer import CanvasRenderer
+from . import theme
+from .icon_registry import IconSize, icon
 from .preview import load_definition_image
 from ..services.terrain_painting_service import TerrainPaintingService
 from ..services.door_placement_service import DoorPlacementService
@@ -71,6 +73,59 @@ class MapCanvas(QWidget):
         self._middle_pan = False
         self._last_pan_point = QPoint()
         self._tile_selection_start: tuple[int, int] | None = None
+        self._build_canvas_overlay()
+
+    def _build_canvas_overlay(self) -> None:
+        """Zoom controls and shortcuts pinned to the canvas (audit C1/G7)."""
+        self._zoom_buttons = QWidget(self)
+        buttons_layout = QHBoxLayout(self._zoom_buttons)
+        buttons_layout.setContentsMargins(4, 4, 4, 4)
+        buttons_layout.setSpacing(4)
+        for icon_name, tip_key, slot in (
+            ("zoom_in", "zoom_in", self.zoom_in),
+            ("zoom_out", "zoom_out", self.zoom_out),
+            ("frame_map", "fit_map", self.fit_map),
+        ):
+            button = QToolButton(self._zoom_buttons)
+            button.setIcon(icon(icon_name))
+            button.setIconSize(IconSize.NORMAL)
+            button.setAutoRaise(True)
+            button.setToolTip(self.translate(tip_key))
+            button.clicked.connect(slot)
+            buttons_layout.addWidget(button)
+        self._zoom_buttons.adjustSize()
+        self._zoom_buttons.raise_()
+
+        for text, shortcuts, slot in (
+            ("zoom_in", ("Ctrl++", "Ctrl+="), self.zoom_in),
+            ("zoom_out", ("Ctrl+-",), self.zoom_out),
+        ):
+            action = QAction(self)
+            action.setText(self.translate(text))
+            action.setShortcuts([QKeySequence(sequence) for sequence in shortcuts])
+            action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+            action.triggered.connect(slot)
+            self.addAction(action)
+        self._position_overlay_buttons()
+
+    def _position_overlay_buttons(self) -> None:
+        self._zoom_buttons.adjustSize()
+        self._zoom_buttons.move(
+            self.width() - self._zoom_buttons.width() - 8,
+            self.height() - self._zoom_buttons.height() - 8,
+        )
+
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        self._position_overlay_buttons()
+
+    def zoom_in(self) -> None:
+        self.camera.zoom_by(1.25)
+        self.update()
+
+    def zoom_out(self) -> None:
+        self.camera.zoom_by(1 / 1.25)
+        self.update()
 
     @property
     def zoom(self) -> float:
@@ -466,7 +521,86 @@ class MapCanvas(QWidget):
         del event
         painter = QPainter(self)
         self.renderer.render(painter, self.width(), self.height())
+        self._paint_canvas_overlays(painter)
         painter.end()
+
+    def _paint_canvas_overlays(self, painter: QPainter) -> None:
+        """Theme-aware HUD: tile coordinates, zoom and the placement banner."""
+        chrome = theme.canvas_chrome()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        banner = self._placement_banner_text()
+        if banner:
+            hint = self.translate("placement_banner_hint")
+            text = f"{banner} · {hint}"
+            font = painter.font()
+            font.setPointSizeF(max(8.0, font.pointSizeF()))
+            painter.setFont(font)
+            metrics = painter.fontMetrics()
+            text_width = metrics.horizontalAdvance(text)
+            rect = QRect((self.width() - text_width) // 2 - 12, 8, text_width + 24, metrics.height() + 10)
+            background = QColor(chrome["contrast"])
+            background.setAlpha(215)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(background)
+            painter.drawRoundedRect(rect, 6, 6)
+            painter.setPen(QColor(chrome["canvas"]))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+
+        info_parts = []
+        if self.document is not None and self.renderer.pointer_tile is not None:
+            tile_x, tile_y = self.renderer.pointer_tile
+            info_parts.append(f"{tile_x}, {tile_y}")
+        info_parts.append(f"{int(round(self.camera.zoom * 100))}%")
+        info_text = "  ·  ".join(info_parts)
+        font = painter.font()
+        font.setPointSizeF(max(8.0, font.pointSizeF()))
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        text_width = metrics.horizontalAdvance(info_text)
+        rect = QRect(8, self.height() - metrics.height() - 14, text_width + 20, metrics.height() + 10)
+        background = QColor(chrome["contrast"])
+        background.setAlpha(200)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(background)
+        painter.drawRoundedRect(rect, 6, 6)
+        painter.setPen(QColor(chrome["canvas"]))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, info_text)
+
+    def _placement_banner_text(self) -> str | None:
+        """Human description of the active placement state, None when idle."""
+        if self.tool == "paint" and self.selected_tile:
+            tileset_id, index, _flags = self.selected_tile
+            return self.translate("placing_tile").format(tileset=tileset_id, index=index)
+        if self.tool == "stamp" and self.selected_stamp_id:
+            return self.translate("placing_stamp").format(name=self.selected_stamp_id)
+        if self.tool == "door" and self.selected_door_definition_id:
+            return self.translate("placing_door").format(name=self.selected_door_definition_id)
+        if self.tool == "entity" and self.selected_definition_id:
+            name = self.selected_definition_id
+            if self.workspace is not None and self.selected_entity_category:
+                definition = self.workspace.find(self.selected_entity_category, self.selected_definition_id)
+                if definition is not None:
+                    name = definition.display_name
+            return self.translate("placing_entity").format(name=name)
+        if self.tool in {"spawn", "region", "link", "transition"}:
+            labels = {
+                "spawn": "player_spawn",
+                "region": "region_element",
+                "link": "map_transition",
+                "transition": "map_transition",
+            }
+            return self.translate("placing_element").format(name=self.translate(labels[self.tool]))
+        if self.tool == "map_element":
+            payload = self.interaction.active_payload
+            if payload is not None and payload.map_element:
+                labels = {"player_spawn": "player_spawn", "region": "region_element", "map_transition": "map_transition"}
+                key = labels.get(payload.map_element)
+                if key:
+                    return self.translate("placing_element").format(name=self.translate(key))
+        if self.tool in {"terrain", "room"}:
+            return self.translate("placing_terrain")
+        return None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         point = event.position().toPoint()

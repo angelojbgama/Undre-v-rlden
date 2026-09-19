@@ -1054,3 +1054,30 @@ TRANSLATIONS["pt-BR"].update({
 TRANSLATIONS["en-US"].update({
     "inspector_empty_hint": "Select a tile, object, door or region on the map to edit its properties. Select and Erase tools live on the toolbar above the map.",
 })
+
+# canvas-hud-localization-v1 (audit C1/G7 + G4/C2)
+TRANSLATIONS["pt-BR"].update({
+    "zoom_in": "Aproximar (Ctrl + +)",
+    "zoom_out": "Afastar (Ctrl + -)",
+    "fit_map": "Enquadrar mapa (Home)",
+    "placement_banner_hint": "clique para posicionar · Esc cancela",
+    "placing_tile": "Pincel de tile: {tileset} #{index}",
+    "placing_stamp": "Stamp: {name}",
+    "placing_door": "Porta: {name}",
+    "placing_entity": "Colocando: {name}",
+    "placing_element": "Elemento: {name}",
+    "placing_terrain": "Smart Terrain ativo",
+})
+
+TRANSLATIONS["en-US"].update({
+    "zoom_in": "Zoom in (Ctrl + +)",
+    "zoom_out": "Zoom out (Ctrl + -)",
+    "fit_map": "Frame map (Home)",
+    "placement_banner_hint": "click to place · Esc cancels",
+    "placing_tile": "Tile brush: {tileset} #{index}",
+    "placing_stamp": "Stamp: {name}",
+    "placing_door": "Door: {name}",
+    "placing_entity": "Placing: {name}",
+    "placing_element": "Element: {name}",
+    "placing_terrain": "Smart Terrain active",
+})

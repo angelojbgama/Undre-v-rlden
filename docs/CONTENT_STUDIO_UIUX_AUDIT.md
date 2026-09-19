@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -30,10 +30,10 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 | G1 ✅ | P1 | **Idioma misturado PT/EN.** ContentBrowser ("Create/Delete/Duplicate/Place in Map/Find Usages/Back"), LayersPanel ("Add/Rename/Move Up/…"), SceneEditor inteiro em EN, StructuredInspector ("Add", "Remove Last", "Delete item", "(empty collection)"), status bar ("Tool: select"), diagnósticos ("No diagnostics"), buscas ("Search display name / definitionId"). | Migrar todas as strings para o `Translator` (pt-BR/en-US), como já feito nos painéis de tileset/porta. |
 | G2 ✅ | P1 | **Navegação em 3–4 níveis de abas** (Modo → Seção → Coleções → [+ abas internas]) e as **15 abas de seção não cabem** — "Regras / Links" fica cortada atrás de setas de scroll discretas. | Sidebar vertical de seções com ícone + texto (ou dropdown agrupado por domínio: Mapa, Tiles, Conteúdo, Mundo); reduzir número de abas de topo. |
 | G3 | P2 | **Empty states sem orientação.** Painéis grandes e vazios sem dizer o que fazer (Links, Scenes, Semantics, Layers). Alguns já têm ("Nenhum item criado", "Arraste um elemento…"). | Padronizar empty state com texto de ação (ex.: "Nenhuma porta ainda — crie um objeto com capability door em Objetos") + botão de ação primária. |
-| G4 | P2 | **Feedback só na status bar.** Mensagens críticas de modo ("Placement active: X. Click the map or press Escape") somem; fácil perder o estado da ferramenta. | Banner/overlay persistente no canvas enquanto um modo de colocação estiver ativo (nome do conteúdo + Esc para cancelar). |
+| G4 ✅ | P2 | **Feedback só na status bar.** Mensagens críticas de modo ("Placement active: X. Click the map or press Escape") somem; fácil perder o estado da ferramenta. | Banner/overlay persistente no canvas enquanto um modo de colocação estiver ativo (nome do conteúdo + Esc para cancelar). |
 | G5 ✅ | P2 | **Ações destrutivas sem confirmação.** "Excluir mapa" (`remove_map`) apaga na hora; Layers "Remove"; Scenes "Delete". (Itens e conteúdo já confirmam.) | Padronizar `QMessageBox.question` com o nome do que será apagado, incluindo efeitos ("O mapa X será removido do projeto"). |
 | G6 ✅ | P2 | **Botões truncados** em larguras padrão de painel: Objetos ("Configurar obje…", "Colocar no ma…"), Itens ("Excluir Iter…", "Colocar no m…"). | Layout de botões em grid 2×N com size policy adequada ou botões só-ícone com tooltip; testar em 260 px (largura salva nas preferences). |
-| G7 | P2 | **Sem discoverability de atalhos/recursos:** Frame Map é só `Home` (nenhum botão), zoom só no scroll do mouse (sem `+`/`-`/botões), undo/redo só no menu. | Adicionar actions de Zoom In/Out (+ botões), tooltip com atalho nas actions ("Enquadrar Mapa (Home)"), botões de undo/redo na toolbar. |
+| G7 ✅ | P2 | **Sem discoverability de atalhos/recursos:** Frame Map é só `Home` (nenhum botão), zoom só no scroll do mouse (sem `+`/`-`/botões), undo/redo só no menu. | Adicionar actions de Zoom In/Out (+ botões), tooltip com atalho nas actions ("Enquadrar Mapa (Home)"), botões de undo/redo na toolbar. |
 | G8 ✅ | P2 | **Acentuação faltando em PT-BR** em strings novas (editor de porta): "Configuracao da porta", "Chave necessaria", "Persistencia", "Aplicar configuracao". | Revisar TODO o arquivo de traduções; adicionar teste que(strings pt-BR contenham acentos esperados?) ou revisão manual guiada. |
 | G9 | P3 | **Buscas inconsistentes:** placeholders variados ("Procurar", "Procurar objetos", "Search display name / definitionId"), alguns sem filtro de categoria. | Padronizar placeholder e comportamento (filtrar por id + display name + tooltip). |
 | G10 | P3 | **Sem menu de projetos recentes** (`preferences.lastProject` já é salvo mas não é usado na UI). | Menu Arquivo > Abrir Recente (5 itens). |
@@ -53,8 +53,8 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| C1 | P2 | **Sem controles de zoom** (roda do mouse apenas) nem leitura de coordenadas do tile sob o cursor. | Overlay discreto no canto: zoom %, x,y do tile, tamanho do mapa; botões +/−/fit. |
-| C2 | P2 | Labels de links/spawns desenhados sobre o mapa ficam **sobrepostos e ilegíveis** (ex.: `region.break` colado no `player.start`). | Fundo semi-opaco nas labels, offsets anti-colisão, mostrar só com zoom mínimo ou hover. |
+| C1 ✅ | P2 | **Sem controles de zoom** (roda do mouse apenas) nem leitura de coordenadas do tile sob o cursor. | Overlay discreto no canto: zoom %, x,y do tile, tamanho do mapa; botões +/−/fit. |
+| C2 ✅ | P2 | Labels de links/spawns desenhados sobre o mapa ficam **sobrepostos e ilegíveis** (ex.: `region.break` colado no `player.start`). | Fundo semi-opaco nas labels, offsets anti-colisão, mostrar só com zoom mínimo ou hover. |
 | C3 | P3 | Sem destaque de camada ativa ( Ground/Wall pintam igual; só LayersPanel muda a seleção). | Dim das camadas não ativas (toggle nas preferências). |
 | C4 | P3 | Ghost preview de colocação existe mas é sutil (0.55 alpha) — sem célula/grid highlight do destino. | Highlight do tile alvo + borda do payload. |
 
@@ -185,8 +185,8 @@ Fase 1 — **Fundação transversal** (desbloqueia o resto) — ✅ concluída:
 4. ✅ **G6** Correção de botões truncados (Objetos/Itens).
 
 Fase 2 — **Fluxos de alta frequência**:
-5. **C1/G7** Zoom + coordenadas + dica de atalhos no canvas.
-6. **G4/C2** Banner de modo de colocação no canvas.
+5. ✅ **C1/G7** Zoom + coordenadas + dica de atalhos no canvas.
+6. ✅ **G4/C2** Banner de modo de colocação no canvas.
 7. **IN1/IN2** Inspetor genérico humanizado (maior retorno por esforço — usado em 3 lugares).
 8. **S2** Diagnósticos estruturados com navegação.
 

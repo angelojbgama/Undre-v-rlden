@@ -70,6 +70,9 @@ TABLER_ICONS: dict[str, str] = {
     "links": "link.svg",
     "definitions": "list.svg",
     "assets": "folder.svg",
+    # Canvas HUD
+    "zoom_in": "zoom-in.svg",
+    "zoom_out": "zoom-out.svg",
     # Frequent actions
     "add": "plus.svg",
     "delete": "trash.svg",
