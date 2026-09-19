@@ -211,9 +211,7 @@ class ItemDefinitionDialog(QDialog):
             True
         )
 
-        help_label.setStyleSheet(
-            "color:#aeb8c4;"
-        )
+        help_label.setProperty("muted", True)
 
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel

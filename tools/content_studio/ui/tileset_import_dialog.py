@@ -45,7 +45,7 @@ class TilesetImportDialog(QDialog):
         self.details.setWordWrap(True)
         self.frame_help = QLabel(self.translate("frame_preview_help"))
         self.frame_help.setWordWrap(True)
-        self.frame_help.setStyleSheet("color: #aeb8c4;")
+        self.frame_help.setProperty("muted", True)
         self.frame_bounds = QLabel()
         self.frame_bounds.setWordWrap(True)
         form = QFormLayout()

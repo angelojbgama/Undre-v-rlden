@@ -17,6 +17,11 @@ tools/content_studio/
 └── ui/icon_registry.py     # acesso centralizado aos ícones
 ```
 
+Os SVGs Tabler usam `stroke="currentColor"`: um `QIconEngine` no registry
+resolve essa cor pela paleta do aplicativo no momento do desenho, então os
+ícones acompanham o tema claro/escuro (menu Exibir > Tema) automaticamente,
+inclusive o modo "Seguir o sistema".
+
 ## Como usar
 
 Não referencie caminhos de SVG diretamente nos widgets. Peça por nome

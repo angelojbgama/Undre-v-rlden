@@ -10,6 +10,7 @@ from ..model.map_document import ENTITY_CATEGORIES, MapDocument
 from ..interaction.selection_controller import SelectionController
 from ..services.assets import AssetCatalog
 from .canvas_camera import CanvasCamera
+from . import theme
 from .studio_visual_resolver import (
     ResolvedStudioVisual,
     StudioVisualResolver,
@@ -81,18 +82,19 @@ class CanvasRenderer:
         self.grid_visible = visible
 
     def render(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
-        painter.fillRect(0, 0, viewport_width, viewport_height, QColor("#20252b"))
+        chrome = theme.canvas_chrome()
+        painter.fillRect(0, 0, viewport_width, viewport_height, chrome["canvas"])
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         document = self.document
         if document is None:
-            painter.setPen(QColor("#b8c2cc"))
+            painter.setPen(chrome["canvas_text"])
             painter.drawText(0, 0, viewport_width, viewport_height, Qt.AlignmentFlag.AlignCenter, "No map selected")
             return
         map_width = document.width * document.tile_size
         map_height = document.height * document.tile_size
         origin = self._point(0, 0, viewport_width, viewport_height)
         destination = self._point(map_width, map_height, viewport_width, viewport_height)
-        painter.fillRect(origin.x(), origin.y(), destination.x() - origin.x(), destination.y() - origin.y(), QColor("#323b42"))
+        painter.fillRect(origin.x(), origin.y(), destination.x() - origin.x(), destination.y() - origin.y(), chrome["map_area"])
         self._draw_tiles(painter, viewport_width, viewport_height)
         self._draw_entities(painter, viewport_width, viewport_height)
         self._draw_spawns(painter, viewport_width, viewport_height)
@@ -533,7 +535,7 @@ class CanvasRenderer:
                 )
 
                 painter.setPen(
-                    QColor("#f5f5f5")
+                    theme.canvas_chrome()["contrast"]
                 )
 
                 painter.drawText(
@@ -573,7 +575,7 @@ class CanvasRenderer:
                 continue
             point = self._point(*world, viewport_width, viewport_height)
             radius = max(5, round(7 * self.camera.zoom))
-            painter.setPen(QPen(QColor("#ffec99") if self.selection.matches("playerSpawns", value.get("id")) else QColor("#ffffff"), 3 if self.selection.matches("playerSpawns", value.get("id")) else 2))
+            painter.setPen(QPen(QColor("#ffec99") if self.selection.matches("playerSpawns", value.get("id")) else theme.canvas_chrome()["contrast"], 3 if self.selection.matches("playerSpawns", value.get("id")) else 2))
             painter.drawLine(point.x() - radius, point.y(), point.x() + radius, point.y()); painter.drawLine(point.x(), point.y() - radius, point.x(), point.y() + radius)
             painter.drawText(point + QPoint(radius + 3, 4), str(value.get("id", "spawn")))
 
@@ -596,7 +598,7 @@ class CanvasRenderer:
                 continue
             start = self._point(int(bounds.get("x", 0)), int(bounds.get("y", 0)), viewport_width, viewport_height)
             end = self._point(int(bounds.get("x", 0)) + int(bounds.get("width", 0)), int(bounds.get("y", 0)) + int(bounds.get("height", 0)), viewport_width, viewport_height)
-            painter.setBrush(QColor(245, 184, 75, 45)); painter.setPen(QPen(QColor("#ffffff") if self.selection.matches("links", link.get("id")) else QColor("#f0b35b"), 3 if self.selection.matches("links", link.get("id")) else 2, Qt.PenStyle.DotLine))
+            painter.setBrush(QColor(245, 184, 75, 45)); painter.setPen(QPen(theme.canvas_chrome()["contrast"] if self.selection.matches("links", link.get("id")) else QColor("#f0b35b"), 3 if self.selection.matches("links", link.get("id")) else 2, Qt.PenStyle.DotLine))
             painter.drawRect(start.x(), start.y(), end.x() - start.x(), end.y() - start.y())
             painter.setPen(QColor("#f5d59b")); painter.drawText(start + QPoint(3, 14), str(link.get("id", "link")))
 
@@ -620,7 +622,7 @@ class CanvasRenderer:
             start = self._point(int(bounds.get("x", 0)), int(bounds.get("y", 0)), viewport_width, viewport_height)
             end = self._point(int(bounds.get("x", 0)) + int(bounds.get("width", 0)), int(bounds.get("y", 0)) + int(bounds.get("height", 0)), viewport_width, viewport_height)
             selected = self.selection.matches("regions", region.get("id"))
-            painter.setBrush(Qt.BrushStyle.NoBrush); painter.setPen(QPen(QColor("#ffffff") if selected else QColor("#c084fc"), 3 if selected else 2, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush); painter.setPen(QPen(theme.canvas_chrome()["contrast"] if selected else QColor("#c084fc"), 3 if selected else 2, Qt.PenStyle.DashLine))
             painter.drawRect(start.x(), start.y(), end.x() - start.x(), end.y() - start.y())
 
     def _draw_preview(self, painter: QPainter, viewport_width: int, viewport_height: int) -> None:
@@ -933,7 +935,7 @@ class CanvasRenderer:
         )
         origin = self._point(0, 0, viewport_width, viewport_height)
         end = self._point(document.width * document.tile_size, document.height * document.tile_size, viewport_width, viewport_height)
-        painter.setPen(QPen(QColor(255, 255, 255, 28), 1))
+        painter.setPen(QPen(theme.canvas_chrome()["grid_line"], 1))
         for x in range(left, min(document.width, right + 1) + 1):
             point = self._point(x * document.tile_size, 0, viewport_width, viewport_height)
             painter.drawLine(point.x(), origin.y(), point.x(), end.y())

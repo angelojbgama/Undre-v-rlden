@@ -74,6 +74,7 @@ class ContentFile:
 @dataclass(slots=True)
 class ProjectPreferences:
     language: str = "pt-BR"
+    theme: str = "system"
     asset_root: str = ""
     last_project: str = ""
     left_panel_width: int = 260

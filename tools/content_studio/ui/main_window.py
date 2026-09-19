@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabBar, QTabWidget,
@@ -33,6 +33,7 @@ from ..services.preferences import load_preferences, save_preferences
 from ..services.toolchain import CppToolchain, PlaytestService
 from ..services.world_export_service import WorldExportService
 from .icon_registry import IconSize, icon
+from . import theme
 from .map_canvas import MapCanvas
 from .map_properties_dialog import MapPropertiesDialog
 from .preview import PreviewWidget
@@ -58,6 +59,8 @@ class MainWindow(QMainWindow):
                  asset_root: Path | None = None, toolchain: CppToolchain | None = None) -> None:
         super().__init__()
         self.preferences = load_preferences()
+        self._theme_mode = theme.normalize_mode(self.preferences.theme)
+        theme.apply_theme(self._theme_mode)
         self.translator = Translator(self.preferences.language)
         self.project = project or WorldProject.new()
         self.workspace = workspace
@@ -92,6 +95,9 @@ class MainWindow(QMainWindow):
         self.autosave_timer.setInterval(60_000)
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
+        QGuiApplication.styleHints().colorSchemeChanged.connect(
+            self._system_scheme_changed
+        )
         self._refresh_all()
         self.actions["select"].setChecked(True)
         self.map_canvas.set_tool("select")
@@ -143,6 +149,22 @@ class MainWindow(QMainWindow):
         language = view_menu.addMenu(self.translator("language")); self._language_menu = language
         for code, name in (("pt-BR", "Português (Brasil)"), ("en-US", "English")):
             action = QAction(name, self); action.triggered.connect(lambda checked=False, value=code: self.set_language(value)); language.addAction(action)
+        theme_menu = view_menu.addMenu(self.translator("theme")); self._theme_menu = theme_menu
+        self._theme_actions: dict[str, QAction] = {}
+        theme_group = QActionGroup(self)
+        theme_group.setExclusionPolicy(QActionGroup.ExclusionPolicy.Exclusive)
+        for mode, icon_name, translation_key in (
+            (theme.THEME_SYSTEM, "theme_system", "theme_system"),
+            (theme.THEME_LIGHT, "theme_light", "theme_light"),
+            (theme.THEME_DARK, "theme_dark", "theme_dark"),
+        ):
+            action = QAction(icon(icon_name), self.translator(translation_key), self)
+            action.setCheckable(True)
+            action.setChecked(mode == self._theme_mode)
+            action.triggered.connect(lambda checked=False, value=mode: self.set_theme_mode(value))
+            theme_group.addAction(action)
+            theme_menu.addAction(action)
+            self._theme_actions[mode] = action
 
     def _build_ui(self) -> None:
         toolbar = QToolBar(self.translator("tools"), self)
@@ -428,6 +450,9 @@ class MainWindow(QMainWindow):
         self._menus["edit"].setTitle(self.translator("edit"))
         self._menus["view"].setTitle(self.translator("view"))
         self._language_menu.setTitle(self.translator("language"))
+        self._theme_menu.setTitle(self.translator("theme"))
+        for mode, action in self._theme_actions.items():
+            action.setText(self.translator(f"theme_{mode}"))
         for action, translation_key in zip(self.tool_actions, self._tool_keys):
             action.setText(self.translator(translation_key))
         self._toolbar.setWindowTitle(self.translator("tools"))
@@ -1588,6 +1613,28 @@ class MainWindow(QMainWindow):
         self.translator.set_language(language); self.preferences.language = language; save_preferences(self.preferences)
         self._retranslate_ui()
         self._update_title()
+
+    def set_theme_mode(self, mode: str) -> None:
+        if mode not in theme.THEME_MODES or mode == self._theme_mode:
+            return
+        self._theme_mode = mode
+        self.preferences.theme = mode
+        save_preferences(self.preferences)
+        self._apply_theme_mode()
+        self.set_status(f"{self.translator('theme')}: {self.translator(f'theme_{mode}')}")
+
+    def _apply_theme_mode(self) -> None:
+        theme.apply_theme(self._theme_mode)
+        for mode, action in self._theme_actions.items():
+            action.setChecked(mode == self._theme_mode)
+        self.map_canvas.update()
+
+    def _system_scheme_changed(self, scheme: object) -> None:
+        """Re-apply the resolved scheme while following the system theme."""
+        del scheme
+        if self._theme_mode == theme.THEME_SYSTEM:
+            theme.apply_theme(theme.THEME_SYSTEM)
+            self.map_canvas.update()
 
     def _map_folder_key(self) -> str:
         path = self.project.path or self.default_project_path

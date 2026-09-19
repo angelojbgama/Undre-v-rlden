@@ -155,7 +155,7 @@ class FrameSequenceDialog(QDialog):
             channel_label = QLabel(FRAME_MASK_LABELS[channel])
             summary = QLabel("Selecione um frame da sequência.")
             summary.setWordWrap(True)
-            summary.setStyleSheet("color:#aeb8c4;")
+            summary.setProperty("muted", True)
             edit_button = QPushButton("Editar por pixel...")
             copy_button = QPushButton("Copiar anterior")
             clear_button = QPushButton("Limpar")
@@ -192,7 +192,7 @@ class FrameSequenceDialog(QDialog):
             "frame já são consumidas pelo runtime; Movement Collision por "
             "frame permanece autorável e terá integração de runtime própria.")
         frame_mask_hint.setWordWrap(True)
-        frame_mask_hint.setStyleSheet("color:#aeb8c4;")
+        frame_mask_hint.setProperty("muted", True)
         frame_mask_layout.addWidget(frame_mask_hint)
 
         self.preview = QLabel("Prévia")
@@ -609,7 +609,7 @@ class PlayerDefinitionDialog(QDialog):
             "somente um lado, use 'Usar oposto espelhado' para copiar a "
             "sequência e inverter apenas o flip X.")
         help_label.setWordWrap(True)
-        help_label.setStyleSheet("color:#aeb8c4;")
+        help_label.setProperty("muted", True)
 
         self.summary_labels: dict[tuple[str, str], QLabel] = {}
         states = QWidget()
@@ -632,7 +632,7 @@ class PlayerDefinitionDialog(QDialog):
                 cell_layout.setContentsMargins(2, 2, 2, 2)
                 button = QPushButton("Selecionar frames...")
                 summary = QLabel("—")
-                summary.setStyleSheet("color:#aeb8c4;")
+                summary.setProperty("muted", True)
                 button.clicked.connect(
                     lambda unused=False, s=state, d=direction:
                     self._edit_sequence(s, d))
@@ -667,7 +667,7 @@ class PlayerDefinitionDialog(QDialog):
             button = QPushButton(
                 f"Editar {DIRECTION_LABELS[direction]}...")
             summary = QLabel("—")
-            summary.setStyleSheet("color:#aeb8c4;")
+            summary.setProperty("muted", True)
             button.clicked.connect(
                 lambda unused=False, d=direction:
                 self._edit_collision(d))
@@ -688,7 +688,7 @@ class PlayerDefinitionDialog(QDialog):
             "separados; 'Usar oposto espelhado' é apenas um atalho de "
             "autoria e não cria dependência automática entre os lados.")
         collision_hint.setWordWrap(True)
-        collision_hint.setStyleSheet("color:#aeb8c4;")
+        collision_hint.setProperty("muted", True)
         collision_layout.addWidget(collision_hint, 2, 0, 1, 4)
 
         self.hurtbox_enabled = QCheckBox("Ativar Hurtbox autorável")
@@ -696,7 +696,7 @@ class PlayerDefinitionDialog(QDialog):
         self.hurtbox_button = QPushButton("Editar Hurtbox...")
         self.hurtbox_button.clicked.connect(self._edit_hurtbox)
         self.hurtbox_summary = QLabel("não definida")
-        self.hurtbox_summary.setStyleSheet("color:#aeb8c4;")
+        self.hurtbox_summary.setProperty("muted", True)
 
         hurtbox_group = QGroupBox("Hurtbox / área que recebe dano")
         hurtbox_layout = QGridLayout(hurtbox_group)
@@ -709,7 +709,7 @@ class PlayerDefinitionDialog(QDialog):
             "bloqueio contra paredes. Use o primeiro Idle / Down como "
             "referência e ajuste somente a área que deve receber dano.")
         hurtbox_hint.setWordWrap(True)
-        hurtbox_hint.setStyleSheet("color:#aeb8c4;")
+        hurtbox_hint.setProperty("muted", True)
         hurtbox_layout.addWidget(hurtbox_hint, 2, 0, 1, 2)
 
         buttons = QDialogButtonBox(
@@ -1100,7 +1100,7 @@ class PlayerLibraryWidget(QWidget):
             "Importe o spritesheet uma vez e monte aqui cada estado "
             "selecionando apenas os frames necessários.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#aeb8c4;")
+        hint.setProperty("muted", True)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.search)

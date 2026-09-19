@@ -5085,7 +5085,7 @@ class AttackLibraryWidget(QWidget):
 
         self.help = QLabel()
         self.help.setWordWrap(True)
-        self.help.setStyleSheet("color: #aeb8c4;")
+        self.help.setProperty("muted", True)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.add_button)

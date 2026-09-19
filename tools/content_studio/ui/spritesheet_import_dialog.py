@@ -61,7 +61,7 @@ class SpritesheetImportDialog(QDialog):
         self.pause_button.clicked.connect(self._pause_animation)
         self.details = QLabel(); self.details.setWordWrap(True)
         self.help = QLabel(self.translate("frame_preview_help")); self.help.setWordWrap(True)
-        self.help.setStyleSheet("color: #aeb8c4;")
+        self.help.setProperty("muted", True)
         self.frame_bounds = QLabel(); self.frame_bounds.setWordWrap(True)
         form = QFormLayout()
         form.addRow(self.translate("source_image"), source_row)

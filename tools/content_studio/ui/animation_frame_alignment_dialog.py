@@ -431,9 +431,9 @@ class AnimationFrameAlignmentDialog(QDialog):
             self._apply_anchor_to_all_frames)
         canvas_help = QLabel(self.translate("frame_canvas_help"))
         canvas_help.setWordWrap(True)
-        canvas_help.setStyleSheet("color: #8ecae6;")
+        canvas_help.setProperty("muted", True)
         help_label = QLabel(self.translate("frame_alignment_help")); help_label.setWordWrap(True)
-        help_label.setStyleSheet("color: #aeb8c4;")
+        help_label.setProperty("muted", True)
 
         controls = QVBoxLayout(); controls.addLayout(form)
         controls.addWidget(canvas_help); controls.addLayout(arrows)

@@ -47,6 +47,7 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
     }
     return ProjectPreferences(
         language=data.get("language", "pt-BR") if data.get("language") in {"pt-BR", "en-US"} else "pt-BR",
+        theme=data.get("theme", "system") if data.get("theme") in {"system", "light", "dark"} else "system",
         asset_root=str(data.get("assetRoot", "")),
         last_project=str(data.get("lastProject", "")),
         left_panel_width=max(0, int(data.get("leftPanelWidth", 260))),
@@ -59,6 +60,7 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
 def save_preferences(preferences: ProjectPreferences, path: Path | None = None) -> None:
     write_atomic(path or preferences_path(), {
         "language": preferences.language,
+        "theme": preferences.theme,
         "assetRoot": preferences.asset_root,
         "lastProject": preferences.last_project,
         "leftPanelWidth": preferences.left_panel_width,

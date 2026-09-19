@@ -161,9 +161,7 @@ class AnimatedCollisionEditorDialog(QDialog):
             True
         )
 
-        self.help.setStyleSheet(
-            "color: #aeb8c4;"
-        )
+        self.help.setProperty("muted", True)
 
         self.previous_button = QPushButton(
             self.translate(

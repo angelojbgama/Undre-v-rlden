@@ -5,6 +5,10 @@ files directly, so the Tabler layout stays an implementation detail and
 the UI can evolve into a broader StudioVisualSystem (IconRegistry +
 Theme + Metrics) without touching call sites.
 
+The Tabler sources use ``stroke="currentColor"``. A QIconEngine resolves
+that color from the live application palette at paint time, so existing
+QIcon instances follow the Studio light/dark theme automatically.
+
 Icons are UI chrome only. Thumbnails of authored game content keep using
 the real game assets and must never be replaced by these icons.
 """
@@ -14,8 +18,11 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QByteArray, QPoint, QRect, QRectF, QSize, Qt
+from PySide6.QtGui import (
+    QColor, QIcon, QIconEngine, QImage, QGuiApplication, QPainter, QPalette, QPixmap,
+)
+from PySide6.QtSvg import QSvgRenderer
 
 #: Versioned copy of the Tabler Icons (outline) SVGs used by the studio.
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons" / "tabler"
@@ -42,6 +49,10 @@ TABLER_ICONS: dict[str, str] = {
     "frame_map": "maximize.svg",
     "select": "pointer.svg",
     "erase": "eraser.svg",
+    # Theme
+    "theme_system": "device-desktop.svg",
+    "theme_light": "sun.svg",
+    "theme_dark": "moon.svg",
     # Frequent actions
     "add": "plus.svg",
     "delete": "trash.svg",
@@ -73,11 +84,64 @@ class IconSize:
     LARGE = QSize(32, 32)  # larger tool buttons
 
 
+class TablerIconEngine(QIconEngine):
+    """Paints one Tabler SVG recolored by the current theme palette.
+
+    ``currentColor`` is replaced at paint time, so icons stay visible on
+    both the light and dark palettes without widgets re-setting icons
+    when the theme changes.
+    """
+
+    def __init__(self, source: str) -> None:
+        super().__init__()
+        self._source = source
+        self._renderers: dict[str, QSvgRenderer] = {}
+
+    def _renderer(self, color: str) -> QSvgRenderer:
+        renderer = self._renderers.get(color)
+        if renderer is None:
+            data = QByteArray(self._source.replace("currentColor", color).encode("utf-8"))
+            renderer = QSvgRenderer(data)
+            self._renderers[color] = renderer
+        return renderer
+
+    @staticmethod
+    def _color(mode: QIcon.Mode) -> QColor:
+        palette = QGuiApplication.palette()
+        if mode == QIcon.Mode.Disabled:
+            return palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText)
+        if mode == QIcon.Mode.Selected:
+            return palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText)
+        return palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.WindowText)
+
+    def paint(self, painter: QPainter, rect: QRect, mode: QIcon.Mode,
+              state: QIcon.State) -> None:  # noqa: N802 - Qt naming
+        color = self._color(mode).name(QColor.NameFormat.HexRgb)
+        self._renderer(color).render(painter, QRectF(rect))
+
+    def pixmap(self, size: QSize, mode: QIcon.Mode,
+               state: QIcon.State) -> QPixmap:  # noqa: N802 - Qt naming
+        image = QImage(size, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        self.paint(painter, QRect(QPoint(0, 0), size), mode, state)
+        painter.end()
+        return QPixmap.fromImage(image)
+
+    def cacheKey(self) -> int:  # noqa: N802 - Qt naming
+        # Bust icon pixmap caches whenever the themed color changes.
+        return hash((id(self), self._color(QIcon.Mode.Normal).name()))
+
+    def clone(self) -> QIconEngine:  # noqa: N802 - Qt naming
+        return TablerIconEngine(self._source)
+
+
 class IconRegistry:
     """Resolves semantic icon names to the local Tabler SVG files.
 
     Loaded QIcons are cached per semantic name, so repeated requests
-    (menus, toolbars, rebuilt inspector rows) do not reparse the SVG.
+    (menus, toolbars, rebuilt inspector rows) share one engine instead of
+    re-reading the SVG.
     """
 
     def __init__(self, root: Path = ICONS_DIR) -> None:
@@ -93,7 +157,7 @@ class IconRegistry:
                 self._warn_missing(name)
                 loaded = QIcon()
             else:
-                loaded = QIcon(str(resolved))
+                loaded = QIcon(TablerIconEngine(resolved.read_text(encoding="utf-8")))
             self._cache[name] = loaded
         return loaded
 
