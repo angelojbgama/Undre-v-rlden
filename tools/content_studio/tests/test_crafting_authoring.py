@@ -8,6 +8,7 @@ from pathlib import Path
 from tools.content_studio.formats.content_json import CONTENT_CATEGORIES, CONTENT_VERSION
 from tools.content_studio.formats.json_io import encode_json
 from tools.content_studio.model.content_workspace import ContentWorkspace
+from tools.content_studio.services.crafting_authoring_service import _UNSET
 
 
 def content_root(version: int = 5) -> dict[str, object]:
@@ -38,6 +39,13 @@ def content_root(version: int = 5) -> dict[str, object]:
         {"id": "item.life_potion", "visualId": "visual.item.herb", "category": "consumable", "stackLimit": 66},
         {"id": "item.slag", "visualId": "visual.item.herb", "category": "misc", "stackLimit": 66},
     ]
+    result["quests"] = [{
+        "id": "quest.alchemy.rank",
+        "title": "Alchemy Rank",
+        "objectives": [{"id": "objective.learn", "kind": "talk", "targetId": "", "requiredCount": 1, "description": "Learn"}],
+        "tags": [],
+        "rewardGrantId": None,
+    }]
     return result
 
 
@@ -277,6 +285,72 @@ class CraftingAuthoringServiceTests(unittest.TestCase):
             four = workspace.find("craftingRecipes", "recipe.four")
             self.assertEqual(4, len(four.data["inputs"]))
             self.assertEqual(2, len(four.data["outputs"]))
+
+    def test_recipe_quest_gate_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(Path(directory))
+            service = crafting_service(workspace)
+
+            created = service.create_recipe(
+                "Poção Secreta",
+                "recipe.secret",
+                BASE_INPUTS,
+                BASE_OUTPUTS,
+                unlock_quest_id="quest.alchemy.rank",
+            )
+            self.assertEqual("quest.alchemy.rank", created.data["unlockQuestId"])
+
+            with self.assertRaises(ValueError):
+                service.create_recipe(
+                    "Inválida", "recipe.invalid", BASE_INPUTS, BASE_OUTPUTS,
+                    unlock_quest_id="quest.ghost")
+
+            # Keeping the authored gate when the field is omitted.
+            updated = service.update_recipe(
+                "recipe.secret", display_name="Poção Secreta II")
+            self.assertEqual("quest.alchemy.rank", updated.data["unlockQuestId"])
+
+            # The explicit sentinel clears the gate.
+            cleared = service.update_recipe(
+                "recipe.secret", unlock_quest_id=_UNSET)
+            self.assertIsNone(cleared.data["unlockQuestId"])
+
+            # Setting a valid quest again works.
+            gated = service.update_recipe(
+                "recipe.secret", unlock_quest_id="quest.alchemy.rank")
+            self.assertEqual("quest.alchemy.rank", gated.data["unlockQuestId"])
+
+            # Usages find the quest through the recipe and the item through it.
+            quest_usages = workspace.find_usages("quest.alchemy.rank")
+            self.assertTrue(any(
+                usage.category == "craftingRecipes" and usage.definition_id == "recipe.secret"
+                for usage in quest_usages
+            ))
+
+    def test_unlock_quest_reference_is_typed_and_validated(self) -> None:
+        from tools.content_studio.model.content_authoring import ReferenceIndex
+        from tools.content_studio.model.types import ContentReference
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = make_workspace(Path(directory))
+            service = crafting_service(workspace)
+            service.create_recipe(
+                "Poção Secreta", "recipe.secret", BASE_INPUTS, BASE_OUTPUTS,
+                unlock_quest_id="quest.alchemy.rank",
+            )
+            index = ReferenceIndex(workspace)
+            self.assertIn(
+                ContentReference("craftingRecipes", "recipe.secret"),
+                index.usages(ContentReference("quests", "quest.alchemy.rank")),
+            )
+
+            recipe = workspace.find("craftingRecipes", "recipe.secret")
+            recipe.data["unlockQuestId"] = "quest.ghost"
+            issues = workspace.validate_local(recipe)
+            self.assertTrue(any(
+                issue.code == "missing_dependency" and issue.path.endswith("unlockQuestId")
+                for issue in issues
+            ))
 
 
 if __name__ == "__main__":
