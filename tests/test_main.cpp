@@ -56,6 +56,7 @@
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/attack_shapes.h"
 #include "game/gameplay/combat_system.h"
+#include "game/gameplay/crafting.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/dialogue/dialogue_session.h"
@@ -8044,8 +8045,9 @@ void testPhase13AJsonFoundation() {
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":3})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":6})").content,
-           "content JSON accepts v1-v5 and rejects wrong format identifiers and unsupported versions");
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":6})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7})").content,
+           "content JSON accepts v1-v6 and rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
@@ -10235,12 +10237,12 @@ void testPhase17VisualContentBoundary() {
     const auto json = content::encodeAuthoredContentJson(authored);
     const auto decoded = content::decodeAuthoredContentJson(json);
     expect(decoded.content && decoded.diagnostics.empty() &&
-               json.find("\"version\": 5") != std::string::npos &&
+               json.find("\"version\": 6") != std::string::npos &&
                decoded.content->visualImages.size() == 1 &&
                decoded.content->animations.size() == 3 &&
                decoded.content->enemyVisuals.front().idle.defaultAnimation &&
                decoded.content->enemyVisuals.front().move->down,
-           "Content JSON v5 decodes flexible visual definitions and partial directions");
+           "Content JSON v6 decodes flexible visual definitions and partial directions");
     expect(decoded.content && content::encodeAuthoredContentJson(*decoded.content) == json,
            "Content JSON v5 visual content has deterministic roundtrip encoding");
 
@@ -10579,6 +10581,529 @@ void testPlayerFacingDepenetration() {
         "Player keeps previous facing when depenetration limit is insufficient");
 }
 
+void testCraftingEngine() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    using simulation::DefinitionId;
+
+    ItemCatalog catalog;
+    const DefinitionId herb{"item.red_herb"};
+    const DefinitionId bottle{"item.empty_bottle"};
+    const DefinitionId ore{"item.iron_ore"};
+    const DefinitionId coal{"item.coal"};
+    const DefinitionId wood{"item.wood"};
+    const DefinitionId potion{"item.life_potion"};
+    const DefinitionId sword{"item.iron_sword"};
+    const DefinitionId slag{"item.slag"};
+    const DefinitionId charm{"item.power_charm"};
+    auto misc = [&catalog](DefinitionId id, std::uint32_t stackLimit) {
+        catalog.add({id, DefinitionId{"visual." + std::string(id.value())},
+                     ItemCategory::misc, stackLimit, std::nullopt});
+    };
+    misc(herb, 66); misc(bottle, 66); misc(ore, 66); misc(coal, 66); misc(wood, 66);
+    misc(potion, 66); misc(slag, 66);
+    misc(sword, 1); misc(charm, 1);
+
+    CraftingService service;
+
+    // Catalog validation.
+    CraftingCatalog recipeCatalog;
+    CraftingRecipeDefinition potionRecipe{DefinitionId{"recipe.life_potion"},
+        {{herb, 2}, {bottle, 1}}, {{potion, 1}}};
+    recipeCatalog.add(potionRecipe);
+    expect(recipeCatalog.find(DefinitionId{"recipe.life_potion"}) != nullptr &&
+               recipeCatalog.require(DefinitionId{"recipe.life_potion"}).inputs.size() == 2 &&
+               recipeCatalog.values().size() == 1,
+           "crafting catalog stores and finds recipes by id");
+    bool duplicateRecipeRejected = false;
+    try { recipeCatalog.add(potionRecipe); }
+    catch (const std::logic_error&) { duplicateRecipeRejected = true; }
+    expect(duplicateRecipeRejected, "crafting catalog rejects duplicate recipe ids");
+    bool emptyRecipeRejected = false;
+    try { recipeCatalog.add(CraftingRecipeDefinition{DefinitionId{}, {}, {}}); }
+    catch (const std::invalid_argument&) { emptyRecipeRejected = true; }
+    expect(emptyRecipeRejected, "crafting catalog rejects empty or shapeless recipes");
+    bool invalidShapeRejected = false;
+    try {
+        recipeCatalog.add(CraftingRecipeDefinition{DefinitionId{"recipe.invalid"},
+            {{herb, 1}}, {{potion, 1}}});
+    } catch (const std::invalid_argument&) { invalidShapeRejected = true; }
+    expect(invalidShapeRejected, "crafting catalog rejects recipes with fewer than two inputs");
+    bool zeroQuantityRejected = false;
+    try {
+        recipeCatalog.add(CraftingRecipeDefinition{DefinitionId{"recipe.zero"},
+            {{herb, 0}, {bottle, 1}}, {{potion, 1}}});
+    } catch (const std::invalid_argument&) { zeroQuantityRejected = true; }
+    expect(zeroQuantityRejected, "crafting catalog rejects zero ingredient quantities");
+    bool duplicateIngredientRejected = false;
+    try {
+        recipeCatalog.add(CraftingRecipeDefinition{DefinitionId{"recipe.duplicate"},
+            {{herb, 1}, {herb, 2}}, {{potion, 1}}});
+    } catch (const std::invalid_argument&) { duplicateIngredientRejected = true; }
+    expect(duplicateIngredientRejected, "crafting catalog rejects duplicated input item ids");
+
+    // Two-input craft with multiple quantities of each input.
+    ItemContainer inventory(10, catalog);
+    static_cast<void>(inventory.add(herb, 5));
+    static_cast<void>(inventory.add(bottle, 3));
+    const auto can = service.canCraft(potionRecipe, inventory);
+    expect(can && can.consumed.size() == 2 && can.consumed[0].quantity == 2 &&
+               can.consumed[1].quantity == 1,
+           "canCraft reports the exact typed ingredient plan");
+    expect(service.canCraft(potionRecipe, inventory, 2) &&
+               !service.canCraft(potionRecipe, inventory, 3),
+           "multi-craft simulation checks totals against the inventory");
+
+    const auto crafted = service.craft(potionRecipe, inventory);
+    expect(crafted && crafted.craftsPerformed == 1 && inventory.count(herb) == 3 &&
+               inventory.count(bottle) == 2 && inventory.count(potion) == 1,
+           "successful craft removes exactly the inputs and adds exactly the outputs");
+
+    // Failing crafts never touch the inventory.
+    const auto missing = service.craft(potionRecipe, inventory, 4);
+    expect(missing.status == CraftingStatus::missingIngredients &&
+               inventory.count(herb) == 3 && inventory.count(bottle) == 2 &&
+               inventory.count(potion) == 1,
+           "insufficient ingredients fail atomically without inventory changes");
+    expect(service.canCraft(potionRecipe, inventory).status == CraftingStatus::success,
+           "canCraft does not mutate the inventory");
+
+    // Three and four distinct inputs; multiple outputs.
+    CraftingRecipeDefinition swordRecipe{DefinitionId{"recipe.iron_sword"},
+        {{ore, 2}, {coal, 1}, {wood, 1}}, {{sword, 1}, {slag, 2}}};
+    ItemContainer smith(8, catalog);
+    static_cast<void>(smith.add(ore, 4));
+    static_cast<void>(smith.add(coal, 2));
+    static_cast<void>(smith.add(wood, 2));
+    const auto smithed = service.craft(swordRecipe, smith);
+    expect(smithed && smith.count(ore) == 2 && smith.count(coal) == 1 &&
+               smith.count(wood) == 1 && smith.count(sword) == 1 && smith.count(slag) == 2,
+           "three-input recipe with two outputs is applied exactly");
+    expect(service.craft(swordRecipe, smith) &&
+               smith.count(ore) == 0 && smith.count(coal) == 0 && smith.count(wood) == 0,
+           "a second craft consumes the remaining exact ingredients");
+    expect(service.craft(swordRecipe, smith).status == CraftingStatus::missingIngredients &&
+               smith.count(sword) == 2,
+           "crafting stops once the inputs are exhausted");
+
+    CraftingRecipeDefinition fourInput{DefinitionId{"recipe.four_input"},
+        {{herb, 1}, {bottle, 1}, {ore, 1}, {coal, 1}}, {{charm, 1}}};
+    ItemContainer alchemist(20, catalog);
+    static_cast<void>(alchemist.add(herb, 1));
+    static_cast<void>(alchemist.add(bottle, 1));
+    static_cast<void>(alchemist.add(ore, 1));
+    static_cast<void>(alchemist.add(coal, 1));
+    expect(service.craft(fourInput, alchemist) && alchemist.count(charm) == 1,
+           "four-input recipe crafts into a single output");
+
+    // Invalid recipes are rejected by the service even before content validation.
+    CraftingRecipeDefinition unknownItem{DefinitionId{"recipe.unknown_item"},
+        {{herb, 1}, {DefinitionId{"item.ghost"}, 1}}, {{potion, 1}}};
+    expect(service.canCraft(unknownItem, inventory).status == CraftingStatus::invalidRecipe,
+           "recipes referencing unknown items report invalidRecipe");
+    CraftingRecipeDefinition noOutput{DefinitionId{"recipe.no_output"},
+        {{herb, 1}, {bottle, 1}}, {}};
+    expect(service.canCraft(noOutput, inventory).status == CraftingStatus::invalidRecipe,
+           "recipes without outputs report invalidRecipe");
+    CraftingRecipeDefinition zeroCrafts{DefinitionId{"recipe.zero_crafts"},
+        {{herb, 1}, {bottle, 1}}, {{potion, 1}}};
+    expect(service.canCraft(zeroCrafts, inventory, 0).status == CraftingStatus::invalidRecipe,
+           "zero craft count is rejected");
+
+    // Inventory space: consuming ingredients frees slots for the outputs.
+    ItemContainer tight(2, catalog);
+    static_cast<void>(tight.add(herb, 2));
+    static_cast<void>(tight.add(bottle, 66));
+    expect(service.canCraft(potionRecipe, tight).status == CraftingStatus::success,
+           "canCraft simulates slot reuse before committing");
+    const auto freed = service.craft(potionRecipe, tight);
+    expect(freed && tight.count(herb) == 0 && tight.count(bottle) == 65 &&
+               tight.count(potion) == 1 && tight.capacity() == 2,
+           "consuming ingredients frees slots that receive the outputs");
+
+    // Partially filled output stacks merge before new slots are used.
+    ItemContainer merging(3, catalog);
+    static_cast<void>(merging.add(potion, 60));
+    static_cast<void>(merging.add(herb, 10));
+    static_cast<void>(merging.add(bottle, 5));
+    expect(service.craft(potionRecipe, merging) && merging.slot(0)->quantity == 61 &&
+               merging.slot(0)->itemId == potion,
+           "outputs merge into partially filled stacks");
+
+    // Truly full inventory rejects crafting without consuming anything.
+    CraftingRecipeDefinition twoOutputs{DefinitionId{"recipe.pair"},
+        {{ore, 1}, {coal, 1}}, {{sword, 1}, {charm, 1}}};
+    ItemContainer blocked(2, catalog);
+    static_cast<void>(blocked.add(ore, 2));
+    static_cast<void>(blocked.add(coal, 1));
+    expect(service.craft(twoOutputs, blocked).status == CraftingStatus::inventoryFull &&
+               blocked.count(ore) == 2 && blocked.count(coal) == 1 &&
+               blocked.count(sword) == 0 && blocked.count(charm) == 0,
+           "output placement failure keeps the inventory untouched");
+
+    ItemContainer occupied(2, catalog);
+    static_cast<void>(occupied.add(sword, 1));
+    static_cast<void>(occupied.add(charm, 1));
+    expect(service.canCraft(swordRecipe, occupied).status == CraftingStatus::missingIngredients,
+           "missing inputs are reported before inventory space matters");
+
+    // maxCraftable considers ingredients and space.
+    ItemContainer stocked(30, catalog);
+    static_cast<void>(stocked.add(herb, 66));
+    static_cast<void>(stocked.add(bottle, 66));
+    expect(service.maxCraftable(potionRecipe, stocked) == 33,
+           "maxCraftable is bounded by the scarcest ingredient");
+    expect(service.maxCraftable(swordRecipe, stocked) == 0,
+           "maxCraftable is zero when ingredients are absent");
+    ItemContainer compact(2, catalog);
+    static_cast<void>(compact.add(herb, 66));
+    static_cast<void>(compact.add(bottle, 66));
+    expect(service.maxCraftable(potionRecipe, compact) == 0,
+           "maxCraftable stops when no output fits");
+    const auto two = service.craft(swordRecipe, stocked, 2);
+    expect(!two && stocked.count(ore) == 0,
+           "crafting N times with missing inputs performs no partial craft");
+
+    ItemContainer plenty(10, catalog);
+    static_cast<void>(plenty.add(ore, 40));
+    static_cast<void>(plenty.add(coal, 20));
+    static_cast<void>(plenty.add(wood, 20));
+    const auto batch = service.craft(swordRecipe, plenty, 2);
+    expect(batch && batch.craftsPerformed == 2 && plenty.count(ore) == 36 &&
+               plenty.count(coal) == 18 && plenty.count(wood) == 18 &&
+               plenty.count(sword) == 2 && plenty.count(slag) == 4,
+           "crafting N times consumes and produces the multiplied totals atomically");
+}
+
+void testCraftingContentPipeline() {
+    using namespace underworld;
+    namespace content = game::content;
+    namespace gameplay = game::gameplay;
+
+    const char* v6 = R"({
+        "format":"dungeon-underworld-content","version":6,
+        "items":[
+            {"id":"item.red_herb","visualId":"visual.herb","category":"consumable","stackLimit":66},
+            {"id":"item.empty_bottle","visualId":"visual.bottle","category":"misc","stackLimit":66},
+            {"id":"item.iron_ore","visualId":"visual.ore","category":"misc","stackLimit":66},
+            {"id":"item.coal","visualId":"visual.coal","category":"misc","stackLimit":66},
+            {"id":"item.wood","visualId":"visual.wood","category":"misc","stackLimit":66},
+            {"id":"item.life_potion","visualId":"visual.potion","category":"consumable","stackLimit":66},
+            {"id":"item.iron_sword","visualId":"visual.sword","category":"equipment","stackLimit":1,
+             "equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":0,"playerAttackDamageBonus":1}}},
+            {"id":"item.slag","visualId":"visual.slag","category":"misc","stackLimit":66}
+        ],
+        "craftingRecipes":[
+            {"id":"recipe.life_potion",
+             "inputs":[{"itemId":"item.red_herb","quantity":2},{"itemId":"item.empty_bottle","quantity":1}],
+             "outputs":[{"itemId":"item.life_potion","quantity":1}]},
+            {"id":"recipe.iron_sword",
+             "inputs":[{"itemId":"item.iron_ore","quantity":2},{"itemId":"item.coal","quantity":1},{"itemId":"item.wood","quantity":1}],
+             "outputs":[{"itemId":"item.iron_sword","quantity":1},{"itemId":"item.slag","quantity":2}]}
+        ]
+    })";
+    const auto decoded = content::decodeAuthoredContentJson(v6);
+    expect(decoded && decoded.content->craftingRecipes.size() == 2 &&
+               decoded.content->craftingRecipes[0].inputs.size() == 2 &&
+               decoded.content->craftingRecipes[0].inputs[0].quantity == 2 &&
+               decoded.content->craftingRecipes[0].outputs.size() == 1 &&
+               decoded.content->craftingRecipes[1].outputs.size() == 2,
+           "content JSON v6 decodes authored crafting recipes with inputs and outputs");
+    expect(decoded.origins.size() == decoded.content->items.size() + decoded.content->craftingRecipes.size() &&
+               std::any_of(decoded.origins.begin(), decoded.origins.end(),
+                           [](const auto& origin) { return origin.category == "craftingRecipes"; }),
+           "crafting recipe definitions carry workspace source origins");
+
+    const auto encoded = content::encodeAuthoredContentJson(*decoded.content);
+    expect(encoded.find("\"version\": 6") != std::string::npos &&
+               encoded.find("\"craftingRecipes\"") != std::string::npos &&
+               encoded.find("\"itemId\"") != std::string::npos,
+           "content encoder emits version 6 with serialized crafting recipes");
+    const auto roundtrip = content::decodeAuthoredContentJson(encoded);
+    expect(roundtrip && roundtrip.content->craftingRecipes.size() == 2 &&
+               roundtrip.content->craftingRecipes[1].inputs.back().itemId ==
+                   decoded.content->craftingRecipes[1].inputs.back().itemId,
+           "crafting recipes survive a decode/encode round trip");
+
+    expect(!content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5,
+        "items":[{"id":"item.a","visualId":"visual.a","category":"misc","stackLimit":9}],
+        "craftingRecipes":[{"id":"recipe.x","inputs":[{"itemId":"item.a","quantity":1},{"itemId":"item.a","quantity":1}],"outputs":[{"itemId":"item.a","quantity":1}]}]})").content,
+           "craftingRecipes require content schema version 6");
+    expect(content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5,
+        "items":[{"id":"item.a","visualId":"visual.a","category":"misc","stackLimit":9}]})").content.has_value(),
+           "content v5 without craftingRecipes keeps loading");
+
+    const auto compiled = content::compileContent(*decoded.content);
+    expect(compiled && compiled.registry->craftingRecipes().values().size() == 2 &&
+               compiled.registry->craftingRecipes().find({"recipe.life_potion"}) != nullptr &&
+               compiled.registry->craftingRecipes().require({"recipe.life_potion"}).outputs.size() == 1,
+           "content compiler registers recipes into the crafting catalog");
+
+    auto invalid = *decoded.content;
+    invalid.craftingRecipes[0].inputs.resize(1);
+    expect(!content::compileContent(invalid),
+           "recipes with fewer than two inputs are rejected by content validation");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].inputs.push_back({{"item.iron_ore"}, 1});
+    invalid.craftingRecipes[0].inputs.push_back({{"item.coal"}, 1});
+    invalid.craftingRecipes[0].inputs.push_back({{"item.wood"}, 1});
+    expect(!content::compileContent(invalid),
+           "recipes with more than four inputs are rejected");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].inputs.front().quantity = 0;
+    expect(!content::compileContent(invalid),
+           "zero ingredient quantities are rejected");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].inputs.front().itemId = {"item.ghost"};
+    expect(!content::compileContent(invalid),
+           "unknown ingredient items are rejected");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].inputs.push_back({{"item.red_herb"}, 1});
+    expect(!content::compileContent(invalid),
+           "duplicated ingredient items are rejected");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].outputs.clear();
+    expect(!content::compileContent(invalid),
+           "recipes without outputs are rejected");
+
+    invalid = *decoded.content;
+    invalid.craftingRecipes[0].outputs.push_back({{"item.life_potion"}, 1});
+    expect(!content::compileContent(invalid),
+           "duplicated output items are rejected");
+
+    // Merge across workspace files: duplicate recipe ids are diagnosed with
+    // the merge stage; a single valid file compiles end to end.
+    auto originsFor = [](const content::AuthoredContentPack& pack) {
+        std::vector<content::ContentJsonDefinitionOrigin> origins;
+        for (const auto& item : pack.items) {
+            origins.push_back({"items", item.id, 1, 1, "items[" + std::to_string(origins.size()) + "]"});
+        }
+        for (const auto& recipe : pack.craftingRecipes) {
+            origins.push_back({"craftingRecipes", recipe.id, 2, 1,
+                               "craftingRecipes[" + std::to_string(origins.size()) + "]"});
+        }
+        return origins;
+    };
+    content::AuthoredContentPack validPack;
+    validPack.items.push_back({{"item.herb"}, {"visual.herb"}, gameplay::ItemCategory::consumable, 66, std::nullopt});
+    validPack.items.push_back({{"item.bottle"}, {"visual.bottle"}, gameplay::ItemCategory::misc, 66, std::nullopt});
+    validPack.items.push_back({{"item.potion"}, {"visual.potion"}, gameplay::ItemCategory::consumable, 66, std::nullopt});
+    content::AuthoredCraftingRecipe validRecipe;
+    validRecipe.id = {"recipe.life_potion"};
+    validRecipe.inputs = {{{"item.herb"}, 2}, {{"item.bottle"}, 1}};
+    validRecipe.outputs = {{{"item.potion"}, 1}};
+    validPack.craftingRecipes.push_back(validRecipe);
+
+    content::AuthoredContentPack duplicatePack;
+    duplicatePack.craftingRecipes.push_back(validRecipe);
+    std::vector<content::DecodedContentWorkspaceFile> files = {
+        {std::filesystem::path{"a.json"}, validPack, originsFor(validPack)},
+        {std::filesystem::path{"b.json"}, duplicatePack, originsFor(duplicatePack)}};
+    const auto merged = content::buildContentWorkspace(files);
+    expect(!merged && std::any_of(merged.diagnostics.begin(), merged.diagnostics.end(),
+               [](const auto& diagnostic) {
+                   return diagnostic.code == "duplicate_definition" &&
+                          diagnostic.category == "craftingRecipes";
+               }),
+           "duplicate recipe ids across workspace files are diagnosed");
+
+    std::vector<content::DecodedContentWorkspaceFile> single = {
+        {std::filesystem::path{"a.json"}, validPack, originsFor(validPack)}};
+    const auto workspaceOnly = content::buildContentWorkspace(single);
+    expect(workspaceOnly &&
+               workspaceOnly.workspace->registry.craftingRecipes().values().size() == 1 &&
+               workspaceOnly.workspace->registry.craftingRecipes().require({"recipe.life_potion"}).inputs.size() == 2,
+           "merged workspaces compile recipes into the runtime crafting catalog");
+}
+
+void testCraftingInterface() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    using simulation::DefinitionId;
+
+    // Direct overlay routing mirrors the shop overlay contract.
+    ItemCatalog catalog;
+    const DefinitionId herb{"item.red_herb"};
+    const DefinitionId bottle{"item.empty_bottle"};
+    const DefinitionId ore{"item.iron_ore"};
+    const DefinitionId coal{"item.coal"};
+    const DefinitionId wood{"item.wood"};
+    const DefinitionId potion{"item.life_potion"};
+    const DefinitionId sword{"item.iron_sword"};
+    auto misc = [&catalog](DefinitionId id, std::uint32_t stackLimit) {
+        catalog.add({id, DefinitionId{"visual." + std::string(id.value())},
+                     ItemCategory::misc, stackLimit, std::nullopt});
+    };
+    misc(herb, 66); misc(bottle, 66); misc(ore, 66); misc(coal, 66); misc(wood, 66);
+    misc(potion, 66); misc(sword, 1);
+
+    CraftingCatalog recipes;
+    const CraftingRecipeDefinition potionRecipe{DefinitionId{"recipe.life_potion"},
+        {{herb, 2}, {bottle, 1}}, {{potion, 1}}};
+    const CraftingRecipeDefinition swordRecipe{DefinitionId{"recipe.iron_sword"},
+        {{ore, 2}, {coal, 1}, {wood, 1}}, {{sword, 1}}};
+    recipes.add(potionRecipe);
+    recipes.add(swordRecipe);
+    CraftingService service;
+    CraftingOverlayState overlay;
+    overlay.open(recipes);
+    expect(overlay.open() && overlay.selection() == 0 && !overlay.feedback(),
+           "crafting overlay opens on the first recipe without feedback");
+    PlayerItems items(catalog);
+    static_cast<void>(items.inventory().items().add(herb, 4));
+    static_cast<void>(items.inventory().items().add(bottle, 2));
+
+    simulation::PlayerCommand command;
+    command.movement.y = 1;
+    auto routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
+    expect(routed.consumedTick && overlay.selection() == 1 && !routed.transaction,
+           "crafting navigation consumes the tick and moves the selection");
+
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
+    expect(routed.transaction && routed.transaction->status == CraftingStatus::missingIngredients &&
+               overlay.feedback() == CraftingStatus::missingIngredients &&
+               items.inventory().items().count(ore) == 0,
+           "craft attempt without ingredients reports the typed failure");
+
+    command = {};
+    command.movement.y = -1;
+    static_cast<void>(routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service));
+    command = {};
+    command.actions.interactPressed = true;
+    routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
+    expect(routed.transaction && routed.transaction->status == CraftingStatus::success &&
+               items.inventory().items().count(herb) == 2 &&
+               items.inventory().items().count(bottle) == 1 &&
+               items.inventory().items().count(potion) == 1,
+           "interact crafts the selected recipe atomically");
+    overlay.close();
+    expect(!overlay.open() && !overlay.feedback(), "closing clears crafting overlay state");
+
+    // Read model for the presentation layer.
+    overlay.open(recipes);
+    simulation::EntityHandlePool handles;
+    Player player({0}, handles.create(), {10, 10}, 5);
+    const auto view = game::buildGameViewModel(player, items, catalog,
+                                               InventoryOverlayState{}, BankOverlayState{},
+                                               {3, 0}, ShopOverlayState{}, rpg::ShopCatalog{},
+                                               overlay, recipes);
+    expect(view.craftingOpen && view.craftingRecipes.size() == 2 &&
+               view.craftingRecipes[0].recipeId == potionRecipe.id &&
+               view.craftingRecipes[0].inputs[0].ownedQuantity == 2 &&
+               view.craftingRecipes[0].inputs[0].requiredQuantity == 2 &&
+               view.craftingRecipes[0].inputs[1].ownedQuantity == 1 &&
+               view.craftingRecipes[0].craftable && view.craftingRecipes[0].maxCraftable == 1 &&
+               view.craftingRecipes[1].craftable == false &&
+               view.craftingRecipes[0].inputs[0].visualId == DefinitionId{"visual.item.red_herb"},
+           "crafting view model exposes owned/required quantities and craftability");
+    static_cast<void>(items.inventory().items().add(ore, 40));
+    static_cast<void>(items.inventory().items().add(coal, 20));
+    static_cast<void>(items.inventory().items().add(wood, 20));
+    const auto enriched = game::buildGameViewModel(player, items, catalog,
+                                                   InventoryOverlayState{}, BankOverlayState{},
+                                                   {3, 0}, ShopOverlayState{}, rpg::ShopCatalog{},
+                                                   overlay, recipes);
+    expect(enriched.craftingRecipes[1].craftable &&
+               enriched.craftingRecipes[1].maxCraftable == 20,
+           "crafting view model computes max craftable from the live inventory");
+
+    // Session-level integration through the authored content pipeline.
+    namespace content = game::content;
+    namespace maps = game::maps;
+    auto authored = content::makeCombatAuthoredContent();
+    authored.craftingRecipes.push_back({DefinitionId{"recipe.session.charm"},
+        {{DefinitionId{"item.arrow"}, 1}, {DefinitionId{"item.life_potion"}, 1}},
+        {{DefinitionId{"item.power_charm"}, 1}}});
+    const auto sessionCompiled = content::compileContent(authored);
+    expect(sessionCompiled.registry &&
+               sessionCompiled.registry->craftingRecipes().values().size() == 1,
+           "combat fixture with an authored recipe compiles into the crafting catalog");
+    if (!sessionCompiled.registry) { return; }
+    const auto& registry = *sessionCompiled.registry;
+
+    maps::MapData map;
+    map.id = simulation::MapId{"map.crafting.bench"};
+    map.width = 8;
+    map.height = 8;
+    map.tileSize = 16;
+    map.tileReferences.push_back(
+        {DefinitionId{"tileset.dungeon"}, 10, underworld::world::TileFlags::none});
+    maps::MapTileLayer ground{"ground", true, std::vector<std::optional<std::uint32_t>>(64)};
+    map.layers.push_back(std::move(ground));
+    map.collision.assign(64, 0);
+    map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {64, 40},
+                                FacingDirection::down});
+    const auto validation = game::mapValidationCatalogs(registry);
+    const std::array visuals{creatures::soldierVisualId(), creatures::skullVisualId()};
+    creatures::EnemyFactory enemies(handles, registry.enemies(), registry.behaviors(),
+                                    registry.attacks(), registry.projectiles(), visuals);
+    WorldObjectFactory objects(handles, registry.objects(), registry.items());
+    game::RuntimeTilesetCatalog runtimeTilesets(registry.tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+    const auto dmapPath = std::filesystem::temp_directory_path() / "underworld_crafting.dmap";
+    std::error_code fsError;
+    std::filesystem::remove(dmapPath, fsError);
+    std::string ioError;
+    const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
+    maps::MapCatalog mapCatalog;
+    if (dmapWritten) { mapCatalog.add(map.id, dmapPath); }
+    game::GameSession session({0}, testProgression());
+    session.configureItems(registry.items());
+    session.configureNarrative(registry.dialogues(), registry.quests());
+    session.configureCrafting(registry.craftingRecipes());
+    std::string sessionError;
+    expect(dmapWritten && session.initializeMap(mapCatalog, validation, builder, map.id,
+                                                simulation::SpawnId{"entry.start"}, sessionError),
+           "crafting session fixture initializes through the DMAP catalog");
+    if (session.world().id() != map.id) { return; }
+
+    auto& sessionItems = const_cast<PlayerItems&>(session.playerItems());
+    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.arrow"}, 2));
+    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.life_potion"}, 1));
+
+    command = {};
+    command.actions.toggleCraftingPressed = true;
+    session.tick(command);
+    expect(session.craftingOverlay().open() && session.craftingOverlay().selection() == 0,
+           "toggle crafting opens the crafting overlay for the next tick");
+
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    session.tick(command);
+    expect(sessionItems.inventory().items().count(DefinitionId{"item.arrow"}) == 1 &&
+               sessionItems.inventory().items().count(DefinitionId{"item.life_potion"}) == 0 &&
+               sessionItems.inventory().items().count(DefinitionId{"item.power_charm"}) == 1,
+           "session crafting removes the inputs and adds the output");
+
+    const auto save = session.captureSaveData();
+    command = {};
+    command.actions.toggleInventoryPressed = true;
+    session.tick(command);
+    expect(!session.craftingOverlay().open(), "toggle inventory closes the crafting overlay");
+
+    game::GameSession restored({0}, testProgression());
+    restored.configureItems(registry.items());
+    restored.configureNarrative(registry.dialogues(), registry.quests());
+    restored.configureCrafting(registry.craftingRecipes());
+    std::string restoreError;
+    expect(dmapWritten && restored.initializeMap(mapCatalog, validation, builder, map.id,
+                                                 simulation::SpawnId{"entry.start"}, restoreError) &&
+               restored.restoreSaveData(save, restoreError),
+           "session with crafted items restores through the save pipeline");
+    expect(restored.playerItems().inventory().items().count(DefinitionId{"item.arrow"}) == 1 &&
+               restored.playerItems().inventory().items().count(DefinitionId{"item.power_charm"}) == 1 &&
+               restored.playerItems().inventory().items().count(DefinitionId{"item.life_potion"}) == 0,
+           "crafted inventory state survives save/load without a crafting-specific chunk");
+    std::filesystem::remove(dmapPath, fsError);
+}
+
 int main() {
     try {
         testMetrics();
@@ -10664,6 +11189,9 @@ int main() {
         testPhase12E1RewardGrants();
         testPhase12E2Shops();
         testPhase12E3ShopInterface();
+        testCraftingEngine();
+        testCraftingContentPipeline();
+        testCraftingInterface();
         testPhase13AJsonFoundation();
         testPhase13A2JsonDecoders();
         testPhase13A3JsonDecoders();
