@@ -80,6 +80,11 @@ TABLER_ICONS: dict[str, str] = {
     # Playback
     "play": "player-play.svg",
     "pause": "player-pause.svg",
+    # Ordering arrows
+    "chevron_up": "chevron-up.svg",
+    "chevron_down": "chevron-down.svg",
+    "chevron_left": "chevron-left.svg",
+    "chevron_right": "chevron-right.svg",
     # Frequent actions
     "add": "plus.svg",
     "delete": "trash.svg",

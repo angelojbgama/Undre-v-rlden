@@ -1327,3 +1327,44 @@ TRANSLATIONS["pt-BR"].update({
 TRANSLATIONS["en-US"].update({
     "map_entry_badge": "Game entry map",
 })
+
+TRANSLATIONS["pt-BR"].update({
+    "atlas_used_tiles": "{used} de {total} com desenho",
+})
+
+TRANSLATIONS["en-US"].update({
+    "atlas_used_tiles": "{used} of {total} drawn",
+})
+
+# recent-menu + settings dialog localization (audit G10/G11)
+TRANSLATIONS["pt-BR"].update({
+    "open_recent": "Abrir Recente",
+    "no_recent_projects": "Nenhum projeto recente",
+    "recent_project_missing": "Projeto não encontrado: {path}",
+    "settings": "Preferências...",
+    "settings_title": "Preferências do Studio",
+    "settings_language": "Idioma",
+    "settings_theme": "Tema",
+    "settings_asset_root": "Raiz de assets",
+    "settings_browse": "Procurar...",
+    "settings_saved": "Preferências salvas",
+    "map_preset": "Tamanho predefinido",
+    "map_preset_custom": "Personalizado",
+    "map_preset_hint": "Escolha um tamanho predefinido ou informe dimensões personalizadas.",
+})
+
+TRANSLATIONS["en-US"].update({
+    "open_recent": "Open Recent",
+    "no_recent_projects": "No recent projects",
+    "recent_project_missing": "Project not found: {path}",
+    "settings": "Preferences...",
+    "settings_title": "Studio Preferences",
+    "settings_language": "Language",
+    "settings_theme": "Theme",
+    "settings_asset_root": "Asset root",
+    "settings_browse": "Browse...",
+    "settings_saved": "Preferences saved",
+    "map_preset": "Size preset",
+    "map_preset_custom": "Custom",
+    "map_preset_hint": "Pick a size preset or enter custom dimensions.",
+})

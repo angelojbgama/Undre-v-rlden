@@ -152,8 +152,12 @@ class TerrainRuleDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"{self.translate('terrain_rule_editor')} — {display_name}"))
         layout.addWidget(self.content_splitter, 1)
-        layout.addWidget(self.save_button)
-        layout.addWidget(buttons)
+        # One standard button row: primary action beside Cancel (audit DL6).
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.save_button)
+        button_row.addStretch(1)
+        button_row.addWidget(buttons)
+        layout.addLayout(button_row)
         self.setWindowTitle(self.translate("terrain_rule_editor"))
         self.resize(800, 560)
 

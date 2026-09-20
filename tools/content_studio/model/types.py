@@ -79,6 +79,7 @@ class ProjectPreferences:
     last_project: str = ""
     left_panel_width: int = 260
     right_panel_width: int = 340
+    recent_projects: list[str] = field(default_factory=list)
     map_folders: dict[str, dict[str, str]] = field(default_factory=dict)
     tileset_folders: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 

@@ -112,7 +112,7 @@ class TilesetLibraryWidget(QWidget):
         self.tilesets.tileset_dropped.connect(self._tileset_dropped)
         self.tilesets.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tilesets.customContextMenuRequested.connect(self._context_menu)
-        self.atlas = TileAtlasWidget(); self.atlas.set_family_label(self.translate("family")); self.atlas.selected.connect(self.selected); self.atlas.brush_selected.connect(self.brush_selected)
+        self.atlas = TileAtlasWidget(); self.atlas.set_family_label(self.translate("family")); self.atlas.set_used_tiles_label(self.translate("atlas_used_tiles")); self.atlas.set_used_tiles_label(self.translate("atlas_used_tiles")); self.atlas.selected.connect(self.selected); self.atlas.brush_selected.connect(self.brush_selected)
         self.atlas.tiles.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.atlas.tiles.customContextMenuRequested.connect(self._atlas_context_menu)
         self.add_files_button = QPushButton(self.translate("import_tileset")); self.add_files_button.setIcon(icon("import")); self.add_files_button.clicked.connect(self.add_files)
@@ -159,7 +159,7 @@ class TilesetLibraryWidget(QWidget):
 
     def retranslate(self, translator: Translator) -> None:
         self.translate = translator
-        self.atlas.set_family_label(self.translate("family"))
+        self.atlas.set_family_label(self.translate("family")); self.atlas.set_used_tiles_label(self.translate("atlas_used_tiles"))
         self.search.setPlaceholderText(self.translate("search_tilesets"))
         self.add_files_button.setText(self.translate("import_tileset")); self.new_folder_button.setText(self.translate("new_tileset_folder")); self.reimport_button.setText(self.translate("reimport")); self.delete_button.setText(self.translate("delete"))
         self.refresh()

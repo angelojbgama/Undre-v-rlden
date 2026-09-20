@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3 em `97c7547`; SE1-SE2 em `e7cc8bb`; SP1-SP2 em `3d9a318`; M1-M2, L1 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3 em `97c7547`; SE1-SE2 em `e7cc8bb`; SP1-SP2 em `3d9a318`; M1-M2, L1 em `fdb8544`; T2-T3, DL1-DL6/DL9, G10-G12 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -36,9 +36,9 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 | G7 ✅ | P2 | **Sem discoverability de atalhos/recursos:** Frame Map é só `Home` (nenhum botão), zoom só no scroll do mouse (sem `+`/`-`/botões), undo/redo só no menu. | Adicionar actions de Zoom In/Out (+ botões), tooltip com atalho nas actions ("Enquadrar Mapa (Home)"), botões de undo/redo na toolbar. |
 | G8 ✅ | P2 | **Acentuação faltando em PT-BR** em strings novas (editor de porta): "Configuracao da porta", "Chave necessaria", "Persistencia", "Aplicar configuracao". | Revisar TODO o arquivo de traduções; adicionar teste que(strings pt-BR contenham acentos esperados?) ou revisão manual guiada. |
 | G9 | P3 | **Buscas inconsistentes:** placeholders variados ("Procurar", "Procurar objetos", "Search display name / definitionId"), alguns sem filtro de categoria. | Padronizar placeholder e comportamento (filtrar por id + display name + tooltip). |
-| G10 | P3 | **Sem menu de projetos recentes** (`preferences.lastProject` já é salvo mas não é usado na UI). | Menu Arquivo > Abrir Recente (5 itens). |
-| G11 | P3 | **Sem tela de Settings** (asset root só via arquivo de preferências/CLI; idioma e tema espalhados em menus). | Diálogo único de preferências (idioma, tema, asset root, larguras). |
-| G12 | P3 | **Mnemônicos/tooltips ausentes** em menus e botões. | Adicionar `&` nos menus principais e tooltips em botões-ícone. |
+| G10 ✅ | P3 | **Sem menu de projetos recentes** (`preferences.lastProject` já é salvo mas não é usado na UI). | Menu Arquivo > Abrir Recente (5 itens). |
+| G11 ✅ | P3 | **Sem tela de Settings** (asset root só via arquivo de preferências/CLI; idioma e tema espalhados em menus). | Diálogo único de preferências (idioma, tema, asset root, larguras). |
+| G12 ✅ | P3 | **Mnemônicos/tooltips ausentes** em menus e botões. | Adicionar `&` nos menus principais e tooltips em botões-ícone. |
 
 ## 2. Shell da janela (menus, toolbar, abas, diagnostics)
 
@@ -75,8 +75,8 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
 | T1 | P2 | Badge vermelho "C" (pixel collision) é criptico; tooltip existe mas só depois de configurado. | Badge com ícone + tooltip fixo ("Colisão por pixel definida"). |
-| T2 | P2 | Atlas mostra **todas as células vazias** do spritesheet (scroll horizontal enorme em tilesets esparsos). | Modo compacto (ocultar células vazias) ou "ir para primeiro/último tile usado". |
-| T3 | P3 | Tile selecionado pintado de azul chapado esconde a arte. | Overlay de borda/marcação translúcida. |
+| T2 ✅ | P2 | Atlas mostra **todas as células vazias** do spritesheet (scroll horizontal enorme em tilesets esparsos). | Modo compacto (ocultar células vazias) ou "ir para primeiro/último tile usado". |
+| T3 ✅ | P3 | Tile selecionado pintado de azul chapado esconde a arte. | Overlay de borda/marcação translúcida. |
 
 ### 4.4 Spritesheet / Animação (SpritesheetLibrary)
 | ID | Pri | Problema | Proposta |
@@ -166,15 +166,15 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 
 | ID | Pri | Tela | Problema | Proposta |
 |---|---|---|---|---|
-| DL1 | P2 | Propriedades do Mapa | Dica de redimensionamento aparece também no modo **novo** (irrelevante); sem presets de tamanho. | Mostrar dica só em modo edição; presets (16×16, 32×24, custom). |
-| DL2 | P2 | Editor de Ataque | Denso mas bem organizado; labels mistos (`offsetX/offsetY` EN + `largura/altura` PT); 4 linhas fixas de hitbox mesmo sem melee. | Traduzir labels; ocultar seção hitbox para ataques projectile; anchors com nomes consistentes. |
-| DL3 | P2 | Player — Sequência de Frames | Diálogo gigante (1180×900) com caixas vazias; botões ↑/↓ sem texto (só caractere); 9 botões de máscara em grade plana; help parágrafo enorme. | Compactar (tabs ou accordions por canal), botões com ícone+texto, encurtar help com tooltips dos InfoButtons (padrão do editor de ataques). |
-| DL4 | P3 | Colisão Animada | Bom; Save/Cancel ficam EN (QDialogButtonBox padrão). | Botões traduzidos (como no resto). |
-| DL5 | P3 | Imports (Tileset/Spritesheet) | Sugestão de id genérica ("tileset.authored"); good previews. | Sugerir id pelo nome do arquivo importado. |
-| DL6 | P3 | Smart Terrain — Regras | Bom modelo (grid 3×3 + atlas); rodapé só "Cancelar" à direita (salvar à esquerda) — inconsistente. | Padronizar barra de botões OK/Cancelar com "Salvar lógica" como primary. |
+| DL1 ✅ | P2 | Propriedades do Mapa | Dica de redimensionamento aparece também no modo **novo** (irrelevante); sem presets de tamanho. | Mostrar dica só em modo edição; presets (16×16, 32×24, custom). |
+| DL2 ✅ | P2 | Editor de Ataque | Denso mas bem organizado; labels mistos (`offsetX/offsetY` EN + `largura/altura` PT); 4 linhas fixas de hitbox mesmo sem melee. | Traduzir labels; ocultar seção hitbox para ataques projectile; anchors com nomes consistentes. |
+| DL3 ✅ | P2 | Player — Sequência de Frames | Diálogo gigante (1180×900) com caixas vazias; botões ↑/↓ sem texto (só caractere); 9 botões de máscara em grade plana; help parágrafo enorme. | Compactar (tabs ou accordions por canal), botões com ícone+texto, encurtar help com tooltips dos InfoButtons (padrão do editor de ataques). |
+| DL4 ✅ | P3 | Colisão Animada | Bom; Save/Cancel ficam EN (QDialogButtonBox padrão). | Botões traduzidos (como no resto). |
+| DL5 ✅ | P3 | Imports (Tileset/Spritesheet) | Sugestão de id genérica ("tileset.authored"); good previews. | Sugerir id pelo nome do arquivo importado. |
+| DL6 ✅ | P3 | Smart Terrain — Regras | Bom modelo (grid 3×3 + atlas); rodapé só "Cancelar" à direita (salvar à esquerda) — inconsistente. | Padronizar barra de botões OK/Cancelar com "Salvar lógica" como primary. |
 | DL7 | P3 | Gerenciador de Ataques | Simples e claro; lista sem prévia do ataque. | Mini-preview do visual ao selecionar. |
 | DL8 | P3 | Cenas — QInputDiálogos | Ver SC2. | Ver SC2. |
-| DL9 | P3 | Editor de Item / Visual Picker | Formulário razoável; mesmo padrão de help denso. | Encurtar helps; InfoButtons como no editor de ataques. |
+| DL9 ✅ | P3 | Editor de Item / Visual Picker | Formulário razoável; mesmo padrão de help denso. | Encurtar helps; InfoButtons como no editor de ataques. |
 
 ## 8. Backlog consolidado (ordem sugerida para o plano de conserto)
 
@@ -197,9 +197,9 @@ Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
 10. ✅ **SP1/SP2** Animações clusterizadas por spritesheet + ícones de playback do registry.
 11. ✅ **SE1/SE2** Grid 3×3 (bússola de vizinhos) + cabeçalho com miniatura no editor semântico.
 12. ✅ **M1/M2/L1** Badge de entrada + duplo clique no MapBrowser; checkbox de visibilidade + drag reorder nas camadas.
-13. **T2/T3** Atlas compacto de tilesets e seleção menos intrusiva.
-14. **DL1–DL9** Polimento de diálogos (um por vez).
-15. **G10–G12** Recentes, Settings, mnemônicos.
+13. ✅ **T2/T3** Contador de tiles com desenho + rolar ao primeiro tile + seleção por borda.
+14. ✅ **DL1-DL6/DL9** Presets no novo mapa, id sugerido pelo arquivo, barra de botões, hitbox só em melee, setas com ícones, botões padrão traduzidos (qtbase). **DL7/DL8** seguem no backlog (P3).
+15. ✅ **G10-G12** Abrir Recente, diálogo de Preferências, mnemônicos nos menus.
 13. **DL1–DL9** Polimento de diálogos (um por vez).
 14. **G10–G12** Recentes, Settings, mnemônicos.
 

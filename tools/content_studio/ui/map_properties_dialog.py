@@ -52,13 +52,27 @@ class MapPropertiesDialog(QDialog):
         form = QFormLayout()
         form.addRow(self.translate("map_name_id"), self.map_id)
         form.addRow(self.translate("map_folder"), self.folder)
+        if document is None:
+            # Size presets only make sense when creating a map (audit DL1);
+            # editing keeps its resize hint below.
+            self.presets = QComboBox()
+            self.presets.addItem(self.translate("map_preset_custom"))
+            for label, width, height, tile in (
+                ("Dungeon 16 — 32 × 24", 32, 24, 16),
+                ("Dungeon 16 — 48 × 32", 48, 32, 16),
+                ("Sala 16 — 20 × 15", 20, 15, 16),
+            ):
+                self.presets.addItem(label, (width, height, tile))
+            self.presets.currentIndexChanged.connect(self._preset_selected)
+            form.addRow(self.translate("map_preset"), self.presets)
         form.addRow(self.translate("map_width_tiles"), self.width_tiles)
         form.addRow(self.translate("map_height_tiles"), self.height_tiles)
         form.addRow(self.translate("tile_size"), self.tile_size)
         if document is None:
             form.addRow("", self.player_spawn)
 
-        hint = QLabel(self.translate("map_resize_hint"))
+        hint = QLabel(self.translate("map_resize_hint") if document is not None
+                      else self.translate("map_preset_hint"))
         hint.setWordWrap(True)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
@@ -70,6 +84,14 @@ class MapPropertiesDialog(QDialog):
         layout.addWidget(buttons)
         self.setWindowTitle(self.translate("map_edit_properties") if document else self.translate("map_create"))
         self.setMinimumWidth(420)
+
+    def _preset_selected(self, index: int) -> None:
+        preset = self.presets.itemData(index)
+        if isinstance(preset, tuple) and len(preset) == 3:
+            width, height, tile = preset
+            self.width_tiles.setValue(width)
+            self.height_tiles.setValue(height)
+            self.tile_size.setValue(tile)
 
     @staticmethod
     def _spin(value: int, minimum: int, maximum: int) -> QSpinBox:

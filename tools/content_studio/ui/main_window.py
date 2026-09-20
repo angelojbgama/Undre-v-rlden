@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QLibraryInfo, QTranslator, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
@@ -37,6 +37,7 @@ from . import theme
 from .diagnostics_panel import DiagnosticsPanel
 from .map_canvas import MapCanvas
 from .map_properties_dialog import MapPropertiesDialog
+from .settings_dialog import SettingsDialog
 from .preview import PreviewWidget
 from .scene_editor import SceneEditorWidget
 from .widgets import AssetBrowser, CollectionPanel, ContentBrowser, LayersPanel, MapBrowser, MapElementsPalette, SemanticPalette, StructuredInspector, set_path
@@ -118,6 +119,10 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu(self.translator("file"))
         edit_menu = self.menuBar().addMenu(self.translator("edit"))
         view_menu = self.menuBar().addMenu(self.translator("view"))
+        # Top-level mnemonics (audit G12); texts are retranslated later.
+        file_menu.setTitle("&" + self.translator("file"))
+        edit_menu.setTitle("&" + self.translator("edit"))
+        view_menu.setTitle("&" + self.translator("view"))
         self._menus = {"file": file_menu, "edit": edit_menu, "view": view_menu}
         self.actions: dict[str, QAction] = {}
         for key, title, icon_name, callback in (
@@ -136,6 +141,8 @@ class MainWindow(QMainWindow):
             action.triggered.connect(callback)
             self.actions[key] = action
             file_menu.addAction(action)
+        self.recent_menu = file_menu.addMenu(self.translator("open_recent"))
+        self.recent_menu.aboutToShow.connect(self._populate_recent_menu)
         self.actions["new"].setShortcut("Ctrl+Shift+N")
         self.actions["open"].setShortcut("Ctrl+O")
         self.actions["save"].setShortcut("Ctrl+S")
@@ -166,6 +173,10 @@ class MainWindow(QMainWindow):
             theme_group.addAction(action)
             theme_menu.addAction(action)
             self._theme_actions[mode] = action
+        settings_action = QAction(icon("configure"), self.translator("settings"), self)
+        settings_action.triggered.connect(self.open_settings)
+        view_menu.addAction(settings_action)
+        self._settings_action = settings_action
 
     def _build_ui(self) -> None:
         toolbar = QToolBar(self.translator("tools"), self)
@@ -491,11 +502,13 @@ class MainWindow(QMainWindow):
         for action_key, translation_key in labels.items():
             if action_key in self.actions:
                 self.actions[action_key].setText(self.translator(translation_key))
-        self._menus["file"].setTitle(self.translator("file"))
-        self._menus["edit"].setTitle(self.translator("edit"))
-        self._menus["view"].setTitle(self.translator("view"))
+        self._menus["file"].setTitle("&" + self.translator("file"))
+        self._menus["edit"].setTitle("&" + self.translator("edit"))
+        self._menus["view"].setTitle("&" + self.translator("view"))
         self._language_menu.setTitle(self.translator("language"))
         self._theme_menu.setTitle(self.translator("theme"))
+        self.recent_menu.setTitle(self.translator("open_recent"))
+        self._settings_action.setText(self.translator("settings"))
         for mode, action in self._theme_actions.items():
             action.setText(self.translator(f"theme_{mode}"))
         for action, translation_key in zip(self.tool_actions, self._tool_keys):
@@ -1455,6 +1468,39 @@ class MainWindow(QMainWindow):
         except ValueError as error:
             self.set_status(str(error))
 
+    def _populate_recent_menu(self) -> None:
+        self.recent_menu.clear()
+        for path_text in self.preferences.recent_projects:
+            action = self.recent_menu.addAction(path_text)
+            action.triggered.connect(lambda checked=False, value=path_text: self._open_recent(value))
+        if not self.preferences.recent_projects:
+            empty = self.recent_menu.addAction(self.translator("no_recent_projects"))
+            empty.setEnabled(False)
+
+    def _open_recent(self, path_text: str) -> None:
+        path = Path(path_text)
+        if not path.is_file():
+            self.set_status(self.translator("recent_project_missing").format(path=path_text))
+            return
+        if not self._confirm_unsaved():
+            return
+        project, diagnostics = WorldProject.open(path)
+        if project is None:
+            self._refresh_diagnostics(diagnostics)
+            return
+        self.project = project
+        self.preferences.last_project = path_text
+        self._remember_recent_project(path_text)
+        save_preferences(self.preferences)
+        migration = self._migrate_legacy_tile_collision()
+        self._refresh_all()
+        self._refresh_diagnostics(list(diagnostics) + list(migration.diagnostics if migration else []))
+
+    def _remember_recent_project(self, path_text: str) -> None:
+        entries = [entry for entry in self.preferences.recent_projects if entry != path_text]
+        entries.insert(0, path_text)
+        self.preferences.recent_projects = entries[:8]
+
     def new_project(self) -> None:
         if not self._confirm_unsaved():
             return
@@ -1511,6 +1557,7 @@ class MainWindow(QMainWindow):
             self._refresh_diagnostics(diagnostics); return
         self.project = project
         self.preferences.last_project = path
+        self._remember_recent_project(path)
         save_preferences(self.preferences)
 
         migration = self._migrate_legacy_tile_collision()
@@ -1552,6 +1599,7 @@ class MainWindow(QMainWindow):
             try:
                 old_key = self._map_folder_key()
                 self.project.save_as(Path(path))
+                self._remember_recent_project(path)
                 new_key = self._map_folder_key()
                 if old_key != new_key and old_key in self.preferences.map_folders:
                     self.preferences.map_folders[new_key] = self.preferences.map_folders.pop(old_key)
@@ -1710,6 +1758,28 @@ class MainWindow(QMainWindow):
         self._retranslate_ui()
         self._update_title()
 
+    def open_settings(self) -> None:
+        dialog = SettingsDialog(self.preferences, self.translator, self)
+        if dialog.exec() != SettingsDialog.DialogCode.Accepted:
+            return
+        previous_language = self.preferences.language
+        previous_theme = self._theme_mode
+        previous_asset_root = self.preferences.asset_root
+        dialog.commit()
+        save_preferences(self.preferences)
+        if self.preferences.theme != previous_theme:
+            self._theme_mode = self.preferences.theme
+            self._apply_theme_mode()
+        if self.preferences.language != previous_language:
+            self.translator.set_language(self.preferences.language)
+            self._retranslate_ui()
+            self._update_title()
+        new_asset_root = Path(self.preferences.asset_root) if self.preferences.asset_root else None
+        if new_asset_root != self.asset_root:
+            self.asset_root = new_asset_root
+            self._refresh_all()
+        self.set_status(self.translator("settings_saved"))
+
     def set_theme_mode(self, mode: str) -> None:
         if mode not in theme.THEME_MODES or mode == self._theme_mode:
             return
@@ -1838,6 +1908,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cpp-root", type=Path, help="repository root containing C++ tools")
     args = parser.parse_args(argv)
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
+    # Standard dialogs (OK/Cancel/Yes/No) follow the studio language
+    # through Qt's own translations (audit DL4/DL9).
+    preferences = load_preferences()
+    qt_locale = {"pt-BR": "pt_BR", "en-US": "en_US"}
+    qt_translator = QTranslator(app)
+    if qt_translator.load(f"qtbase_{qt_locale.get(preferences.language, 'pt_BR')}",
+                          QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
+        app.installTranslator(qt_translator)
     repository_root = (args.project_root or Path.cwd()).expanduser().resolve()
     workspace = _open_repository_workspace(repository_root)
     asset_root = repository_root / "assets"

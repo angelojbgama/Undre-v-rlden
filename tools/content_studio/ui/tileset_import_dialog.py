@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -28,7 +30,9 @@ class TilesetImportDialog(QDialog):
         self.import_service = import_service or ImportService()
         self.translate = translator or Translator()
         self.source = QLineEdit()
-        self.source.textChanged.connect(self._refresh_preview)
+        self._last_suggested_id = ""
+        self._last_suggested_stem = ""
+        self.source.textChanged.connect(self._source_changed)
         browse = QPushButton(self.translate("browse"))
         browse.clicked.connect(self._browse)
         source_row = QHBoxLayout(); source_row.addWidget(self.source, 1); source_row.addWidget(browse)
@@ -89,6 +93,22 @@ class TilesetImportDialog(QDialog):
     def _spin(value: int) -> QSpinBox:
         spin = QSpinBox(); spin.setRange(0, 4096); spin.setValue(value)
         return spin
+
+    def _source_changed(self, text: str) -> None:
+        """Suggest the tileset id/display name from the file name (audit DL5)."""
+        stem = Path(text).stem if text else ""
+        normalized = unicodedata.normalize("NFKD", stem).encode("ascii", "ignore").decode("ascii")
+        parts = "_".join(part for part in re.split(r"[^A-Za-z0-9]+", normalized.casefold()) if part)
+        if parts:
+            # Keep authoring overrides: only replace the fields while they
+            # still hold the previous suggestion (or the placeholder).
+            if self.tileset_id.text() in ("", "tileset.authored", self._last_suggested_id):
+                self.tileset_id.setText(f"tileset.{parts}")
+            if self.display_name.text() in ("", self._last_suggested_stem or "tileset.authored"):
+                self.display_name.setText(stem)
+            self._last_suggested_id = f"tileset.{parts}"
+            self._last_suggested_stem = stem
+        self._refresh_preview()
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, self.translate("source_image"), "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)")

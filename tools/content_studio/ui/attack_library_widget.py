@@ -3261,6 +3261,7 @@ class AttackDefinitionDialog(QDialog):
         melee_group = QGroupBox(
             self.translate("attack_melee_hitboxes")
         )
+        self.melee_group = melee_group
 
         melee_layout = QVBoxLayout(
             melee_group
@@ -4826,6 +4827,10 @@ class AttackDefinitionDialog(QDialog):
             self.kind.currentData()
             == "meleeHitbox"
         )
+
+        # Four rows of hitbox fields mean nothing on projectile attacks
+        # (audit DL2): hide the whole section instead of disabling it.
+        self.melee_group.setVisible(melee)
 
         for boxes in self._direction_boxes.values():
             for spin in boxes.values():

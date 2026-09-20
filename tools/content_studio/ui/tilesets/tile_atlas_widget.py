@@ -77,6 +77,12 @@ class TileAtlasListWidget(QTableWidget):
         self.setSortingEnabled(False)
         self.setShowGrid(False)
         self.setDragEnabled(True)
+        # Selection outline instead of a solid highlight fill: a selected
+        # transparent tile used to render as a flat blue block (audit T3).
+        self.setStyleSheet(
+            "QTableWidget::item:selected { background: palette(alternate-base);"
+            " border: 2px solid palette(highlight); }"
+        )
 
     def configure_grid(self, columns: int, rows: int) -> None:
         self.clear()
@@ -175,6 +181,7 @@ class TileAtlasWidget(QWidget):
         self.asset_root: Path | None = None
         self.tileset_id = ""
         self.family_label = "Family"
+        self.used_tiles_label = ""
         self._rendered_tileset_id = ""
         self.tiles = TileAtlasListWidget()
         self.tiles.setIconSize(QPixmap(32, 32).size())
@@ -196,6 +203,31 @@ class TileAtlasWidget(QWidget):
 
     def set_family_label(self, label: str) -> None:
         self.family_label = label
+
+    def set_used_tiles_label(self, template: str) -> None:
+        self.used_tiles_label = template
+
+    @staticmethod
+    def _used_indices(image: QImage, columns: int, rows: int, tile_size: int) -> list[int]:
+        """Source indexes whose tile has at least one opaque pixel (T2)."""
+        if image.isNull():
+            return list(range(columns * rows))
+        used: list[int] = []
+        for source_index in range(columns * rows):
+            tile = image.copy(
+                source_index % columns * tile_size,
+                source_index // columns * tile_size,
+                tile_size,
+                tile_size,
+            )
+            if tile.isNull():
+                continue
+            if tile.format() != QImage.Format.Format_ARGB32:
+                tile = tile.convertToFormat(QImage.Format.Format_ARGB32)
+            bits = bytes(tile.constBits())
+            if any(bits[3::4]):
+                used.append(source_index)
+        return used
 
     def refresh(self) -> None:
         selected_indices = (
@@ -221,9 +253,14 @@ class TileAtlasWidget(QWidget):
         tile_size = max(1, int(definition.data.get("tileSize", 16)))
         self.tiles.configure_grid(columns, rows)
         self.tiles.setProperty("tilesetId", self.tileset_id)
-        self.title.setText(f"{definition.display_name}\n{columns} × {rows} tiles")
         relative = definition.data.get("relativeAssetPath")
         image = QImage(str(self.asset_root / relative)) if self.asset_root and isinstance(relative, str) else QImage()
+        used_indices = self._used_indices(image, columns, rows, tile_size)
+        used_text = (
+            self.used_tiles_label.format(used=len(used_indices), total=columns * rows)
+            if self.used_tiles_label else f"{len(used_indices)}/{columns * rows}"
+        )
+        self.title.setText(f"{definition.display_name}\n{columns} × {rows} tiles · {used_text}")
         semantics = {
             int(value.data.get("sourceIndex", -1)): value
             for value in self.workspace.definitions("tileSemantics")
@@ -314,6 +351,12 @@ class TileAtlasWidget(QWidget):
         changed_tileset = self._rendered_tileset_id != self.tileset_id
         self._rendered_tileset_id = self.tileset_id
         self.tiles.blockSignals(False)
+        if used_indices:
+            # Sparse sheets no longer start the author on a blank corner (T2).
+            self.tiles.scrollToItem(
+                self.tiles.item(used_indices[0]),
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
         if changed_tileset:
             self._selection_changed()
 

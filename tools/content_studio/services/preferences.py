@@ -36,6 +36,10 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
     tileset_folders = data.get("tilesetFolders", {})
     if not isinstance(tileset_folders, dict):
         tileset_folders = {}
+    recent_projects = [
+        str(entry) for entry in data.get("recentProjects", [])
+        if isinstance(entry, str) and entry.strip()
+    ][:8]
     normalized_tileset_folders = {
         str(workspace): {
             str(folder): list(dict.fromkeys(str(tileset_id) for tileset_id in tilesets if str(tileset_id).strip()))
@@ -52,6 +56,7 @@ def load_preferences(path: Path | None = None) -> ProjectPreferences:
         last_project=str(data.get("lastProject", "")),
         left_panel_width=max(0, int(data.get("leftPanelWidth", 260))),
         right_panel_width=max(0, int(data.get("rightPanelWidth", 340))),
+        recent_projects=recent_projects,
         map_folders=normalized_folders,
         tileset_folders=normalized_tileset_folders,
     )
@@ -67,4 +72,5 @@ def save_preferences(preferences: ProjectPreferences, path: Path | None = None) 
         "rightPanelWidth": preferences.right_panel_width,
         "mapFolders": preferences.map_folders,
         "tilesetFolders": preferences.tileset_folders,
+        "recentProjects": preferences.recent_projects,
     })
