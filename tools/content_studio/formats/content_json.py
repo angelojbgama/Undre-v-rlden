@@ -8,12 +8,13 @@ from ..model.types import ContentDefinition, ContentFile, Diagnostic, JsonValue
 from .json_io import DuplicateKeyError, load_json, write_atomic
 
 CONTENT_FORMAT = "dungeon-underworld-content"
-CONTENT_VERSION = 5
+CONTENT_VERSION = 6
 CONTENT_CATEGORIES: tuple[str, ...] = (
     "tilesets", "projectiles", "attacks", "behaviors", "enemies", "items", "objects", "pickups",
     "npcVisuals", "npcs", "dialogues", "quests", "players", "playerProgressions", "rewardProfiles",
-    "rewardGrants", "shops", "authoringDescriptors", "tileSemantics", "stamps", "presentationEffects",
-    "visualImages", "staticSprites", "animations", "enemyVisuals", "objectVisuals", "playerVisuals",
+    "rewardGrants", "shops", "craftingRecipes", "authoringDescriptors", "tileSemantics", "stamps",
+    "presentationEffects", "visualImages", "staticSprites", "animations", "enemyVisuals",
+    "objectVisuals", "playerVisuals",
 )
 ID_FIELDS = {category: ("definitionId" if category == "authoringDescriptors" else "id") for category in CONTENT_CATEGORIES}
 

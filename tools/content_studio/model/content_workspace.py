@@ -12,6 +12,16 @@ from .types import ContentDefinition, ContentFile, Diagnostic, JsonValue
 
 DISPLAY_CATEGORY = "authoringDescriptors"
 
+# Categories whose authored entries require the current schema version, so
+# creating one in an older project promotes the file on save.
+_VERSIONED_CATEGORIES = frozenset({"tileSemantics", "craftingRecipes"})
+
+
+def _ensure_schema_version(content_file: "ContentFile", category: str) -> None:
+    if category in _VERSIONED_CATEGORIES and content_file.data.get("version") != CONTENT_VERSION:
+        content_file.data["version"] = CONTENT_VERSION
+        content_file.dirty = True
+
 
 class ContentWorkspace:
     """Authored workspace index independent from the compiled C++ registry.
@@ -195,7 +205,7 @@ class ContentWorkspace:
                 content_file = ContentFile(target_file, data, True, True)
                 self.files.append(content_file)
             entry = default_definition(category, definition_id)
-            if category == "tileSemantics":
+            if category in _VERSIONED_CATEGORIES:
                 content_file.data["version"] = CONTENT_VERSION
             values = content_file.data.setdefault(category, [])
             if not isinstance(values, list):
@@ -235,6 +245,7 @@ class ContentWorkspace:
                 self.files.append(content_file)
             for category, unused, definition_data in entries:
                 del unused
+                _ensure_schema_version(content_file, category)
                 values = content_file.data.setdefault(category, [])
                 if not isinstance(values, list):
                     raise ValueError(f"category {category} is not an array")
@@ -283,8 +294,12 @@ class ContentWorkspace:
                 if found is not None:
                     found.data.clear()
                     found.data.update(copy.deepcopy(definition_data))
+                    owner = next((value for value in self.files
+                                  if value.path == found.source_path), target_file)
+                    _ensure_schema_version(owner, category)
                     self._mark_file_dirty(found.source_path)
                     continue
+                _ensure_schema_version(target_file, category)
                 values = target_file.data.setdefault(category, [])
                 if not isinstance(values, list):
                     raise ValueError(f"category {category} is not an array")
@@ -453,7 +468,7 @@ class ContentWorkspace:
                         f"{prefix}.projectileDefinitionId", "missing_dependency",
                         definition.definition_id, definition.source_path,
                     ))
-            elif category in {"rewardProfiles", "rewardGrants", "shops"}:
+            elif category in {"rewardProfiles", "rewardGrants", "shops", "craftingRecipes"}:
                 for key, value in _walk_key_values(data):
                     if key == "pickupDefinitionId":
                         require("pickups", value, f"{prefix}.{key}")
@@ -557,6 +572,8 @@ def _default_collection_entry(path: str, existing: list[JsonValue]) -> JsonValue
         "offers": {"itemId": "", "playerBuyPrice": 0, "playerSellPrice": 0},
         "thresholds": 0,
         "items": {"itemId": "", "quantity": 1},
+        "inputs": {"itemId": "", "quantity": 1},
+        "outputs": {"itemId": "", "quantity": 1},
         "cells": {"x": 0, "y": 0, "tileId": ""},
     }
     return copy.deepcopy(defaults.get(leaf, {}))
@@ -604,6 +621,7 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "rewardProfiles": {"id": definition_id, "experience": 0, "loot": []},
         "rewardGrants": {"id": definition_id, "experience": 0, "gold": 0, "items": []},
         "shops": {"id": definition_id, "offers": []},
+        "craftingRecipes": {"id": definition_id, "inputs": [], "outputs": []},
         "authoringDescriptors": {"definitionId": definition_id, "displayName": definition_id, "category": "enemy", "tags": []},
         "tileSemantics": {"id": definition_id, "tilesetId": "", "sourceIndex": 0, "family": "", "role": "unknown", "topology": "unknown", "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown", "preferredLayer": "", "flipXAllowed": False, "visualConfidence": "unknown", "semanticConfidence": "unknown", "gameplayConfidence": "unknown", "variantWeight": 1},
         "stamps": {"id": definition_id, "displayName": definition_id, "width": 1, "height": 1, "cells": [], "anchor": {"x": 0, "y": 0}, "flipXAllowed": False, "atomic": True, "confidence": "unknown"},

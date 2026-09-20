@@ -51,6 +51,7 @@ from .object_transition_editor import ObjectTransitionEditor
 from .player_library_widget import PlayerLibraryWidget
 from .attack_library_widget import AttackLibraryWidget
 from .item_library_widget import ItemLibraryWidget
+from .crafting_library_widget import CraftingLibraryWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
 from .terrain.tile_semantic_editor import TileSemanticEditor
 from ..services.tile_semantic_catalog import TileSemanticCatalog
@@ -260,6 +261,10 @@ class MainWindow(QMainWindow):
         self.item_library.place_requested.connect(self._place_definition)
         self.item_library.changed.connect(self._content_changed)
         self.item_library.status_changed.connect(self.set_status)
+        self.crafting_library = CraftingLibraryWidget(
+            self.workspace, self.asset_root, self.translator)
+        self.crafting_library.changed.connect(self._content_changed)
+        self.crafting_library.status_changed.connect(self.set_status)
         # Compatibility alias for integrations that used the old palette name.
         self.tile_palette = self.tileset_library
         self.semantic_palette = SemanticPalette(translator=self.translator)
@@ -337,6 +342,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.door_library)
         self._map_panels.addWidget(self.player_library)
         self._map_panels.addWidget(self.item_library)
+        self._map_panels.addWidget(self.crafting_library)
         self._map_panels.addWidget(self.smart_terrain)
         self._map_panels.addWidget(self.semantic_editor)
         self._map_panels.addWidget(self.semantic_palette)
@@ -434,8 +440,9 @@ class MainWindow(QMainWindow):
 
     _SECTION_KEYS = {
         0: ("maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-            "doors_tab", "players_tab", "items_tab", "smart_terrain", "semantic_editor",
-            "semantics_stamps", "map_elements", "entities", "scenes", "rules_links"),
+            "doors_tab", "players_tab", "items_tab", "crafting_tab", "smart_terrain",
+            "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes",
+            "rules_links"),
         1: ("definitions", "assets"),
     }
 
@@ -443,6 +450,7 @@ class MainWindow(QMainWindow):
         "maps": "map", "layers": "layers", "tiles": "tiles",
         "spritesheets_animations": "spritesheet", "objects_tab": "object",
         "doors_tab": "door", "players_tab": "player", "items_tab": "items",
+        "crafting_tab": "box",
         "smart_terrain": "terrain", "semantic_editor": "tag",
         "semantics_stamps": "stamp", "map_elements": "place",
         "entities": "entities", "scenes": "scenes", "rules_links": "links",
@@ -524,6 +532,7 @@ class MainWindow(QMainWindow):
         self.player_library.retranslate(self.translator)
         self.attack_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
+        self.crafting_library.retranslate(self.translator)
         self.smart_terrain.retranslate(self.translator)
         self.scene_editor.retranslate(self.translator)
         self.layers.retranslate(self.translator)
@@ -568,6 +577,8 @@ class MainWindow(QMainWindow):
         self.attack_library.set_context(self.workspace, self.asset_root)
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)
+        self.crafting_library.set_context(
+            self.workspace, self.asset_root)
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_palette.set_asset_root(self.asset_root)
         self.semantic_editor.set_workspace(self.workspace)
