@@ -22,6 +22,7 @@ from tools.content_studio.model.world_project import WorldProject
 from tools.content_studio.services.localization import Translator
 from tools.content_studio.services.tile_semantic_catalog import TileSemanticCatalog
 from tools.content_studio.ui.terrain.smart_terrain_palette import SmartTerrainPalette
+from tools.content_studio.ui.terrain.tile_semantic_editor import TileSemanticEditor
 from tools.content_studio.ui.widgets import SemanticPalette
 
 
@@ -120,6 +121,36 @@ class SemanticsUiTests(unittest.TestCase):
         palette.set_asset_root(root)
         self.assertTrue(palette.seed.toolTip())
         self.assertTrue(palette.room.toolTip())
+
+    def test_semantic_editor_edge_grid_and_tile_header(self) -> None:
+        root, workspace = self._fixture(semantic_count=1)
+        editor = TileSemanticEditor(workspace, TileSemanticCatalog(workspace), Translator("pt-BR"))
+        self.addCleanup(editor.deleteLater)
+        editor.set_asset_root(root)
+
+        # No selection yet: header names the placeholder target.
+        self.assertNotIn("tileset.thumbs", editor.tile_header.text())
+        editor.set_selection("tileset.thumbs", 0)
+        self.assertIn("tileset.thumbs", editor.tile_header.text())
+        self.assertIn("#0", editor.tile_header.text())
+        # SE2: the header shows the actual atlas tile.
+        self.assertFalse(editor.tile_preview.pixmap().isNull())
+
+        # SE1: the edge combos live in a compass around the center cell.
+        self.assertEqual("unknown", editor.north.currentText())
+        self.assertIsNotNone(editor.center_cell)
+        editor._set(editor.north, "floor")
+        editor.semantic_id.setText("semantic.thumbs.named")
+        editor._set_family("terrain.thumbs")
+        editor.save_semantic()
+        saved = workspace.find("tileSemantics", "semantic.thumbs.named")
+        self.assertIsNotNone(saved)
+        self.assertEqual("floor", saved.data["north"])
+        self.assertEqual("unknown", saved.data["west"])
+
+        # Re-selecting the saved cell loads its persisted edges back.
+        editor.set_selection("tileset.thumbs", 0)
+        self.assertEqual("floor", editor.north.currentText())
 
 
 if __name__ == "__main__":

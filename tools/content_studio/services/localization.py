@@ -1309,3 +1309,13 @@ TRANSLATIONS["en-US"].update({
     "topology_straightHorizontal": "Horizontal",
     "topology_straightVertical": "Vertical",
 })
+
+TRANSLATIONS["pt-BR"].update({
+    "semantic_edges": "Vizinhos (arestas)",
+    "semantic_tile_header": "{tileset} · tile #{index}",
+})
+
+TRANSLATIONS["en-US"].update({
+    "semantic_edges": "Neighbors (edges)",
+    "semantic_tile_header": "{tileset} · tile #{index}",
+})

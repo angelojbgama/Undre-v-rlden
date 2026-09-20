@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 neste commit; SS1, ST1-ST3 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3, SE1-SE2 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -115,8 +115,8 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 ### 4.10 Editor de Tile Semântico (TileSemanticEditor)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| SE1 | P2 | Os **9 vizinhos (Norte/Sul/Leste/Oeste…) são 9 combos soltos** — o conceito é espacial mas a UI é linear; o TerrainRuleDialog já resolve isso com grid 3×3. | Reusar o grid 3×3 visual do TerrainRuleDialog. |
-| SE2 | P3 | Sem preview do tile sendo editado nem indicação do tileset/índice selecionado. | Cabeçalho com miniatura do tile + id. |
+| SE1 ✅ | P2 | Os **9 vizinhos (Norte/Sul/Leste/Oeste…) são 9 combos soltos** — o conceito é espacial mas a UI é linear; o TerrainRuleDialog já resolve isso com grid 3×3. | Reusar o grid 3×3 visual do TerrainRuleDialog. |
+| SE2 ✅ | P3 | Sem preview do tile sendo editado nem indicação do tileset/índice selecionado. | Cabeçalho com miniatura do tile + id. |
 
 ### 4.11 Semântica / Stamps (SemanticPalette)
 | ID | Pri | Problema | Proposta |
@@ -195,7 +195,7 @@ Fase 2 — **Fluxos de alta frequência**:
 Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
 9. ✅ **SS1/ST1-ST3** Semântica/Stamps (miniaturas, rótulos, busca) e Smart Terrain (overlap fantasma, status, tooltips).
 10. **SP1** Agrupamento de animações por spritesheet.
-11. **SE1** Grid 3×3 no editor semântico (reusar TerrainRuleDialog).
+11. ✅ **SE1/SE2** Grid 3×3 (bússola de vizinhos) + cabeçalho com miniatura no editor semântico.
 12. **M1/L1/T2** Melhorias de MapBrowser/Layers/atlas.
 13. **DL1–DL9** Polimento de diálogos (um por vez).
 14. **G10–G12** Recentes, Settings, mnemônicos.
