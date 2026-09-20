@@ -132,8 +132,7 @@ CraftingResult CraftingService::craft(const CraftingRecipeDefinition& recipe,
 }
 
 std::uint32_t CraftingService::maxCraftable(const CraftingRecipeDefinition& recipe,
-                                            const ItemContainer& inventory) const {
-    if (!validRecipe(recipe)) { return 0; }
+                                            const ItemContainer& inventory) const {    if (!validRecipe(recipe)) { return 0; }
     std::uint64_t bound = std::numeric_limits<std::uint32_t>::max();
     for (const auto& input : recipe.inputs) {
         bound = std::min<std::uint64_t>(bound, inventory.count(input.itemId) / input.quantity);
@@ -148,6 +147,26 @@ std::uint32_t CraftingService::maxCraftable(const CraftingRecipeDefinition& reci
         best = static_cast<std::uint32_t>(crafts);
     }
     return best;
+}
+
+void CraftingHistory::record(const simulation::DefinitionId& recipeId, std::uint32_t crafts) {
+    if (recipeId.empty() || crafts == 0) { return; }
+    const auto found = std::find_if(records_.begin(), records_.end(),
+                                    [&](const auto& value) { return value.first == recipeId; });
+    if (found == records_.end()) { records_.push_back({recipeId, crafts}); }
+    else { found->second += crafts; }
+}
+
+void CraftingHistory::restore(
+    std::vector<std::pair<simulation::DefinitionId, std::uint32_t>> records) {
+    records_.clear();
+    for (auto& value : records) { record(value.first, value.second); }
+}
+
+std::uint32_t CraftingHistory::count(const simulation::DefinitionId& recipeId) const noexcept {
+    const auto found = std::find_if(records_.begin(), records_.end(),
+                                    [&](const auto& value) { return value.first == recipeId; });
+    return found == records_.end() ? 0 : found->second;
 }
 
 } // namespace underworld::game::gameplay

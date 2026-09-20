@@ -25,7 +25,7 @@ private:
 };
 
 struct ItemUseResult final { bool applied{}; int healthRestored{}; };
-enum class InventoryOverlayFocus { inventory, equipment };
+enum class InventoryOverlayFocus { inventory, equipment, crafting };
 
 [[nodiscard]] ItemUseResult useItem(const simulation::DefinitionId& itemId,
                                     ItemContainer& inventory, const ItemCatalog& catalog,
@@ -66,6 +66,12 @@ public:
     [[nodiscard]] std::size_t selection() const noexcept { return selection_; }
     [[nodiscard]] rpg::EquipmentSlot equipmentSelection() const noexcept { return equipmentSlot_; }
     [[nodiscard]] bool equipmentFocused() const noexcept { return focus_ == InventoryOverlayFocus::equipment; }
+    [[nodiscard]] bool craftingFocused() const noexcept { return focus_ == InventoryOverlayFocus::crafting; }
+    [[nodiscard]] InventoryOverlayFocus focus() const noexcept { return focus_; }
+    // Crafting is an always-available inventory tab; opening it keeps the
+    // inventory overlay open and switches the visible tab.
+    void openCrafting() noexcept;
+    void cycleFocus() noexcept;
     void moveSelection(int x, int y) noexcept;
 
 private:

@@ -112,14 +112,25 @@ save::SaveData GameSession::captureSaveData() const {
     if (mapSession_ && mapSession_->world() && mapSession_->data()) {
         save::captureWorldState(*mapSession_->data(), *mapSession_->world(), world);
     }
-    return {save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
-            {progression_.definition().id, progression_.totalExperience()}, std::move(world),
-            dialogueFlags_, questState_,
-            {playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor),
-             playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)}, bank};
+    save::SaveData saved{save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
+                         {progression_.definition().id, progression_.totalExperience()}, std::move(world),
+                         dialogueFlags_, questState_,
+                         {playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::armor),
+                          playerItems_->equipment().item(gameplay::rpg::EquipmentSlot::accessory)},
+                         bank, {}};
+    for (const auto& [recipeId, count] : craftedRecipes_.values()) {
+        saved.craftedRecipes.push_back({recipeId, count});
+    }
+    return saved;
 }
 
 bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error) {
+    auto historyFrom = [](const std::vector<save::CraftedRecipeRecord>& records) {
+        std::vector<std::pair<simulation::DefinitionId, std::uint32_t>> history;
+        history.reserve(records.size());
+        for (const auto& record : records) { history.push_back({record.recipeId, record.count}); }
+        return history;
+    };
     if (!mapSession_ || !playerItems_ || !itemCatalog_ || !dialogue_ || !questSystem_) {
         error = "GameSession is not fully configured";
         return false;
@@ -180,13 +191,15 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
         static_cast<void>(restoreNarrativeState(previous.dialogueFlags,
                                                 previous.quests.snapshot(), rollbackError));
         static_cast<void>(progression_.restoreExperience(previous.progression.totalExperience));
+        craftedRecipes_.restore(historyFrom(previous.craftedRecipes));
         return false;
     }
     clearCombatTransients();
     closeDialogue();
     bankOverlay_.close();
     shopOverlay_.close();
-    craftingOverlay_.close();
+    craftingTab_.reset();
+    craftedRecipes_.restore(historyFrom(data.craftedRecipes));
     error.clear();
     return true;
 }
@@ -308,7 +321,7 @@ bool GameSession::startScene(const simulation::DefinitionId& sceneId) {
         inventoryOverlay_.close();
         bankOverlay_.close();
         shopOverlay_.close();
-        craftingOverlay_.close();
+        craftingTab_.reset();
     }
     return started;
 }
@@ -1257,21 +1270,30 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         resolvePendingQuestRewards();
         return;
     }
-    if (craftingOverlay_.open()) {
-        if (command.actions.toggleInventoryPressed || command.actions.toggleCraftingPressed) {
-            craftingOverlay_.close();
-        } else if (craftingCatalog_ && playerItems_) {
-            static_cast<void>(gameplay::routeCraftingCommand(craftingOverlay_, command,
-                                                             *craftingCatalog_,
-                                                             playerItems_->inventory().items(),
-                                                             craftingService_));
-        } else { craftingOverlay_.close(); }
-        resolvePendingQuestRewards();
-        return;
-    }
+    // Crafting is an always-available tab of the inventory overlay: K opens
+    // (or leaves) it, I keeps closing the whole overlay.
     if (command.actions.toggleCraftingPressed && craftingCatalog_ &&
         !craftingCatalog_->values().empty()) {
-        craftingOverlay_.open(*craftingCatalog_);
+        if (inventoryOverlay_.open() && inventoryOverlay_.craftingFocused()) {
+            inventoryOverlay_.cycleFocus();
+        } else {
+            inventoryOverlay_.openCrafting();
+            craftingTab_.reset();
+        }
+    }
+    if (playerItems_ && inventoryOverlay_.open() && inventoryOverlay_.craftingFocused()) {
+        if (command.actions.toggleInventoryPressed) { inventoryOverlay_.close(); }
+        else if (craftingCatalog_) {
+            const gameplay::CraftingKnowledge knowledge{questState_};
+            const auto crafted = gameplay::routeCraftingCommand(
+                craftingTab_, command, *craftingCatalog_, knowledge,
+                playerItems_->inventory().items(), craftingService_);
+            if (crafted.transaction &&
+                crafted.transaction->status == gameplay::CraftingStatus::success) {
+                craftedRecipes_.record(crafted.transaction->recipeId,
+                                       crafted.transaction->craftsPerformed);
+            }
+        } else { inventoryOverlay_.cycleFocus(); }
         resolvePendingQuestRewards();
         return;
     }

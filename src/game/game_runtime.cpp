@@ -528,7 +528,7 @@ struct GameRuntime::State final {
         maps.reserve(knownMapData.size());
         for (const auto& map : knownMapData) { maps.push_back(&map); }
         return {&itemCatalog, std::move(maps), &content.quests(), &content.progressions(),
-                &content.objects(), &content.pickups()};
+                &content.objects(), &content.pickups(), &content.craftingRecipes()};
     }
 
     void saveGame() {
@@ -605,7 +605,8 @@ struct GameRuntime::State final {
         auto view = buildGameViewModel(
             player, session.playerItems(), itemCatalog, session.inventoryOverlay(), session.bankOverlay(),
             session.derivedPlayerStats(), session.shopOverlay(), content.shops(),
-            session.craftingOverlay(), content.craftingRecipes());
+            session.craftingTab(), content.craftingRecipes(),
+            gameplay::CraftingKnowledge{session.questState()}, session.craftedRecipes());
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
         const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());

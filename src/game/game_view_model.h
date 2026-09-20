@@ -48,6 +48,13 @@ struct CraftingRecipeView final {
     std::vector<CraftingOutputView> outputs;
     bool craftable{};
     std::uint32_t maxCraftable{};
+    // Quest-gated recipes: known only after the unlock quest completes. The
+    // book still lists unknown ones, but the presentation shows silhouettes
+    // instead of the real item art until then.
+    bool known{};
+    bool revealSilhouette{};
+    std::optional<simulation::DefinitionId> unlockQuestId{};
+    std::uint32_t craftedCount{};
 };
 
 struct GameViewModel final {
@@ -81,7 +88,9 @@ struct GameViewModel final {
     std::vector<ShopOfferView> shopOffers;
     std::optional<gameplay::rpg::ShopTransactionStatus> shopFeedback{};
     bool craftingOpen{};
+    gameplay::CraftingTab craftingTab{gameplay::CraftingTab::craft};
     std::size_t craftingSelection{};
+    std::uint32_t craftingQuantity{};
     std::optional<gameplay::CraftingStatus> craftingFeedback{};
     std::vector<CraftingRecipeView> craftingRecipes;
 };
@@ -106,7 +115,9 @@ struct GameViewModel final {
     const gameplay::rpg::PlayerDerivedStats& derivedStats,
     const gameplay::ShopOverlayState& shopOverlay,
     const gameplay::rpg::ShopCatalog& shops,
-    const gameplay::CraftingOverlayState& craftingOverlay,
-    const gameplay::CraftingCatalog& crafting);
+    const gameplay::CraftingOverlayState& craftingTab,
+    const gameplay::CraftingCatalog& crafting,
+    const gameplay::CraftingKnowledge& craftingKnowledge,
+    const gameplay::CraftingHistory& craftedRecipes);
 
 } // namespace underworld::game

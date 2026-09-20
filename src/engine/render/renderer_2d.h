@@ -26,6 +26,11 @@ public:
                          int destinationY);
     void drawImageRegionFlipX(const Image& image, core::RectI source, int destinationX,
                               int destinationY);
+    // Draws the sprite's alpha coverage as a flat color: used for mystery
+    // crafting-book entries, where the item shape is shown without its art.
+    void drawImageRegionSilhouette(const Image& image, core::RectI source,
+                                   int destinationX, int destinationY,
+                                   core::ColorRGBA8 color, bool flipX = false);
     void drawImageRegionQuarterTurn(const Image& image, core::RectI source, int destinationX,
                                     int destinationY, QuarterTurn rotation, bool flipX = false);
     void drawImageRegionNearest(const Image& image, core::RectI source,

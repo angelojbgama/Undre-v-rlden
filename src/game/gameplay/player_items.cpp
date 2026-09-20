@@ -47,6 +47,19 @@ void InventoryOverlayState::toggle() noexcept {
     if (open_) { focus_ = InventoryOverlayFocus::inventory; }
 }
 
+void InventoryOverlayState::openCrafting() noexcept {
+    open_ = true;
+    focus_ = InventoryOverlayFocus::crafting;
+}
+
+void InventoryOverlayState::cycleFocus() noexcept {
+    switch (focus_) {
+    case InventoryOverlayFocus::inventory: focus_ = InventoryOverlayFocus::equipment; break;
+    case InventoryOverlayFocus::equipment: focus_ = InventoryOverlayFocus::crafting; break;
+    case InventoryOverlayFocus::crafting: focus_ = InventoryOverlayFocus::inventory; break;
+    }
+}
+
 void InventoryOverlayState::moveSelection(int x, int y) noexcept {
     if (focus_ == InventoryOverlayFocus::equipment) {
         if (y > 0) { focus_ = InventoryOverlayFocus::inventory; }
@@ -73,6 +86,9 @@ InventoryCommandResult routeInventoryCommand(InventoryOverlayState& overlay,
                                               PlayerItems& items, const ItemCatalog& catalog, Health& health) {
     if (command.actions.toggleInventoryPressed) { overlay.toggle(); }
     if (!overlay.open()) { return {}; }
+    // The crafting tab has its own routing; grid navigation must not run.
+    if (overlay.craftingFocused()) { return {true, false}; }
+    if (command.actions.secondaryAttackPressed) { overlay.cycleFocus(); return {true, false}; }
     overlay.moveSelection(command.movement.x, command.movement.y);
     if (overlay.equipmentFocused()) {
         bool changed = false;

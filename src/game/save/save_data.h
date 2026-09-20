@@ -5,6 +5,7 @@
 #include "game/gameplay/facing_direction.h"
 #include "game/gameplay/dialogue/dialogue_flags.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/crafting.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/player.h"
 #include "game/gameplay/quests/quest_state.h"
@@ -81,6 +82,14 @@ struct SpawnedPickup final {
     gameplay::PickupPayload payload{};
 };
 
+// Player crafting progress: recipes the player actually crafted, with
+// per-recipe totals. Quest-gated unlocks are not saved; they derive from the
+// persisted quest state.
+struct CraftedRecipeRecord final {
+    simulation::DefinitionId recipeId{};
+    std::uint32_t count{};
+};
+
 struct SessionWorldState final {
     std::vector<ObjectDelta> objects;
     std::vector<PickupDelta> pickups;
@@ -102,6 +111,7 @@ struct SaveData final {
     gameplay::quests::QuestStateStore quests;
     SavedPlayerEquipment equipment;
     SavedPlayerBank bank;
+    std::vector<CraftedRecipeRecord> craftedRecipes;
 };
 
 struct SaveValidationCatalogs final {
@@ -111,6 +121,7 @@ struct SaveValidationCatalogs final {
     const gameplay::rpg::PlayerProgressionCatalog* progressions{};
     const gameplay::WorldObjectCatalog* objects{};
     const std::vector<gameplay::PickupDefinition>* pickups{};
+    const gameplay::CraftingCatalog* crafting{};
 };
 
 struct SaveResult final {
@@ -124,8 +135,9 @@ inline constexpr std::uint16_t saveMajorVersion = 1;
 // Minor 1 added FLGS; minor 2 added QSTS; minor 3 added PROG; minor 4 added EQIP;
 // minor 5 added BANK; minor 6 added quest reward claims; minor 7 adds world rules
 // and encounter runtime state; minor 8 adds persistent object activation;
-// minor 9 adds the SPWN chunk (runtime-spawned ground items such as drops).
-inline constexpr std::uint16_t saveMinorVersion = 9;
+// minor 9 adds the SPWN chunk (runtime-spawned ground items such as drops);
+// minor 10 adds the CRFT chunk (crafted crafting-recipe history).
+inline constexpr std::uint16_t saveMinorVersion = 10;
 
 [[nodiscard]] std::string validateSaveData(const SaveData& data,
                                            const SaveValidationCatalogs& catalogs);

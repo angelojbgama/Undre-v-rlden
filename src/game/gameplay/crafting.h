@@ -2,9 +2,11 @@
 
 #include "engine/simulation/definition_id.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/quests/quest_state.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace underworld::game::gameplay {
@@ -21,6 +23,9 @@ struct CraftingRecipeDefinition final {
     simulation::DefinitionId id{};
     std::vector<CraftingIngredient> inputs;
     std::vector<CraftingIngredient> outputs;
+    // Quest-gated recipes stay hidden behind a silhouette until the authored
+    // quest reaches the completed status; empty means always known.
+    std::optional<simulation::DefinitionId> unlockQuestId{};
 };
 
 inline constexpr std::size_t minimumRecipeInputs = 2;
@@ -40,7 +45,7 @@ private:
 };
 
 enum class CraftingStatus {
-    success, recipeNotFound, missingIngredients, inventoryFull, invalidRecipe
+    success, recipeNotFound, missingIngredients, inventoryFull, invalidRecipe, recipeLocked
 };
 
 struct CraftingResult final {
@@ -50,6 +55,36 @@ struct CraftingResult final {
     std::vector<CraftingIngredient> consumed;
     std::vector<CraftingIngredient> produced;
     [[nodiscard]] explicit operator bool() const noexcept { return status == CraftingStatus::success; }
+};
+
+// Derives which recipes the player currently knows. Quest-gated recipes are
+// known exactly when their authored quest is completed, so unlocks are derived
+// persistent quest state and never saved separately.
+class CraftingKnowledge final {
+public:
+    explicit CraftingKnowledge(const quests::QuestStateStore& quests) noexcept : quests_(&quests) {}
+    [[nodiscard]] bool known(const CraftingRecipeDefinition& recipe) const noexcept {
+        return !recipe.unlockQuestId ||
+               quests_->status(*recipe.unlockQuestId) == quests::QuestStatus::completed;
+    }
+
+private:
+    const quests::QuestStateStore* quests_{};
+};
+
+// Recipes the player actually crafted, with per-recipe counters. This is the
+// only crafting state that is saved (DSAV CRFT): it cannot be derived from
+// quest state because ordinary recipes become "made" through play.
+class CraftingHistory final {
+public:
+    void record(const simulation::DefinitionId& recipeId, std::uint32_t crafts);
+    void restore(std::vector<std::pair<simulation::DefinitionId, std::uint32_t>> records);
+    [[nodiscard]] std::uint32_t count(const simulation::DefinitionId& recipeId) const noexcept;
+    [[nodiscard]] const std::vector<std::pair<simulation::DefinitionId, std::uint32_t>>&
+        values() const noexcept { return records_; }
+
+private:
+    std::vector<std::pair<simulation::DefinitionId, std::uint32_t>> records_;
 };
 
 // Transactional crafting. Every operation is simulated on a detached copy of

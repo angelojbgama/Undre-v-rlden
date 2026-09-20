@@ -86,8 +86,11 @@ public:
         return bankOverlay_;
     }
     [[nodiscard]] const gameplay::ShopOverlayState& shopOverlay() const noexcept { return shopOverlay_; }
-    [[nodiscard]] const gameplay::CraftingOverlayState& craftingOverlay() const noexcept {
-        return craftingOverlay_;
+    [[nodiscard]] const gameplay::CraftingOverlayState& craftingTab() const noexcept {
+        return craftingTab_;
+    }
+    [[nodiscard]] const gameplay::CraftingHistory& craftedRecipes() const noexcept {
+        return craftedRecipes_;
     }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
@@ -205,8 +208,9 @@ private:
     gameplay::InventoryOverlayState inventoryOverlay_;
     gameplay::BankOverlayState bankOverlay_;
     gameplay::ShopOverlayState shopOverlay_;
-    gameplay::CraftingOverlayState craftingOverlay_;
+    gameplay::CraftingOverlayState craftingTab_;
     gameplay::CraftingService craftingService_;
+    gameplay::CraftingHistory craftedRecipes_;
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
     const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};

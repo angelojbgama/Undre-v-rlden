@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/core/color_rgba8.h"
 #include "engine/core/geometry.h"
 
 #include <cstdint>
@@ -44,6 +45,10 @@ struct PixelMaskView final {
 
 void drawSprite(Renderer2D& renderer, const SpriteSheet& sheet, const SpriteFrame& frame,
                 core::PointI logicalPosition, bool additionalFlipX = false);
+// Draws the sprite's alpha coverage in a flat color (mystery crafting entries).
+void drawSpriteSilhouette(Renderer2D& renderer, const SpriteSheet& sheet,
+                          const SpriteFrame& frame, core::PointI logicalPosition,
+                          core::ColorRGBA8 color);
 void drawSpriteMasked(Renderer2D& renderer, const SpriteSheet& sheet,
                       const SpriteFrame& frame, core::PointI logicalPosition,
                       PixelMaskView mask, bool drawMaskedPixels,

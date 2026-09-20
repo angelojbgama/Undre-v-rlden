@@ -67,6 +67,46 @@ void Renderer2D::drawImageRegionFlipX(const Image& image, core::RectI source, in
     drawImageRegionImpl(image, source, destinationX, destinationY, true);
 }
 
+void Renderer2D::drawImageRegionSilhouette(const Image& image, core::RectI source,
+                                           int destinationX, int destinationY,
+                                           core::ColorRGBA8 color, bool flipX) {
+    const std::int64_t sourceRight = static_cast<std::int64_t>(source.x) + source.width;
+    const std::int64_t sourceBottom = static_cast<std::int64_t>(source.y) + source.height;
+    if (source.empty() || source.x < 0 || source.y < 0 || sourceRight > image.width() ||
+        sourceBottom > image.height()) {
+        throw std::out_of_range("image source rectangle is outside the image");
+    }
+
+    const std::int64_t destinationRight = static_cast<std::int64_t>(destinationX) + source.width;
+    const std::int64_t destinationBottom = static_cast<std::int64_t>(destinationY) + source.height;
+    const int clippedLeft = std::max(destinationX, 0);
+    const int clippedTop = std::max(destinationY, 0);
+    const int clippedRight = static_cast<int>(
+        std::min<std::int64_t>(destinationRight, target_.width()));
+    const int clippedBottom = static_cast<int>(
+        std::min<std::int64_t>(destinationBottom, target_.height()));
+    if (clippedLeft >= clippedRight || clippedTop >= clippedBottom) {
+        return;
+    }
+
+    const auto& bytes = image.bytes();
+    auto targetPixels = target_.pixels();
+    for (int y = clippedTop; y < clippedBottom; ++y) {
+        const int sourceY = source.y + (y - destinationY);
+        for (int x = clippedLeft; x < clippedRight; ++x) {
+            const int localX = x - destinationX;
+            const int sourceX = source.x + (flipX ? source.width - 1 - localX : localX);
+            const std::size_t sourceOffset = static_cast<std::size_t>(sourceY) * image.stride() +
+                                             static_cast<std::size_t>(sourceX) * 4U;
+            if (bytes[sourceOffset + 3U] == 0U) { continue; }
+            auto& destination = targetPixels[static_cast<std::size_t>(y) *
+                                                 static_cast<std::size_t>(target_.width()) +
+                                             static_cast<std::size_t>(x)];
+            blend(color, destination);
+        }
+    }
+}
+
 void Renderer2D::drawImageRegionQuarterTurn(const Image& image, core::RectI source,
                                              int destinationX, int destinationY,
                                              QuarterTurn rotation, bool flipX) {

@@ -21,9 +21,13 @@ GameViewModel buildGameViewModel(const gameplay::Player& player, const gameplay:
     static const gameplay::rpg::ShopCatalog noShops;
     static const gameplay::ShopOverlayState noShopOverlay;
     static const gameplay::CraftingCatalog noCrafting;
-    static const gameplay::CraftingOverlayState noCraftingOverlay;
+    static const gameplay::CraftingOverlayState noCraftingTab;
+    static const gameplay::quests::QuestStateStore noQuests;
+    static const gameplay::CraftingKnowledge noKnowledge{noQuests};
+    static const gameplay::CraftingHistory noHistory;
     return buildGameViewModel(player, items, catalog, overlay, bankOverlay, derivedStats,
-                              noShopOverlay, noShops, noCraftingOverlay, noCrafting);
+                              noShopOverlay, noShops, noCraftingTab, noCrafting,
+                              noKnowledge, noHistory);
 }
 
 GameViewModel buildGameViewModel(const gameplay::Player& player,
@@ -35,9 +39,13 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::ShopOverlayState& shopOverlay,
                                  const gameplay::rpg::ShopCatalog& shops) {
     static const gameplay::CraftingCatalog noCrafting;
-    static const gameplay::CraftingOverlayState noCraftingOverlay;
+    static const gameplay::CraftingOverlayState noCraftingTab;
+    static const gameplay::quests::QuestStateStore noQuests;
+    static const gameplay::CraftingKnowledge noKnowledge{noQuests};
+    static const gameplay::CraftingHistory noHistory;
     return buildGameViewModel(player, items, catalog, overlay, bankOverlay, derivedStats,
-                              shopOverlay, shops, noCraftingOverlay, noCrafting);
+                              shopOverlay, shops, noCraftingTab, noCrafting,
+                              noKnowledge, noHistory);
 }
 
 GameViewModel buildGameViewModel(const gameplay::Player& player,
@@ -48,8 +56,10 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::rpg::PlayerDerivedStats& derivedStats,
                                  const gameplay::ShopOverlayState& shopOverlay,
                                  const gameplay::rpg::ShopCatalog& shops,
-                                 const gameplay::CraftingOverlayState& craftingOverlay,
-                                 const gameplay::CraftingCatalog& crafting) {
+                                 const gameplay::CraftingOverlayState& craftingTab,
+                                 const gameplay::CraftingCatalog& crafting,
+                                 const gameplay::CraftingKnowledge& craftingKnowledge,
+                                 const gameplay::CraftingHistory& craftedRecipes) {
     GameViewModel result;
     result.playerHealth = player.health().current;
     result.playerMaximumHealth = player.health().maximum;
@@ -71,16 +81,22 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     result.shopBuySelection = shopOverlay.buySelection();
     result.shopInventorySelection = shopOverlay.inventorySelection();
     result.shopFeedback = shopOverlay.feedback();
-    result.craftingOpen = craftingOverlay.open();
-    result.craftingSelection = craftingOverlay.selection();
-    result.craftingFeedback = craftingOverlay.feedback();
-    if (craftingOverlay.open()) {
-        const gameplay::CraftingService craftingService;
+    result.craftingOpen = overlay.open() && overlay.craftingFocused();
+    result.craftingTab = craftingTab.tab();
+    result.craftingSelection = craftingTab.selection();
+    result.craftingQuantity = craftingTab.craftQuantity();
+    result.craftingFeedback = craftingTab.feedback();
+    const gameplay::CraftingService craftingService;
+    if (result.craftingOpen) {
         result.craftingRecipes.reserve(crafting.values().size());
         for (const auto& recipe : crafting.values()) {
             CraftingRecipeView recipeView;
             recipeView.recipeId = recipe.id;
-            bool craftable = true;
+            recipeView.known = craftingKnowledge.known(recipe);
+            recipeView.revealSilhouette = !recipeView.known;
+            recipeView.unlockQuestId = recipe.unlockQuestId;
+            recipeView.craftedCount = craftedRecipes.count(recipe.id);
+            bool craftable = recipeView.known;
             for (const auto& input : recipe.inputs) {
                 const auto owned = items.inventory().items().count(input.itemId);
                 if (owned < input.quantity) { craftable = false; }
@@ -93,7 +109,8 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
                     ? std::optional<simulation::DefinitionId>{catalog.require(output.itemId).visualId}
                     : std::nullopt, output.quantity});
             }
-            recipeView.maxCraftable = craftingService.maxCraftable(recipe, items.inventory().items());
+            recipeView.maxCraftable = recipeView.known
+                ? craftingService.maxCraftable(recipe, items.inventory().items()) : 0;
             recipeView.craftable = craftable && recipeView.maxCraftable > 0;
             result.craftingRecipes.push_back(std::move(recipeView));
         }
