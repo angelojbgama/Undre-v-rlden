@@ -58,6 +58,11 @@ class TerrainPaintingService:
         self.editing.set_document(document)
         self.editing.set_workspace(workspace)
         self.catalog.set_workspace(workspace)
+        # Content can mutate in place through the same workspace instance
+        # (rule/variant saves, semantic edits).  ``set_workspace`` only
+        # invalidates on an instance change, so refresh the index explicitly:
+        # a stale pool makes every painted cell resolve to the same old tile.
+        self.catalog.invalidate()
         self.composition.set_workspace(workspace)
         self.reservations.set_context(
             document,

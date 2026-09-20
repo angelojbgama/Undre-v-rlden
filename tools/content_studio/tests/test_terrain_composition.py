@@ -194,6 +194,46 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(("tileset.ground", 0),  # type: ignore[union-attr]
                          (placement.cells[0].tileset_id, placement.cells[0].source_index))
 
+    def test_refreshing_context_picks_up_newly_authored_variants(self) -> None:
+        """Regression: painting kept using a stale semantic catalog.
+
+        The Studio refreshes the map after every content change by calling
+        ``set_context`` with the *same* workspace instance.  The painter's
+        catalog used to stay cached, so variants authored mid-session never
+        reached the resolution pool and every painted cell fell back to the
+        single pre-existing tile.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            data = content_root()
+            data["tilesets"] = [{"id": "tileset.ground", "displayName": "Ground",
+                                 "relativeAssetPath": "ground.png", "tileSize": 16,
+                                 "columns": 8, "rows": 8}]
+            data["tileSemantics"] = [semantic("floor.single", "tileset.ground", 0, "floor", "interior")]
+            workspace = open_workspace(data, Path(directory))
+            catalog = TileSemanticCatalog(workspace)
+            resolver = AutoTileResolver(catalog)
+            document = MapDocument.new("map.stale", 8, 8)
+            painter = TerrainPaintingService(
+                document, workspace,
+                MapEditingService(document, workspace=workspace),
+                catalog, resolver)
+            selection = TerrainSelection("terrain.dungeon", "floor")
+
+            painter.paint_terrain([(0, 0)], selection)
+
+            TerrainRuleService().save_variants(
+                workspace, "tileset.ground", "terrain.dungeon", [(1, 1), (2, 1), (3, 1)])
+            # Same workspace instance, exactly like the Studio refresh path.
+            painter.set_context(document, workspace)
+            painter.paint_terrain({(x, y) for y in range(4) for x in range(4)}, selection)
+
+            cells = document.layers[0]["cells"]
+            references = document.data["tileReferences"]
+            sources = {int(references[index]["sourceIndex"]) for index in cells
+                       if isinstance(index, int)}
+            self.assertNotEqual({0}, sources, "new variants never reached the resolution pool")
+            self.assertTrue(sources - {0})
+
     def test_floor_variant_paint_influences_only_the_target_cell(self) -> None:
         before = [list(layer["cells"]) for layer in self.env.document.layers]
         result = self.env.painter.paint_terrain(
