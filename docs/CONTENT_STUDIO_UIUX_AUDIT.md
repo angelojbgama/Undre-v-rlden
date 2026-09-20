@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3, SE1-SE2 neste commit.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3 em `97c7547`; SE1-SE2 em `e7cc8bb`; SP1-SP2 em `3d9a318`.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -81,8 +81,8 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 ### 4.4 Spritesheet / Animação (SpritesheetLibrary)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| SP1 | P2 | Lista mostra só display name — há **muitos "Idle/Down/Up" repetidos** e é impossível saber de qual spritesheet. | Mostrar `name (imageId)` ou agrupar por spritesheet; tooltip com id da animação. |
-| SP2 | P3 | Play/Pause usam glifos unicode "▶/⏸" no texto — inconsistentes com o sistema de ícones. | Usar `icon("playtest")`/ícone dedicado + texto. |
+| SP1 ✅ | P2 | Lista mostra só display name — há **muitos "Idle/Down/Up" repetidos** e é impossível saber de qual spritesheet. | Mostrar `name (imageId)` ou agrupar por spritesheet; tooltip com id da animação. |
+| SP2 ✅ | P3 | Play/Pause usam glifos unicode "▶/⏸" no texto — inconsistentes com o sistema de ícones. | Usar `icon("playtest")`/ícone dedicado + texto. |
 
 ### 4.5 Objeto (ObjectLibrary)
 | ID | Pri | Problema | Proposta |
@@ -194,7 +194,7 @@ Fase 2 — **Fluxos de alta frequência**:
 
 Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
 9. ✅ **SS1/ST1-ST3** Semântica/Stamps (miniaturas, rótulos, busca) e Smart Terrain (overlap fantasma, status, tooltips).
-10. **SP1** Agrupamento de animações por spritesheet.
+10. ✅ **SP1/SP2** Animações clusterizadas por spritesheet + ícones de playback do registry.
 11. ✅ **SE1/SE2** Grid 3×3 (bússola de vizinhos) + cabeçalho com miniatura no editor semântico.
 12. **M1/L1/T2** Melhorias de MapBrowser/Layers/atlas.
 13. **DL1–DL9** Polimento de diálogos (um por vez).

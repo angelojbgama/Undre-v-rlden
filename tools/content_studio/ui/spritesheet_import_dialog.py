@@ -18,6 +18,7 @@ from ..services.import_service import calculate_grid
 from ..services.localization import Translator
 from ..services.spritesheet_import_service import SpritesheetImportRequest, SpritesheetImportService
 from .frame_grid_preview import FrameGridPreview
+from .icon_registry import icon
 
 
 class SpritesheetImportDialog(QDialog):
@@ -55,8 +56,10 @@ class SpritesheetImportDialog(QDialog):
         self._preview_playing = True
         self._animation_timer = QTimer(self)
         self._animation_timer.timeout.connect(self._advance_animation)
-        self.play_button = QPushButton(f"▶ {self.translate('play_animation')}")
-        self.pause_button = QPushButton(f"⏸ {self.translate('pause_animation')}")
+        self.play_button = QPushButton(self.translate("play_animation"))
+        self.play_button.setIcon(icon("play"))
+        self.pause_button = QPushButton(self.translate("pause_animation"))
+        self.pause_button.setIcon(icon("pause"))
         self.play_button.clicked.connect(self._play_animation)
         self.pause_button.clicked.connect(self._pause_animation)
         self.details = QLabel(); self.details.setWordWrap(True)

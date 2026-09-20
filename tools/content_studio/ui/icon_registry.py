@@ -77,6 +77,9 @@ TABLER_ICONS: dict[str, str] = {
     "diag_error": "circle-x.svg",
     "diag_warning": "alert-triangle.svg",
     "diag_info": "info-circle.svg",
+    # Playback
+    "play": "player-play.svg",
+    "pause": "player-pause.svg",
     # Frequent actions
     "add": "plus.svg",
     "delete": "trash.svg",

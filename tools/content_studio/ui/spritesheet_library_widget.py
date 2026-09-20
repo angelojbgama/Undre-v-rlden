@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from ..model.content_workspace import ContentWorkspace
 from ..services.localization import Translator
 from .animation_frame_alignment_dialog import AnimationFrameAlignmentDialog
+from .icon_registry import icon
 from .frame_grid_preview import FrameGridPreview
 from .icon_registry import icon
 from .spritesheet_import_dialog import SpritesheetImportDialog
@@ -86,8 +87,10 @@ class SpritesheetLibraryWidget(QWidget):
         self.import_button.setText(self.translate("spritesheet_import"))
         self.edit_button.setText(self.translate("edit_animation_frames"))
         self.animation_title.setText(self.translate("animation_preview"))
-        self.play_button.setText(f"▶ {self.translate('play_animation')}")
-        self.pause_button.setText(f"⏸ {self.translate('pause_animation')}")
+        self.play_button.setIcon(icon("play"))
+        self.play_button.setText(self.translate("play_animation"))
+        self.pause_button.setIcon(icon("pause"))
+        self.pause_button.setText(self.translate("pause_animation"))
         self._update_playback_buttons()
         self.refresh()
 
@@ -96,8 +99,18 @@ class SpritesheetLibraryWidget(QWidget):
         self.animations.blockSignals(True)
         self.animations.clear()
         definitions = self.workspace.definitions("animations", self.search.text()) if self.workspace else []
+        # Cluster frames of the same spritesheet together and name the
+        # sheet on the label: bare display names ("Idle", "Down") are
+        # indistinguishable across sheets (audit SP1).
+        definitions = sorted(
+            definitions,
+            key=lambda definition: (
+                str(definition.data.get("imageId", "")),
+                definition.display_name,
+            ))
         for definition in definitions:
-            item = QListWidgetItem(definition.display_name)
+            image_id = str(definition.data.get("imageId", ""))
+            item = QListWidgetItem(f"{definition.display_name} · {image_id}" if image_id else definition.display_name)
             item.setToolTip(definition.definition_id)
             item.setData(Qt.ItemDataRole.UserRole, definition.definition_id)
             self.animations.addItem(item)
