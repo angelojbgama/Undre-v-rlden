@@ -20,8 +20,10 @@ GameViewModel buildGameViewModel(const gameplay::Player& player, const gameplay:
                                  const gameplay::rpg::PlayerDerivedStats& derivedStats) {
     static const gameplay::rpg::ShopCatalog noShops;
     static const gameplay::ShopOverlayState noShopOverlay;
+    static const gameplay::CraftingCatalog noCrafting;
+    static const gameplay::CraftingOverlayState noCraftingOverlay;
     return buildGameViewModel(player, items, catalog, overlay, bankOverlay, derivedStats,
-                              noShopOverlay, noShops);
+                              noShopOverlay, noShops, noCraftingOverlay, noCrafting);
 }
 
 GameViewModel buildGameViewModel(const gameplay::Player& player,
@@ -32,6 +34,22 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
                                  const gameplay::rpg::PlayerDerivedStats& derivedStats,
                                  const gameplay::ShopOverlayState& shopOverlay,
                                  const gameplay::rpg::ShopCatalog& shops) {
+    static const gameplay::CraftingCatalog noCrafting;
+    static const gameplay::CraftingOverlayState noCraftingOverlay;
+    return buildGameViewModel(player, items, catalog, overlay, bankOverlay, derivedStats,
+                              shopOverlay, shops, noCraftingOverlay, noCrafting);
+}
+
+GameViewModel buildGameViewModel(const gameplay::Player& player,
+                                 const gameplay::PlayerItems& items,
+                                 const gameplay::ItemCatalog& catalog,
+                                 const gameplay::InventoryOverlayState& overlay,
+                                 const gameplay::BankOverlayState& bankOverlay,
+                                 const gameplay::rpg::PlayerDerivedStats& derivedStats,
+                                 const gameplay::ShopOverlayState& shopOverlay,
+                                 const gameplay::rpg::ShopCatalog& shops,
+                                 const gameplay::CraftingOverlayState& craftingOverlay,
+                                 const gameplay::CraftingCatalog& crafting) {
     GameViewModel result;
     result.playerHealth = player.health().current;
     result.playerMaximumHealth = player.health().maximum;
@@ -53,6 +71,33 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     result.shopBuySelection = shopOverlay.buySelection();
     result.shopInventorySelection = shopOverlay.inventorySelection();
     result.shopFeedback = shopOverlay.feedback();
+    result.craftingOpen = craftingOverlay.open();
+    result.craftingSelection = craftingOverlay.selection();
+    result.craftingFeedback = craftingOverlay.feedback();
+    if (craftingOverlay.open()) {
+        const gameplay::CraftingService craftingService;
+        result.craftingRecipes.reserve(crafting.values().size());
+        for (const auto& recipe : crafting.values()) {
+            CraftingRecipeView recipeView;
+            recipeView.recipeId = recipe.id;
+            bool craftable = true;
+            for (const auto& input : recipe.inputs) {
+                const auto owned = items.inventory().items().count(input.itemId);
+                if (owned < input.quantity) { craftable = false; }
+                recipeView.inputs.push_back({input.itemId, catalog.find(input.itemId) != nullptr
+                    ? std::optional<simulation::DefinitionId>{catalog.require(input.itemId).visualId}
+                    : std::nullopt, owned, input.quantity});
+            }
+            for (const auto& output : recipe.outputs) {
+                recipeView.outputs.push_back({output.itemId, catalog.find(output.itemId) != nullptr
+                    ? std::optional<simulation::DefinitionId>{catalog.require(output.itemId).visualId}
+                    : std::nullopt, output.quantity});
+            }
+            recipeView.maxCraftable = craftingService.maxCraftable(recipe, items.inventory().items());
+            recipeView.craftable = craftable && recipeView.maxCraftable > 0;
+            result.craftingRecipes.push_back(std::move(recipeView));
+        }
+    }
     if (shopOverlay.open()) {
         result.activeShopId = shopOverlay.activeShopId();
         if (const auto* shop = shops.find(result.activeShopId)) {

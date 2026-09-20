@@ -447,6 +447,9 @@ private:
         case 'I':
             if (down && !wasDown) { actionEdges_.pushToggleInventory(); }
             break;
+        case 'K':
+            if (down && !wasDown) { actionEdges_.pushToggleCrafting(); }
+            break;
         case '1': case '2': case '3': case '4':
             if (down && !wasDown) {
                 actionEdges_.pushQuickSlot(static_cast<std::size_t>(key - '1'));

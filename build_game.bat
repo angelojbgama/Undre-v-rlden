@@ -72,6 +72,10 @@ cl.exe %COMMON_FLAGS% /Fo"build\obj\bank_overlay.obj" "src\game\gameplay\bank_ov
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\shop_overlay.obj" "src\game\gameplay\shop_overlay.cpp"
 if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\crafting.obj" "src\game\gameplay\crafting.cpp"
+if errorlevel 1 goto :build_failed
+cl.exe %COMMON_FLAGS% /Fo"build\obj\crafting_overlay.obj" "src\game\gameplay\crafting_overlay.cpp"
+if errorlevel 1 goto :build_failed
 
 if not exist "build\obj\dialogue_flags.obj" (
     echo Compiling missing dialogue flags object...
@@ -115,7 +119,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\map_catalog.obj" "build\obj\official_maps.obj" "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" ^
     "build\obj\authoring_semantics.obj" "build\obj\map_composition.obj" "build\obj\reachability.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\combat_system.obj" ^
-    "build\obj\projectile_system.obj" "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\projectile_system.obj" "build\obj\items.obj" "build\obj\player_items.obj" "build\obj\crafting.obj" "build\obj\crafting_overlay.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" ^
     "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
     "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\game_view_model.obj" ^

@@ -22,6 +22,7 @@ struct ActionIntent final {
     bool secondaryAttackPressed{};
     bool interactPressed{};
     bool toggleInventoryPressed{};
+    bool toggleCraftingPressed{};
     int quickSlotPressed{-1};
     bool saveGamePressed{};
     bool loadGamePressed{};

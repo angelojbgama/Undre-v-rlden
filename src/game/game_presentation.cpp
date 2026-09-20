@@ -496,6 +496,7 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         return;
     }
     if (view.shopOpen) { renderShopOverlay(renderer, frame); return; }
+    if (view.craftingOpen) { renderCraftingOverlay(renderer, frame); return; }
     if (view.bankOpen) {
         renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
         render::drawText(renderer, frame.font, "BANK", 8, 27);
@@ -608,6 +609,61 @@ void GamePresentation::renderShopOverlay(render::Renderer2D& renderer,
     }
     if (view.shopFeedback) render::drawText(renderer, frame.font, "STATUS " + std::to_string(static_cast<int>(*view.shopFeedback)), 8, 177);
     render::drawText(renderer, frame.font, "PRIMARY TRADE  SECONDARY SWITCH  I CLOSE", 8, 188);
+}
+
+void GamePresentation::renderCraftingOverlay(render::Renderer2D& renderer,
+                                             const GamePresentationFrame& frame) const {
+    const auto& view = frame.view;
+    renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
+    render::drawText(renderer, frame.font, "CRAFTING", 8, 27);
+    std::size_t listed = 0;
+    for (std::size_t index = 0; index < view.craftingRecipes.size(); ++index) {
+        const auto& recipe = view.craftingRecipes[index];
+        if (listed == 8) break;
+        const int y = 39 + static_cast<int>(listed) * 11;
+        const bool selected = index == view.craftingSelection;
+        if (selected) { renderer.fillRect({8, y - 1, 250, 10}, {96, 62, 54, 255}); }
+        auto name = std::string(recipe.recipeId.value());
+        if (name.size() > 20) { name = name.substr(0, 20); }
+        render::drawText(renderer, frame.font, name + (recipe.craftable ? " OK" : " --"), 11, y);
+        ++listed;
+    }
+    if (view.craftingSelection < view.craftingRecipes.size()) {
+        const auto& recipe = view.craftingRecipes[view.craftingSelection];
+        auto itemIdText = [](const simulation::DefinitionId& id) {
+            auto value = std::string(id.value());
+            return value.size() > 16 ? value.substr(0, 16) : value;
+        };
+        int row = 133;
+        for (std::size_t index = 0; index < recipe.inputs.size(); ++index) {
+            const auto& input = recipe.inputs[index];
+            const int column = 11 + static_cast<int>(index % 2) * 66;
+            if (index > 0 && index % 2 == 0) { row += 9; }
+            std::string text = std::to_string(input.ownedQuantity) + "/" +
+                               std::to_string(input.requiredQuantity) + " " + itemIdText(input.itemId);
+            render::drawText(renderer, frame.font, text.substr(0, 24), column, row);
+        }
+        if (!recipe.outputs.empty()) {
+            const auto& output = recipe.outputs.front();
+            std::string text = "x" + std::to_string(output.quantity) + " " + itemIdText(output.itemId);
+            render::drawText(renderer, frame.font, text, 150, 133);
+        }
+        if (recipe.maxCraftable > 1) {
+            render::drawText(renderer, frame.font, "MAX " + std::to_string(recipe.maxCraftable), 214, 160);
+        }
+    }
+    if (view.craftingFeedback) {
+        const char* message = "NEEDS MATERIALS";
+        switch (*view.craftingFeedback) {
+        case gameplay::CraftingStatus::success: message = "CRAFTED"; break;
+        case gameplay::CraftingStatus::missingIngredients: message = "NEEDS MATERIALS"; break;
+        case gameplay::CraftingStatus::inventoryFull: message = "INVENTORY FULL"; break;
+        case gameplay::CraftingStatus::invalidRecipe: message = "INVALID RECIPE"; break;
+        case gameplay::CraftingStatus::recipeNotFound: message = "RECIPE MISSING"; break;
+        }
+        render::drawText(renderer, frame.font, message, 8, 177);
+    }
+    render::drawText(renderer, frame.font, "Z CRAFT  E CRAFT  I/K CLOSE", 8, 188);
 }
 
 void GamePresentation::render(render::Framebuffer& framebuffer,

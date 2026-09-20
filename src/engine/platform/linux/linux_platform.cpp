@@ -73,6 +73,7 @@ void updateKey(LinuxPlatform::Implementation& state, KeySym key, bool down) noex
     case XK_x: case XK_X: state.actionEdges.pushSecondary(); break;
     case XK_e: case XK_E: state.actionEdges.pushInteract(); break;
     case XK_i: case XK_I: state.actionEdges.pushToggleInventory(); break;
+    case XK_k: case XK_K: state.actionEdges.pushToggleCrafting(); break;
     case XK_1: case XK_2: case XK_3: case XK_4:
         state.actionEdges.pushQuickSlot(static_cast<std::size_t>(key - XK_1)); break;
     case XK_F1: state.debugInput.toggleCollisionBodyPressed = true; break;

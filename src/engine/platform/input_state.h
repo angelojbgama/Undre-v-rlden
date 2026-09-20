@@ -12,6 +12,7 @@ struct InputState final {
     bool secondaryAttackPressed{};
     bool interactPressed{};
     bool toggleInventoryPressed{};
+    bool toggleCraftingPressed{};
     bool quickSlot1Pressed{};
     bool quickSlot2Pressed{};
     bool quickSlot3Pressed{};

@@ -24,6 +24,7 @@
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/equipment.h"
 #include "game/gameplay/shop_overlay.h"
+#include "game/gameplay/crafting_overlay.h"
 #include "game/gameplay/scenes/scene_controller.h"
 
 #include <cstddef>
@@ -72,6 +73,7 @@ public:
     }
     void configureRewardGrants(const gameplay::rpg::RewardGrantCatalog& grants) noexcept { rewardGrantCatalog_ = &grants; }
     void configureShops(const gameplay::rpg::ShopCatalog& shops) noexcept { shopCatalog_ = &shops; }
+    void configureCrafting(const gameplay::CraftingCatalog& crafting) noexcept { craftingCatalog_ = &crafting; }
     [[nodiscard]] save::SaveData captureSaveData() const;
     [[nodiscard]] bool restoreSaveData(const save::SaveData& data, std::string& error);
 
@@ -84,6 +86,9 @@ public:
         return bankOverlay_;
     }
     [[nodiscard]] const gameplay::ShopOverlayState& shopOverlay() const noexcept { return shopOverlay_; }
+    [[nodiscard]] const gameplay::CraftingOverlayState& craftingOverlay() const noexcept {
+        return craftingOverlay_;
+    }
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
     [[nodiscard]] const maps::MapData& mapData() const;
@@ -200,11 +205,14 @@ private:
     gameplay::InventoryOverlayState inventoryOverlay_;
     gameplay::BankOverlayState bankOverlay_;
     gameplay::ShopOverlayState shopOverlay_;
+    gameplay::CraftingOverlayState craftingOverlay_;
+    gameplay::CraftingService craftingService_;
     const gameplay::dialogue::DialogueCatalog* dialogueCatalog_{};
     const gameplay::quests::QuestCatalog* questCatalog_{};
     const gameplay::rpg::RewardProfileCatalog* rewardCatalog_{};
     const gameplay::rpg::RewardGrantCatalog* rewardGrantCatalog_{};
     const gameplay::rpg::ShopCatalog* shopCatalog_{};
+    const gameplay::CraftingCatalog* craftingCatalog_{};
     const std::vector<gameplay::PickupDefinition>* pickupDefinitions_{};
     gameplay::rpg::RewardResolver rewardResolver_;
     gameplay::rpg::RewardGrantService rewardGrantService_;

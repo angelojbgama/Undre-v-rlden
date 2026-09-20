@@ -186,6 +186,7 @@ bool GameSession::restoreSaveData(const save::SaveData& data, std::string& error
     closeDialogue();
     bankOverlay_.close();
     shopOverlay_.close();
+    craftingOverlay_.close();
     error.clear();
     return true;
 }
@@ -307,6 +308,7 @@ bool GameSession::startScene(const simulation::DefinitionId& sceneId) {
         inventoryOverlay_.close();
         bankOverlay_.close();
         shopOverlay_.close();
+        craftingOverlay_.close();
     }
     return started;
 }
@@ -1252,6 +1254,24 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     if (bankOverlay_.open()) {
         if (command.actions.toggleInventoryPressed) { bankOverlay_.toggle(); }
         else { static_cast<void>(gameplay::routeBankCommand(bankOverlay_, command, *playerItems_)); }
+        resolvePendingQuestRewards();
+        return;
+    }
+    if (craftingOverlay_.open()) {
+        if (command.actions.toggleInventoryPressed || command.actions.toggleCraftingPressed) {
+            craftingOverlay_.close();
+        } else if (craftingCatalog_ && playerItems_) {
+            static_cast<void>(gameplay::routeCraftingCommand(craftingOverlay_, command,
+                                                             *craftingCatalog_,
+                                                             playerItems_->inventory().items(),
+                                                             craftingService_));
+        } else { craftingOverlay_.close(); }
+        resolvePendingQuestRewards();
+        return;
+    }
+    if (command.actions.toggleCraftingPressed && craftingCatalog_ &&
+        !craftingCatalog_->values().empty()) {
+        craftingOverlay_.open(*craftingCatalog_);
         resolvePendingQuestRewards();
         return;
     }

@@ -210,6 +210,14 @@ echo [20/40] Compiling player items...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\player_items.obj" "src\game\gameplay\player_items.cpp"
 if errorlevel 1 goto :build_failed
 
+echo Compiling crafting engine...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\crafting.obj" "src\game\gameplay\crafting.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Compiling crafting overlay...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\crafting_overlay.obj" "src\game\gameplay\crafting_overlay.cpp"
+if errorlevel 1 goto :build_failed
+
 echo [21/40] Compiling world pickups...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\world_pickups.obj" "src\game\gameplay\world_pickups.cpp"
 if errorlevel 1 goto :build_failed
@@ -381,7 +389,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
-    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" "build\obj\crafting.obj" "build\obj\crafting_overlay.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\region_tracker.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
@@ -415,7 +423,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
-    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" "build\obj\crafting.obj" "build\obj\crafting_overlay.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" "build\obj\quest_state.obj" "build\obj\quest_system.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
     "build\obj\game_view_model.obj" "build\obj\world_object_visual.obj" "build\obj\presentation_effects.obj" "build\obj\presentation_effect_renderer.obj" "build\obj\presentation_feedback_controller.obj" "build\obj\visual_content_loader.obj" "build\obj\game_presentation.obj" "build\obj\game_session.obj" "build\obj\region_tracker.obj" "build\obj\runtime_visual_sync.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
@@ -448,7 +456,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
-    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" "build\obj\crafting.obj" "build\obj\crafting_overlay.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
     "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" ^
     "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^
@@ -484,7 +492,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\content_check.exe" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
-    "build\obj\items.obj" "build\obj\player_items.obj" ^
+    "build\obj\items.obj" "build\obj\player_items.obj" "build\obj\crafting.obj" "build\obj\crafting_overlay.obj" ^
     "build\obj\world_pickups.obj" "build\obj\world_objects.obj" "build\obj\world_logic.obj" "build\obj\encounter_system.obj" "build\obj\scene_definition.obj" "build\obj\scene_controller.obj" ^
     "build\obj\npc_engine.obj" "build\obj\dialogue_flags.obj" "build\obj\dialogue_model.obj" ^
     "build\obj\dialogue_session.obj" "build\obj\quest_model.obj" ^

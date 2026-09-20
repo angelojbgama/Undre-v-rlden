@@ -4,6 +4,8 @@
 #include "game/gameplay/items.h"
 #include "game/gameplay/player_items.h"
 #include "game/gameplay/bank_overlay.h"
+#include "game/gameplay/crafting.h"
+#include "game/gameplay/crafting_overlay.h"
 #include "game/gameplay/rpg/equipment.h"
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/shop_overlay.h"
@@ -28,6 +30,24 @@ struct ShopOfferView final {
     std::optional<simulation::DefinitionId> visualId{};
     std::optional<std::uint64_t> playerBuyPrice{};
     std::optional<std::uint64_t> playerSellPrice{};
+};
+struct CraftingIngredientView final {
+    simulation::DefinitionId itemId{};
+    std::optional<simulation::DefinitionId> visualId{};
+    std::uint64_t ownedQuantity{};
+    std::uint32_t requiredQuantity{};
+};
+struct CraftingOutputView final {
+    simulation::DefinitionId itemId{};
+    std::optional<simulation::DefinitionId> visualId{};
+    std::uint32_t quantity{};
+};
+struct CraftingRecipeView final {
+    simulation::DefinitionId recipeId{};
+    std::vector<CraftingIngredientView> inputs;
+    std::vector<CraftingOutputView> outputs;
+    bool craftable{};
+    std::uint32_t maxCraftable{};
 };
 
 struct GameViewModel final {
@@ -60,6 +80,10 @@ struct GameViewModel final {
     std::size_t shopInventorySelection{};
     std::vector<ShopOfferView> shopOffers;
     std::optional<gameplay::rpg::ShopTransactionStatus> shopFeedback{};
+    bool craftingOpen{};
+    std::size_t craftingSelection{};
+    std::optional<gameplay::CraftingStatus> craftingFeedback{};
+    std::vector<CraftingRecipeView> craftingRecipes;
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
@@ -74,5 +98,15 @@ struct GameViewModel final {
     const gameplay::Player&, const gameplay::PlayerItems&, const gameplay::ItemCatalog&,
     const gameplay::InventoryOverlayState&, const gameplay::BankOverlayState&,
     const gameplay::rpg::PlayerDerivedStats&);
+[[nodiscard]] GameViewModel buildGameViewModel(
+    const gameplay::Player& player, const gameplay::PlayerItems& items,
+    const gameplay::ItemCatalog& catalog,
+    const gameplay::InventoryOverlayState& overlay,
+    const gameplay::BankOverlayState& bankOverlay,
+    const gameplay::rpg::PlayerDerivedStats& derivedStats,
+    const gameplay::ShopOverlayState& shopOverlay,
+    const gameplay::rpg::ShopCatalog& shops,
+    const gameplay::CraftingOverlayState& craftingOverlay,
+    const gameplay::CraftingCatalog& crafting);
 
 } // namespace underworld::game

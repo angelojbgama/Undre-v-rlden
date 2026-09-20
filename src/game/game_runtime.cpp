@@ -191,6 +191,7 @@ struct GameRuntime::State final {
         session.configureRewards(content.rewardProfiles(), content.pickups());
         session.configureRewardGrants(content.rewardGrants());
         session.configureShops(content.shops());
+        session.configureCrafting(content.craftingRecipes());
         auto discovered = launchOptions.mapRoot
             ? maps::discoverGameplayMapsAtRoot(
                   *launchOptions.mapRoot, &validationCatalogs, launchOptions.mapPath.has_value())
@@ -603,7 +604,8 @@ struct GameRuntime::State final {
     void render(render::Framebuffer& framebuffer) const {
         auto view = buildGameViewModel(
             player, session.playerItems(), itemCatalog, session.inventoryOverlay(), session.bankOverlay(),
-            session.derivedPlayerStats(), session.shopOverlay(), content.shops());
+            session.derivedPlayerStats(), session.shopOverlay(), content.shops(),
+            session.craftingOverlay(), content.craftingRecipes());
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
         const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());
