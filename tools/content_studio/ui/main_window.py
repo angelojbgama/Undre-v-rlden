@@ -535,7 +535,8 @@ class MainWindow(QMainWindow):
     def _refresh_all(self) -> None:
         self.map_browser.refresh(
             [document.map_id for document in self.project.maps],
-            self.project.active_map.map_id, self._map_folders())
+            self.project.active_map.map_id, self._map_folders(),
+            entry=self.project.entry_map_id)
         self._refresh_map()
         self.content_browser.set_workspace(self.workspace)
         self.content_browser.set_project(self.project)
@@ -581,7 +582,7 @@ class MainWindow(QMainWindow):
             panel.set_document(document)
         self.map_browser.refresh(
             [value.map_id for value in self.project.maps], document.map_id,
-            self._map_folders())
+            self._map_folders(), entry=self.project.entry_map_id)
         if self.map_canvas.selected_entity:
             self._map_selection_changed(self.map_canvas.selected_entity)
 

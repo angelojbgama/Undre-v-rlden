@@ -8,7 +8,7 @@ from typing import Any
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDrag, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QSplitter,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QTabWidget,
 )
@@ -1223,6 +1223,7 @@ class MapBrowser(QWidget):
         self.list = QTreeWidget()
         self.list.setHeaderHidden(True)
         self.list.currentItemChanged.connect(self._selection_changed)
+        self.list.itemDoubleClicked.connect(self._item_double_clicked)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._show_context_menu)
         self._map_count = 0
@@ -1256,7 +1257,8 @@ class MapBrowser(QWidget):
         self.remove_button.setText(translator("map_remove"))
         self.entry_button.setText(translator("map_set_entry"))
 
-    def refresh(self, map_ids: list[str], active: str = "", folders: dict[str, str] | None = None) -> None:
+    def refresh(self, map_ids: list[str], active: str = "", folders: dict[str, str] | None = None,
+                entry: str = "") -> None:
         self.list.blockSignals(True)
         self.list.clear()
         self._map_count = len(map_ids)
@@ -1274,6 +1276,11 @@ class MapBrowser(QWidget):
                     self.list.addTopLevelItem(parent)
             item = QTreeWidgetItem([map_id])
             item.setData(0, Qt.ItemDataRole.UserRole, map_id)
+            if map_id == entry:
+                # Entry map badge (audit M1): the flag was only reachable
+                # through the "Set Entry" button before.
+                item.setIcon(0, icon("set_entry"))
+                item.setToolTip(0, self.translate("map_entry_badge"))
             if parent is None:
                 self.list.addTopLevelItem(item)
             else:
@@ -1308,6 +1315,13 @@ class MapBrowser(QWidget):
         if map_id:
             signal.emit(map_id)  # type: ignore[attr-defined]
 
+    def _item_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        """Open the map properties on double-click (audit M2)."""
+        del column
+        map_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if map_id:
+            self.edit_requested.emit(str(map_id))
+
     def _show_context_menu(self, position: object) -> None:
         item = self.list.itemAt(position)  # type: ignore[arg-type]
         if item is None or not item.data(0, Qt.ItemDataRole.UserRole):
@@ -1328,6 +1342,11 @@ class LayersPanel(QWidget):
         self.translate = translator or Translator()
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._row_changed)
+        self.list.itemChanged.connect(self._item_changed)
+        self.list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # Layer reorder by drag (audit L1); Move Up/Down remain as buttons.
+        self.list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.list.model().rowsMoved.connect(self._rows_moved)
         self.add_button = QPushButton(self.translate("add"))
         self.rename_button = QPushButton(self.translate("rename"))
         self.up_button = QPushButton(self.translate("move_up"))
@@ -1360,14 +1379,51 @@ class LayersPanel(QWidget):
 
     def refresh(self) -> None:
         previous_row = self.list.currentRow()
+        self.list.blockSignals(True)
         self.list.clear()
         if self.document:
-            for layer in self.document.layers:  # type: ignore[attr-defined]
+            for index, layer in enumerate(self.document.layers):  # type: ignore[attr-defined]
                 visible = bool(layer.get("visible", True))
-                self.list.addItem(("● " if visible else "○ ") + str(layer.get("name", "Layer")))
+                item = QListWidgetItem(str(layer.get("name", "Layer")))
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsDragEnabled)
+                item.setCheckState(Qt.CheckState.Checked if visible else Qt.CheckState.Unchecked)
+                item.setData(Qt.ItemDataRole.UserRole, index)
+                self.list.addItem(item)
         if self.list.count():
             self.list.setCurrentRow(min(max(previous_row, 0), self.list.count() - 1))
+        self.list.blockSignals(False)
         self._refresh_actions()
+
+    def _item_changed(self, item: QListWidgetItem) -> None:
+        """Eye toggle: the checkbox drives layer visibility (audit L1)."""
+        if not self.document:
+            return
+        index = item.data(Qt.ItemDataRole.UserRole)
+        visible = item.checkState() == Qt.CheckState.Checked
+        layer = self.document.layers[index]  # type: ignore[attr-defined]
+        if bool(layer.get("visible", True)) == visible:
+            return
+        self.document.set_layer_visibility(index, visible)  # type: ignore[attr-defined]
+        self.changed.emit()
+
+    def _rows_moved(self, *unused: object) -> None:
+        """Translate an internal drag into document layer moves (audit L1)."""
+        del unused
+        if not self.document or self.list.count() < 2:
+            return
+        order = [self.list.item(row).data(Qt.ItemDataRole.UserRole) for row in range(self.list.count())]
+        if order == list(range(len(order))):
+            return
+        remaining = list(range(len(order)))
+        for target in range(len(order)):
+            wanted = order[target]
+            source = remaining.index(wanted)
+            if source != target:
+                self.document.move_layer(source, target)
+                remaining.pop(source)
+                remaining.insert(target, wanted)
+        self.refresh()
+        self.changed.emit()
 
     def _row_changed(self, row: int) -> None:
         self._refresh_actions()

@@ -17,7 +17,7 @@ inspetor com objeto selecionado, diagnósticos e 16 diálogos.
 | **P2** | Fricção alta / esforço desnecessário / risco de erro |
 | **P3** | Polimento e consistência |
 
-✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3 em `97c7547`; SE1-SE2 em `e7cc8bb`; SP1-SP2 em `3d9a318`.
+✅ = implementado. G1, G8, G5, G6 em `6e3b45e`; G2/S1 em `6869292`; C1, G7, G4, C2 em `7cb1a0e`; IN1 em `de909bd`; S2, IN2 em `caec6be`/`a247f38`; SS1, ST1-ST3 em `97c7547`; SE1-SE2 em `e7cc8bb`; SP1-SP2 em `3d9a318`; M1-M2, L1 neste commit.
 
 Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tela.
 
@@ -63,13 +63,13 @@ Os IDs (`G*`, `S*`, `C*`, `M*`…) são a chave para o plano de conserto por tel
 ### 4.1 Mapas (MapBrowser)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| M1 | P2 | **O mapa de entrada não é destacado** na árvore (só descobre via botão "Definir como entrada"). | Badge/ícone de flag no mapa de entrada + tooltip. |
-| M2 | P3 | Duplo clique não abre propriedades (só context menu). | Duplo clique → propriedades. |
+| M1 ✅ | P2 | **O mapa de entrada não é destacado** na árvore (só descobre via botão "Definir como entrada"). | Badge/ícone de flag no mapa de entrada + tooltip. |
+| M2 ✅ | P3 | Duplo clique não abre propriedades (só context menu). | Duplo clique → propriedades. |
 
 ### 4.2 Camadas (LayersPanel)
 | ID | Pri | Problema | Proposta |
 |---|---|---|---|
-| L1 | P2 | Visibilidade codificada como `● / ○` no texto; reorder só por botões Move Up/Down. | Ícone de olho clicável por linha + drag-and-drop para reordenar; botões restam como atalho. |
+| L1 ✅ | P2 | Visibilidade codificada como `● / ○` no texto; reorder só por botões Move Up/Down. | Ícone de olho clicável por linha + drag-and-drop para reordenar; botões restam como atalho. |
 
 ### 4.3 Tiles (TilesetLibrary)
 | ID | Pri | Problema | Proposta |
@@ -196,7 +196,10 @@ Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
 9. ✅ **SS1/ST1-ST3** Semântica/Stamps (miniaturas, rótulos, busca) e Smart Terrain (overlap fantasma, status, tooltips).
 10. ✅ **SP1/SP2** Animações clusterizadas por spritesheet + ícones de playback do registry.
 11. ✅ **SE1/SE2** Grid 3×3 (bússola de vizinhos) + cabeçalho com miniatura no editor semântico.
-12. **M1/L1/T2** Melhorias de MapBrowser/Layers/atlas.
+12. ✅ **M1/M2/L1** Badge de entrada + duplo clique no MapBrowser; checkbox de visibilidade + drag reorder nas camadas.
+13. **T2/T3** Atlas compacto de tilesets e seleção menos intrusiva.
+14. **DL1–DL9** Polimento de diálogos (um por vez).
+15. **G10–G12** Recentes, Settings, mnemônicos.
 13. **DL1–DL9** Polimento de diálogos (um por vez).
 14. **G10–G12** Recentes, Settings, mnemônicos.
 

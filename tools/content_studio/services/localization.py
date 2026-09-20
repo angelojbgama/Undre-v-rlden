@@ -1319,3 +1319,11 @@ TRANSLATIONS["en-US"].update({
     "semantic_edges": "Neighbors (edges)",
     "semantic_tile_header": "{tileset} · tile #{index}",
 })
+
+TRANSLATIONS["pt-BR"].update({
+    "map_entry_badge": "Mapa de entrada do jogo",
+})
+
+TRANSLATIONS["en-US"].update({
+    "map_entry_badge": "Game entry map",
+})
