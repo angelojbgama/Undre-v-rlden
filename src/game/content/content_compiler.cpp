@@ -575,7 +575,7 @@ gameplay::rpg::RewardProfileDefinition compileReward(const AuthoredRewardProfile
 gameplay::rpg::RewardGrantDefinition compileGrant(const AuthoredRewardGrant& v) { gameplay::rpg::RewardGrantDefinition result{v.id, v.experience, v.gold, {}}; for (const auto& item : v.items) result.items.push_back({item.itemId, item.quantity}); return result; }
 gameplay::rpg::ShopDefinition compileShop(const AuthoredShop& v) { gameplay::rpg::ShopDefinition result{v.id, {}}; for (const auto& offer : v.offers) result.offers.push_back({offer.itemId, offer.playerBuyPrice, offer.playerSellPrice}); return result; }
 gameplay::CraftingRecipeDefinition compileCraftingRecipe(const AuthoredCraftingRecipe& v) {
-    gameplay::CraftingRecipeDefinition result{v.id, {}, {}};
+    gameplay::CraftingRecipeDefinition result{v.id, {}, {}, v.unlockQuestId};
     for (const auto& input : v.inputs) result.inputs.push_back({input.itemId, input.quantity});
     for (const auto& output : v.outputs) result.outputs.push_back({output.itemId, output.quantity});
     return result;

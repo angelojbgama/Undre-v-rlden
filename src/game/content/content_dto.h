@@ -117,7 +117,7 @@ struct AuthoredRewardGrant final { simulation::DefinitionId id{}; std::uint64_t 
 struct AuthoredShopOffer final { simulation::DefinitionId itemId{}; std::optional<std::uint64_t> playerBuyPrice{}; std::optional<std::uint64_t> playerSellPrice{}; };
 struct AuthoredShop final { simulation::DefinitionId id{}; std::vector<AuthoredShopOffer> offers; };
 struct AuthoredCraftingIngredient final { simulation::DefinitionId itemId{}; std::uint32_t quantity{1}; };
-struct AuthoredCraftingRecipe final { simulation::DefinitionId id{}; std::vector<AuthoredCraftingIngredient> inputs; std::vector<AuthoredCraftingIngredient> outputs; };
+struct AuthoredCraftingRecipe final { simulation::DefinitionId id{}; std::vector<AuthoredCraftingIngredient> inputs; std::vector<AuthoredCraftingIngredient> outputs; std::optional<simulation::DefinitionId> unlockQuestId{}; };
 struct AuthoringDescriptor final { simulation::DefinitionId definitionId{}; std::string displayName; AuthoringCategory category{AuthoringCategory::enemy}; std::vector<std::string> tags; };
 
 struct AuthoredPresentationEffect final {

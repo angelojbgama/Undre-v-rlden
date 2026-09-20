@@ -686,6 +686,9 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 error(report, ContentKind::craftingRecipe, value.id, "duplicate_item",
                       "crafting recipe repeats an output item", "outputs.itemId");
         }
+        if (value.unlockQuestId && !contains(quests, *value.unlockQuestId))
+            error(report, ContentKind::craftingRecipe, value.id, "unknown_reference",
+                  "crafting recipe unlock quest does not exist", "unlockQuestId");
     }
     for (const auto& value : pack.items) {
         if (value.visualId.empty() || value.stackLimit == 0 ||
