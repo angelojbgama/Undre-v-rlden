@@ -468,12 +468,18 @@ class ContentWorkspace:
                         f"{prefix}.projectileDefinitionId", "missing_dependency",
                         definition.definition_id, definition.source_path,
                     ))
-            elif category in {"rewardProfiles", "rewardGrants", "shops", "craftingRecipes"}:
+            elif category in {"rewardProfiles", "rewardGrants", "shops"}:
                 for key, value in _walk_key_values(data):
                     if key == "pickupDefinitionId":
                         require("pickups", value, f"{prefix}.{key}")
                     elif key == "itemId":
                         require("items", value, f"{prefix}.{key}")
+            elif category == "craftingRecipes":
+                for key, value in _walk_key_values(data):
+                    if key == "itemId":
+                        require("items", value, f"{prefix}.{key}")
+                    elif key == "unlockQuestId":
+                        require("quests", value, f"{prefix}.{key}")
             elif category == "quests":
                 require("rewardGrants", data.get("rewardGrantId"), f"{prefix}.rewardGrantId")
 
@@ -621,7 +627,7 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "rewardProfiles": {"id": definition_id, "experience": 0, "loot": []},
         "rewardGrants": {"id": definition_id, "experience": 0, "gold": 0, "items": []},
         "shops": {"id": definition_id, "offers": []},
-        "craftingRecipes": {"id": definition_id, "inputs": [], "outputs": []},
+        "craftingRecipes": {"id": definition_id, "inputs": [], "outputs": [], "unlockQuestId": None},
         "authoringDescriptors": {"definitionId": definition_id, "displayName": definition_id, "category": "enemy", "tags": []},
         "tileSemantics": {"id": definition_id, "tilesetId": "", "sourceIndex": 0, "family": "", "role": "unknown", "topology": "unknown", "north": "unknown", "east": "unknown", "south": "unknown", "west": "unknown", "preferredLayer": "", "flipXAllowed": False, "visualConfidence": "unknown", "semanticConfidence": "unknown", "gameplayConfidence": "unknown", "variantWeight": 1},
         "stamps": {"id": definition_id, "displayName": definition_id, "width": 1, "height": 1, "cells": [], "anchor": {"x": 0, "y": 0}, "flipXAllowed": False, "atomic": True, "confidence": "unknown"},

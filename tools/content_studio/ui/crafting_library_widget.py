@@ -29,6 +29,7 @@ from ..services.crafting_authoring_service import (
     CraftingAuthoringService,
     MAX_RECIPE_INPUTS,
     MAX_RECIPE_OUTPUTS,
+    _UNSET,
 )
 from ..services.localization import Translator
 from .icon_registry import icon
@@ -154,6 +155,11 @@ class CraftingRecipeDialog(QDialog):
         self.preview.setProperty("muted", True)
         self.preview.setWordWrap(True)
 
+        # Quest gate: recipes locked behind a quest stay a mystery silhouette
+        # in the in-game book until the quest completes. Empty entry = none.
+        self.unlock_quest = QComboBox(self)
+        self._reload_quests("")
+
         form = QFormLayout()
         form.addRow(self.translate("recipe_name"), self.name)
         form.addRow(self.translate("recipe_id"), self.recipe_id)
@@ -163,6 +169,7 @@ class CraftingRecipeDialog(QDialog):
         outputs_group = QWidget(self)
         outputs_group.setLayout(self._wrapped(self.outputs_host, self.add_output_button))
         form.addRow(self.translate("recipe_outputs"), outputs_group)
+        form.addRow(self.translate("recipe_unlock_quest"), self.unlock_quest)
         form.addRow(self.translate("recipe_preview"), self.preview)
 
         self.buttons = QDialogButtonBox(
@@ -200,6 +207,15 @@ class CraftingRecipeDialog(QDialog):
         host.addLayout(rows)
         host.addWidget(add_button)
         return host
+
+    def _reload_quests(self, selected: str) -> None:
+        self.unlock_quest.clear()
+        self.unlock_quest.addItem(self.translate("recipe_unlock_quest_none"), "")
+        for quest in self.workspace.definitions("quests"):
+            label = f"{quest.display_name} ({quest.definition_id})"
+            self.unlock_quest.addItem(label, quest.definition_id)
+        if selected:
+            self.unlock_quest.setCurrentIndex(max(self.unlock_quest.findData(selected), 0))
 
     def _suggest_id(self, text: str) -> None:
         if self.recipe_id.isReadOnly() or self.recipe_id.text().startswith("recipe."):
@@ -258,6 +274,8 @@ class CraftingRecipeDialog(QDialog):
         self.name.setText(
             str(descriptor.data.get("displayName", "")) if descriptor else definition.display_name)
         self.recipe_id.setText(definition.definition_id)
+        unlock_quest = definition.data.get("unlockQuestId")
+        self._reload_quests(str(unlock_quest) if isinstance(unlock_quest, str) else "")
         for item_id, quantity, rows, host in self._rows_loader(definition):
             row = self._add_row(rows, host)
             if row is not None:
@@ -277,10 +295,13 @@ class CraftingRecipeDialog(QDialog):
         recipe_id = self.recipe_id.text().strip()
         inputs = self._collect(self._input_rows)
         outputs = self._collect(self._output_rows)
+        unlock_quest = self.unlock_quest.currentData()
+        unlock_quest_id = unlock_quest if isinstance(unlock_quest, str) and unlock_quest else None
         try:
             if self.definition is None:
                 self.service.create_recipe(
-                    self.name.text(), recipe_id, inputs, outputs)
+                    self.name.text(), recipe_id, inputs, outputs,
+                    unlock_quest_id=unlock_quest_id)
                 self.created_recipe_id = self.service.find(recipe_id).definition_id
             else:
                 self.service.update_recipe(
@@ -288,6 +309,8 @@ class CraftingRecipeDialog(QDialog):
                     display_name=self.name.text(),
                     inputs=inputs,
                     outputs=outputs,
+                    unlock_quest_id=(
+                        unlock_quest_id if unlock_quest_id is not None else _UNSET),
                 )
         except ValueError as error:
             QMessageBox.warning(self, "Crafting", str(error))

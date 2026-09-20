@@ -1406,6 +1406,8 @@ TRANSLATIONS["pt-BR"].update({
     "recipe_quantity": "Quantidade",
     "recipe_remove": "Remover",
     "recipe_preview": "Pré-visualização",
+    "recipe_unlock_quest": "Desbloqueio por quest",
+    "recipe_unlock_quest_none": "Sem quest (sempre disponível)",
     "recipe_needs_inputs": "Receitas precisam de 2 a 4 ingredientes distintos.",
     "recipe_needs_outputs": "Receitas precisam de pelo menos 1 resultado.",
     "recipe_creation_help": (
@@ -1435,6 +1437,8 @@ TRANSLATIONS["en-US"].update({
     "recipe_quantity": "Quantity",
     "recipe_remove": "Remove",
     "recipe_preview": "Preview",
+    "recipe_unlock_quest": "Quest unlock",
+    "recipe_unlock_quest_none": "No quest (always available)",
     "recipe_needs_inputs": "Recipes need 2 to 4 distinct ingredients.",
     "recipe_needs_outputs": "Recipes need at least 1 result.",
     "recipe_creation_help": (

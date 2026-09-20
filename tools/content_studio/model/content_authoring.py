@@ -106,6 +106,7 @@ def _typed_references(value: object, field_name: str = "") -> Iterable[tuple[str
             "defaultDialogueId": "dialogues",
             "itemId": "items",
             "pickupDefinitionId": "pickups",
+            "unlockQuestId": "quests",
         }.get(field_name)
         if category:
             yield category, value

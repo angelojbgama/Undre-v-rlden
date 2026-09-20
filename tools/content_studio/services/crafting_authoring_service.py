@@ -14,6 +14,10 @@ MIN_RECIPE_OUTPUTS = 1
 MAX_RECIPE_OUTPUTS = 4
 MAX_QUANTITY = (1 << 32) - 1
 
+# Sentinel for update_recipe: explicitly clears the quest gate instead of
+# keeping the authored value (None keeps it).
+_UNSET = object()
+
 
 class CraftingAuthoringService:
     """CRUD facade that keeps recipes and their authoring descriptors consistent.
@@ -43,6 +47,7 @@ class CraftingAuthoringService:
         recipe_id: str,
         inputs: list[dict[str, JsonValue]] | None = None,
         outputs: list[dict[str, JsonValue]] | None = None,
+        unlock_quest_id: str | None = None,
     ) -> ContentDefinition:
         workspace = self._require_workspace()
         normalized_id = self._normalize_recipe_id(recipe_id)
@@ -51,6 +56,7 @@ class CraftingAuthoringService:
             MIN_RECIPE_INPUTS, MAX_RECIPE_INPUTS, "input", inputs)
         normalized_outputs = self.normalize_ingredients(
             MIN_RECIPE_OUTPUTS, MAX_RECIPE_OUTPUTS, "output", outputs)
+        normalized_quest = self._normalize_quest(unlock_quest_id)
 
         if workspace.find("craftingRecipes", normalized_id):
             raise ValueError(f"recipe already exists: {normalized_id}")
@@ -65,7 +71,8 @@ class CraftingAuthoringService:
                     "craftingRecipes",
                     normalized_id,
                     self._recipe_data(
-                        normalized_id, normalized_inputs, normalized_outputs),
+                        normalized_id, normalized_inputs, normalized_outputs,
+                        normalized_quest),
                 ),
                 (
                     "authoringDescriptors",
@@ -87,6 +94,7 @@ class CraftingAuthoringService:
         display_name: str | None = None,
         inputs: list[dict[str, JsonValue]] | None = None,
         outputs: list[dict[str, JsonValue]] | None = None,
+        unlock_quest_id: str | None | object = None,
     ) -> ContentDefinition:
         workspace = self._require_workspace()
         recipe = self._require_recipe(recipe_id)
@@ -106,6 +114,16 @@ class CraftingAuthoringService:
         else:
             normalized_outputs = self.normalize_ingredients(
                 MIN_RECIPE_OUTPUTS, MAX_RECIPE_OUTPUTS, "output", outputs)
+
+        # None means "keep the authored value"; the explicit _UNSET sentinel
+        # means "clear the quest gate"; a string sets/validates one.
+        if unlock_quest_id is None:
+            normalized_quest = self._normalize_quest(
+                recipe.data.get("unlockQuestId"), required=False)
+        elif unlock_quest_id is _UNSET:
+            normalized_quest = None
+        else:
+            normalized_quest = self._normalize_quest(unlock_quest_id)
 
         descriptor = workspace.find("authoringDescriptors", recipe_id)
         if display_name is None:
@@ -130,7 +148,8 @@ class CraftingAuthoringService:
                 (
                     "craftingRecipes",
                     recipe_id,
-                    self._recipe_data(recipe_id, normalized_inputs, normalized_outputs),
+                    self._recipe_data(
+                        recipe_id, normalized_inputs, normalized_outputs, normalized_quest),
                 ),
                 (
                     "authoringDescriptors",
@@ -252,16 +271,32 @@ class CraftingAuthoringService:
             raise ValueError("recipe display name is required")
         return normalized
 
+    def _normalize_quest(self, quest_id: object, required: bool = True) -> str | None:
+        """Validate the optional unlock quest; empty/None clears the gate."""
+        workspace = self._require_workspace()
+        if quest_id is None or (isinstance(quest_id, str) and not quest_id.strip()):
+            if required:
+                return None
+            return None
+        if not isinstance(quest_id, str):
+            raise ValueError("recipe unlock quest must be a quest ID")
+        normalized = quest_id.strip()
+        if workspace.find("quests", normalized) is None:
+            raise ValueError(f"recipe unlock quest does not exist: {normalized}")
+        return normalized
+
     @staticmethod
     def _recipe_data(
         recipe_id: str,
         inputs: list[dict[str, JsonValue]],
         outputs: list[dict[str, JsonValue]],
+        unlock_quest_id: str | None = None,
     ) -> dict[str, JsonValue]:
         return {
             "id": recipe_id,
             "inputs": copy.deepcopy(inputs),
             "outputs": copy.deepcopy(outputs),
+            "unlockQuestId": unlock_quest_id,
         }
 
     @staticmethod
