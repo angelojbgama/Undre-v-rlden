@@ -1,27 +1,28 @@
-# External Authored Content — JSON schema v5
+# External Authored Content — JSON schema v6
 
 This is the external representation of `AuthoredContentPack`. It is strict UTF-8
 JSON, identified by `"format": "dungeon-underworld-content"` and
-`"version": 5`. The decoder remains compatible with schema versions 1 through 4;
-the encoder emits v5. Runtime definitions, C++ and DMAP are not authoring formats.
+`"version": 6`. The decoder remains compatible with schema versions 1 through 5;
+the encoder emits v6. Runtime definitions, C++ and DMAP are not authoring formats.
 
 The canonical top-level field order is:
 
 `format`, `version`, `tilesets`, `projectiles`, `attacks`, `behaviors`, `enemies`,
 `items`, `objects`, `pickups`, `npcVisuals`, `npcs`, `dialogues`, `quests`,
-`playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`,
+`playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`, `craftingRecipes`,
 `authoringDescriptors`, `tileSemantics`, `stamps`, `presentationEffects`,
 `visualImages`, `staticSprites`, `animations`, `enemyVisuals`, `objectVisuals`.
 
-Each category is an array; an omitted category decodes as empty. The twenty-five
-categories are merged by the workspace loader after per-file strict decoding.
+Each category is an array; an omitted category decodes as empty. The categories are
+merged by the workspace loader after per-file strict decoding.
 Schema v2 added door capabilities, v3 added presentation effects, schema v4 added
-object activation capabilities and schema v5 added visual definitions. Unknown fields,
-unknown enum strings, duplicate object keys, comments, trailing commas and future
-versions are errors. Definition IDs are strings. Optional fields may be omitted or
-`null`. Variants use an explicit `kind` string. Integer fields are parsed from their
-lexemes with exact range checks; fractional values are not accepted where an integer
-is required.
+object activation capabilities, schema v5 added visual definitions and schema v6
+added `craftingRecipes`. `craftingRecipes` present in a file whose version is below
+6 is an error. Unknown fields, unknown enum strings, duplicate object keys,
+comments, trailing commas and future versions are errors. Definition IDs are
+strings. Optional fields may be omitted or `null`. Variants use an explicit `kind`
+string. Integer fields are parsed from their lexemes with exact range checks;
+fractional values are not accepted where an integer is required.
 
 The codec preserves UTF-8 and supports JSON escapes, including valid Unicode
 surrogate pairs. Source diagnostics include line, column and logical path. The
@@ -94,6 +95,47 @@ Examples:
  "playerBuyPrice":25,"playerSellPrice":10}]}
 ```
 
+```json
+{"id":"recipe.life_potion",
+ "inputs":[{"itemId":"item.red_herb","quantity":2},
+           {"itemId":"item.empty_bottle","quantity":1}],
+ "outputs":[{"itemId":"item.life_potion","quantity":1}]}
+```
+
+## Crafting recipes (schema v6)
+
+`craftingRecipes` são authored content first-class e ficam inteiramente fora de
+`ItemDefinition`: uma receita apenas referencia itens existentes do `ItemCatalog`.
+Regras estruturais validadas pelo `ContentValidator`:
+
+- `id` obrigatório e único (o Content Studio usa o namespace `recipe.*`);
+- `inputs`: entre 2 e 4 tipos distintos de item, `quantity > 0`, sem repetir
+  `itemId`;
+- `outputs`: entre 1 e 4 tipos distintos de item, `quantity > 0`, sem repetir
+  `itemId`;
+- todo `itemId` precisa existir no conteúdo authored/builtin merged;
+- não há probabilidades, timers nem estações de crafting nesta etapa.
+
+O `ContentCompiler` converte cada receita em
+`gameplay::CraftingRecipeDefinition` e registra tudo em `CraftingCatalog`
+(`GameContentRegistry::craftingRecipes()`). O `CraftingService` executa a
+operação de forma transacional: toda a troca é simulada em um contêiner
+destacado e o inventário real só é substituído se todos os inputs existirem nas
+quantidades pedidas e todos os outputs couberem depois da remoção — consumir
+ingredientes pode liberar os slots que recebem os outputs. Falhas são tipadas
+(`missingIngredients`, `inventoryFull`, `invalidRecipe`) e nunca alteram o
+inventário. Receitas não possuem estado próprio em DSAV; o resultado do crafting
+é apenas mudança de inventário, já persistida.
+
+```json
+{"id":"recipe.iron_sword",
+ "inputs":[{"itemId":"item.iron_ore","quantity":2},
+           {"itemId":"item.coal","quantity":1},
+           {"itemId":"item.wood","quantity":1}],
+ "outputs":[{"itemId":"item.iron_sword","quantity":1},
+            {"itemId":"item.slag","quantity":2}]}
+```
+
 Object visual definitions may optionally set `destroyedAnimationId`. This field is
 compatible with schema v5 because it is optional and omitted by older authored
 files. It binds a generic destroyed visual state and does not change runtime or
@@ -131,9 +173,10 @@ workspace merge, validation and compilation pipeline used by runtime tools. Sema
 cross-reference errors leave the structured document editable and saveable, but make
 the compiled registry unavailable for playtest/launch.
 
-Save writes only dirty files, emits canonical v5 JSON and uses an atomic temporary-file
-replacement. Opening a mixed v1-v5 workspace does not rewrite untouched legacy files;
-only a modified file is upgraded by the encoder. Builtin content is exposed as a
+Save writes only dirty files, emits canonical v6 JSON and uses an atomic temporary-file
+replacement. Opening a mixed v1-v6 workspace does not rewrite untouched legacy files;
+only a modified file is upgraded by the encoder. Creating a recipe in an older project
+promotes that file to v6 on save. Builtin content is exposed as a
 read-only document. Content Studio 18A provides typed authoring for visual images,
 static sprites (including optional source rectangles and anchors), animations
 (including complete frame/marker data) and flexible enemy visual profiles. Phase 18B
@@ -167,4 +210,4 @@ builtin or stale registry.
 
 Content Studio localization is outside this format. The `pt-BR`/`en-US` preference is
 stored in a user settings file; it is never written into Content JSON, definition IDs,
-authored display names or dialogue text. Content JSON remains v5 and language-independent.
+authored display names or dialogue text. Content JSON remains v6 and language-independent.

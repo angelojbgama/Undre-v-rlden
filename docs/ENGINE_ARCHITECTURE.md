@@ -1788,6 +1788,24 @@ exposes copied equipment and derived-stat read models; `GamePresentation` render
 without mutating gameplay. Inventory routing reports equipment changes explicitly so
 `GameSession` refreshes derived stats.
 
+## Crafting
+
+Crafting é conteúdo authored (`craftingRecipes`, Content JSON v6) referenciando
+itens existentes: `CraftingRecipeDefinition`/`CraftingCatalog` são independentes de
+`ItemDefinition`, que nunca conhece receitas. O `CraftingService` é a autoridade
+transacional: simula a troca inteira em um `ItemContainer` destacado (remover
+inputs, adicionar outputs respeitando `stackLimit`) e só então aplica o resultado
+no inventário real via `restoreSlots`; qualquer falha tipada
+(`missingIngredients`, `inventoryFull`, `invalidRecipe`) deixa o inventário
+intacto. `maxCraftable` devolve quantas unidades completas o inventário paga e
+absorve. `CraftingOverlayState` + `routeCraftingCommand` seguem o padrão dos
+overlays de loja/banco; a `GameSession` continua sendo a fronteira, o
+`GameViewModel` publica apenas read models (`CraftingRecipeView` com
+possuído/necessário, craftable e maxCraftable) e a `GamePresentation` renderiza
+sem tocar inventário. Receitas não têm estado em DSAV — o resultado é mudança de
+inventário, já persistida. Crafting stations, receitas desbloqueáveis,
+probabilidades e timers permanecem fora desta etapa.
+
 ## Bank storage
 
 `PlayerBank` is global Player-owned gameplay state, composed into `PlayerItems` and

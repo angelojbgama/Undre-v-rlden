@@ -1635,6 +1635,21 @@ The default is `persistent`, preserving existing maps and save behavior; an expl
 keeps `playerPressure` derived, and does not start Phase 19 or generalize persistence
 to enemies, NPCs, or entities.
 
+### Authored crafting — production content increment
+
+Crafting é uma engine transacional data-driven sobre o inventário existente.
+Receitas são authored content first-class na categoria `craftingRecipes` (Content
+JSON v6, retrocompatível com v1–v5), compiladas para `CraftingCatalog` e executadas
+pelo `CraftingService` na `GameSession` (overlay modal no padrão shop/bank, tecla
+K no runtime). Regras: 2–4 inputs distintos, 1–4 outputs distintos, quantidades
+positivas, sem receita dentro de `ItemDefinition` e sem lógica C++ por combinação.
+O Content Studio autora receitas com serviço próprio (`CraftingAuthoringService`),
+biblioteca first-class com editor de ingredientes/resultados, referências tipadas
+`itemId -> items` e bloqueio de exclusão de Item usado por receita. Estado não vai
+para o DSAV: o resultado do crafting é apenas mudança de inventário, já persistida.
+Fora de escopo nesta etapa: crafting stations, receitas desbloqueáveis/aprendidas,
+probabilidades, timers de produção e contextos de alquimia/forja.
+
 ### Map-authored scenes — production tooling increment
 
 Map-local scenes are serialized through `AuthoredMapSource`/`MapData` and DMAP 1.5's
