@@ -37,6 +37,7 @@ std::string_view categoryName(ContentKind kind) noexcept {
     case ContentKind::rewardProfile: return "rewardProfiles";
     case ContentKind::rewardGrant: return "rewardGrants";
     case ContentKind::shop: return "shops";
+    case ContentKind::craftingRecipe: return "craftingRecipes";
     case ContentKind::presentationEffect: return "presentationEffects";
     case ContentKind::visualImage: return "visualImages";
     case ContentKind::staticSprite: return "staticSprites";
@@ -186,6 +187,7 @@ ContentWorkspaceLoadResult buildContentWorkspace(
         mergeCategory(file, "rewardProfiles", file.content.rewardProfiles, merged.rewardProfiles, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "rewardGrants", file.content.rewardGrants, merged.rewardGrants, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "shops", file.content.shops, merged.shops, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "craftingRecipes", file.content.craftingRecipes, merged.craftingRecipes, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "authoringDescriptors", file.content.authoringDescriptors, merged.authoringDescriptors, sources, result, [](const auto& v) { return v.definitionId; });
         mergeCategory(file, "tileSemantics", file.content.tileSemantics, merged.tileSemantics, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "stamps", file.content.stamps, merged.stamps, sources, result, [](const auto& v) { return v.id; });

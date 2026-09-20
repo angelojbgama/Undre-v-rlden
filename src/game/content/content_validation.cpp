@@ -189,6 +189,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                             [](const auto& value) { return value.id; });
     const auto shops = ids(pack.shops, report, ContentKind::shop,
                            [](const auto& value) { return value.id; });
+    const auto craftingRecipes = ids(pack.craftingRecipes, report, ContentKind::craftingRecipe,
+                                     [](const auto& value) { return value.id; });
     static_cast<void>(ids(pack.presentationEffects, report, ContentKind::presentationEffect,
                           [](const auto& value) { return value.id; }));
     const auto visualImages = ids(pack.visualImages, report, ContentKind::visualImage,
@@ -653,6 +655,38 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
             if (!offerItems.emplace(std::string(offer.itemId.value())).second) error(report, ContentKind::shop, value.id, "duplicate_offer", "shop item offer is duplicated", "itemId");
         }
     }
+    for (const auto& value : pack.craftingRecipes) {
+        if (value.inputs.size() < gameplay::minimumRecipeInputs || value.inputs.size() > gameplay::maximumRecipeInputs)
+            error(report, ContentKind::craftingRecipe, value.id, "invalid_input_count",
+                  "crafting recipe must combine between 2 and 4 distinct items", "inputs");
+        if (value.outputs.empty() || value.outputs.size() > gameplay::maximumRecipeOutputs)
+            error(report, ContentKind::craftingRecipe, value.id, "invalid_output_count",
+                  "crafting recipe must produce between 1 and 4 distinct items", "outputs");
+        std::unordered_set<std::string> inputItems;
+        for (const auto& input : value.inputs) {
+            if (input.itemId.empty() || !contains(items, input.itemId))
+                error(report, ContentKind::craftingRecipe, value.id, "unknown_reference",
+                      "crafting ingredient item does not exist", "inputs.itemId");
+            if (input.quantity == 0)
+                error(report, ContentKind::craftingRecipe, value.id, "invalid_quantity",
+                      "crafting ingredient quantity must be positive", "inputs.quantity");
+            if (!inputItems.emplace(std::string(input.itemId.value())).second)
+                error(report, ContentKind::craftingRecipe, value.id, "duplicate_item",
+                      "crafting recipe repeats an ingredient item", "inputs.itemId");
+        }
+        std::unordered_set<std::string> outputItems;
+        for (const auto& output : value.outputs) {
+            if (output.itemId.empty() || !contains(items, output.itemId))
+                error(report, ContentKind::craftingRecipe, value.id, "unknown_reference",
+                      "crafting output item does not exist", "outputs.itemId");
+            if (output.quantity == 0)
+                error(report, ContentKind::craftingRecipe, value.id, "invalid_quantity",
+                      "crafting output quantity must be positive", "outputs.quantity");
+            if (!outputItems.emplace(std::string(output.itemId.value())).second)
+                error(report, ContentKind::craftingRecipe, value.id, "duplicate_item",
+                      "crafting recipe repeats an output item", "outputs.itemId");
+        }
+    }
     for (const auto& value : pack.items) {
         if (value.visualId.empty() || value.stackLimit == 0 ||
             (value.category == gameplay::ItemCategory::equipment && value.stackLimit != 1))
@@ -833,7 +867,7 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
     }
     for (const auto& value : pack.authoringDescriptors) {
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
-        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::player && contains(players, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId));
+        const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::player && contains(players, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId)) || (value.category == AuthoringCategory::craftingRecipe && contains(craftingRecipes, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
     }
     return report;

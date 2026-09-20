@@ -3,6 +3,7 @@
 #include "game/authoring/authoring_semantics.h"
 #include "game/gameplay/attack_definitions.h"
 #include "game/gameplay/combat_types.h"
+#include "game/gameplay/crafting.h"
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/facing_direction.h"
@@ -25,7 +26,7 @@
 
 namespace underworld::game::content {
 
-enum class AuthoringCategory { enemy, object, pickup, npc, player, item, rewardProfile, rewardGrant, shop };
+enum class AuthoringCategory { enemy, object, pickup, npc, player, item, rewardProfile, rewardGrant, shop, craftingRecipe };
 
 struct AuthoredTileCollision final {
     std::uint32_t sourceIndex{};
@@ -115,6 +116,8 @@ struct AuthoredRewardItemGrant final { simulation::DefinitionId itemId{}; std::u
 struct AuthoredRewardGrant final { simulation::DefinitionId id{}; std::uint64_t experience{}; std::uint64_t gold{}; std::vector<AuthoredRewardItemGrant> items; };
 struct AuthoredShopOffer final { simulation::DefinitionId itemId{}; std::optional<std::uint64_t> playerBuyPrice{}; std::optional<std::uint64_t> playerSellPrice{}; };
 struct AuthoredShop final { simulation::DefinitionId id{}; std::vector<AuthoredShopOffer> offers; };
+struct AuthoredCraftingIngredient final { simulation::DefinitionId itemId{}; std::uint32_t quantity{1}; };
+struct AuthoredCraftingRecipe final { simulation::DefinitionId id{}; std::vector<AuthoredCraftingIngredient> inputs; std::vector<AuthoredCraftingIngredient> outputs; };
 struct AuthoringDescriptor final { simulation::DefinitionId definitionId{}; std::string displayName; AuthoringCategory category{AuthoringCategory::enemy}; std::vector<std::string> tags; };
 
 struct AuthoredPresentationEffect final {
@@ -140,6 +143,7 @@ struct AuthoredContentPack final {
     std::vector<AuthoredNpcVisualSet> npcVisuals; std::vector<AuthoredDialogue> dialogues; std::vector<AuthoredQuest> quests;
     std::vector<AuthoringDescriptor> authoringDescriptors; std::vector<AuthoredTileSemantic> tileSemantics; std::vector<AuthoredStamp> stamps;
     std::vector<AuthoredPlayer> players; std::vector<AuthoredPlayerProgression> playerProgressions; std::vector<AuthoredRewardProfile> rewardProfiles; std::vector<AuthoredRewardGrant> rewardGrants; std::vector<AuthoredShop> shops;
+    std::vector<AuthoredCraftingRecipe> craftingRecipes;
     std::vector<AuthoredPresentationEffect> presentationEffects;
     std::vector<AuthoredVisualImage> visualImages;
     std::vector<AuthoredStaticSprite> staticSprites;

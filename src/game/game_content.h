@@ -5,6 +5,7 @@
 #include "game/gameplay/creatures/creature_engine.h"
 #include "game/gameplay/dialogue/dialogue_model.h"
 #include "game/gameplay/items.h"
+#include "game/gameplay/crafting.h"
 #include "game/gameplay/npcs/npc_engine.h"
 #include "game/gameplay/quests/quest_model.h"
 #include "game/gameplay/player_definition.h"
@@ -74,6 +75,7 @@ public:
     [[nodiscard]] const gameplay::rpg::RewardProfileCatalog& rewards() const noexcept { return rewards_; }
     [[nodiscard]] const gameplay::rpg::RewardGrantCatalog& rewardGrants() const noexcept { return rewardGrants_; }
     [[nodiscard]] const gameplay::rpg::ShopCatalog& shops() const noexcept { return shops_; }
+    [[nodiscard]] const gameplay::CraftingCatalog& craftingRecipes() const noexcept { return craftingRecipes_; }
     [[nodiscard]] const presentation::PresentationEffectCatalog& presentationEffects() const noexcept { return presentationEffects_; }
     [[nodiscard]] const presentation::VisualImageCatalog& visualImages() const noexcept { return visualImages_; }
     [[nodiscard]] const presentation::StaticSpriteDefinitionCatalog& staticSprites() const noexcept { return staticSprites_; }
@@ -113,6 +115,7 @@ private:
     gameplay::rpg::RewardProfileCatalog rewards_;
     gameplay::rpg::RewardGrantCatalog rewardGrants_;
     gameplay::rpg::ShopCatalog shops_;
+    gameplay::CraftingCatalog craftingRecipes_;
     presentation::PresentationEffectCatalog presentationEffects_;
     presentation::VisualImageCatalog visualImages_;
     presentation::StaticSpriteDefinitionCatalog staticSprites_;

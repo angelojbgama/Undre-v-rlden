@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
               + authored.npcs.size() + authored.dialogues.size() + authored.quests.size()
               + authored.playerProgressions.size() + authored.rewardProfiles.size()
               + authored.rewardGrants.size() + authored.shops.size()
+              + authored.craftingRecipes.size()
               + authored.authoringDescriptors.size() + authored.tileSemantics.size()
               + authored.stamps.size() + authored.presentationEffects.size()
               + authored.visualImages.size() + authored.staticSprites.size()

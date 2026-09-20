@@ -56,6 +56,7 @@ AuthoredContentPack overlayBuiltinContent(const AuthoredContentPack& authored) {
     OVERLAY_CATEGORY(rewardProfiles, id);
     OVERLAY_CATEGORY(rewardGrants, id);
     OVERLAY_CATEGORY(shops, id);
+    OVERLAY_CATEGORY(craftingRecipes, id);
     OVERLAY_CATEGORY(presentationEffects, id);
     OVERLAY_CATEGORY(visualImages, id);
     OVERLAY_CATEGORY(staticSprites, id);
