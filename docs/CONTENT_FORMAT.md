@@ -102,6 +102,14 @@ Examples:
  "outputs":[{"itemId":"item.life_potion","quantity":1}]}
 ```
 
+```json
+{"id":"recipe.royal_sword",
+ "inputs":[{"itemId":"item.iron_sword","quantity":1},
+           {"itemId":"item.rune_stone","quantity":3}],
+ "outputs":[{"itemId":"item.royal_sword","quantity":1}],
+ "unlockQuestId":"quest.smith.trial"}
+```
+
 ## Crafting recipes (schema v6)
 
 `craftingRecipes` são authored content first-class e ficam inteiramente fora de
@@ -114,7 +122,10 @@ Regras estruturais validadas pelo `ContentValidator`:
 - `outputs`: entre 1 e 4 tipos distintos de item, `quantity > 0`, sem repetir
   `itemId`;
 - todo `itemId` precisa existir no conteúdo authored/builtin merged;
-- não há probabilidades, timers nem estações de crafting nesta etapa.
+- `unlockQuestId` é opcional e, quando presente, precisa referenciar uma quest
+  existente: a receita só fica conhecida no runtime quando essa quest alcança o
+  status completed — até lá o caderno mostra apenas a silhueta do resultado;
+- não há probabilidades nem timers de produção nesta etapa.
 
 O `ContentCompiler` converte cada receita em
 `gameplay::CraftingRecipeDefinition` e registra tudo em `CraftingCatalog`
@@ -123,9 +134,10 @@ operação de forma transacional: toda a troca é simulada em um contêiner
 destacado e o inventário real só é substituído se todos os inputs existirem nas
 quantidades pedidas e todos os outputs couberem depois da remoção — consumir
 ingredientes pode liberar os slots que recebem os outputs. Falhas são tipadas
-(`missingIngredients`, `inventoryFull`, `invalidRecipe`) e nunca alteram o
-inventário. Receitas não possuem estado próprio em DSAV; o resultado do crafting
-é apenas mudança de inventário, já persistida.
+(`missingIngredients`, `inventoryFull`, `invalidRecipe`, `recipeLocked`) e nunca
+alteram o inventário. Receitas fabricadas ganham um contador no histórico do
+jogador, persistido no chunk `CRFT` do DSAV 1.10; o desbloqueio por quest é
+derivado do estado persistido de quests e não é salvo separadamente.
 
 ```json
 {"id":"recipe.iron_sword",

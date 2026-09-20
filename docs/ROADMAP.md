@@ -1640,15 +1640,23 @@ to enemies, NPCs, or entities.
 Crafting é uma engine transacional data-driven sobre o inventário existente.
 Receitas são authored content first-class na categoria `craftingRecipes` (Content
 JSON v6, retrocompatível com v1–v5), compiladas para `CraftingCatalog` e executadas
-pelo `CraftingService` na `GameSession` (overlay modal no padrão shop/bank, tecla
-K no runtime). Regras: 2–4 inputs distintos, 1–4 outputs distintos, quantidades
-positivas, sem receita dentro de `ItemDefinition` e sem lógica C++ por combinação.
-O Content Studio autora receitas com serviço próprio (`CraftingAuthoringService`),
-biblioteca first-class com editor de ingredientes/resultados, referências tipadas
-`itemId -> items` e bloqueio de exclusão de Item usado por receita. Estado não vai
-para o DSAV: o resultado do crafting é apenas mudança de inventário, já persistida.
-Fora de escopo nesta etapa: crafting stations, receitas desbloqueáveis/aprendidas,
-probabilidades, timers de produção e contextos de alquimia/forja.
+pelo `CraftingService` na `GameSession`. Regras: 2–4 inputs distintos, 1–4 outputs
+distintos, quantidades positivas, sem receita dentro de `ItemDefinition` e sem
+lógica C++ por combinação. O Content Studio autora receitas com serviço próprio
+(`CraftingAuthoringService`), biblioteca first-class com editor de
+ingredientes/resultados e picker de quest, referências tipadas
+`itemId -> items` / `unlockQuestId -> quests` e bloqueio de exclusão de Item usado
+por receita.
+
+Progressão de crafting: o crafting é uma aba do inventário (sempre disponível,
+tecla K; X cicla as abas e alterna craft/caderno), com quantidade batch limitada
+por `maxCraftable`. Receitas com `unlockQuestId` ficam conhecidas apenas quando a
+quest authored completa; enquanto isso o caderno de receitas mostra somente a
+silhueta do resultado (suspense sem revelar a arte). As receitas que o jogador
+fabricou ganham contadores persistidos no chunk `CRFT` do DSAV 1.10 (saves 1.9
+continuam carregando); o desbloqueio é derivado do estado de quests, já salvo.
+Fora de escopo nesta etapa: crafting stations, receitas aprendidas fora de
+quests, probabilidades, timers de produção e contextos de alquimia/forja.
 
 ### Map-authored scenes — production tooling increment
 

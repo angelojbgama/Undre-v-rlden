@@ -1955,6 +1955,26 @@ Visual Content Boundary, Content Studio, LLM, áudio, scripting ou networking pa
 esta fase. Novos comportamentos de objetos devem preferir definitions + placements +
 World Rules, sem branches por mapa ou por ID de teste.
 
+# Estado atual — crafting progression
+
+O Crafting é uma engine transacional data-driven sobre o inventário existente.
+Receitas são authored content first-class (`craftingRecipes`, Content JSON v6,
+retrocompatível com v1–v5), compiladas para `CraftingCatalog` e executadas pelo
+`CraftingService` com simulação atômica (falhas tipadas nunca alteram o
+inventário; consumir ingredientes pode liberar slots para os outputs). O
+crafting é uma aba do inventário (`InventoryOverlayFocus::crafting`, tecla K),
+sempre disponível, com quantidade batch limitada por `maxCraftable`. Receitas
+com `unlockQuestId` ficam conhecidas apenas quando a quest authored completa
+(`CraftingKnowledge` deriva do `QuestStateStore`); enquanto bloqueadas, o
+caderno de receitas mostra somente a silhueta do resultado
+(`drawSpriteSilhouette`). As receitas que o jogador fabricou têm contadores
+persistidos no chunk `CRFT` do DSAV 1.10 (saves 1.9 continuam legíveis); o
+desbloqueio não é salvo, pois deriva do estado de quests. O Content Studio
+autora receitas (incluindo o gate por quest) com `CraftingAuthoringService`,
+referências tipadas `itemId -> items` e `unlockQuestId -> quests`, e bloqueio
+de exclusão de Item usado por receita. Fora de escopo: crafting stations,
+receitas aprendidas fora de quests, probabilidades e timers de produção.
+
 # Estado atual — item consumption & projectile drops loop
 
 Loop autoral de munição implementado de ponta a ponta, interpretado pelo runtime

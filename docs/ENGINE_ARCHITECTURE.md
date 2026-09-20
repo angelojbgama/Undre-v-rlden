@@ -1796,15 +1796,27 @@ itens existentes: `CraftingRecipeDefinition`/`CraftingCatalog` são independente
 transacional: simula a troca inteira em um `ItemContainer` destacado (remover
 inputs, adicionar outputs respeitando `stackLimit`) e só então aplica o resultado
 no inventário real via `restoreSlots`; qualquer falha tipada
-(`missingIngredients`, `inventoryFull`, `invalidRecipe`) deixa o inventário
-intacto. `maxCraftable` devolve quantas unidades completas o inventário paga e
-absorve. `CraftingOverlayState` + `routeCraftingCommand` seguem o padrão dos
-overlays de loja/banco; a `GameSession` continua sendo a fronteira, o
-`GameViewModel` publica apenas read models (`CraftingRecipeView` com
-possuído/necessário, craftable e maxCraftable) e a `GamePresentation` renderiza
-sem tocar inventário. Receitas não têm estado em DSAV — o resultado é mudança de
-inventário, já persistida. Crafting stations, receitas desbloqueáveis,
-probabilidades e timers permanecem fora desta etapa.
+(`missingIngredients`, `inventoryFull`, `invalidRecipe`, `recipeLocked`) deixa o
+inventário intacto. `maxCraftable` devolve quantas unidades completas o
+inventário paga e absorve, e a quantidade batch do jogador é limitada a esse
+valor.
+
+O crafting é uma aba do inventário (`InventoryOverlayFocus::crafting`), sempre
+disponível em qualquer lugar: K abre a aba, X cicla itens/equipamento/crafting e
+alterna craft/caderno, setas laterais ajustam a quantidade e Z/E fabricam.
+`CraftingOverlayState` guarda só o estado da aba (página craft/book, seleção
+entre receitas conhecidas, quantidade, feedback); `CraftingKnowledge` deriva do
+`QuestStateStore` quais receitas são conhecidas — receitas com `unlockQuestId`
+só ficam conhecidas quando a quest authored completa — e o caderno lista todas,
+mostrando silhueta (`drawSpriteSilhouette`) no lugar da arte enquanto a receita
+é desconhecida. `CraftingHistory` (receitas fabricadas + contadores) é o único
+estado próprio de crafting persistido: vai no chunk `CRFT` do DSAV 1.10; o
+desbloqueio permanece derivado do estado de quests, já salvo. `GameViewModel`
+publica apenas read models (`CraftingRecipeView` com possuído/necessário,
+craftable, maxCraftable, known, craftedCount) e a `GamePresentation` renderiza
+sem tocar inventário. Crafting stations, contextos de alquimia/forja, receitas
+aprendidas fora de quests, probabilidades e timers de produção permanecem fora
+desta etapa.
 
 ## Bank storage
 
