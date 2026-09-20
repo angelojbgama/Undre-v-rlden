@@ -305,6 +305,14 @@ void testImagesAndBlits() {
            "drawImageRegion copies the selected source rectangle");
 
     framebuffer.clear(black);
+    renderer.drawImageRegionSilhouette(image, {1, 0, 2, 2}, 1, 1,
+                                       ColorRGBA8{40, 40, 48, 255});
+    expect(framebufferPixel(framebuffer, 1, 1) == ColorRGBA8{40, 40, 48, 255} &&
+               framebufferPixel(framebuffer, 2, 2) == ColorRGBA8{40, 40, 48, 255} &&
+               framebufferPixel(framebuffer, 0, 0) == black,
+           "drawImageRegionSilhouette writes flat color over sprite coverage only");
+
+    framebuffer.clear(black);
     renderer.drawImageRegion(image, {0, 0, 3, 2}, -1, -1);
     expect(framebufferPixel(framebuffer, 0, 0) == red &&
                framebufferPixel(framebuffer, 1, 0) == green,
@@ -6240,8 +6248,8 @@ void testPhase11QuestPersistence() {
                                           &content.progressions()}).empty(),
            "save validation rejects quest progress without a quest catalog");
     const auto encoded = save::serializeSave(data);
-    expect(encoded.size() > 7 && encoded[6] == 9 && encoded[7] == 0,
-           "spawned ground items advance DSAV to minor version 9");
+    expect(encoded.size() > 7 && encoded[6] == 10 && encoded[7] == 0,
+           "spawned ground items advance DSAV to minor version 10");
     const auto loaded = save::deserializeSave(encoded, catalogs);
     expect(loaded && loaded.data.progression.totalExperience == 137 &&
                loaded.data.bank.items[0] && loaded.data.bank.items[0]->quantity == 20 &&
@@ -10921,110 +10929,301 @@ void testCraftingContentPipeline() {
            "merged workspaces compile recipes into the runtime crafting catalog");
 }
 
-void testCraftingInterface() {
+void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
+    namespace quests = game::gameplay::quests;
     using simulation::DefinitionId;
 
-    // Direct overlay routing mirrors the shop overlay contract.
     ItemCatalog catalog;
     const DefinitionId herb{"item.red_herb"};
     const DefinitionId bottle{"item.empty_bottle"};
-    const DefinitionId ore{"item.iron_ore"};
-    const DefinitionId coal{"item.coal"};
-    const DefinitionId wood{"item.wood"};
+    const DefinitionId potion{"item.life_potion"};
+    auto misc = [&catalog](DefinitionId id, std::uint32_t stackLimit) {
+        catalog.add({id, DefinitionId{"visual." + std::string(id.value())},
+                     ItemCategory::misc, stackLimit, std::nullopt});
+    };
+    misc(herb, 66); misc(bottle, 66); misc(potion, 66);
+
+    // Knowledge derives from quest state: unlocked only when the quest is
+    // completed, always known without a gate.
+    quests::QuestCatalog questCatalog;
+    questCatalog.add({DefinitionId{"quest.alchemy"}, "Alchemy",
+                      {{DefinitionId{"quest.alchemy.learn"}, quests::QuestObjectiveKind::talk,
+                        DefinitionId{"npc.scholar"}, 1, "Learn alchemy"}},
+                      {}, std::nullopt});
+    quests::QuestStateStore questState;
+    const CraftingKnowledge knowledge{questState};
+    CraftingRecipeDefinition gated{DefinitionId{"recipe.secret"},
+        {{herb, 1}, {bottle, 1}}, {{potion, 1}}, DefinitionId{"quest.alchemy"}};
+    CraftingRecipeDefinition open{DefinitionId{"recipe.potion"},
+        {{herb, 2}, {bottle, 1}}, {{potion, 1}}, std::nullopt};
+    expect(knowledge.known(open) && !knowledge.known(gated),
+           "quest-gated recipes stay unknown while the quest is inactive");
+    expect(questState.start(questCatalog.require(DefinitionId{"quest.alchemy"})),
+           "alchemy quest starts");
+    expect(!knowledge.known(gated), "an active quest still keeps the recipe locked");
+    expect(questState.advanceObjective(questCatalog.require(DefinitionId{"quest.alchemy"}),
+                                       DefinitionId{"quest.alchemy.learn"}),
+           "alchemy objective completes");
+    expect(questState.status(DefinitionId{"quest.alchemy"}) == quests::QuestStatus::completed &&
+               knowledge.known(gated),
+           "completing the unlock quest reveals the recipe");
+
+    // Crafted history counts and restores per recipe.
+    CraftingHistory history;
+    history.record(DefinitionId{"recipe.potion"}, 2);
+    history.record(DefinitionId{"recipe.potion"}, 3);
+    history.record(DefinitionId{"recipe.ghost"}, 0);
+    expect(history.count(DefinitionId{"recipe.potion"}) == 5 &&
+               history.count(DefinitionId{"recipe.ghost"}) == 0 &&
+               history.values().size() == 1,
+           "crafting history accumulates per recipe and ignores empty records");
+    history.restore({{DefinitionId{"recipe.sword"}, 1}, {DefinitionId{"recipe.potion"}, 4}});
+    expect(history.values().size() == 2 && history.count(DefinitionId{"recipe.potion"}) == 4,
+           "crafting history restore replaces the whole record set");
+
+    // Authored unlock quest: decode, validate and compile.
+    namespace content = game::content;
+    const char* v6 = R"({
+        "format":"dungeon-underworld-content","version":6,
+        "items":[
+            {"id":"item.red_herb","visualId":"visual.h","category":"consumable","stackLimit":66},
+            {"id":"item.empty_bottle","visualId":"visual.b","category":"misc","stackLimit":66},
+            {"id":"item.life_potion","visualId":"visual.p","category":"consumable","stackLimit":66}
+        ],
+        "quests":[
+            {"id":"quest.alchemy","title":"Alchemy",
+             "objectives":[{"id":"quest.alchemy.learn","kind":"enter","targetId":"region.alchemy",
+                            "requiredCount":1,"description":"Learn"}],"tags":[]}
+        ],
+        "craftingRecipes":[
+            {"id":"recipe.potion",
+             "inputs":[{"itemId":"item.red_herb","quantity":2},{"itemId":"item.empty_bottle","quantity":1}],
+             "outputs":[{"itemId":"item.life_potion","quantity":1}]},
+            {"id":"recipe.secret",
+             "inputs":[{"itemId":"item.red_herb","quantity":1},{"itemId":"item.empty_bottle","quantity":1}],
+             "outputs":[{"itemId":"item.life_potion","quantity":1}],
+             "unlockQuestId":"quest.alchemy"}
+        ]
+    })";
+    const auto decoded = content::decodeAuthoredContentJson(v6);
+    expect(decoded && decoded.content->craftingRecipes.size() == 2 &&
+               !decoded.content->craftingRecipes[0].unlockQuestId &&
+               decoded.content->craftingRecipes[1].unlockQuestId &&
+               *decoded.content->craftingRecipes[1].unlockQuestId == DefinitionId{"quest.alchemy"},
+           "content v6 decodes the optional recipe unlock quest");
+    const auto compiled = content::compileContent(*decoded.content);
+    expect(compiled && compiled.registry->craftingRecipes().require(DefinitionId{"recipe.secret"}).unlockQuestId &&
+               !compiled.registry->craftingRecipes().require(DefinitionId{"recipe.potion"}).unlockQuestId,
+           "compiled recipes keep the quest gate in the runtime definition");
+    auto invalid = *decoded.content;
+    invalid.craftingRecipes[1].unlockQuestId = DefinitionId{"quest.ghost"};
+    expect(!content::compileContent(invalid),
+           "recipes referencing unknown unlock quests are rejected");
+
+    // DSAV 1.10 CRFT: crafted recipes persist; validation requires the catalog.
+    namespace save = underworld::game::save;
+    namespace maps = underworld::game::maps;
+    save::SaveData data;
+    data.player.currentMapId = simulation::MapId{"map.crafting"};
+    data.player.health = 1;
+    data.progression = {testProgression().id, 0};
+    data.craftedRecipes = {{DefinitionId{"recipe.potion"}, 3}, {DefinitionId{"recipe.sword"}, 1}};
+    CraftingCatalog saveCrafting;
+    saveCrafting.add(open);
+    saveCrafting.add({DefinitionId{"recipe.sword"}, {{herb, 1}, {bottle, 1}}, {{potion, 1}}, std::nullopt});
+    maps::MapData savedMap;
+    savedMap.id = simulation::MapId{"map.crafting"};
+    game::gameplay::rpg::PlayerProgressionCatalog saveProgressions;
+    saveProgressions.add(testProgression());
+    const save::SaveValidationCatalogs withoutCrafting{
+        &catalog, {&savedMap}, nullptr, &saveProgressions, nullptr, nullptr, nullptr};
+    const save::SaveValidationCatalogs withCrafting{
+        &catalog, {&savedMap}, nullptr, &saveProgressions, nullptr, nullptr, &saveCrafting};
+    const auto bytes = save::serializeSave(data);
+    expect(!save::deserializeSave(bytes, withoutCrafting),
+           "crafted recipe records require the crafting validation catalog");
+    const auto loaded = save::deserializeSave(bytes, withCrafting);
+    expect(loaded && loaded.data.craftedRecipes.size() == 2 &&
+               loaded.data.craftedRecipes.front().recipeId == DefinitionId{"recipe.potion"} &&
+               loaded.data.craftedRecipes.front().count == 3,
+           "DSAV CRFT persists crafted recipe counts");
+    auto unknownRecipe = data;
+    unknownRecipe.craftedRecipes.front().recipeId = DefinitionId{"recipe.ghost"};
+    expect(!save::deserializeSave(save::serializeSave(unknownRecipe), withCrafting),
+           "crafted records referencing unknown recipes are rejected");
+    auto zeroed = data;
+    zeroed.craftedRecipes.front().count = 0;
+    expect(!save::deserializeSave(save::serializeSave(zeroed), withCrafting),
+           "crafted records require a positive count");
+
+    // Minor 9 saves (no CRFT) keep loading; CRFT below minor 10 is rejected.
+    save::SaveData legacy = data;
+    legacy.craftedRecipes.clear();
+    const auto legacyBytes = save::serializeSave(legacy);
+    expect(save::deserializeSave(legacyBytes, withoutCrafting).success,
+           "saves without crafted recipes still load without a crafting catalog");
+    auto forcedMinor9 = legacyBytes;
+    forcedMinor9[6] = 9;
+    expect(save::deserializeSave(forcedMinor9, withCrafting).success,
+           "DSAV 1.9 saves keep loading under minor 10");
+    auto crftInMinor9 = bytes;
+    crftInMinor9[6] = 9;
+    expect(!save::deserializeSave(crftInMinor9, withCrafting),
+           "CRFT chunks require DSAV minor version 10");
+}
+
+void testCraftingInterface() {
+    using namespace underworld;
+    using namespace game::gameplay;
+    namespace quests = game::gameplay::quests;
+    using simulation::DefinitionId;
+
+    // Direct tab routing: navigation skips locked recipes, quantity adjusts
+    // within what the inventory can pay for and absorb.
+    ItemCatalog catalog;
+    const DefinitionId herb{"item.red_herb"};
+    const DefinitionId bottle{"item.empty_bottle"};
     const DefinitionId potion{"item.life_potion"};
     const DefinitionId sword{"item.iron_sword"};
     auto misc = [&catalog](DefinitionId id, std::uint32_t stackLimit) {
         catalog.add({id, DefinitionId{"visual." + std::string(id.value())},
                      ItemCategory::misc, stackLimit, std::nullopt});
     };
-    misc(herb, 66); misc(bottle, 66); misc(ore, 66); misc(coal, 66); misc(wood, 66);
-    misc(potion, 66); misc(sword, 1);
+    misc(herb, 66); misc(bottle, 66); misc(potion, 66); misc(sword, 1);
+
+    quests::QuestCatalog questCatalog;
+    questCatalog.add({DefinitionId{"quest.alchemy"}, "Alchemy",
+                      {{DefinitionId{"quest.alchemy.learn"}, quests::QuestObjectiveKind::talk,
+                        DefinitionId{"npc.scholar"}, 1, "Learn"}},
+                      {}, std::nullopt});
+    quests::QuestStateStore questState;
+    expect(questState.start(questCatalog.require(DefinitionId{"quest.alchemy"})) &&
+               questState.advanceObjective(questCatalog.require(DefinitionId{"quest.alchemy"}),
+                                           DefinitionId{"quest.alchemy.learn"}),
+           "alchemy quest reaches completed state");
+    const CraftingKnowledge knowledge{questState};
 
     CraftingCatalog recipes;
     const CraftingRecipeDefinition potionRecipe{DefinitionId{"recipe.life_potion"},
-        {{herb, 2}, {bottle, 1}}, {{potion, 1}}};
+        {{herb, 2}, {bottle, 1}}, {{potion, 1}}, std::nullopt};
     const CraftingRecipeDefinition swordRecipe{DefinitionId{"recipe.iron_sword"},
-        {{ore, 2}, {coal, 1}, {wood, 1}}, {{sword, 1}}};
+        {{herb, 1}, {bottle, 1}}, {{sword, 1}}, DefinitionId{"quest.alchemy"}};
     recipes.add(potionRecipe);
     recipes.add(swordRecipe);
     CraftingService service;
-    CraftingOverlayState overlay;
-    overlay.open(recipes);
-    expect(overlay.open() && overlay.selection() == 0 && !overlay.feedback(),
-           "crafting overlay opens on the first recipe without feedback");
+    CraftingOverlayState tab;
+    tab.reset();
+    expect(tab.tab() == CraftingTab::craft && tab.craftQuantity() == 1 && !tab.feedback(),
+           "crafting tab resets to the craft page with quantity one");
+
     PlayerItems items(catalog);
-    static_cast<void>(items.inventory().items().add(herb, 4));
-    static_cast<void>(items.inventory().items().add(bottle, 2));
+    static_cast<void>(items.inventory().items().add(herb, 40));
+    static_cast<void>(items.inventory().items().add(bottle, 40));
+    ItemContainer& inventory = items.inventory().items();
 
     simulation::PlayerCommand command;
     command.movement.y = 1;
-    auto routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
-    expect(routed.consumedTick && overlay.selection() == 1 && !routed.transaction,
-           "crafting navigation consumes the tick and moves the selection");
+    auto routed = routeCraftingCommand(tab, command, recipes, knowledge, inventory, service);
+    expect(routed.consumedTick && tab.selection() == 1,
+           "navigation reaches the second known recipe");
+    command.movement.y = 1;
+    static_cast<void>(routeCraftingCommand(tab, command, recipes, knowledge, inventory, service));
+    expect(tab.selection() == 0, "navigation wraps past the end of the recipe list");
+
+    command.movement.x = 1;
+    static_cast<void>(routeCraftingCommand(tab, command, recipes, knowledge, inventory, service));
+    expect(tab.craftQuantity() == 2, "right increases the craft quantity");
+    command.movement.x = -3;
+    static_cast<void>(routeCraftingCommand(tab, command, recipes, knowledge, inventory, service));
+    expect(tab.craftQuantity() == 1, "left decreases the craft quantity without going below one");
 
     command = {};
     command.actions.primaryAttackPressed = true;
-    routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
-    expect(routed.transaction && routed.transaction->status == CraftingStatus::missingIngredients &&
-               overlay.feedback() == CraftingStatus::missingIngredients &&
-               items.inventory().items().count(ore) == 0,
-           "craft attempt without ingredients reports the typed failure");
-
-    command = {};
-    command.movement.y = -1;
-    static_cast<void>(routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service));
-    command = {};
-    command.actions.interactPressed = true;
-    routed = routeCraftingCommand(overlay, command, recipes, items.inventory().items(), service);
+    routed = routeCraftingCommand(tab, command, recipes, knowledge, inventory, service);
     expect(routed.transaction && routed.transaction->status == CraftingStatus::success &&
-               items.inventory().items().count(herb) == 2 &&
-               items.inventory().items().count(bottle) == 1 &&
-               items.inventory().items().count(potion) == 1,
-           "interact crafts the selected recipe atomically");
-    overlay.close();
-    expect(!overlay.open() && !overlay.feedback(), "closing clears crafting overlay state");
+               routed.transaction->craftsPerformed == 1 &&
+               inventory.count(herb) == 38 && inventory.count(bottle) == 39 &&
+               inventory.count(potion) == 1,
+           "crafting the selected known recipe applies the exact transaction");
 
-    // Read model for the presentation layer.
-    overlay.open(recipes);
+    command = {};
+    command.actions.secondaryAttackPressed = true;
+    routed = routeCraftingCommand(tab, command, recipes, knowledge, inventory, service);
+    expect(routed.consumedTick && tab.tab() == CraftingTab::book && !routed.transaction,
+           "secondary switches to the recipe book page");
+
+    // A locked recipe with nothing else known reports recipeLocked and never
+    // touches the inventory.
+    CraftingCatalog gatedOnly;
+    gatedOnly.add(swordRecipe);
+    quests::QuestStateStore lockedState;
+    const CraftingKnowledge lockedKnowledge{lockedState};
+    CraftingOverlayState lockedTab;
+    lockedTab.reset();
+    PlayerItems bystander(catalog);
+    static_cast<void>(bystander.inventory().items().add(herb, 4));
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    routed = routeCraftingCommand(lockedTab, command, gatedOnly, lockedKnowledge,
+                                  bystander.inventory().items(), service);
+    expect(routed.transaction &&
+               routed.transaction->status == CraftingStatus::recipeLocked &&
+               lockedTab.feedback() == CraftingStatus::recipeLocked &&
+               bystander.inventory().items().count(herb) == 4 &&
+               bystander.inventory().items().count(sword) == 0,
+           "locked recipes refuse to craft without consuming materials");
+
+    // Read model: crafting tab flags, book states and crafted counters.
+    InventoryOverlayState overlay;
+    overlay.openCrafting();
     simulation::EntityHandlePool handles;
     Player player({0}, handles.create(), {10, 10}, 5);
-    const auto view = game::buildGameViewModel(player, items, catalog,
-                                               InventoryOverlayState{}, BankOverlayState{},
-                                               {3, 0}, ShopOverlayState{}, rpg::ShopCatalog{},
-                                               overlay, recipes);
-    expect(view.craftingOpen && view.craftingRecipes.size() == 2 &&
-               view.craftingRecipes[0].recipeId == potionRecipe.id &&
-               view.craftingRecipes[0].inputs[0].ownedQuantity == 2 &&
-               view.craftingRecipes[0].inputs[0].requiredQuantity == 2 &&
-               view.craftingRecipes[0].inputs[1].ownedQuantity == 1 &&
-               view.craftingRecipes[0].craftable && view.craftingRecipes[0].maxCraftable == 1 &&
-               view.craftingRecipes[1].craftable == false &&
-               view.craftingRecipes[0].inputs[0].visualId == DefinitionId{"visual.item.red_herb"},
-           "crafting view model exposes owned/required quantities and craftability");
-    static_cast<void>(items.inventory().items().add(ore, 40));
-    static_cast<void>(items.inventory().items().add(coal, 20));
-    static_cast<void>(items.inventory().items().add(wood, 20));
-    const auto enriched = game::buildGameViewModel(player, items, catalog,
-                                                   InventoryOverlayState{}, BankOverlayState{},
-                                                   {3, 0}, ShopOverlayState{}, rpg::ShopCatalog{},
-                                                   overlay, recipes);
-    expect(enriched.craftingRecipes[1].craftable &&
-               enriched.craftingRecipes[1].maxCraftable == 20,
-           "crafting view model computes max craftable from the live inventory");
+    CraftingHistory history;
+    history.record(potionRecipe.id, 1);
+    const auto view = game::buildGameViewModel(player, items, catalog, overlay,
+                                               BankOverlayState{}, {3, 0},
+                                               ShopOverlayState{}, rpg::ShopCatalog{},
+                                               tab, recipes, knowledge, history);
+    expect(view.craftingOpen &&
+               view.craftingTab == CraftingTab::book &&
+               view.craftingRecipes.size() == 2 &&
+               view.craftingRecipes[0].known && !view.craftingRecipes[0].revealSilhouette &&
+               view.craftingRecipes[0].craftedCount == 1 &&
+               view.craftingRecipes[1].known && view.craftingRecipes[1].craftedCount == 0 &&
+               view.craftingRecipes[0].maxCraftable >= 1,
+           "crafting view model carries known flags and crafted counters");
+    const auto lockedView = game::buildGameViewModel(player, items, catalog, overlay,
+                                                     BankOverlayState{}, {3, 0},
+                                                     ShopOverlayState{}, rpg::ShopCatalog{},
+                                                     tab, gatedOnly, lockedKnowledge, history);
+    expect(lockedView.craftingRecipes.size() == 1 &&
+               !lockedView.craftingRecipes[0].known &&
+               lockedView.craftingRecipes[0].revealSilhouette &&
+               !lockedView.craftingRecipes[0].craftable &&
+               lockedView.craftingRecipes[0].maxCraftable == 0,
+           "unknown recipes are book entries with silhouettes and no craftability");
 
-    // Session-level integration through the authored content pipeline.
+    // Session-level flow through the authored pipeline with a quest gate.
     namespace content = game::content;
     namespace maps = game::maps;
     auto authored = content::makeCombatAuthoredContent();
+    authored.quests.push_back({DefinitionId{"quest.crafting.master"}, "Crafting Master",
+                               {{DefinitionId{"quest.crafting.master.learn"},
+                                 quests::QuestObjectiveKind::talk, DefinitionId{"npc.merchant"},
+                                 1, "Learn crafting"}},
+                               {}, std::nullopt});
     authored.craftingRecipes.push_back({DefinitionId{"recipe.session.charm"},
         {{DefinitionId{"item.arrow"}, 1}, {DefinitionId{"item.life_potion"}, 1}},
-        {{DefinitionId{"item.power_charm"}, 1}}});
+        {{DefinitionId{"item.power_charm"}, 1}}, std::nullopt});
+    authored.craftingRecipes.push_back({DefinitionId{"recipe.session.armor"},
+        {{DefinitionId{"item.arrow"}, 2}, {DefinitionId{"item.life_potion"}, 1}},
+        {{DefinitionId{"item.training_armor"}, 1}}, DefinitionId{"quest.crafting.master"}});
     const auto sessionCompiled = content::compileContent(authored);
     expect(sessionCompiled.registry &&
-               sessionCompiled.registry->craftingRecipes().values().size() == 1,
-           "combat fixture with an authored recipe compiles into the crafting catalog");
+               sessionCompiled.registry->craftingRecipes().values().size() == 2,
+           "combat fixture with free and quest-gated recipes compiles");
     if (!sessionCompiled.registry) { return; }
     const auto& registry = *sessionCompiled.registry;
 
@@ -11054,53 +11253,92 @@ void testCraftingInterface() {
     const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
     maps::MapCatalog mapCatalog;
     if (dmapWritten) { mapCatalog.add(map.id, dmapPath); }
-    game::GameSession session({0}, testProgression());
-    session.configureItems(registry.items());
-    session.configureNarrative(registry.dialogues(), registry.quests());
-    session.configureCrafting(registry.craftingRecipes());
-    std::string sessionError;
-    expect(dmapWritten && session.initializeMap(mapCatalog, validation, builder, map.id,
-                                                simulation::SpawnId{"entry.start"}, sessionError),
+    const auto buildSession = [&]() {
+        auto created = std::make_unique<game::GameSession>(simulation::PlayerId{0}, testProgression());
+        created->configureItems(registry.items());
+        created->configureNarrative(registry.dialogues(), registry.quests());
+        created->configureCrafting(registry.craftingRecipes());
+        std::string error;
+        if (!dmapWritten || !created->initializeMap(mapCatalog, validation, builder, map.id,
+                                                    simulation::SpawnId{"entry.start"}, error)) {
+            return std::unique_ptr<game::GameSession>{};
+        }
+        return created;
+    };
+    auto session = buildSession();
+    expect(session != nullptr && session->world().id() == map.id,
            "crafting session fixture initializes through the DMAP catalog");
-    if (session.world().id() != map.id) { return; }
+    if (!session) { return; }
 
-    auto& sessionItems = const_cast<PlayerItems&>(session.playerItems());
-    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.arrow"}, 2));
-    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.life_potion"}, 1));
+    auto& sessionItems = const_cast<PlayerItems&>(session->playerItems());
+    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.arrow"}, 6));
+    static_cast<void>(sessionItems.inventory().items().add(DefinitionId{"item.life_potion"}, 2));
 
     command = {};
     command.actions.toggleCraftingPressed = true;
-    session.tick(command);
-    expect(session.craftingOverlay().open() && session.craftingOverlay().selection() == 0,
-           "toggle crafting opens the crafting overlay for the next tick");
+    session->tick(command);
+    expect(session->inventoryOverlay().open() &&
+               session->inventoryOverlay().craftingFocused() &&
+               session->craftingTab().selection() == 0 &&
+               session->craftingTab().tab() == CraftingTab::craft,
+           "K opens the always-available crafting tab on the inventory overlay");
 
     command = {};
     command.actions.primaryAttackPressed = true;
-    session.tick(command);
-    expect(sessionItems.inventory().items().count(DefinitionId{"item.arrow"}) == 1 &&
-               sessionItems.inventory().items().count(DefinitionId{"item.life_potion"}) == 0 &&
-               sessionItems.inventory().items().count(DefinitionId{"item.power_charm"}) == 1,
-           "session crafting removes the inputs and adds the output");
+    session->tick(command);
+    expect(sessionItems.inventory().items().count(DefinitionId{"item.arrow"}) == 5 &&
+               sessionItems.inventory().items().count(DefinitionId{"item.power_charm"}) == 1 &&
+               session->craftedRecipes().count(DefinitionId{"recipe.session.charm"}) == 1,
+           "session crafting records the made recipe in the history");
 
-    const auto save = session.captureSaveData();
+    // The gated recipe is not selectable while the quest is inactive.
+    command = {};
+    command.movement.y = 1;
+    session->tick(command);
+    expect(session->craftingTab().selection() == 0,
+           "navigation stays on known recipes while the quest gate is locked");
     command = {};
     command.actions.toggleInventoryPressed = true;
-    session.tick(command);
-    expect(!session.craftingOverlay().open(), "toggle inventory closes the crafting overlay");
+    session->tick(command);
+    expect(!session->inventoryOverlay().open(), "I closes the whole inventory overlay");
 
-    game::GameSession restored({0}, testProgression());
-    restored.configureItems(registry.items());
-    restored.configureNarrative(registry.dialogues(), registry.quests());
-    restored.configureCrafting(registry.craftingRecipes());
+    // Completing the unlock quest reveals the gated recipe and the book flags
+    // the other one as made.
+    std::vector<quests::QuestProgress> completed{
+        {DefinitionId{"quest.crafting.master"}, quests::QuestStatus::completed,
+         {{DefinitionId{"quest.crafting.master.learn"}, 1}}, true}};
+    std::string narrativeError;
+    expect(session->restoreNarrativeState({}, completed, narrativeError),
+           "restoring completed quest state unlocks gated recipes");
+    static_cast<void>(narrativeError);
+    command = {};
+    command.actions.toggleCraftingPressed = true;
+    session->tick(command);
+    command = {};
+    command.movement.y = 1;
+    session->tick(command);
+    expect(session->craftingTab().selection() == 1,
+           "the unlocked recipe becomes reachable after the quest completes");
+    command = {};
+    command.actions.primaryAttackPressed = true;
+    session->tick(command);
+    expect(sessionItems.inventory().items().count(DefinitionId{"item.training_armor"}) == 1 &&
+               sessionItems.inventory().items().count(DefinitionId{"item.arrow"}) == 3 &&
+               session->craftedRecipes().count(DefinitionId{"recipe.session.armor"}) == 1,
+           "the quest-gated recipe crafts after the unlock");
+
+    // Crafted history survives the save pipeline (DSAV CRFT).
+    const auto save = session->captureSaveData();
+    expect(save.craftedRecipes.size() == 2,
+           "session capture carries the crafted recipe records");
+    auto restored = buildSession();
     std::string restoreError;
-    expect(dmapWritten && restored.initializeMap(mapCatalog, validation, builder, map.id,
-                                                 simulation::SpawnId{"entry.start"}, restoreError) &&
-               restored.restoreSaveData(save, restoreError),
-           "session with crafted items restores through the save pipeline");
-    expect(restored.playerItems().inventory().items().count(DefinitionId{"item.arrow"}) == 1 &&
-               restored.playerItems().inventory().items().count(DefinitionId{"item.power_charm"}) == 1 &&
-               restored.playerItems().inventory().items().count(DefinitionId{"item.life_potion"}) == 0,
-           "crafted inventory state survives save/load without a crafting-specific chunk");
+    expect(restored != nullptr && restored->restoreSaveData(save, restoreError),
+           "session with crafted recipes restores through the save pipeline");
+    expect(restored->craftedRecipes().count(DefinitionId{"recipe.session.charm"}) == 1 &&
+               restored->craftedRecipes().count(DefinitionId{"recipe.session.armor"}) == 1 &&
+               restored->playerItems().inventory().items().count(DefinitionId{"item.training_armor"}) == 1,
+           "crafted history and inventory survive save/load together");
     std::filesystem::remove(dmapPath, fsError);
 }
 
@@ -11191,6 +11429,7 @@ int main() {
         testPhase12E3ShopInterface();
         testCraftingEngine();
         testCraftingContentPipeline();
+        testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();
         testPhase13A2JsonDecoders();
