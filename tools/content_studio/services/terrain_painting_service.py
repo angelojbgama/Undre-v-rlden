@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from ..interaction.map_editing_service import MapEditingService
 from ..model.content_workspace import ContentWorkspace
 from ..model.map_document import MapDocument
 from ..model.tile_semantics import TerrainProfile, TerrainSelection
-from .autotile_resolver import AutoTileResolver, EAST, NORTH, SOUTH, WEST
+from .autotile_resolver import AutoTileResolver
 from .fixture_reservation_service import FixtureTerrainReservationService
+from .terrain_composition import TerrainCompositionService, TerrainResolveContext
 from .tile_semantic_catalog import TileSemanticCatalog
 
 
@@ -26,18 +27,26 @@ class TerrainPaintingService:
 
     Pixel Collision is owned by tilesets. Smart Terrain chooses visual and
     semantic tiles only and never authors physical collision into map cells.
+
+    Resolution is delegated to the composition strategies: this service
+    orchestrates cells, reservations and undo, and never encodes strategy
+    details such as which neighbours a wall recalculates or how large a
+    pattern footprint is.
     """
 
     def __init__(self, document: MapDocument | None = None, workspace: ContentWorkspace | None = None,
                  editing: MapEditingService | None = None,
                  catalog: TileSemanticCatalog | None = None,
                  resolver: AutoTileResolver | None = None,
-                 reservations: FixtureTerrainReservationService | None = None) -> None:
+                 reservations: FixtureTerrainReservationService | None = None,
+                 composition: TerrainCompositionService | None = None) -> None:
         self.document = document
         self.workspace = workspace
         self.editing = editing or MapEditingService(document, workspace=workspace)
         self.catalog = catalog or TileSemanticCatalog(workspace)
         self.resolver = resolver or AutoTileResolver(self.catalog)
+        self.composition = composition or TerrainCompositionService(
+            self.catalog, workspace, self.resolver)
         self.reservations = reservations or FixtureTerrainReservationService(
             document,
             workspace,
@@ -49,6 +58,7 @@ class TerrainPaintingService:
         self.editing.set_document(document)
         self.editing.set_workspace(workspace)
         self.catalog.set_workspace(workspace)
+        self.composition.set_workspace(workspace)
         self.reservations.set_context(
             document,
             workspace,
@@ -58,6 +68,8 @@ class TerrainPaintingService:
                       layer_index: int | None = None, erase: bool = False,
                       label: str = "Paint Smart Terrain") -> TerrainPaintResult:
         document = self._require_document()
+        # A pinned pattern is a placement brush, not a freehand cell strategy.
+        selection = replace(selection, pattern_id="")
         if layer_index is not None:
             self.editing.set_layer(layer_index)
         target = self._in_bounds(cells, document)
@@ -98,11 +110,13 @@ class TerrainPaintingService:
             | reserved
         )
 
-        affected = set(target)
-        if selection.role == "wall":
-            for x, y in target:
-                affected.update(self._neighbors((x, y), document))
-            affected = {cell for cell in affected if cell in active or cell in old_active or cell in target}
+        # The strategy owns its influence footprint (variants influence only
+        # the painted cell; connectivity adds the N/E/S/W context; patterns
+        # would add their NxM reach).  Paint semantics keep one filter: only
+        # cells that carry or carried this terrain are actually rewritten.
+        strategy = self.composition.strategy_for(selection.family, selection.role)
+        affected = {cell for cell in strategy.influence(target, document)
+                    if cell in active or cell in old_active or cell in target}
         assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
         warnings: list[str] = []
         for position in sorted(affected, key=lambda value: (value[1], value[0])):
@@ -124,8 +138,7 @@ class TerrainPaintingService:
                 warnings,
             )
             if resolved is not None:
-                assignments[position] = (None if resolved.empty else
-                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                assignments[position] = self._assignment(position, resolved)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
         try:
@@ -134,6 +147,45 @@ class TerrainPaintingService:
             warnings.append(str(error))
             return TerrainPaintResult(False, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
         return TerrainPaintResult(changed, tuple(sorted(affected)), tuple(dict.fromkeys(warnings)))
+
+    def place_pattern(self, origin: tuple[int, int], selection: TerrainSelection,
+                      layer_index: int | None = None,
+                      label: str = "Place Smart Terrain Pattern") -> TerrainPaintResult:
+        """Place one whole NxM pattern as a single atomic undoable command.
+
+        The composition resolves through ``PatternStrategy``: equivalent
+        stamps are chosen deterministically, or the selection's pinned stamp
+        is used.  Fixture-owned cells are never written, map borders clip
+        like the existing stamp tool, and the placement remains one command.
+        """
+        document = self._require_document()
+        if layer_index is not None:
+            self.editing.set_layer(layer_index)
+        warnings: list[str] = []
+        context = TerrainResolveContext(
+            frozenset(), document.map_id, selection.seed, document.tile_size)
+        placement = self.composition.pattern.resolve(selection, origin, context)
+        if placement is None:
+            warnings.append(f"no compatible pattern for {selection.family}")
+            return TerrainPaintResult(False, (), tuple(warnings))
+        reserved = {cell
+                    for reservation in self.reservations.reservations()
+                    for cell in reservation.cells}
+        assignments: dict[tuple[int, int], tuple[str, int, int] | None] = {}
+        for position, cell in placement.positions().items():
+            if not self._inside(position, document) or position in reserved:
+                continue
+            assignments[position] = (cell.tileset_id, cell.source_index, cell.flags)
+        affected = tuple(sorted(assignments))
+        if not assignments:
+            warnings.append("pattern placement is fully outside the map")
+            return TerrainPaintResult(False, affected, tuple(warnings))
+        try:
+            changed = self.editing.apply_tile_assignments(assignments, label)
+        except ValueError as error:
+            warnings.append(str(error))
+            return TerrainPaintResult(False, affected, tuple(warnings))
+        return TerrainPaintResult(changed, affected, tuple(warnings))
 
     def fill_terrain(self, origin: tuple[int, int], selection: TerrainSelection,
                      layer_index: int | None = None, erase: bool = False) -> TerrainPaintResult:
@@ -189,13 +241,11 @@ class TerrainPaintingService:
             # Reserved fixture cells are intentionally absent from occupancy.
             resolved = self._resolve(profile.boundary, position, room_occupancy, document, warnings)
             if resolved is not None:
-                assignments[position] = (None if resolved.empty else
-                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                assignments[position] = self._assignment(position, resolved)
         for position in sorted(rect - boundary, key=lambda value: (value[1], value[0])):
             resolved = self._resolve(profile.floor, position, set(), document, warnings)
             if resolved is not None:
-                assignments[position] = (None if resolved.empty else
-                                         (resolved.tileset_id, resolved.source_index, resolved.flags))
+                assignments[position] = self._assignment(position, resolved)
         if not assignments:
             return TerrainPaintResult(False, tuple(sorted(rect)), tuple(dict.fromkeys(warnings)))
         try:
@@ -207,11 +257,20 @@ class TerrainPaintingService:
 
     def _resolve(self, selection: TerrainSelection, position: tuple[int, int], active: set[tuple[int, int]],
                  document: MapDocument, warnings: list[str]):
-        resolved = self.resolver.resolve(selection.family, selection.role, position, active,
-                                         document.map_id, selection.seed, document.tile_size)
-        if resolved is None:
+        context = TerrainResolveContext(
+            frozenset(active), document.map_id, selection.seed, document.tile_size)
+        placement = self.composition.resolve(selection, position, context)
+        if placement is None:
             warnings.append(f"no compatible {selection.role} candidate for {selection.family}")
-        return resolved
+        return placement
+
+    @staticmethod
+    def _assignment(position: tuple[int, int], placement) -> tuple[str, int, int] | None:
+        del position
+        if placement.empty or not placement.cells:
+            return None
+        cell = placement.cells[0]
+        return cell.tileset_id, cell.source_index, cell.flags
 
     def _active_cells(self, layer: int, selection: TerrainSelection) -> set[tuple[int, int]]:
         document = self._require_document()
@@ -249,12 +308,6 @@ class TerrainPaintingService:
     @staticmethod
     def _in_bounds(cells: Iterable[tuple[int, int]], document: MapDocument) -> set[tuple[int, int]]:
         return {(int(x), int(y)) for x, y in cells if 0 <= int(x) < document.width and 0 <= int(y) < document.height}
-
-    @staticmethod
-    def _neighbors(position: tuple[int, int], document: MapDocument) -> set[tuple[int, int]]:
-        x, y = position
-        return {(nx, ny) for nx, ny in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y))
-                if 0 <= nx < document.width and 0 <= ny < document.height}
 
     def _cells_with_kind(self, layer: int, kind: tuple[str, str], document: MapDocument) -> set[tuple[int, int]]:
         return {(x, y) for y in range(document.height) for x in range(document.width)

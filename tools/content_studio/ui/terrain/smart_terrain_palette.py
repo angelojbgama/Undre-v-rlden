@@ -1,20 +1,34 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QImage, QIcon, QPixmap
+from PySide6.QtGui import QFontMetrics, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QGridLayout, QLabel, QPushButton, QScrollArea,
-    QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
+    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
+    QScrollArea, QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
 from ...model.content_workspace import ContentWorkspace
 from ...model.tile_semantics import TerrainFamily, TerrainProfile, TerrainSelection
 from ...services.localization import Translator
+from ...services.terrain_composition import StampPattern, TerrainCompositionService
 from ...services.terrain_rule_service import RULE_SLOTS, TerrainRuleService
 from ...services.tile_semantic_catalog import TileSemanticCatalog
+from ..terrain.terrain_pattern_editor import stamp_pixmap
 from ..tile_thumbnails import tile_pixmap
+
+
+@dataclass(frozen=True, slots=True)
+class TerrainPreviewSection:
+    """One strategy-shaped block of the family preview."""
+
+    kind: str
+    title: str
+    tiles: list[QPixmap | None]
+    tooltips: list[str]
+    columns: int
 
 
 class TerrainFamilyCard(QToolButton):
@@ -30,7 +44,7 @@ class TerrainFamilyCard(QToolButton):
         self.setIcon(icon)
         self.setIconSize(QSize(48, 48))
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        # A native tooltip would compete with the richer 3x3 preview window.
+        # A native tooltip would compete with the richer preview window.
         self.setStatusTip(tooltip)
         self.setAccessibleDescription(tooltip)
         self.setFamilyLabel(family)
@@ -58,6 +72,14 @@ class TerrainFamilyCard(QToolButton):
 
 
 class TerrainFamilyPreview(QFrame):
+    """Strategy-aware family preview.
+
+    Connectivity families keep the 3x3 grid; variant families show their
+    weighted 1x1 tiles and pattern families show stamp compositions.  The
+    window is built from :class:`TerrainPreviewSection` values, so the preview
+    never assumes that a family is exactly nine slots.
+    """
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, Qt.WindowType.ToolTip)
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -72,31 +94,83 @@ class TerrainFamilyPreview(QFrame):
             cell.setStyleSheet("border: 1px solid palette(mid); background: palette(base);")
             self.cells.append(cell)
             grid.addWidget(cell, index // 3, index % 3)
+        self.grid_holder = QWidget()
+        self.grid_holder.setLayout(grid)
+        self.flow_holder = QWidget()
+        self.flow = QGridLayout(self.flow_holder)
+        self.flow.setSpacing(3)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(self.title)
-        layout.addLayout(grid)
+        layout.addWidget(self.grid_holder)
+        layout.addWidget(self.flow_holder)
 
-    def show_family(self, title: str, tiles: list[QPixmap | None], anchor: QWidget) -> None:
+    def show_sections(self, title: str, sections: list[TerrainPreviewSection],
+                      anchor: QWidget) -> None:
         self.title.setText(title)
-        for index, cell in enumerate(self.cells):
-            pixmap = tiles[index] if index < len(tiles) else None
-            if pixmap is not None and not pixmap.isNull():
-                cell.setText("")
-                cell.setPixmap(pixmap.scaled(
-                    40, 40, Qt.AspectRatioMode.IgnoreAspectRatio,
-                    Qt.TransformationMode.FastTransformation))
-            else:
-                cell.setPixmap(QPixmap())
-                cell.setText("·")
+        connectivity = next((section for section in sections if section.kind == "connectivity"), None)
+        self.grid_holder.setVisible(connectivity is not None)
+        if connectivity is not None:
+            for index, cell in enumerate(self.cells):
+                pixmap = (connectivity.tiles[index]
+                          if index < len(connectivity.tiles) else None)
+                tooltip = (connectivity.tooltips[index]
+                           if index < len(connectivity.tooltips) else "")
+                if tooltip:
+                    cell.setToolTip(tooltip)
+                if pixmap is not None and not pixmap.isNull():
+                    cell.setText("")
+                    cell.setPixmap(pixmap.scaled(
+                        40, 40, Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.FastTransformation))
+                else:
+                    cell.setPixmap(QPixmap())
+                    cell.setText("·")
+        while self.flow.count():
+            item = self.flow.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        extra_sections = [section for section in sections if section.kind != "connectivity"]
+        self.flow_holder.setVisible(bool(extra_sections))
+        row = 0
+        for section in extra_sections:
+            if section.title:
+                caption = QLabel(section.title)
+                self.flow.addWidget(caption, row, 0, 1, section.columns)
+                row += 1
+            for index, pixmap in enumerate(section.tiles):
+                cell = QLabel()
+                cell.setFixedSize(44, 44)
+                cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                cell.setStyleSheet("border: 1px solid palette(mid); background: palette(base);")
+                if index < len(section.tooltips):
+                    cell.setToolTip(section.tooltips[index])
+                if pixmap is not None and not pixmap.isNull():
+                    cell.setPixmap(pixmap.scaled(
+                        40, 40, Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.FastTransformation))
+                else:
+                    cell.setText("·")
+                self.flow.addWidget(cell, row, index % section.columns)
+                if index % section.columns == section.columns - 1:
+                    row += 1
+            row += 1
         self.adjustSize()
         self.move(anchor.mapToGlobal(QPoint(anchor.width() + 8, 0)))
         self.show()
+
+    def show_family(self, title: str, tiles: list[QPixmap | None], anchor: QWidget) -> None:
+        """Compatibility entry: a plain connectivity grid preview."""
+        self.show_sections(title, [TerrainPreviewSection(
+            "connectivity", "", list(tiles), [""] * len(tiles), 3)], anchor)
 
 
 class SmartTerrainPalette(QWidget):
     terrain_selected = Signal(object)
     room_requested = Signal(object)
+    pattern_selected = Signal(object)
 
     def __init__(self, catalog: TileSemanticCatalog | None = None,
                  translator: Translator | None = None, parent: QWidget | None = None) -> None:
@@ -104,6 +178,7 @@ class SmartTerrainPalette(QWidget):
         self.translate = translator or Translator()
         self.catalog = catalog or TileSemanticCatalog()
         self.rule_service = TerrainRuleService()
+        self.composition = TerrainCompositionService(self.catalog)
         self.workspace: ContentWorkspace | None = None
         self.asset_root: Path | None = None
         self._selected_family = ""
@@ -127,6 +202,13 @@ class SmartTerrainPalette(QWidget):
         self.family_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.preview = TerrainFamilyPreview(self)
 
+        self.pattern_label = QLabel(self.translate("terrain_family_patterns"))
+        self.pattern_row = QWidget()
+        self.pattern_layout = QHBoxLayout(self.pattern_row)
+        self.pattern_layout.setContentsMargins(2, 2, 2, 2)
+        self.pattern_layout.setSpacing(6)
+        self.pattern_row.setVisible(False)
+
         self.seed_label = QLabel(self.translate("terrain_seed"))
         self.seed = QSpinBox()
         self.seed.setRange(-2_147_483_648, 2_147_483_647)
@@ -144,6 +226,8 @@ class SmartTerrainPalette(QWidget):
         layout.addWidget(self.title)
         layout.addWidget(self.family_label)
         layout.addWidget(self.family_scroll, 1)
+        layout.addWidget(self.pattern_label)
+        layout.addWidget(self.pattern_row)
         layout.addWidget(self.seed_label)
         layout.addWidget(self.seed)
         layout.addWidget(self.room)
@@ -158,6 +242,7 @@ class SmartTerrainPalette(QWidget):
     def set_workspace(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
         self.catalog.set_workspace(workspace)
+        self.composition.set_workspace(workspace)
         self._image_cache.clear()
         self._rebuild_family_cards()
         self._selection_changed()
@@ -172,6 +257,7 @@ class SmartTerrainPalette(QWidget):
         self.translate = translator
         self.title.setText(self.translate("smart_terrain"))
         self.family_label.setText(self.translate("terrain_family_cards"))
+        self.pattern_label.setText(self.translate("terrain_family_patterns"))
         self.seed_label.setText(self.translate("terrain_seed"))
         self.room.setText(self.translate("room_brush"))
         self._rebuild_family_cards()
@@ -206,11 +292,52 @@ class SmartTerrainPalette(QWidget):
         )
 
     def preview_tiles(self, family: str) -> list[QPixmap | None]:
+        """Compatibility connectivity view; see ``preview_sections``."""
         terrain = self._family(family)
         if terrain is None:
             return [None] * 9
         assignments = self._preview_assignments(terrain)
         return [self._tile_pixmap(*assignments[slot]) if slot in assignments else None for slot in RULE_SLOTS]
+
+    def preview_sections(self, family: str) -> list[TerrainPreviewSection]:
+        """Build the strategy-shaped preview: connectivity, variants, patterns."""
+        terrain = self._family(family)
+        if terrain is None:
+            return []
+        sections: list[TerrainPreviewSection] = []
+        assignments = self._preview_assignments(terrain)
+        if assignments:
+            tiles: list[QPixmap | None] = []
+            tooltips: list[str] = []
+            for slot in RULE_SLOTS:
+                reference = assignments.get(slot)
+                if reference is None:
+                    tiles.append(None)
+                    tooltips.append(slot)
+                else:
+                    tiles.append(self._tile_pixmap(*reference))
+                    tooltips.append(f"{slot} — {reference[0]} #{reference[1]}")
+            sections.append(TerrainPreviewSection("connectivity", "", tiles, tooltips, 3))
+        variants = self._variant_previews(terrain)
+        if variants:
+            tiles, tooltips = [], []
+            for reference, tooltip in variants:
+                tiles.append(self._tile_pixmap(*reference))
+                tooltips.append(tooltip)
+            sections.append(TerrainPreviewSection(
+                "variant", self.translate("terrain_rule_variants"), tiles, tooltips, 3))
+        patterns = self.composition.patterns_for(terrain.family)
+        if patterns:
+            tiles, tooltips = [], []
+            for pattern in patterns[:6]:
+                tiles.append(self._pattern_pixmap(pattern))
+                tooltips.append(self.translate("terrain_rule_pattern_tooltip",
+                                               name=pattern.display_name or pattern.definition_id,
+                                               width=pattern.width, height=pattern.height,
+                                               count=len(pattern.cells)))
+            sections.append(TerrainPreviewSection(
+                "pattern", self.translate("terrain_rule_tab_patterns"), tiles, tooltips, 2))
+        return sections
 
     def _family(self, family: str) -> TerrainFamily | None:
         return next((item for item in self.catalog.families() if item.family == family), None)
@@ -272,6 +399,23 @@ class SmartTerrainPalette(QWidget):
             best[RULE_SLOTS[index]] = semantic.reference
         return best
 
+    def _variant_previews(self, terrain: TerrainFamily) -> list[tuple[tuple[str, int], str]]:
+        result: list[tuple[tuple[str, int], str]] = []
+        for tileset_id in terrain.tileset_ids:
+            variants = self.rule_service.load_variants(
+                self.workspace, tileset_id, terrain.family, "floor")
+            total = sum(value.weight for value in variants)
+            for variant in variants:
+                percent = round(variant.weight * 100 / total) if total else 0
+                result.append(((tileset_id, variant.source_index),
+                               self.translate("terrain_rule_variant_tooltip", index=variant.source_index,
+                                              weight=variant.weight, percent=percent)))
+        return result[:12]
+
+    def _pattern_pixmap(self, pattern: StampPattern) -> QPixmap:
+        return stamp_pixmap(pattern, lambda source_index, tileset_id: QIcon(
+            self._tile_pixmap(tileset_id, source_index) or QPixmap()))
+
     def _tile_pixmap(self, tileset_id: str, source_index: int) -> QPixmap | None:
         return tile_pixmap(self.workspace, self.asset_root, tileset_id, source_index, self._image_cache)
 
@@ -279,22 +423,29 @@ class SmartTerrainPalette(QWidget):
         if isinstance(anchor, QWidget):
             terrain = self._family(family)
             title = f"{family}\n{self._behavior_text(terrain)}" if terrain else family
-            self.preview.show_family(title, self.preview_tiles(family), anchor)
+            self.preview.show_sections(title, self.preview_sections(family), anchor)
 
     def _behavior_text(self, terrain: TerrainFamily) -> str:
         has_floor = "floor" in terrain.roles
         has_wall = "wall" in terrain.roles
         if has_floor and has_wall:
-            return self.translate("terrain_family_mixed_behavior")
-        if has_wall:
-            return self.translate("terrain_family_wall_behavior")
-        return self.translate("terrain_family_floor_behavior")
+            behavior = self.translate("terrain_family_mixed_behavior")
+        elif has_wall:
+            behavior = self.translate("terrain_family_wall_behavior")
+        else:
+            behavior = self.translate("terrain_family_floor_behavior")
+        patterns = self.composition.patterns_for(terrain.family)
+        if patterns:
+            behavior = self.translate("terrain_family_with_patterns",
+                                      behavior=behavior, count=len(patterns))
+        return behavior
 
     def _selection_changed(self) -> None:
         selection = self.selection()
         terrain = self._family(self._selected_family)
         self.room.setEnabled(
             terrain is not None and {"floor", "wall"}.issubset(terrain.roles))
+        self._rebuild_pattern_row()
         if selection:
             self.terrain_selected.emit(selection)
             self.status.setText(self.translate(
@@ -308,6 +459,43 @@ class SmartTerrainPalette(QWidget):
             self.status.setText(self.translate("terrain_no_selection"))
         else:
             self.status.setText(self.translate("no_terrain_family"))
+
+    def _rebuild_pattern_row(self) -> None:
+        while self.pattern_layout.count():
+            item = self.pattern_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        terrain = self._family(self._selected_family)
+        patterns = self.composition.patterns_for(terrain.family) if terrain else ()
+        self.pattern_row.setVisible(bool(patterns))
+        self.pattern_label.setVisible(bool(patterns))
+        if not terrain or not patterns:
+            return
+        base = self.selection()
+        for pattern in patterns:
+            button = QToolButton(self.pattern_row)
+            button.setCheckable(False)
+            button.setIcon(QIcon(self._pattern_pixmap(pattern)))
+            button.setIconSize(QSize(48, 48))
+            button.setToolTip(self.translate("terrain_rule_pattern_tooltip",
+                                             name=pattern.display_name or pattern.definition_id,
+                                             width=pattern.width, height=pattern.height,
+                                             count=len(pattern.cells)))
+            button.clicked.connect(lambda checked=False, value=pattern.definition_id:
+                                   self._pattern_requested(value))
+            self.pattern_layout.addWidget(button)
+
+    def _pattern_requested(self, pattern_id: str) -> None:
+        terrain = self._family(self._selected_family)
+        if terrain is None:
+            return
+        wall_only = "wall" in terrain.roles and "floor" not in terrain.roles
+        selection = TerrainSelection(terrain.family, "wall" if wall_only else "floor",
+                                     self.seed.value(), pattern_id)
+        self.status.setText(self.translate("terrain_pattern_active", name=pattern_id))
+        self.pattern_selected.emit(selection)
 
     def _room_requested(self) -> None:
         profile = self.profile()

@@ -619,9 +619,22 @@ class QtSmokeTests(unittest.TestCase):
             self.assertEqual(Qt.Orientation.Horizontal, rule_dialog.content_splitter.orientation())
             self.assertEqual(0, rule_dialog.content_splitter.indexOf(rule_dialog.controls_panel))
             self.assertEqual(1, rule_dialog.content_splitter.indexOf(rule_dialog.atlas))
-            rule_dialog._atlas_selected("tileset.test", 0, 0)
+            # The dialog opens on the floor rule: floor composes unlimited
+            # 1x1 variants now, so an atlas click adds a variant instead of
+            # filling a 3x3 slot.  Legacy slot rules keep loading as variants.
+            self.assertEqual("floor", rule_dialog.role.currentData())
+            self.assertEqual([(0, 1), (1, 1), (2, 1), (3, 1)], rule_dialog.variant_editor.variants())
+            rule_dialog.variant_editor.remove_variant(3)
+            rule_dialog._atlas_selected("tileset.test", 3, 0)
+            rule_dialog.variant_editor.select_source(3)
+            rule_dialog.variant_editor.weight.setValue(5)
+            self.assertEqual([(0, 1), (1, 1), (2, 1), (3, 5)], rule_dialog.variant_editor.variants())
+            # Wall rules keep the 3x3 connectivity editor.
+            rule_dialog._set_role("wall")
+            rule_dialog._select_slot("center")
+            rule_dialog._atlas_selected("tileset.test", 3, 0)
+            self.assertEqual(3, rule_dialog.assignments["center"])
             self.assertEqual("", rule_dialog.slots["center"].text())
-            self.assertIn("#0", rule_dialog.slots["center"].toolTip())
             self.assertGreater(widget.atlas.tiles.maximumWidth(), 100_000)
             atlas = widget.atlas.tiles
             atlas.resize(80, 120)

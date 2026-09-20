@@ -88,6 +88,10 @@ class TerrainSelection:
     family: str
     role: str = "floor"
     seed: int = 0
+    # When set, the selection carries an explicit pattern placement brush
+    # backed by an authored stamp.  Freehand painting ignores it and keeps
+    # resolving through the family's cell strategy.
+    pattern_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

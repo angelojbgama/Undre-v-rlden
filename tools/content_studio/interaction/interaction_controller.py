@@ -71,6 +71,13 @@ class InteractionController:
         if self.active_room and self.terrain_painter and button == "left":
             return InteractionResult(status=self.message("room_preview"))
         if self.active_terrain and self.terrain_painter and button in {"left", "right"}:
+            if self.active_terrain.pattern_id and button == "left":
+                # A pattern brush places one whole NxM composition per
+                # click; drags do not paint cell-by-cell.
+                result = self.terrain_painter.place_pattern(tile, self.active_terrain)
+                self._drag_origin = None
+                self._last_cell = None
+                return self._terrain_result(result)
             if "ctrl" in modifiers and button == "left":
                 result = self.terrain_painter.fill_terrain(tile, self.active_terrain)
                 self._drag_origin = None

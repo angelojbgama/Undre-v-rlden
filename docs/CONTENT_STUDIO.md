@@ -118,25 +118,42 @@ tileset/sourceIndex, produzindo diagnósticos para referências inválidas,
 
 Para configurar uma regra visual sem editar cada definição manualmente, clique
 com o botão direito em um tileset na Tileset Library e escolha `Configurar
-lógica de Smart Terrain`. A janela apresenta nove slots em uma grade 3 × 3:
-`NW`, `N`, `NE`, `W`, `X`, `E`, `SW`, `S`, `SE`. Selecione um slot e clique em
-um tile do atlas para associá-lo. A janela permite criar, listar, editar e
-excluir regras; a lista de regras é uma visão derivada das definições
-`tileSemantics`, não uma segunda base de dados. Cada slot também grava a
-vizinhança ortogonal correspondente usando os campos de borda já existentes,
-para que NW/NE/SW/SE não sejam confundidos durante a pintura. A configuração
-da família apresenta diretamente `Ativar colisão` ou `Desativar colisão`; os
-papéis internos `wall` e `floor` permanecem apenas por compatibilidade com o
-formato Content v5 e com o resolver.
+lógica de Smart Terrain`. O editor é organizado por estratégia de composição:
 
-Quando o papel é `Floor`, os nove espaços funcionam como variações visuais.
-Cada uma possui peso relativo (`variantWeight`): piso liso com peso 8 e rachado
-com peso 2 resulta em aproximadamente 80%/20%. A janela mostra a porcentagem,
-permite remover uma variação individual e usa o seed para manter a pintura
-reproduzível. Os slots usam células compactas do mesmo tamanho visual dos tiles
-do atlas; peso, porcentagem e `sourceIndex` ficam disponíveis no tooltip. No
+* **Variantes** (Floor): lista ilimitada de variações 1 × 1 ponderadas. Clicar
+  em um tile do atlas adiciona a variação; cada entrada mostra `sourceIndex`,
+  peso relativo (`variantWeight`) e o percentual calculado sobre o total.
+  A identidade da variação é estável —
+  `semantic.variant.{family}.floor.{tileset}.{sourceIndex}` — e nunca é a
+  posição na lista nem um slot 3 × 3;
+* **Conectividade** (Wall): a grade 3 × 3 continua sendo a interface visual da
+  conectividade ortogonal 4-way (`NW`, `N`, `NE`, `W`, `X`, `E`, `SW`, `S`,
+  `SE`). Selecione um slot e clique em um tile do atlas para associá-lo. Cada
+  slot grava a vizinhança ortogonal correspondente nos campos de borda já
+  existentes, para que NW/NE/SW/SE não sejam confundidos durante a pintura;
+* **Padrões**: visão derivada dos `stamps` authored — um stamp aparece como
+  padrão da família quando todas as suas células resolvem para semantics dessa
+  mesma família. Stamps continuam sendo a única base multi-tile; não existe uma
+  segunda base de padrões.
+
+A janela permite criar, listar, editar e excluir regras; a lista de regras é
+uma visão derivada das definições `tileSemantics`, não uma segunda base de
+dados. A configuração da família apresenta diretamente `Ativar colisão` ou
+`Desativar colisão`; os papéis internos `wall` e `floor` permanecem apenas por
+compatibilidade com o formato Content v5 e com o resolver.
+
+Quando o papel é `Floor`, o editor de variantes substitui os nove slots: a
+lista não é limitada a nove variações. Cada uma possui peso relativo
+(`variantWeight`): piso liso com peso 8 e rachado com peso 2 resulta em
+aproximadamente 80%/20%. A janela mostra a porcentagem, permite remover uma
+variação individual e usa o seed para manter a pintura reproduzível. Peso,
+porcentagem e `sourceIndex` ficam disponíveis na lista e nos tooltips. No
 Gerenciador de Smart Terrain, as configurações ficam à esquerda e o atlas do
-tileset permanece à direita em um divisor redimensionável.
+tileset permanece à direita em um divisor redimensionável. Regras Floor antigas
+criadas no formato de slots continuam carregando normalmente; ao serem salvas
+pelo novo editor, migram de forma controlada para os IDs `semantic.variant.*`
+com os mesmos tiles, pesos e topologia — nenhum tile de mapa é afetado, pois
+mapas referenciam `(tilesetId, sourceIndex)`.
 
 O atlas visual preserva a grade original da imagem: o índice continua sendo
 `sourceIndex = linha * colunas + coluna`. Redimensionar o painel não reordena
@@ -147,12 +164,17 @@ e arraste sobre o mapa para continuar pintando sem voltar ao atlas; o pincel só
 muda ao selecionar outro tile, brush ou ferramenta.
 
 O modo Raw Tiles continua pintando exatamente o tile escolhido. Na aba Smart
-Terrain, as famílias aparecem como cartões quadrados. Passar o mouse sobre um
-cartão abre a composição visual 3 × 3 e clicar mantém aquela família ativa para
-pintura. A colisão também não é escolhida durante a pintura: famílias somente
-`floor` pintam sem colisão, famílias somente `wall` pintam com colisão e famílias
-mistas usam `floor` na pintura comum. O papel continua no formato de conteúdo
-para compatibilidade com o resolver, mas não é mais uma decisão repetida:
+Terrain, as famílias aparecem como cartões quadrados. O preview exibido no
+hover reflete a estratégia da família: famílias com conectividade mostram a
+grade 3 × 3, famílias de variantes mostram as variações 1 × 1 ponderadas e,
+quando a família possui padrões, as composições dos stamps aparecem no mesmo
+preview. Clicar mantém aquela família ativa para pintura. Quando existem
+padrões compatíveis, uma linha de miniaturas permite posicionar o stamp inteiro
+com um clique. A colisão também não é escolhida durante a pintura: famílias
+somente `floor` pintam sem colisão, famílias somente `wall` pintam com colisão
+e famílias mistas usam `floor` na pintura comum. O papel continua no formato de
+conteúdo para compatibilidade com o resolver, mas não é mais uma decisão
+repetida:
 
 * Smart Floor escolhe deterministicamente entre os candidates `floor`, respeitando
   seus pesos relativos;
@@ -163,17 +185,34 @@ para compatibilidade com o resolver, mas não é mais uma decisão repetida:
   mesmo vale para N/S); nesse caso o resolver escolhe um lado canônico fixo,
   evitando alternância visual. Em áreas fechadas, as máscaras com o vizinho
   interno selecionam N/S/E/W e os quatro cantos individualmente;
+* Smart Terrain Patterns posiciona um stamp NxM inteiro como uma única
+  operação de undo. O clique ancora a célula superior esquerda do stamp
+  (mesma convenção da ferramenta de stamps); quando mais de um stamp
+  equivalente está disponível, a escolha é determinística a partir de
+  `mapId`, família, coordenadas e seed — nunca RNG global. Pintura livre com
+  um padrão selecionado não espalha células soltas: o padrão é colocado por
+  clique e a pintura livre continua usando a estratégia de variantes;
 * Room / Area Brush pinta o perímetro como Wall e o interior como Floor usando
   os mesmos serviços de floor/wall. A ocupação completa da sala orienta o
   contorno, distinguindo corretamente os slots superiores dos inferiores.
 
-O `AutoTileResolver` não conhece Qt. `TerrainPaintingService` calcula somente
-as células tocadas e os vizinhos necessários, e cada gesto (incluindo updates
-de vizinhos) é uma única operação de undo no `MapDocument`. A escolha de
-variantes usa `mapId`, coordenadas, família, papel e seed estáveis; reabrir o
-mesmo mapa não troca tiles aleatoriamente. A engine não assume que uma família
-pertence a um único tileset, o que permite floor em A, parede em B e corner em
-C sem alterar UMAP.
+O `AutoTileResolver` não conhece Qt. `TerrainCompositionService` escolhe a
+estratégia de composição da seleção (conectividade para `wall`, variantes 1 × 1
+para os demais papéis e padrões via `PatternStrategy`), e cada estratégia
+declara sua área de influência: variantes recalculam somente a célula pintada,
+conectividade recalcula a célula e os vizinhos N/E/S/W e padrões consideram o
+alcance do seu footprint NxM. `TerrainPaintingService` apenas orquestra células,
+reservas de fixtures e undo — ele não conhece máscaras nem dimensões de padrão.
+Cada gesto (incluindo updates de vizinhos e colocações de padrões) é uma única
+operação de undo no `MapDocument`. A escolha de variantes e padrões usa
+`mapId`, coordenadas, família, papel e seed estáveis; reabrir o mesmo mapa não
+troca tiles aleatoriamente. A engine não assume que uma família pertence a um
+único tileset, o que permite floor em A, parede em B e corner em C sem alterar
+UMAP.
+
+`variantWeight` é escolha relativa entre candidates equivalentes — ele não é
+densidade, frequência espacial ou chance de spawn. Controles futuros de
+densidade/scatter entrarão como campos próprios, sem reinterpretar o peso.
 
 A colisão derivada da família é salva na grade do UMAP no mesmo gesto. Quando uma
 célula sólida possui tile, o UMAP também registra `collisionBindings` com a camada

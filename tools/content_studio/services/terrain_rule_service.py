@@ -67,6 +67,16 @@ class TerrainRuleSummary:
     assigned_slots: int
 
 
+@dataclass(frozen=True, slots=True)
+class TerrainVariant:
+    """One authored 1x1 floor variation with its relative weight."""
+
+    source_index: int
+    weight: int
+    definition_id: str
+    legacy: bool = False
+
+
 def _slug(value: str) -> str:
     result = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())
     return result or "unnamed"
@@ -79,6 +89,12 @@ def rule_semantic_id(tileset_id: str, family: str, role: str, topology: str,
         parts.append(_slug(slot))
     parts.append(str(int(source_index)))
     return ".".join(parts)
+
+
+def variant_semantic_id(tileset_id: str, family: str, role: str, source_index: int) -> str:
+    """Stable 1x1 variant identity: family/role/tileset/sourceIndex, no 3x3 slot."""
+    return ".".join(("semantic", "variant", _slug(family), _slug(role),
+                     _slug(tileset_id), str(int(source_index))))
 
 
 def _rule_slot_from_id(definition_id: str) -> str | None:
@@ -122,7 +138,9 @@ class TerrainRuleService:
             current_tileset = data.get("tilesetId")
             family = data.get("family")
             role = data.get("role")
-            if (not isinstance(definition_id, str) or not definition_id.startswith("semantic.rule.")
+            if (not isinstance(definition_id, str)
+                    or not (definition_id.startswith("semantic.rule.")
+                            or definition_id.startswith("semantic.variant."))
                     or not isinstance(current_tileset, str) or (tileset_id and current_tileset != tileset_id)
                     or not isinstance(family, str) or not isinstance(role, str)):
                 continue
@@ -186,6 +204,156 @@ class TerrainRuleService:
             if slot and isinstance(weight, int) and not isinstance(weight, bool):
                 result[slot] = max(1, weight)
         return result
+
+    @staticmethod
+    def load_variants(workspace: ContentWorkspace | None, tileset_id: str,
+                      family: str, role: str) -> tuple[TerrainVariant, ...]:
+        """Load every 1x1 variant of a family, legacy slots included.
+
+        Membership is derived from the authored data (tileset/family/role)
+        plus the generated-id kind, so hand-authored packs keep loading even
+        when their id spelling differs from the current slug convention.
+        ``legacy`` marks slot-generated semantics so editors can report the
+        controlled migration that a save performs.
+        """
+        if workspace is None:
+            return ()
+        found: dict[int, TerrainVariant] = {}
+        for definition in workspace.definitions("tileSemantics"):
+            data = definition.data
+            definition_id = data.get("id")
+            if (data.get("tilesetId") != tileset_id or data.get("family") != family
+                    or data.get("role") != role or not isinstance(definition_id, str)):
+                continue
+            source_index = data.get("sourceIndex")
+            weight = data.get("variantWeight", 1)
+            if not isinstance(source_index, int) or isinstance(source_index, bool):
+                continue
+            if not isinstance(weight, int) or isinstance(weight, bool):
+                weight = 1
+            if definition_id.startswith("semantic.rule."):
+                variant = TerrainVariant(source_index, max(1, weight), definition_id, True)
+            elif definition_id.startswith("semantic.variant."):
+                variant = TerrainVariant(source_index, max(1, weight), definition_id, False)
+            else:
+                continue
+            # Variant identity is the source index: legacy packs may classify
+            # the same tile in several slots, so keep one deterministic entry.
+            existing = found.get(source_index)
+            if existing is None or (variant.definition_id < existing.definition_id):
+                found[source_index] = variant
+        return tuple(sorted(found.values(), key=lambda value: value.source_index))
+
+    def save_variants(self, workspace: ContentWorkspace, tileset_id: str, family: str,
+                      variants: "Mapping[int, int] | list[tuple[int, int]]",
+                      previous_family: str | None = None,
+                      previous_role: str | None = None,
+                      label: str = "Save Smart Terrain Variants") -> None:
+        """Persist an unlimited weighted 1x1 variant list as one command.
+
+        Variant identity is ``semantic.variant.{family}.{role}.{tileset}.{sourceIndex}``
+        — stable and collision-free without any 3x3 slot.  Legacy slot-generated
+        floor rules of the same family are migrated on save: identical visual
+        data (interior topology, unknown edges, same tile references and
+        weights) under the new stable ids, so map tiles never break.
+        """
+        family = family.strip()
+        if not family:
+            raise ValueError("terrain rule family cannot be empty")
+        role = "floor"  # Variant lists are a floor capability; walls keep the 3x3 editor.
+        tileset = workspace.find("tilesets", tileset_id)
+        if tileset is None:
+            raise ValueError(f"terrain rule references missing tileset: {tileset_id}")
+        columns = int(tileset.data.get("columns", 0))
+        rows = int(tileset.data.get("rows", 0))
+        normalized: dict[int, int] = {}
+        items = list(variants.items() if isinstance(variants, Mapping) else variants)
+        for source_index, weight in items:
+            normalized[int(source_index)] = int(weight)
+        if not normalized:
+            raise ValueError("add at least one floor variant")
+        if len(normalized) != len(items):
+            raise ValueError("the same atlas tile cannot be added twice as a variant")
+        if any(source_index < 0 or source_index >= columns * rows for source_index in normalized):
+            raise ValueError("terrain rule contains a tile outside the tileset atlas")
+        if any(weight < 1 or weight > 100 for weight in normalized.values()):
+            raise ValueError("terrain variation weights must be between 1 and 100")
+
+        target_exists = any(value.family == family and value.role == role
+                            for value in self.list_rules(workspace, tileset_id))
+        # Re-saving the rule that is being edited is the normal CRUD path;
+        # only a rename onto a different existing rule collides.
+        editing_existing = (previous_family is not None and previous_family == family
+                            and (previous_role or role) == role)
+        if target_exists and not editing_existing:
+            raise ValueError("a terrain rule with this family and role already exists")
+        target_ids = {variant_semantic_id(tileset_id, family, role, source_index)
+                      for source_index in normalized}
+
+        families = {family} | ({previous_family} if previous_family else set())
+        roles = {role} | ({previous_role} if previous_role else set())
+
+        def owned(data: Mapping[str, JsonValue]) -> bool:
+            """A generated semantic of this rule (legacy slot or variant)."""
+            definition_id = data.get("id")
+            if not isinstance(definition_id, str):
+                return False
+            if not (definition_id.startswith("semantic.rule.")
+                    or definition_id.startswith("semantic.variant.")):
+                return False
+            return (data.get("tilesetId") == tileset_id
+                    and data.get("family") in families and data.get("role") in roles)
+
+        for definition in workspace.definitions("tileSemantics"):
+            data = definition.data
+            if (data.get("tilesetId") != tileset_id or data.get("sourceIndex") not in normalized
+                    or data.get("id") in target_ids):
+                continue
+            if owned(data):
+                continue
+            raise ValueError("an atlas tile is already classified by another semantic definition")
+
+        def operation() -> None:
+            content_file = next((value for value in workspace.files if value.origin == "project"), None)
+            if content_file is None:
+                raise ValueError("no project content file is available")
+            content_file.data["version"] = CONTENT_VERSION
+            values = content_file.data.setdefault("tileSemantics", [])
+            if not isinstance(values, list):
+                raise ValueError("tileSemantics category must be an array")
+            for source_index, weight in normalized.items():
+                data: dict[str, JsonValue] = {
+                    "id": variant_semantic_id(tileset_id, family, role, source_index),
+                    "tilesetId": tileset_id,
+                    "sourceIndex": source_index,
+                    "family": family,
+                    "role": role,
+                    "topology": "interior",
+                    "north": "unknown", "east": "unknown",
+                    "south": "unknown", "west": "unknown",
+                    "preferredLayer": "Ground",
+                    "flipXAllowed": False,
+                    "visualConfidence": "confirmed",
+                    "semanticConfidence": "probable",
+                    "gameplayConfidence": "unverified",
+                    "variantWeight": weight,
+                }
+                existing = next((value for value in values
+                                 if isinstance(value, dict) and value.get("id") == data["id"]), None)
+                if existing is None:
+                    values.append(data)
+                else:
+                    existing.clear()
+                    existing.update(data)
+            # Replace every generated definition of this rule (legacy slot ids
+            # and previous variant ids) that is not part of the desired set.
+            values[:] = [value for value in values
+                         if not (isinstance(value, dict)
+                                 and owned(value)
+                                 and value.get("id") not in target_ids)]
+            content_file.dirty = True
+
+        workspace.mutate(label, operation)
 
     def save_rule(self, workspace: ContentWorkspace, tileset_id: str, family: str, role: str,
                   assignments: Mapping[str, int], previous_family: str | None = None,
@@ -299,7 +467,18 @@ class TerrainRuleService:
 
     def delete_rule(self, workspace: ContentWorkspace, tileset_id: str, family: str, role: str,
                     project: "WorldProject | None" = None) -> bool:
-        prefix = f"semantic.rule.{_slug(family)}.{_slug(role)}.{_slug(tileset_id)}."
+        # Generated semantics are identified by authored data plus id kind,
+        # so deleting a rule also removes migrated variant definitions.
+        def generated(data: Mapping[str, JsonValue]) -> bool:
+            definition_id = data.get("id")
+            if not isinstance(definition_id, str):
+                return False
+            if not (definition_id.startswith("semantic.rule.")
+                    or definition_id.startswith("semantic.variant.")):
+                return False
+            return (data.get("tilesetId") == tileset_id
+                    and data.get("family") == family and data.get("role") == role)
+
         removed = False
         removed_references: set[tuple[str, int]] = set()
 
@@ -312,13 +491,12 @@ class TerrainRuleService:
             if not isinstance(values, list):
                 raise ValueError("tileSemantics category must be an array")
             kept = [value for value in values
-                    if not (isinstance(value, dict) and isinstance(value.get("id"), str)
-                            and value["id"].startswith(prefix))]
+                    if not (isinstance(value, dict) and generated(value))]
             for value in values:
-                if (isinstance(value, dict) and isinstance(value.get("id"), str)
-                        and value["id"].startswith(prefix)):
+                if isinstance(value, dict) and generated(value):
                     try:
-                        removed_references.add((str(value.get("tilesetId", tileset_id)), int(value.get("sourceIndex", 0))))
+                        removed_references.add((str(value.get("tilesetId", tileset_id)),
+                                                int(value.get("sourceIndex", 0))))
                     except (TypeError, ValueError):
                         continue
             removed = len(kept) != len(values)

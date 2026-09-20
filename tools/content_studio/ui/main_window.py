@@ -270,6 +270,7 @@ class MainWindow(QMainWindow):
         self.smart_terrain = SmartTerrainPalette(self.semantic_catalog, self.translator)
         self.smart_terrain.terrain_selected.connect(self._terrain_selected)
         self.smart_terrain.room_requested.connect(self._room_selected)
+        self.smart_terrain.pattern_selected.connect(self._pattern_selected)
         self.map_elements = MapElementsPalette({
             "player_spawn": self.translator("player_spawn"), "map_transition": self.translator("map_transition"),
             "region": self.translator("region_element"), "hint": self.translator("map_elements_hint"),
@@ -1412,6 +1413,10 @@ class MainWindow(QMainWindow):
         self.map_canvas.set_stamp_selection(stamp_id)
 
     def _terrain_selected(self, selection: object) -> None:
+        self._clear_toolbar_tools()
+        self.map_canvas.set_terrain_selection(selection)  # type: ignore[arg-type]
+
+    def _pattern_selected(self, selection: object) -> None:
         self._clear_toolbar_tools()
         self.map_canvas.set_terrain_selection(selection)  # type: ignore[arg-type]
 

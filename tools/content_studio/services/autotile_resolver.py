@@ -110,7 +110,7 @@ class AutoTileResolver:
                       or tuple(value for value in candidates if value.topology in {"interior", "unknown"})
                       or candidates)
         ordered = tuple(sorted(chosen, key=lambda value: (value.definition_id, value.tileset_id, value.source_index)))
-        value = ordered[_stable_weighted_index(map_id, position, family, role, seed, ordered)]
+        value = ordered[stable_weighted_index(map_id, position, family, role, seed, ordered)]
         return ResolvedTile(value.tileset_id, value.source_index, 0, value.definition_id)
 
     @staticmethod
@@ -267,8 +267,9 @@ class AutoTileResolver:
         return ("interior", "junction", "unknown")
 
 
-def _stable_index(map_id: str, position: tuple[int, int], family: str, role: str,
-                  seed: int, count: int) -> int:
+def stable_index(map_id: str, position: tuple[int, int], family: str, role: str,
+                 seed: int, count: int) -> int:
+    """Reproducible candidate index derived from stable authored data."""
     if count <= 1:
         return 0
     value = "|".join((map_id, str(position[0]), str(position[1]), family, role, str(seed))).encode("utf-8")
@@ -276,8 +277,8 @@ def _stable_index(map_id: str, position: tuple[int, int], family: str, role: str
     return int.from_bytes(digest[:8], "big") % count
 
 
-def _stable_weighted_index(map_id: str, position: tuple[int, int], family: str, role: str,
-                           seed: int, candidates: tuple[TileSemantic, ...]) -> int:
+def stable_weighted_index(map_id: str, position: tuple[int, int], family: str, role: str,
+                          seed: int, candidates: tuple[TileSemantic, ...]) -> int:
     """Choose a reproducible candidate using authored relative weights.
 
     Invalid weights are treated defensively as one here.  The catalog and the
@@ -288,9 +289,15 @@ def _stable_weighted_index(map_id: str, position: tuple[int, int], family: str, 
         return 0
     weights = tuple(max(1, value.variant_weight) for value in candidates)
     total = sum(weights)
-    target = _stable_index(map_id, position, family, role, seed, total)
+    target = stable_index(map_id, position, family, role, seed, total)
     for index, weight in enumerate(weights):
         if target < weight:
             return index
         target -= weight
     return len(candidates) - 1
+
+
+# Historical private names; the resolver and composition strategies share the
+# same deterministic selection helpers.
+_stable_index = stable_index
+_stable_weighted_index = stable_weighted_index

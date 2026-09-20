@@ -32,7 +32,22 @@ preserving authored vector order.
 Ele define a frequência relativa de uma variação visual no Smart Terrain;
 pesos 8 e 2 produzem aproximadamente 80% de piso liso e 20% rachado. A escolha
 é determinística por mapa, coordenada, família, papel e seed, sem estado de RNG
-persistente, e o campo é compatível com o schema v5.
+persistente, e o campo é compatível com o schema v5. `variantWeight` é escolha
+relativa entre candidates equivalentes — ele não é densidade nem chance de
+spawn; controles futuros de densidade/scatter usarão campos próprios.
+
+Convenção de identidade das variações 1 × 1 do Smart Terrain (tooling): o
+Content Studio grava variantes de piso como
+`semantic.variant.{family}.floor.{tileset}.{sourceIndex}` — identidade estável
+derivada de família, papel, tileset e `sourceIndex`, sem depender de slots
+3 × 3 nem de posição em lista. Definições `semantic.rule.*` geradas por
+versões anteriores continuam válidas e carregam normalmente; ao serem
+re-salvas pelo editor atual, migram para os novos IDs preservando tile,
+pesos e topologia. O formato em si não muda: IDs são strings opacas para o
+decoder/encoder e para o validador C++, que continuam exigindo apenas
+referência de tileset válida e `variantWeight > 0`. Padrões multi-tile do
+Smart Terrain não introduzem categoria nova: são derivados dos `stamps`
+existentes (todas as células apontando para semantics da mesma família).
 
 Visual definitions are flexible. A visible creature requires only one `idle`
 directional binding; every binding may be non-directional (`default`), partial

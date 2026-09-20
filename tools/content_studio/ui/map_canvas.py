@@ -599,6 +599,9 @@ class MapCanvas(QWidget):
                 if key:
                     return self.translate("placing_element").format(name=self.translate(key))
         if self.tool in {"terrain", "room"}:
+            active_terrain = self.interaction.active_terrain
+            if active_terrain is not None and active_terrain.pattern_id:
+                return self.translate("placing_pattern").format(name=active_terrain.pattern_id)
             return self.translate("placing_terrain")
         return None
 
