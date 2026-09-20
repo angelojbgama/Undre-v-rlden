@@ -59,6 +59,8 @@ public:
     ItemContainer(std::size_t capacity, const ItemCatalog& catalog);
 
     [[nodiscard]] std::size_t capacity() const noexcept { return slots_.size(); }
+    [[nodiscard]] const ItemCatalog& catalog() const noexcept { return *catalog_; }
+    [[nodiscard]] std::span<const std::optional<ItemStack>> slots() const noexcept { return slots_; }
     [[nodiscard]] const std::optional<ItemStack>& slot(std::size_t index) const;
     [[nodiscard]] AddResult add(const simulation::DefinitionId& itemId,
                                 std::uint32_t quantity);
