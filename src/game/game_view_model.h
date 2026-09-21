@@ -9,6 +9,8 @@
 #include "game/gameplay/rpg/equipment.h"
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/shop_overlay.h"
+#include "game/gameplay/quests/quest_model.h"
+#include "game/gameplay/quests/quest_state.h"
 #include "game/ui/ui_presenter.h"
 #include "game/ui/ui_screens.h"
 
@@ -26,6 +28,17 @@ struct ItemSlotView final {
     std::optional<simulation::DefinitionId> itemId{};
     std::optional<simulation::DefinitionId> visualId{};
     std::uint64_t quantity{};
+};
+struct QuestObjectiveView final {
+    std::string description;
+    std::uint32_t current{};
+    std::uint32_t required{1};
+};
+struct QuestJournalView final {
+    simulation::DefinitionId questId{};
+    std::string title;
+    bool completed{};
+    std::vector<QuestObjectiveView> objectives;
 };
 struct ShopOfferView final {
     simulation::DefinitionId itemId{};
@@ -95,6 +108,9 @@ struct GameViewModel final {
     std::uint32_t craftingQuantity{};
     std::optional<gameplay::CraftingStatus> craftingFeedback{};
     std::vector<CraftingRecipeView> craftingRecipes;
+    // Quest journal read model: started quests in store order, titles and
+    // objective limits resolved from the immutable catalog.
+    std::vector<QuestJournalView> journal;
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
@@ -122,6 +138,11 @@ struct GameViewModel final {
     const gameplay::CraftingKnowledge& craftingKnowledge,
     const gameplay::CraftingHistory& craftedRecipes);
 
+// Fills the journal read model from the quest state and catalog.
+void buildQuestJournal(GameViewModel& view,
+                       const gameplay::quests::QuestStateStore& quests,
+                       const gameplay::quests::QuestCatalog& catalog);
+
 // Maps the GameViewModel snapshot onto the UI Engine binding registry
 // (docs/UI_ENGINE.md). Read-only presentation adapter: number and id reads
 // only, never gameplay mutations.
@@ -131,6 +152,7 @@ public:
 
     [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override;
     [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath path) const override;
+    [[nodiscard]] std::optional<std::string> string(ui::BindingPath path) const override;
     [[nodiscard]] std::vector<ui::UiCollectionContext> collection(
         ui::BindingPath path) const override;
     [[nodiscard]] std::optional<std::int64_t> contextualNumber(

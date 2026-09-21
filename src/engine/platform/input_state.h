@@ -22,6 +22,8 @@ struct InputState final {
     // Shell-level edge: opens/closes the authored menu screen. Never becomes
     // a gameplay command.
     bool menuPressed{};
+    // Shell-level edge: toggles the authored quest journal overlay.
+    bool journalPressed{};
 
     void clear() noexcept { *this = {}; }
     [[nodiscard]] constexpr bool operator==(const InputState&) const noexcept = default;

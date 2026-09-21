@@ -570,6 +570,10 @@ struct GameRuntime::State final {
         // fully owned by the Session. This preserves the old rule that the
         // player's invulnerability timer advances even while those overlays
         // consume a command tick.
+        if (input.journalPressed && !ui.menuOpen() && !session.dialogue().isOpen() &&
+            !session.sceneActive()) {
+            journalOpen = !journalOpen;
+        }
         ui.update(input, !session.dialogue().isOpen() && !session.sceneActive());
         platform::InputState effective = input;
         if (ui.menuOpen()) {
@@ -624,6 +628,7 @@ struct GameRuntime::State final {
             session.derivedPlayerStats(), session.shopOverlay(), content.shops(),
             session.craftingTab(), content.craftingRecipes(),
             gameplay::CraftingKnowledge{session.questState()}, session.craftedRecipes());
+        buildQuestJournal(view, session.questState(), content.quests());
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
         const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());
@@ -646,7 +651,9 @@ struct GameRuntime::State final {
             session.scenePresentation(), lastEvent, collisionOverlay,
             content.uiScreens().find(simulation::DefinitionId{"screen.hud"}),
             content.uiScreens().find(simulation::DefinitionId{"screen.inventory"}),
-            &ui});
+            &ui,
+            content.uiScreens().find(simulation::DefinitionId{"screen.journal"}),
+            journalOpen});
     }
 
 
@@ -665,6 +672,7 @@ struct GameRuntime::State final {
     ui::UiRuntime ui;
     bool uiSaveDispatched{};
     bool uiLoadDispatched{};
+    bool journalOpen{};
     presentation::RuntimeVisualContent runtimeVisualContent;
     presentation::PresentationEffectSystem presentationEffects{content.presentationEffects()};
     presentation::PresentationFeedbackController presentationFeedback;

@@ -484,6 +484,9 @@ private:
         case VK_ESCAPE:
             if (down && !wasDown) { actionEdges_.pushMenu(); }
             break;
+        case 'J':
+            if (down && !wasDown) { actionEdges_.pushJournal(); }
+            break;
         default: break;
         }
     }

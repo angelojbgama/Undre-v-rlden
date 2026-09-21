@@ -65,6 +65,9 @@ enum class BindingPath {
     playerInventorySlots,
     playerAmmoPresent,
     playerQuickSlotSlots,
+    questsJournal,
+    contextQuestTitle,
+    contextQuestCompleted,
     contextIndex,
     contextItemId,
     contextItemIcon,
@@ -77,7 +80,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 27> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 30> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -100,6 +103,9 @@ inline constexpr std::array<BindingPathEntry, 27> bindingPathTable{{
     {BindingPath::playerInventorySlots, "player.inventory.slots"},
     {BindingPath::playerAmmoPresent, "player.ammo.present"},
     {BindingPath::playerQuickSlotSlots, "player.quickSlots.slots"},
+    {BindingPath::questsJournal, "quests.journal"},
+    {BindingPath::contextQuestTitle, "context.quest.title"},
+    {BindingPath::contextQuestCompleted, "context.quest.completed"},
     {BindingPath::contextIndex, "context.index"},
     {BindingPath::contextItemId, "context.item.id"},
     {BindingPath::contextItemIcon, "context.item.icon"},

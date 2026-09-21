@@ -11434,7 +11434,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 3 &&
+    expect(builtin.uiScreens.size() == 4 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11444,7 +11444,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 3 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 4 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12227,6 +12227,122 @@ void testUiHudCompleteParity() {
            "the ammo nodes hide through their authored visibility state");
 }
 
+void testUiJournalScreen() {
+    using namespace underworld;
+    namespace quests_ns = game::gameplay::quests;
+    namespace ui = game::ui;
+
+    // A started quest with progress maps into the journal read model.
+    quests_ns::QuestCatalog catalog;
+    quests_ns::QuestDefinition definition;
+    definition.id = simulation::DefinitionId{"quest.test"};
+    definition.title = "Test Quest";
+    quests_ns::QuestObjectiveDefinition objective;
+    objective.id = simulation::DefinitionId{"objective.talk"};
+    objective.kind = quests_ns::QuestObjectiveKind::talk;
+    objective.targetId = simulation::DefinitionId{"npc.guard"};
+    objective.requiredCount = 3;
+    objective.description = "Talk to someone";
+    definition.objectives.push_back(objective);
+    catalog.add(definition);
+
+    quests_ns::QuestStateStore store;
+    expect(store.start(catalog.require({"quest.test"})), "the test quest starts");
+    expect(store.advanceObjective(definition, {"objective.talk"}, 2),
+           "quest objectives advance for the journal test");
+
+    game::GameViewModel view;
+    game::buildQuestJournal(view, store, catalog);
+    expect(view.journal.size() == 1 && view.journal.front().title == "Test Quest" &&
+               !view.journal.front().completed &&
+               view.journal.front().objectives.size() == 1 &&
+               view.journal.front().objectives.front().current == 2 &&
+               view.journal.front().objectives.front().required == 3,
+           "the journal read model carries title, completion and progress");
+
+    game::GameViewModelBindings bindings{view};
+    const auto entries = bindings.collection(ui::BindingPath::questsJournal);
+    expect(entries.size() == 1 && entries.front().text == "Test Quest" &&
+               !entries.front().flag && entries.front().index == 0,
+           "the journal collection exposes titles and completion flags");
+
+    // Completing the objective flips the completion flag in the read model.
+    expect(store.advanceObjective(definition, {"objective.talk"}, 1),
+           "the final objective advance completes the quest");
+    game::buildQuestJournal(view, store, catalog);
+    expect(view.journal.front().completed,
+           "a completed quest reports its completion to the journal");
+
+    // The context resolver routes title/completed for repeater templates.
+    ui::UiCollectionContext context;
+    context.text = "Test Quest";
+    context.flag = true;
+    context.index = 0;
+    struct TitleResolver final : ui::UiBindingResolver {
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    } emptyBase;
+    const ui::UiContextResolver contextResolver{emptyBase, context};
+    expect(contextResolver.string(ui::BindingPath::contextQuestTitle)
+                   == std::optional<std::string>{"Test Quest"} &&
+               contextResolver.number(ui::BindingPath::contextQuestCompleted) ==
+                   std::optional<std::int64_t>{1},
+           "context bindings resolve the quest title and completion flag");
+
+    // Render smoke: a journal screen with the repeater renders deterministically.
+    ui::ScreenDefinition screen;
+    screen.id = {"screen.journal"};
+    screen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition panel;
+    panel.id = "journal.panel";
+    panel.component = ui::ComponentKind::panel;
+    panel.layout.offsetX = 14;
+    panel.layout.offsetY = 20;
+    panel.layout.width = 244;
+    panel.layout.height = 184;
+    panel.background = core::ColorRGBA8{8, 10, 16, 245};
+    ui::NodeDefinition list;
+    list.id = "journal.quests";
+    list.component = ui::ComponentKind::repeater;
+    list.layout.offsetX = 24;
+    list.layout.offsetY = 44;
+    list.columns = 1;
+    list.cellWidth = 228;
+    list.cellHeight = 12;
+    list.bindings.push_back({"source", ui::BindingPath::questsJournal});
+    ui::NodeDefinition entry;
+    entry.id = "journal.entry";
+    entry.component = ui::ComponentKind::group;
+    ui::NodeDefinition title;
+    title.id = "journal.entry.title";
+    title.component = ui::ComponentKind::text;
+    title.layout.offsetX = 6;
+    title.bindings.push_back({"text", ui::BindingPath::contextQuestTitle});
+    entry.children.push_back(std::move(title));
+    list.children.push_back(std::move(entry));
+    panel.children.push_back(std::move(list));
+    screen.root = std::move(panel);
+
+    game::presentation::RuntimeStaticSpriteCatalog sprites;
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    const ui::UiVisualContext visuals{sprites, font};
+    render::Framebuffer framebuffer(272, 224);
+    framebuffer.clear({0, 0, 0, 255});
+    render::Renderer2D renderer(framebuffer);
+    const ui::UiPresenter presenter;
+    presenter.render(screen, bindings, visuals, renderer);
+    expect(true, "the journal screen renders through the repeater");
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -12735,6 +12851,7 @@ int main() {
         testUiStatesAndMeterVariants();
         testUiInventoryGridMigration();
         testUiHudCompleteParity();
+        testUiJournalScreen();
         testUiRuntimeMenuNavigation();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();

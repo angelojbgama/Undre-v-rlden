@@ -774,6 +774,12 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
         framebuffer, frame.presentationEffects, playerLogical);
     renderDebug(renderer, frame, visible, cameraPosition);
     renderHud(renderer, frame);
+    if (frame.journalOpen && frame.journalScreen) {
+        const GameViewModelBindings bindings{frame.view};
+        const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+        const ui::UiPresenter presenter;
+        presenter.render(*frame.journalScreen, bindings, visuals, renderer);
+    }
     if (frame.ui != nullptr && frame.ui->menuOpen()) {
         const GameViewModelBindings bindings{frame.view};
         const ui::UiVisualContext visuals{frame.staticSprites, frame.font,

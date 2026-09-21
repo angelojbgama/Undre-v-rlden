@@ -191,6 +191,20 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
         }
         return entries;
     }
+    if (path == ui::BindingPath::questsJournal) {
+        std::vector<ui::UiCollectionContext> entries;
+        entries.reserve(view_->journal.size());
+        std::int64_t index = 0;
+        for (const auto& quest : view_->journal) {
+            ui::UiCollectionContext entry;
+            entry.text = quest.title;
+            entry.flag = quest.completed;
+            entry.index = index;
+            entries.push_back(std::move(entry));
+            ++index;
+        }
+        return entries;
+    }
     if (path != ui::BindingPath::playerInventorySlots) { return {}; }
     std::vector<ui::UiCollectionContext> entries;
     entries.reserve(view_->inventory.size());
@@ -212,6 +226,37 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
                    contextIndex == static_cast<std::int64_t>(view_->inventorySelection)
                ? std::optional<std::int64_t>{1}
                : std::optional<std::int64_t>{0};
+}
+
+std::optional<std::string> GameViewModelBindings::string(ui::BindingPath) const {
+    return std::nullopt;
+}
+
+void buildQuestJournal(GameViewModel& view,
+                       const gameplay::quests::QuestStateStore& quests,
+                       const gameplay::quests::QuestCatalog& catalog) {
+    view.journal.clear();
+    for (const auto& progress : quests.snapshot()) {
+        const auto* definition = catalog.find(progress.questId);
+        if (definition == nullptr) { continue; }
+        QuestJournalView entry;
+        entry.questId = progress.questId;
+        entry.title = definition->title;
+        entry.completed = progress.status == gameplay::quests::QuestStatus::completed;
+        for (const auto& objective : definition->objectives) {
+            QuestObjectiveView objectiveView;
+            objectiveView.description = objective.description;
+            objectiveView.required = objective.requiredCount;
+            for (const auto& recorded : progress.objectives) {
+                if (recorded.objectiveId == objective.id) {
+                    objectiveView.current = recorded.currentCount;
+                    break;
+                }
+            }
+            entry.objectives.push_back(std::move(objectiveView));
+        }
+        view.journal.push_back(std::move(entry));
+    }
 }
 
 std::optional<simulation::DefinitionId> GameViewModelBindings::id(ui::BindingPath path) const {

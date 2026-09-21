@@ -140,12 +140,15 @@ std::optional<std::int64_t> UiContextResolver::number(BindingPath path) const {
             return context_.amount;
         case BindingPath::contextIndex:
             return context_.index;
+        case BindingPath::contextQuestCompleted:
+            return context_.flag ? 1 : 0;
         case BindingPath::overlayInventorySlotSelected:
             return base_->contextualNumber(path, context_.index);
         default:
             return base_->number(path);
     }
 }
+
 
 std::optional<simulation::DefinitionId> UiContextResolver::id(BindingPath path) const {
     switch (path) {
@@ -200,8 +203,17 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
         }
         case ComponentKind::text: {
             std::string text = node.text;
-            if (const auto bound = boundNumber(node, "text", resolver)) {
-                text = std::to_string(*bound);
+            if (const auto binding = std::find_if(
+                    node.bindings.begin(), node.bindings.end(),
+                    [](const BindingDefinition& candidate) {
+                        return candidate.property == "text";
+                    });
+                binding != node.bindings.end()) {
+                if (const auto textValue = resolver.string(binding->source)) {
+                    text = *textValue;
+                } else if (const auto numberValue = resolver.number(binding->source)) {
+                    text = std::to_string(*numberValue);
+                }
             }
             const auto position = addOffset(resolveNodePosition(node.layout, {0, 0}), offset);
             render::drawText(renderer, context.font, text, position.x, position.y);

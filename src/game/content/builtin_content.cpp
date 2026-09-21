@@ -508,6 +508,63 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         makeButton("menu.resume", "RESUME", 128, ui::ActionId::screenClose));
     menuScreen.root = std::move(menuPanel);
     pack.uiScreens.push_back(std::move(menuScreen));
+
+    // Quest journal (UI-5 companion screen): passive overlay toggled with J,
+    // listing started quests from the read model with a DONE marker gated by
+    // the authored completion state.
+    ui::ScreenDefinition journalScreen;
+    journalScreen.id = simulation::DefinitionId{"screen.journal"};
+    journalScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition journalPanel;
+    journalPanel.id = "journal.panel";
+    journalPanel.component = ui::ComponentKind::panel;
+    journalPanel.layout.offsetX = 14;
+    journalPanel.layout.offsetY = 20;
+    journalPanel.layout.width = 244;
+    journalPanel.layout.height = 184;
+    journalPanel.background = core::ColorRGBA8{8, 10, 16, 245};
+    ui::NodeDefinition journalTitle;
+    journalTitle.id = "journal.title";
+    journalTitle.component = ui::ComponentKind::text;
+    journalTitle.layout.offsetX = 24;
+    journalTitle.layout.offsetY = 28;
+    journalTitle.text = "JOURNAL";
+    ui::NodeDefinition questList;
+    questList.id = "journal.quests";
+    questList.component = ui::ComponentKind::repeater;
+    questList.layout.offsetX = 24;
+    questList.layout.offsetY = 44;
+    questList.columns = 1;
+    questList.cellWidth = 228;
+    questList.cellHeight = 12;
+    questList.bindings.push_back({"source", ui::BindingPath::questsJournal});
+    ui::NodeDefinition questEntry;
+    questEntry.id = "journal.entry";
+    questEntry.component = ui::ComponentKind::group;
+    ui::NodeDefinition questText;
+    questText.id = "journal.entry.title";
+    questText.component = ui::ComponentKind::text;
+    questText.layout.offsetX = 6;
+    questText.bindings.push_back({"text", ui::BindingPath::contextQuestTitle});
+    questEntry.children.push_back(std::move(questText));
+    ui::NodeDefinition questDone;
+    questDone.id = "journal.entry.done";
+    questDone.component = ui::ComponentKind::text;
+    questDone.layout.offsetX = 190;
+    questDone.layout.visible = false;
+    questDone.text = "DONE";
+    ui::StateDefinition questCompleted;
+    questCompleted.id = "completed";
+    questCompleted.condition = ui::StateCondition{
+        ui::BindingPath::contextQuestCompleted, ui::ConditionOperator::equal, 1};
+    questCompleted.visual.visible = true;
+    questDone.states.push_back(std::move(questCompleted));
+    questEntry.children.push_back(std::move(questDone));
+    questList.children.push_back(std::move(questEntry));
+    journalPanel.children.push_back(std::move(journalTitle));
+    journalPanel.children.push_back(std::move(questList));
+    journalScreen.root = std::move(journalPanel);
+    pack.uiScreens.push_back(std::move(journalScreen));
     return pack;
 }
 

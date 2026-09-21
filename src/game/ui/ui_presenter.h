@@ -16,6 +16,9 @@ struct UiCollectionContext final {
     std::optional<simulation::DefinitionId> icon;
     std::int64_t amount{};
     std::int64_t index{};
+    // Journal entries carry a text value and a completed flag per instance.
+    std::string text{};
+    bool flag{false};
 };
 
 // Value source for the registered binding paths. Implemented over the
@@ -25,6 +28,10 @@ class UiBindingResolver {
 public:
     [[nodiscard]] virtual std::optional<std::int64_t> number(BindingPath path) const = 0;
     [[nodiscard]] virtual std::optional<simulation::DefinitionId> id(BindingPath path) const = 0;
+    // String values (quest titles etc.); only paths that carry text resolve.
+    [[nodiscard]] virtual std::optional<std::string> string(BindingPath) const {
+        return std::nullopt;
+    }
     // Collection source for repeaters; empty for non-collection paths.
     [[nodiscard]] virtual std::vector<UiCollectionContext> collection(BindingPath) const {
         return {};
@@ -55,6 +62,12 @@ public:
     [[nodiscard]] std::optional<simulation::DefinitionId> id(BindingPath path) const override;
     [[nodiscard]] std::vector<UiCollectionContext> collection(BindingPath path) const override {
         return base_->collection(path);
+    }
+    [[nodiscard]] std::optional<std::string> string(BindingPath path) const override {
+        if (path == BindingPath::contextQuestTitle && !context_.text.empty()) {
+            return context_.text;
+        }
+        return base_->string(path);
     }
     [[nodiscard]] virtual std::optional<std::int64_t> contextualNumber(
         BindingPath path, std::int64_t) const {

@@ -255,7 +255,8 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                 [](const ui::BindingDefinition& binding) {
                     return binding.property == "source" &&
                            (binding.source == ui::BindingPath::playerInventorySlots ||
-                            binding.source == ui::BindingPath::playerQuickSlotSlots);
+                            binding.source == ui::BindingPath::playerQuickSlotSlots ||
+                            binding.source == ui::BindingPath::questsJournal);
                 });
             if (!hasSource)
                 error(report, ContentKind::uiScreen, screenId, "missing_binding",
