@@ -118,6 +118,8 @@ enum class ActionId {
     quickSlot2,
     quickSlot3,
     quickSlot4,
+    // Presentation-level action: the UI shell closes the active menu itself.
+    screenClose,
 };
 
 struct ActionEntry final {
@@ -125,7 +127,7 @@ struct ActionEntry final {
     std::string_view name;
 };
 
-inline constexpr std::array<ActionEntry, 8> actionTable{{
+inline constexpr std::array<ActionEntry, 9> actionTable{{
     {ActionId::gameSave, "game.save"},
     {ActionId::gameLoad, "game.load"},
     {ActionId::inventoryToggle, "inventory.toggle"},
@@ -134,6 +136,7 @@ inline constexpr std::array<ActionEntry, 8> actionTable{{
     {ActionId::quickSlot2, "quickSlot.2"},
     {ActionId::quickSlot3, "quickSlot.3"},
     {ActionId::quickSlot4, "quickSlot.4"},
+    {ActionId::screenClose, "screen.close"},
 }};
 
 [[nodiscard]] std::optional<ActionId> findAction(std::string_view name);

@@ -168,6 +168,11 @@ struct GameRuntime::State final {
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
+        ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
+        ui.setActionSink([this](ui::ActionId action) {
+            if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
+            if (action == ui::ActionId::gameLoad) { uiLoadDispatched = true; }
+        });
         const auto* playerDefinition = selectedPlayerDefinition(content);
         if (!playerDefinition) {
             throw std::runtime_error("default PlayerDefinition is missing");
@@ -565,7 +570,19 @@ struct GameRuntime::State final {
         // fully owned by the Session. This preserves the old rule that the
         // player's invulnerability timer advances even while those overlays
         // consume a command tick.
-        const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, input);
+        ui.update(input, !session.dialogue().isOpen() && !session.sceneActive());
+        platform::InputState effective = input;
+        if (ui.menuOpen()) {
+            // Modal menu: gameplay input is suppressed; the only edges that
+            // reach the command are the ones the focused menu action
+            // dispatches (save/load through the Action Registry).
+            effective = {};
+            effective.saveGamePressed = uiSaveDispatched;
+            effective.loadGamePressed = uiLoadDispatched;
+        }
+        uiSaveDispatched = false;
+        uiLoadDispatched = false;
+        const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, effective);
         if (!session.dialogue().isOpen() && !session.sceneActive()) {
             if (command.actions.saveGamePressed) { saveGame(); }
             if (command.actions.loadGamePressed) { loadGame(); }
@@ -628,7 +645,8 @@ struct GameRuntime::State final {
             session.dialogue(), view, combatDebug, session.activeSword(),
             session.scenePresentation(), lastEvent, collisionOverlay,
             content.uiScreens().find(simulation::DefinitionId{"screen.hud"}),
-            content.uiScreens().find(simulation::DefinitionId{"screen.inventory"})});
+            content.uiScreens().find(simulation::DefinitionId{"screen.inventory"}),
+            &ui});
     }
 
 
@@ -644,6 +662,9 @@ struct GameRuntime::State final {
     std::filesystem::path savePath;
     GamePresentation presentation;
     GameContentRegistry content;
+    ui::UiRuntime ui;
+    bool uiSaveDispatched{};
+    bool uiLoadDispatched{};
     presentation::RuntimeVisualContent runtimeVisualContent;
     presentation::PresentationEffectSystem presentationEffects{content.presentationEffects()};
     presentation::PresentationFeedbackController presentationFeedback;

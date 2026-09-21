@@ -165,6 +165,16 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
                              core::PointI offset) const {
     const NodeVisual visual = resolveVisual(node, resolver);
     if (!visual.visible) return;
+    if (context.focusedNode == &node &&
+        (node.layout.width.has_value() || node.layout.height.has_value())) {
+        const int boxWidth = node.layout.width.value_or(24);
+        const int boxHeight = node.layout.height.value_or(16);
+        const auto box = addOffset(resolveNodePosition(node.layout, {boxWidth, boxHeight}), offset);
+        renderer.fillRect({box.x - 1, box.y - 1, boxWidth + 2, 1}, {240, 240, 240, 255});
+        renderer.fillRect({box.x - 1, box.y + boxHeight, boxWidth + 2, 1}, {240, 240, 240, 255});
+        renderer.fillRect({box.x - 1, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
+        renderer.fillRect({box.x + boxWidth, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
+    }
     switch (node.component) {
         case ComponentKind::image: {
             const auto& spriteId = visual.sprite ? visual.sprite : node.spriteId;

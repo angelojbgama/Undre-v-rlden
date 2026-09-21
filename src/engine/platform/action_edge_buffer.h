@@ -22,6 +22,7 @@ public:
     void pushToggleInventory() noexcept { increment(toggleInventory_); }
     void pushToggleCrafting() noexcept { increment(toggleCrafting_); }
     void pushSaveGame() noexcept { increment(saveGame_); }
+    void pushMenu() noexcept { increment(menu_); }
     void pushLoadGame() noexcept { increment(loadGame_); }
     void pushQuickSlot(std::size_t index) noexcept {
         if (index < quickSlots_.size()) { increment(quickSlots_[index]); }
@@ -38,11 +39,12 @@ public:
         state.quickSlot4Pressed = consume(quickSlots_[3]);
         state.saveGamePressed = consume(saveGame_);
         state.loadGamePressed = consume(loadGame_);
+        state.menuPressed = consume(menu_);
         if (primary_ > 0) { --primary_; }
         if (secondary_ > 0) { --secondary_; }
     }
     void clear() noexcept {
-        primary_ = secondary_ = interact_ = toggleInventory_ = toggleCrafting_ = saveGame_ = loadGame_ = 0;
+        primary_ = secondary_ = interact_ = toggleInventory_ = toggleCrafting_ = saveGame_ = loadGame_ = menu_ = 0;
         quickSlots_.fill(0);
     }
     [[nodiscard]] std::uint32_t pendingPrimary() const noexcept { return primary_; }
@@ -64,6 +66,7 @@ private:
     std::uint32_t toggleCrafting_{};
     std::uint32_t saveGame_{};
     std::uint32_t loadGame_{};
+    std::uint32_t menu_{};
     std::array<std::uint32_t, 4> quickSlots_{};
 };
 

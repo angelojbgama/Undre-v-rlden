@@ -2092,8 +2092,13 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   por teste, composer com hierarchy/canvas/inspector/preview data e round-trip)
   e UI-4 (componentes slot/repeater com bindings de coleção/contexto; grade do
   inventário migrada para screen.inventory com paridade de pixels; prova 2 —
-  reorganizar a grade é edição de definição apenas) concluídos e provados.
-  Pendente: UI-5 (screen/navigation com o primeiro menu real).
+  reorganizar a grade é edição de definição apenas) e UI-5 (UiRuntime: o menu
+  de pausa authored `screen.menu` abre por ESC com navegação por foco
+  (wrap), ativação por E; ações game.save/game.load viram intents do tick
+  via sink e screen.close é apresentação pura; menu é modal para o input de
+  gameplay) concluídos e provados. A trilha UI Engine está completa no escopo
+  acordado; incrementos futuros (stack de telas completa, themes de foco,
+  arte real no preview do Composer) entram somente com necessidade real.
   Deferidos até caso real: alpha no delta visual, animatedImage no presenter,
   themes, timeline de animação, scroll/tooltip e telas de conteúdo inexistente
   (spellbook etc.). As provas da seção 10 de `docs/UI_ENGINE.md` são gates de

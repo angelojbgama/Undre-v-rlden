@@ -20,6 +20,7 @@
 #include "game/maps/runtime_world.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content_loader.h"
+#include "game/ui/ui_runtime.h"
 #include "game/ui/ui_screens.h"
 #include "game/gameplay/scenes/scene_controller.h"
 
@@ -63,6 +64,7 @@ struct GamePresentationFrame final {
     // registry; null when the workspace does not provide one.
     const ui::ScreenDefinition* hudScreen{};
     const ui::ScreenDefinition* inventoryScreen{};
+    const ui::UiRuntime* ui{};
 };
 
 class GamePresentation final {

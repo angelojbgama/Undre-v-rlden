@@ -302,9 +302,13 @@ UI-4  slot/repeater + migração da grade do overlay de
       (equipamento/banco/loja/crafting permanecem hardcoded
       até necessidade real; canvas do Composer ainda não
       pré-visualiza slot/repeater)
-UI-5  screen/navigation quando existir o primeiro menu
-      real (ex.: tela de save/load); conecta com a trilha
-      Scene/Game-State do roadmap                          PENDENTE
+UI-5  screen/navigation com o primeiro menu real —
+      screen.menu (pausa: SAVE/LOAD/RESUME, ESC abre/fecha,
+      setas movem o foco com wrap, E ativa; SAVE/LOAD
+      despacham intents do tick, RESUME usa screen.close)
+      CONCLUÍDO (v1: contorno de foco builtin; stack de
+      telas completa e themes de foco ficam para quando
+      houver mais telas reais)
 ```
 
 Notas de implementação vigentes (UI-1/2): o tint do delta visual é

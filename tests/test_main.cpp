@@ -32,6 +32,7 @@
 #include "game/audit/audit_snapshot.h"
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
+#include "game/ui/ui_runtime.h"
 #include "game/gameplay/rpg/rewards.h"
 #include "game/gameplay/rpg/reward_grants.h"
 #include "game/gameplay/rpg/shops.h"
@@ -11433,7 +11434,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 2 &&
+    expect(builtin.uiScreens.size() == 3 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.health" &&
                builtin.uiScreens.front().root.meter &&
@@ -11444,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the pixel-parity HUD hearts screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 2 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 3 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.meter->spacing == 1,
            "builtin ui screens compile into the runtime screen catalog");
@@ -11945,6 +11946,137 @@ void testUiInventoryGridMigration() {
                contextResolver.number(ui::BindingPath::overlayInventorySlotSelected) ==
                    std::optional<std::int64_t>{0},
            "context bindings resolve against the current repeater instance");
+}
+
+void testUiRuntimeMenuNavigation() {
+    using namespace underworld;
+    namespace ui = game::ui;
+    namespace presentation = game::presentation;
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+
+    // Three authored buttons over an empty group resolver.
+    struct EmptyResolver final : ui::UiBindingResolver {
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    };
+
+    const auto makeButton = [](const char* id, ui::ActionId action) {
+        ui::NodeDefinition button;
+        button.id = id;
+        button.component = ui::ComponentKind::group;
+        button.layout.offsetX = 94;
+        button.layout.offsetY = 84;
+        button.layout.width = 84;
+        button.layout.height = 18;
+        button.actions.push_back({"activate", action});
+        return button;
+    };
+
+    ui::ScreenDefinition menu;
+    menu.id = {"screen.menu"};
+    menu.kind = ui::ScreenKind::screen;
+    menu.root = makeButton("menu.wrap", ui::ActionId::gameSave);
+    menu.root.children.push_back(makeButton("menu.b", ui::ActionId::gameLoad));
+    menu.root.children.push_back(makeButton("menu.c", ui::ActionId::screenClose));
+
+    ui::UiRuntime runtime;
+    runtime.setMenuScreen(&menu);
+    std::vector<ui::ActionId> dispatched;
+    runtime.setActionSink([&](ui::ActionId action) { dispatched.push_back(action); });
+
+    const auto press = [](bool held) {
+        platform::InputState input;
+        input.menuPressed = held;
+        return input;
+    };
+
+    // Closed by default; the menu edge opens it and edges (not levels) keep
+    // it stable while the key is held.
+    expect(!runtime.menuOpen(), "the menu starts closed");
+    runtime.update(press(true), true);
+    expect(runtime.menuOpen(), "the menu edge opens the authored menu");
+    runtime.update(press(true), true);
+    expect(runtime.menuOpen(), "holding the menu key does not toggle twice");
+    runtime.update(press(false), true);
+    runtime.update(press(true), true);
+    expect(!runtime.menuOpen(), "a second edge closes the menu");
+    runtime.update(press(false), true);
+    runtime.update(press(true), true);
+    runtime.update(press(false), true);
+    expect(runtime.menuOpen(), "the menu reopens for navigation checks");
+
+    // Focus navigation wraps across the authored buttons; every tap is a
+    // press/release pair because edges derive from the previous snapshot.
+    const auto tapDown = [&runtime]() {
+        platform::InputState down;
+        down.moveDown = true;
+        runtime.update(down, true);
+        runtime.update(platform::InputState{}, true);
+    };
+    const auto tapActivate = [&runtime, &dispatched]() {
+        platform::InputState activate;
+        activate.interactPressed = true;
+        runtime.update(activate, true);
+        runtime.update(platform::InputState{}, true);
+    };
+    expect(runtime.focusedNode() != nullptr &&
+               runtime.focusedNode()->id == "menu.wrap",
+           "focus starts on the first actionable node");
+    tapDown();
+    expect(runtime.focusedNode()->id == "menu.b", "move down advances focus");
+    tapDown();
+    expect(runtime.focusedNode()->id == "menu.c", "focus advances again");
+    tapDown();
+    expect(runtime.focusedNode()->id == "menu.wrap", "focus wraps around the menu");
+
+    // Activation dispatches the focused action; gameplay intents flow through
+    // the sink, presentation actions close the menu.
+    tapActivate();
+    expect(dispatched.size() == 1 && dispatched.back() == ui::ActionId::gameSave,
+           "activating the focused button dispatches its gameplay action");
+    tapDown();
+    tapActivate();
+    expect(dispatched.size() == 2 && dispatched.back() == ui::ActionId::gameLoad,
+           "activation dispatches the newly focused action");
+    tapDown();
+    tapActivate();
+    expect(!runtime.menuOpen() && dispatched.size() == 2,
+           "screen.close closes the menu without a gameplay dispatch");
+
+    // Interaction gating: a suppressed tick still advances the snapshot so a
+    // key held across the gate does not fire a stale edge later.
+    runtime.update(press(true), true);
+    expect(runtime.menuOpen(), "menu reopens before the gate test");
+    runtime.update(press(true), false);
+    runtime.update(press(false), false);
+    runtime.update(press(false), true);
+    expect(runtime.menuOpen(), "suppressed ticks never toggle the menu");
+
+    // Render smoke: the menu from the gate test is still open; it renders
+    // with the focus outline on the focused button deterministically.
+    expect(runtime.menuOpen(), "menu is open for the render smoke");
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    const ui::UiVisualContext visuals{sprites, font, runtime.focusedNode()};
+    render::Framebuffer framebuffer(272, 224);
+    framebuffer.clear({0, 0, 0, 255});
+    render::Renderer2D renderer(framebuffer);
+    EmptyResolver resolver;
+    runtime.render(resolver, visuals, renderer);
+    bool outlineFound = false;
+    for (const auto& pixel : framebuffer.pixels()) {
+        if (pixel.r == 240 && pixel.g == 240 && pixel.b == 240) { outlineFound = true; break; }
+    }
+    expect(outlineFound, "the focused node draws its focus outline");
 }
 
 void testCraftingKnowledgeAndHistory() {
@@ -12454,6 +12586,7 @@ int main() {
         testUiScreenBuiltinAndBindings();
         testUiStatesAndMeterVariants();
         testUiInventoryGridMigration();
+        testUiRuntimeMenuNavigation();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

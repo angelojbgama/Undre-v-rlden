@@ -1,5 +1,6 @@
 #include "game/content/builtin_content.h"
 
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -349,6 +350,55 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     panel.children.push_back(std::move(grid));
     inventoryScreen.root = std::move(panel);
     pack.uiScreens.push_back(std::move(inventoryScreen));
+
+    // Pause menu (UI-5): the first authored menu screen. Buttons are group
+    // nodes with activate actions; RESUME closes the menu through the
+    // presentation-level screen.close action.
+    ui::ScreenDefinition menuScreen;
+    menuScreen.id = simulation::DefinitionId{"screen.menu"};
+    menuScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition menuPanel;
+    menuPanel.id = "menu.panel";
+    menuPanel.component = ui::ComponentKind::panel;
+    menuPanel.layout.offsetX = 86;
+    menuPanel.layout.offsetY = 60;
+    menuPanel.layout.width = 100;
+    menuPanel.layout.height = 96;
+    menuPanel.background = core::ColorRGBA8{8, 10, 16, 245};
+    ui::NodeDefinition menuTitle;
+    menuTitle.id = "menu.title";
+    menuTitle.component = ui::ComponentKind::text;
+    menuTitle.layout.offsetX = 115;
+    menuTitle.layout.offsetY = 68;
+    menuTitle.text = "PAUSED";
+    const auto makeButton = [&](const char* id, const char* label, int y,
+                                ui::ActionId action) {
+        ui::NodeDefinition button;
+        button.id = id;
+        button.component = ui::ComponentKind::group;
+        button.layout.offsetX = 94;
+        button.layout.offsetY = y;
+        button.layout.width = 84;
+        button.layout.height = 18;
+        button.background = core::ColorRGBA8{54, 30, 38, 255};
+        button.actions.push_back({"activate", action});
+        ui::NodeDefinition buttonText;
+        buttonText.id = std::string(id) + ".label";
+        buttonText.component = ui::ComponentKind::text;
+        const int labelWidth = static_cast<int>(std::string(label).size()) * 7;
+        buttonText.layout.offsetX = 94 + (84 - labelWidth) / 2;
+        buttonText.layout.offsetY = y + 5;
+        buttonText.text = label;
+        button.children.push_back(std::move(buttonText));
+        return button;
+    };
+    menuPanel.children.push_back(std::move(menuTitle));
+    menuPanel.children.push_back(makeButton("menu.save", "SAVE", 84, ui::ActionId::gameSave));
+    menuPanel.children.push_back(makeButton("menu.load", "LOAD", 106, ui::ActionId::gameLoad));
+    menuPanel.children.push_back(
+        makeButton("menu.resume", "RESUME", 128, ui::ActionId::screenClose));
+    menuScreen.root = std::move(menuPanel);
+    pack.uiScreens.push_back(std::move(menuScreen));
     return pack;
 }
 

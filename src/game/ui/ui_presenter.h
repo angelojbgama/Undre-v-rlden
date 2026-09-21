@@ -70,6 +70,9 @@ private:
 struct UiVisualContext final {
     const presentation::RuntimeStaticSpriteCatalog& staticSprites;
     const render::BitmapFont& font;
+    // Node holding keyboard focus (UI-5); the presenter draws a built-in
+    // outline around its authored box. Authored focus themes come later.
+    const NodeDefinition* focusedNode{nullptr};
 };
 
 // Walks an authored screen definition and draws it into the logical

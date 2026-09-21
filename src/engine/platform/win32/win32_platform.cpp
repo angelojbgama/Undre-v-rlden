@@ -481,6 +481,9 @@ private:
         case VK_F9:
             if (down && !wasDown) { actionEdges_.pushLoadGame(); }
             break;
+        case VK_ESCAPE:
+            if (down && !wasDown) { actionEdges_.pushMenu(); }
+            break;
         default: break;
         }
     }

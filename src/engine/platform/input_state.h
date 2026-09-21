@@ -19,6 +19,9 @@ struct InputState final {
     bool quickSlot4Pressed{};
     bool saveGamePressed{};
     bool loadGamePressed{};
+    // Shell-level edge: opens/closes the authored menu screen. Never becomes
+    // a gameplay command.
+    bool menuPressed{};
 
     void clear() noexcept { *this = {}; }
     [[nodiscard]] constexpr bool operator==(const InputState&) const noexcept = default;

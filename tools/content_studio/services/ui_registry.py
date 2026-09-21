@@ -75,6 +75,7 @@ ACTIONS: tuple[str, ...] = (
     "quickSlot.2",
     "quickSlot.3",
     "quickSlot.4",
+    "screen.close",
 )
 
 # UI action events supported by the runtime presenter.
