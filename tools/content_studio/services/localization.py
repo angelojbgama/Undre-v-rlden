@@ -661,6 +661,52 @@ TRANSLATIONS["pt-BR"].update({
         "disparado quando um golpe deste ataque acerta um alvo. "
         "A lista vem da biblioteca presentationEffects."
     ),
+    "presentation_effects": "Efeitos de apresentação",
+    "pe_search": "Buscar efeitos...",
+    "pe_none": "Nenhum efeito de apresentação definido.",
+    "pe_create": "Criar efeito",
+    "pe_configure": "Editar efeito",
+    "pe_delete": "Excluir efeito",
+    "pe_created": "Efeito de apresentação criado.",
+    "pe_configured": "Efeito de apresentação atualizado.",
+    "pe_deleted": "Efeito de apresentação excluído.",
+    "pe_delete_confirm": (
+        "Excluir o efeito {effect}? Referências em regiões, regras de mundo "
+        "ou cenas deste mapa deixarão de resolver."
+    ),
+    "pe_referenced_by": "Referenciado por ataques",
+    "pe_help": (
+        "Transient: dura durationTicks e desaparece. Persistent: permanece "
+        "enquanto a fonte estiver ativa (ex.: região), sem duração, sem "
+        "camera shake e sem fade. O efeito precisa de pelo menos uma "
+        "primitiva. Referencie pelo id em ataques, regiões, regras de mundo "
+        "e cenas."
+    ),
+    "pe_id": "Id do efeito",
+    "pe_lifetime": "Tempo de vida",
+    "pe_lifetime_transient": "Transient (temporário)",
+    "pe_lifetime_persistent": "Persistent (persistente)",
+    "pe_duration": "Duração (ticks)",
+    "pe_priority": "Prioridade",
+    "pe_primitive_shake": "Camera shake",
+    "pe_primitive_overlay": "Overlay de cor",
+    "pe_primitive_vision": "Máscara de visão",
+    "pe_primitive_fade": "Fade",
+    "pe_amplitude": "Amplitude (px)",
+    "pe_overlay_mode": "Modo",
+    "pe_overlay_mode_constant": "Constante",
+    "pe_overlay_mode_linearFadeOut": "Fade-out linear",
+    "pe_overlay_mode_pulse": "Pulso",
+    "pe_overlay_pulse_period": "Período do pulso (ticks)",
+    "pe_overlay_layer": "Camada",
+    "pe_overlay_layer_world": "Mundo (sob o HUD)",
+    "pe_overlay_layer_final": "Final (sobre tudo)",
+    "pe_color": "Cor (RGBA)",
+    "pe_inner_radius": "Raio interno (px)",
+    "pe_outer_radius": "Raio externo (px)",
+    "pe_outside_alpha": "Alpha externo",
+    "pe_fade_start_alpha": "Alpha inicial",
+    "pe_fade_end_alpha": "Alpha final",
     "attack_timeline_info": (
         "Cada faixa é um frame da animação e os círculos são eventos. Clique para inspecionar um tick."
     ),
@@ -811,6 +857,51 @@ TRANSLATIONS["en-US"].update({
         "when a hit from this attack connects with a target. "
         "The list comes from the presentationEffects library."
     ),
+    "presentation_effects": "Presentation Effects",
+    "pe_search": "Search effects...",
+    "pe_none": "No presentation effects defined.",
+    "pe_create": "Create effect",
+    "pe_configure": "Edit effect",
+    "pe_delete": "Delete effect",
+    "pe_created": "Presentation effect created.",
+    "pe_configured": "Presentation effect updated.",
+    "pe_deleted": "Presentation effect deleted.",
+    "pe_delete_confirm": (
+        "Delete effect {effect}? References in this map's regions, world "
+        "rules or scenes will stop resolving."
+    ),
+    "pe_referenced_by": "Referenced by attacks",
+    "pe_help": (
+        "Transient: lasts durationTicks and expires. Persistent: stays while "
+        "its source is active (e.g. a region); no duration, no camera shake "
+        "and no fade. The effect needs at least one primitive. Reference it "
+        "by id from attacks, regions, world rules and scenes."
+    ),
+    "pe_id": "Effect id",
+    "pe_lifetime": "Lifetime",
+    "pe_lifetime_transient": "Transient",
+    "pe_lifetime_persistent": "Persistent",
+    "pe_duration": "Duration (ticks)",
+    "pe_priority": "Priority",
+    "pe_primitive_shake": "Camera shake",
+    "pe_primitive_overlay": "Color overlay",
+    "pe_primitive_vision": "Vision mask",
+    "pe_primitive_fade": "Fade",
+    "pe_amplitude": "Amplitude (px)",
+    "pe_overlay_mode": "Mode",
+    "pe_overlay_mode_constant": "Constant",
+    "pe_overlay_mode_linearFadeOut": "Linear fade-out",
+    "pe_overlay_mode_pulse": "Pulse",
+    "pe_overlay_pulse_period": "Pulse period (ticks)",
+    "pe_overlay_layer": "Layer",
+    "pe_overlay_layer_world": "World (under HUD)",
+    "pe_overlay_layer_final": "Final (over everything)",
+    "pe_color": "Color (RGBA)",
+    "pe_inner_radius": "Inner radius (px)",
+    "pe_outer_radius": "Outer radius (px)",
+    "pe_outside_alpha": "Outside alpha",
+    "pe_fade_start_alpha": "Start alpha",
+    "pe_fade_end_alpha": "End alpha",
     "attack_timeline_info": (
         "Each span is an animation frame and circles are events. Click to inspect a tick."
     ),

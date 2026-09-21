@@ -1975,6 +1975,27 @@ referências tipadas `itemId -> items` e `unlockQuestId -> quests`, e bloqueio
 de exclusão de Item usado por receita. Fora de escopo: crafting stations,
 receitas aprendidas fora de quests, probabilidades e timers de produção.
 
+# Estado atual — Studio presentation effects library editor
+
+O Content Studio tem biblioteca de primeira classe para `presentationEffects`
+(`python -m tools.content_studio`, modo MAP, painel "Efeitos de apresentação"):
+
+- `services/presentation_authoring_service.py`: CRUD + validação que espelha o
+  `ContentValidator` C++ (limites de duração/prioridade, primitivas obrigatórias,
+  persistent sem camera shake/fade, raio de vision mask, canais de cor).
+  Efeitos usam o namespace `effect.*`; exclusão é bloqueada enquanto ataques
+  referenciam o efeito (`presentationEffectId`). Referências em regiões, regras
+  de mundo e cenas vivem nos mapas e continuam validadas na compilação/carga.
+- `ui/presentation_library_widget.py`: lista com busca, editor em diálogo
+  (lifetime, duração, prioridade e grupos de primitivas camera shake / overlay /
+  vision mask / fade com toggles) e painel de detalhes. Integrado à
+  `main_window` (stack `_map_panels`, chave de seção `presentation_effects`).
+- Com isso, o fluxo de efeitos é 100% autoral pela UI: criar o efeito na
+  biblioteca, aplicar em ataques (combo), regiões (`environmentEffectId`),
+  regras de mundo (`playPresentationEffect`) e cenas (clipe na trilha
+  presentation); os ids `effect.map.transition_*` continuam convencionados e
+  opcionais.
+
 # Estado atual — authored map transition fades
 
 Transição de mapa com fade autoral, orquestrada pela `GameSession` e derivada de
