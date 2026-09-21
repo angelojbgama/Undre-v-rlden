@@ -3,17 +3,25 @@
 Mirrors the C++ ``ui`` registries and validation rules so authored screens
 compile on the first try: unknown components/binding paths/actions, duplicate
 node ids, meter rules and property/binding pairing are rejected at edit time.
+
+Builtin screens (shipped inside the C++ runtime and exported by the
+``ui_manifest --screens`` tool into ``assets/builtin_ui_screens.json``) are
+listed read-only; ``override_builtin`` copies one into the workspace, which
+shadows the builtin by id — the C++ overlay semantics, expressed as authoring.
 """
 
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition, JsonValue
 from . import ui_registry
 
 SCREEN_ID_PREFIX = "screen."
+BUILTIN_SCREEN_ASSET = Path(__file__).resolve().parent.parent / "assets" / "builtin_ui_screens.json"
 
 
 def _unset() -> object:
@@ -26,8 +34,10 @@ UNSET = _unset()
 class UiAuthoringService:
     """CRUD facade over the ``uiScreens`` category with C++-mirrored rules."""
 
-    def __init__(self, workspace: ContentWorkspace | None = None) -> None:
+    def __init__(self, workspace: ContentWorkspace | None = None,
+                 builtin_pack: dict | None = None) -> None:
         self.workspace = workspace
+        self.builtin_pack = builtin_pack if builtin_pack is not None else load_builtin_pack()
 
     def set_context(self, workspace: ContentWorkspace | None) -> None:
         self.workspace = workspace
@@ -59,6 +69,36 @@ class UiAuthoringService:
         assert created is not None
         workspace.replace_definition(created, data)
         result = workspace.find("uiScreens", normalized_id)
+        assert result is not None
+        return result
+
+    # -- builtin screens (read-only source, workspace overrides by id) ------
+
+    def builtin_screens(self) -> list[dict]:
+        return list(self.builtin_pack.get("uiScreens", []))
+
+    def builtin_find(self, screen_id: str) -> dict | None:
+        for screen in self.builtin_pack.get("uiScreens", []):
+            if screen.get("id") == screen_id:
+                return screen
+        return None
+
+    def is_builtin_only(self, screen_id: str) -> bool:
+        """True when the id ships with the engine and has no workspace copy."""
+        return self.find(screen_id) is None and self.builtin_find(screen_id) is not None
+
+    def override_builtin(self, screen_id: str) -> ContentDefinition:
+        """Copies a builtin screen into the workspace; the copy shadows it."""
+        workspace = self._require_workspace()
+        builtin = self.builtin_find(screen_id)
+        if builtin is None:
+            raise ValueError(f"screen is not a builtin screen: {screen_id}")
+        existing = self.find(screen_id)
+        if existing is not None:
+            return existing
+        created = workspace.create_definition("uiScreens", str(builtin["id"]))
+        workspace.replace_definition(created, copy.deepcopy(builtin))
+        result = self.find(screen_id)
         assert result is not None
         return result
 
@@ -388,8 +428,16 @@ class UiAuthoringService:
 
     def _require_definition(self, workspace: ContentWorkspace, category: str,
                             definition_id: str) -> None:
-        if workspace.find(category, definition_id) is None:
-            raise ValueError(f"{category} definition does not exist: {definition_id}")
+        if workspace.find(category, definition_id) is not None:
+            return
+        # Builtin visuals resolve like the C++ overlay does: the workspace
+        # shadows builtin definitions by id, so an override may reference the
+        # engine-shipped sprites/animations.
+        if category in ("visualImages", "staticSprites", "animations"):
+            for definition in self.builtin_pack.get(category, []):
+                if definition.get("id") == definition_id:
+                    return
+        raise ValueError(f"{category} definition does not exist: {definition_id}")
 
     def _validate_screen_data(self, workspace: ContentWorkspace,
                               data: dict[str, JsonValue]) -> list[str]:
@@ -503,3 +551,12 @@ def workspace_replace(workspace: ContentWorkspace | None, definition: ContentDef
     if workspace is None:
         raise ValueError("content workspace is unavailable")
     workspace.replace_definition(definition, data)
+
+
+def load_builtin_pack(path: Path | None = None) -> dict:
+    """Loads the builtin UI pack exported by ``ui_manifest --screens``."""
+    asset = path or BUILTIN_SCREEN_ASSET
+    if not asset.is_file():
+        return {}
+    with open(asset, encoding="utf-8") as handle:
+        return json.load(handle)

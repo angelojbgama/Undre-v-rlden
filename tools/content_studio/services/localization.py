@@ -250,6 +250,9 @@ TRANSLATIONS["pt-BR"].update({
     "ui_composer_new_node": "Novo nó",
     "ui_composer_node_id": "Id do nó",
     "ui_composer_remove_screen_question": "Remover a tela selecionada?",
+    "ui_composer_builtin": "builtin",
+    "ui_composer_override": "Editar cópia",
+    "ui_composer_builtin_readonly": "Esta tela é do engine. Use \"Editar cópia\" para criar uma versão editável.",
 })
 
 # depth-occlusion-localization-v1
@@ -303,6 +306,9 @@ TRANSLATIONS.setdefault("en-US", {}).update({
     "ui_composer_new_node": "New node",
     "ui_composer_node_id": "Node id",
     "ui_composer_remove_screen_question": "Remove the selected screen?",
+    "ui_composer_builtin": "builtin",
+    "ui_composer_override": "Edit copy",
+    "ui_composer_builtin_readonly": "This screen ships with the engine. Use \"Edit copy\" to create an editable version.",
 })
 
 for _english_key in ("en-US", "en"):

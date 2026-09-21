@@ -61,9 +61,15 @@ def resolve_position(layout: dict, content_size: tuple[int, int]) -> tuple[int, 
 
 
 class UiCanvas(QWidget):
-    """Data-driven preview of the selected screen at 272x224 logical pixels."""
+    """Data-driven preview of the selected screen at 272x224 logical pixels.
+
+    Nodes drag to move: the canvas keeps pending (dx, dy) shifts while the
+    button is held and emits ``node_moved`` with the subtree delta on
+    release; the widget commits through the authoring service.
+    """
 
     node_selected = Signal(str)
+    node_moved = Signal(str, int, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -71,10 +77,18 @@ class UiCanvas(QWidget):
         self._preview: dict[str, int] = {}
         self._zoom = DEFAULT_ZOOM
         self._node_rects: list[tuple[QRectF, str]] = []
+        self._drag_node_id: str | None = None
+        self._drag_start: tuple[float, float] | None = None
+        self._drag_moved = False
+        self._pending_shifts: dict[str, tuple[int, int]] = {}
         self.setFixedSize(LOGICAL_WIDTH * self._zoom, LOGICAL_HEIGHT * self._zoom)
 
     def set_screen_data(self, screen_data: dict | None) -> None:
         self._screen_data = screen_data
+        self._pending_shifts.clear()
+        self._drag_node_id = None
+        self._drag_start = None
+        self._drag_moved = False
         self.update()
 
     def set_preview_values(self, values: dict[str, int]) -> None:
@@ -95,8 +109,43 @@ class UiCanvas(QWidget):
         for rect, node_id in reversed(self._node_rects):
             if rect.contains(position):
                 self.node_selected.emit(node_id)
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self._drag_node_id = node_id
+                    self._drag_start = (position.x(), position.y())
+                    self._drag_moved = False
                 return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if self._drag_node_id is None or self._drag_start is None:
+            super().mouseMoveEvent(event)
+            return
+        position = event.position() / self._zoom
+        delta_x = int(round(position.x() - self._drag_start[0]))
+        delta_y = int(round(position.y() - self._drag_start[1]))
+        if delta_x == 0 and delta_y == 0:
+            return
+        self._drag_moved = True
+        self._pending_shifts[self._drag_node_id] = (delta_x, delta_y)
+        self.update()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._drag_node_id is not None and self._drag_moved):
+            shift = self._pending_shifts.pop(self._drag_node_id, (0, 0))
+            node_id = self._drag_node_id
+            self._drag_node_id = None
+            self._drag_start = None
+            self._drag_moved = False
+            self.update()
+            self.node_moved.emit(node_id, shift[0], shift[1])
+            super().mouseReleaseEvent(event)
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_node_id = None
+            self._drag_start = None
+            self._drag_moved = False
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
@@ -107,8 +156,13 @@ class UiCanvas(QWidget):
             self._paint_node(painter, self._screen_data.get("root", {}), None)
         painter.end()
 
-    def _paint_node(self, painter: QPainter, node: dict, parent: dict | None) -> None:
-        layout = node.get("layout", {})
+    def _paint_node(self, painter: QPainter, node: dict, parent: dict | None,
+                    shift: tuple[int, int] = (0, 0)) -> None:
+        layout = dict(node.get("layout", {}))
+        pending = self._pending_shifts.get(str(node.get("id", "")), (0, 0))
+        total = (shift[0] + pending[0], shift[1] + pending[1])
+        layout["offsetX"] = int(layout.get("offsetX", 0)) + total[0]
+        layout["offsetY"] = int(layout.get("offsetY", 0)) + total[1]
         content = (LOGICAL_WIDTH, LOGICAL_HEIGHT)
         x, y = resolve_position(layout, content)
         zoom = self._zoom
@@ -127,7 +181,7 @@ class UiCanvas(QWidget):
             painter.setPen(QColor(150, 160, 200))
             painter.drawText(QPointF(x + 2, y + 9), node_id)
             for child in node.get("children", []):
-                self._paint_node(painter, child, node)
+                self._paint_node(painter, child, node, total)
             return
 
         if component == "meter":
@@ -250,8 +304,12 @@ class UiComposerWidget(QWidget):
         self.remove_screen_button = QPushButton(self.translator("ui_composer_remove_screen"))
         self.remove_screen_button.setIcon(icon("delete"))
         self.remove_screen_button.clicked.connect(self._remove_screen)
+        self.override_button = QPushButton(self.translator("ui_composer_override"))
+        self.override_button.setEnabled(False)
+        self.override_button.clicked.connect(self._override_builtin)
         screen_buttons.addWidget(self.add_screen_button)
         screen_buttons.addWidget(self.remove_screen_button)
+        screen_buttons.addWidget(self.override_button)
         left_layout.addWidget(QLabel(self.translator("ui_composer_screens")))
         left_layout.addWidget(self.screens_list, 1)
         left_layout.addLayout(screen_buttons)
@@ -274,6 +332,7 @@ class UiComposerWidget(QWidget):
         center_layout = QVBoxLayout(center)
         self.canvas = UiCanvas()
         self.canvas.node_selected.connect(self._select_node)
+        self.canvas.node_moved.connect(self._commit_node_move)
         center_layout.addWidget(self.canvas, 0, Qt.AlignmentFlag.AlignHCenter)
         preview_form = QFormLayout()
         self._preview_spins: dict[str, QSpinBox] = {}
@@ -323,11 +382,25 @@ class UiComposerWidget(QWidget):
         self.screens_list.blockSignals(True)
         self.screens_list.clear()
         selected_row = -1
-        for index, screen in enumerate(self.service.screens()):
+        row = 0
+        workspace_ids: set[str] = set()
+        for screen in self.service.screens():
+            workspace_ids.add(screen.definition_id)
             item = QListWidgetItem(str(screen.data.get("id", "?")))
             self.screens_list.addItem(item)
             if screen.definition_id == self._selected_screen:
-                selected_row = index
+                selected_row = row
+            row += 1
+        for screen in self.service.builtin_screens():
+            screen_id = str(screen.get("id", "?"))
+            if screen_id in workspace_ids:
+                continue
+            item = QListWidgetItem(f"{screen_id} — {self.translator('ui_composer_builtin')}")
+            item.setForeground(Qt.GlobalColor.gray)
+            self.screens_list.addItem(item)
+            if screen_id == self._selected_screen:
+                selected_row = row
+            row += 1
         self.screens_list.blockSignals(False)
         if selected_row >= 0:
             self.screens_list.setCurrentRow(selected_row)
@@ -349,6 +422,13 @@ class UiComposerWidget(QWidget):
             self._selected_screen = screens[row].definition_id
         else:
             self._selected_screen = None
+        if self._selected_screen is None and 0 <= row < self.screens_list.count():
+            item_text = self.screens_list.item(row).text()
+            if " — " in item_text:
+                self._selected_screen = item_text.split(" — ", 1)[0]
+        self.override_button.setEnabled(
+            self._selected_screen is not None
+            and self.service.is_builtin_only(self._selected_screen))
         self._selected_node = None
         self._reload_hierarchy()
         self._reload_inspector()
@@ -366,6 +446,43 @@ class UiComposerWidget(QWidget):
             return
         self._selected_screen = base_id if base_id.startswith("screen.") else f"screen.{base_id}"
         self.refresh()
+
+    def _override_builtin(self) -> None:
+        if not self._selected_screen:
+            return
+        try:
+            self.service.override_builtin(self._selected_screen)
+        except ValueError as error:
+            QMessageBox.warning(self, self.tr("UI Composer"), str(error))
+            return
+        self.refresh()
+        for row in range(self.screens_list.count()):
+            if self.screens_list.item(row).text() == self._selected_screen:
+                self.screens_list.setCurrentRow(row)
+                break
+
+    def _commit_node_move(self, node_id: str, delta_x: int, delta_y: int) -> None:
+        """Applies a canvas drag to the node and its subtree in one undo step."""
+        screen = self.service.find(self._selected_screen) if self._selected_screen else None
+        if screen is None:
+            return
+
+        def shift_subtree(node: dict, dx: int, dy: int) -> None:
+            layout = node.get("layout", {})
+            layout["offsetX"] = int(layout.get("offsetX", 0)) + dx
+            layout["offsetY"] = int(layout.get("offsetY", 0)) + dy
+            for child in node.get("children", []):
+                shift_subtree(child, dx, dy)
+
+        import copy as copy_module
+        data = copy_module.deepcopy(screen.data)
+        node = self._find_node(data.get("root", {}), node_id)
+        if node is None:
+            return
+        shift_subtree(node, delta_x, delta_y)
+        self.service.workspace.replace_definition(screen, data)
+        self._reload_validation()
+        self._update_canvas()
 
     def _remove_screen(self) -> None:
         if not self._selected_screen:
@@ -608,6 +725,10 @@ class UiComposerWidget(QWidget):
     # -- commit handlers ---------------------------------------------------
 
     def _try(self, operation) -> None:
+        if self._selected_screen and self.service.is_builtin_only(self._selected_screen):
+            QMessageBox.warning(self, self.tr("UI Composer"),
+                                self.translator("ui_composer_builtin_readonly"))
+            return
         try:
             operation()
         except ValueError as error:

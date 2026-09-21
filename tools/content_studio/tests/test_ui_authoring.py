@@ -155,6 +155,39 @@ class UiAuthoringServiceTests(unittest.TestCase):
             self.assertEqual([], screen.data["root"]["children"])
 
 
+class BuiltinScreensTests(unittest.TestCase):
+    def test_builtin_asset_matches_cpp_export(self) -> None:
+        tool = find_cpp_tool(REPOSITORY, "ui_manifest")
+        if tool is None:
+            self.skipTest("ui_manifest tool is not built")
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "builtin.json"
+            subprocess.run([str(tool), "--screens", str(out)],
+                           capture_output=True, text=True, check=True)
+            generated = json.loads(out.read_text(encoding="utf-8"))
+        from tools.content_studio.services.ui_authoring_service import BUILTIN_SCREEN_ASSET
+        checked_in = json.loads(BUILTIN_SCREEN_ASSET.read_text(encoding="utf-8"))
+        self.assertEqual(generated, checked_in)
+
+    def test_override_builtin_creates_editable_workspace_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            service = UiAuthoringService(make_workspace(root))
+            self.assertTrue(service.is_builtin_only("screen.hud"))
+            override = service.override_builtin("screen.hud")
+            self.assertEqual("hud.health", override.data["root"]["id"])
+            self.assertFalse(service.is_builtin_only("screen.hud"))
+            service.set_layout("screen.hud", "hud.health", offset_x=20)
+            self.assertEqual(20, service.find("screen.hud").data["root"]["layout"]["offsetX"])
+            self.assertEqual(3, service.builtin_find("screen.hud")["root"]["layout"]["offsetX"])
+            # builtin visuals resolve for overrides, like the C++ overlay
+            service.set_meter("screen.hud", "hud.health",
+                              sprites={"full": "spr.hud.heart"})
+            service.workspace.save_all()
+            reloaded = ContentWorkspace.open(root)
+            self.assertIsNotNone(reloaded.find("uiScreens", "screen.hud"))
+
+
 class UiManifestSyncTests(unittest.TestCase):
     def test_python_registry_mirror_matches_cpp_manifest(self) -> None:
         tool = find_cpp_tool(REPOSITORY, "ui_manifest")

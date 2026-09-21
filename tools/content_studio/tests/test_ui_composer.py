@@ -69,6 +69,26 @@ class UiComposerWidgetTests(unittest.TestCase):
             self.assertEqual("lowHealth",
                              screen.data["root"]["children"][0]["states"][0]["id"])
 
+    def test_composer_lists_builtin_and_drag_commit_moves_subtree(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        with tempfile.TemporaryDirectory() as directory:
+            widget = UiComposerWidget(make_workspace(Path(directory)), Translator("pt-BR"))
+            # No workspace screens yet: the three builtin screens are listed.
+            self.assertEqual(3, widget.screens_list.count())
+            self.assertTrue(widget.service.is_builtin_only("screen.hud"))
+            widget.service.override_builtin("screen.hud")
+            widget.refresh()
+            widget.screens_list.setCurrentRow(0)
+            self.assertEqual("screen.hud", widget._selected_screen)
+            self.assertFalse(widget.service.is_builtin_only("screen.hud"))
+            widget.hierarchy.setCurrentItem(widget.hierarchy.topLevelItem(0))
+            # A canvas drag commits the subtree delta through the service.
+            widget._commit_node_move("hud.health", 5, 4)
+            node = widget.service.find("screen.hud").data["root"]
+            self.assertEqual(8, node["layout"]["offsetX"])
+            self.assertEqual(6, node["layout"]["offsetY"])
+
     def test_canvas_geometry_is_the_logical_screen(self) -> None:
         app = QApplication.instance() or QApplication([])
         assert app is not None
