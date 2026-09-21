@@ -11469,6 +11469,281 @@ void testUiScreenBuiltinAndBindings() {
            "GameViewModelBindings maps the snapshot onto the binding registry");
 }
 
+void testUiStatesAndMeterVariants() {
+    using namespace underworld;
+    namespace content = game::content;
+    namespace presentation = game::presentation;
+    namespace ui = game::ui;
+
+    // Deterministic synthetic images: an 11x10 heart, a 20x8 liquid bar and a
+    // 16x16 orb liquid, all fully opaque.
+    const auto makeImage = [](int width, int height, std::uint8_t seed) {
+        core::ImageData data;
+        data.width = width;
+        data.height = height;
+        data.strideBytes = static_cast<std::size_t>(width) * 4;
+        data.pixels.resize(static_cast<std::size_t>(width) * height * 4);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const auto base =
+                    (static_cast<std::size_t>(y) * width + static_cast<std::size_t>(x)) * 4;
+                data.pixels[base] = static_cast<std::uint8_t>(seed + x * 7);
+                data.pixels[base + 1] = static_cast<std::uint8_t>(seed + y * 5);
+                data.pixels[base + 2] = static_cast<std::uint8_t>(seed / 2U);
+                data.pixels[base + 3] = 255;
+            }
+        }
+        return std::make_shared<const render::Image>(std::move(data));
+    };
+    auto heartImage = makeImage(11, 10, 40);
+    auto liquidImage = makeImage(20, 8, 90);
+    auto orbImage = makeImage(16, 16, 30);
+
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({{"spr.heart"}, std::make_shared<render::SpriteSheet>(heartImage),
+                 render::SpriteFrame{{0, 0, 11, 10}, {0, 0}, {0, 0}, false}});
+    sprites.add({{"spr.liquid"}, std::make_shared<render::SpriteSheet>(liquidImage),
+                 render::SpriteFrame{{0, 0, 20, 8}, {0, 0}, {0, 0}, false}});
+    sprites.add({{"spr.orb"}, std::make_shared<render::SpriteSheet>(orbImage),
+                 render::SpriteFrame{{0, 0, 16, 16}, {0, 0}, {0, 0}, false}});
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    const ui::UiVisualContext visuals{sprites, font};
+
+    struct HealthResolver final : ui::UiBindingResolver {
+        int health{};
+        int maximum{};
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override {
+            if (path == ui::BindingPath::playerHealthCurrent) { return health; }
+            if (path == ui::BindingPath::playerHealthMax) { return maximum; }
+            if (path == ui::BindingPath::playerHealthPercentage) {
+                return maximum > 0
+                           ? std::optional<std::int64_t>(
+                                 (static_cast<std::int64_t>(health) * 100) / maximum)
+                           : std::nullopt;
+            }
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    };
+
+    const auto makeMeterScreen = [](ui::MeterMode mode, const simulation::DefinitionId& spriteId,
+                                    int spacing) {
+        ui::ScreenDefinition screen;
+        screen.id = {"screen.hud"};
+        screen.kind = ui::ScreenKind::hud;
+        ui::NodeDefinition node;
+        node.id = "hud.health";
+        node.component = ui::ComponentKind::meter;
+        node.layout.offsetX = 10;
+        node.layout.offsetY = 10;
+        ui::MeterDefinition meter;
+        meter.mode = mode;
+        meter.segmentValue = 1;
+        meter.sprites.full = spriteId;
+        meter.sprites.fill = spriteId;
+        meter.spacing = spacing;
+        meter.emptyRect = ui::MeterEmptyRect{core::ColorRGBA8{54, 30, 38, 255}, 0, 1, 9, 8};
+        node.meter = meter;
+        node.bindings.push_back({"value", ui::BindingPath::playerHealthCurrent});
+        node.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
+        screen.root = node;
+        return screen;
+    };
+
+    const ui::UiPresenter presenter;
+    constexpr core::ColorRGBA8 lowTint{255, 64, 64, 255};
+    constexpr core::ColorRGBA8 background{8, 10, 16, 255};
+
+    // 1) Renderer tint primitive: multiplicative channels on an opaque target.
+    {
+        render::Framebuffer target(4, 1);
+        render::Renderer2D renderer(target);
+        target.clear({255, 255, 255, 255});
+        renderer.drawImageRegionTinted(*heartImage, {0, 0, 1, 1}, 0, 0, {255, 0, 0});
+        renderer.drawImageRegionTinted(*heartImage, {1, 0, 1, 1}, 1, 0, {127, 127, 127});
+        const auto full = framebufferPixel(target, 0, 0);
+        const auto half = framebufferPixel(target, 1, 0);
+        const auto heartPixel = heartImage->pixel(0, 0);
+        const auto halfPixel = heartImage->pixel(1, 0);
+        expect(full.r == heartPixel.r && full.g == 0 && full.b == 0 && full.a == 255,
+               "tinted draw keeps the unmasked channel and zeroes the others");
+        expect(half.r == static_cast<std::uint8_t>((halfPixel.r * 127 + 127) / 255),
+               "tinted draw rounds channel multiplication deterministically");
+    }
+
+    // 2) Conditional states: lowHealth tint below the authored threshold.
+    {
+        auto screen = makeMeterScreen(ui::MeterMode::segmented, {"spr.heart"}, 1);
+        screen.root.layout.offsetX = 3;
+        screen.root.layout.offsetY = 2;
+        ui::StateDefinition low;
+        low.id = "lowHealth";
+        low.condition = ui::StateCondition{ui::BindingPath::playerHealthPercentage,
+                                           ui::ConditionOperator::lessOrEqual, 30};
+        low.visual.tint = lowTint;
+        screen.root.states.push_back(low);
+
+        HealthResolver healthy;
+        healthy.health = 3;
+        healthy.maximum = 5;
+        render::Framebuffer expected(272, 224);
+        render::Framebuffer actual(272, 224);
+        render::Renderer2D expectedRenderer(expected);
+        render::Renderer2D actualRenderer(actual);
+        expected.clear(background);
+        actual.clear(background);
+        for (int index = 0; index < 5; ++index) {
+            if (index < 3) {
+                expectedRenderer.drawImage(*heartImage, 3 + index * 12, 2);
+            } else {
+                expectedRenderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
+            }
+        }
+        presenter.render(screen, healthy, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "states above their threshold leave the authored render unchanged");
+
+        HealthResolver lowResolver;
+        lowResolver.health = 1;
+        lowResolver.maximum = 5;
+        const auto& heartSprite = sprites.require({"spr.heart"});
+        for (int index = 0; index < 5; ++index) {
+            if (index < 1) {
+                render::drawSpriteTinted(expectedRenderer, *heartSprite.sheet, heartSprite.frame,
+                                         {3 + index * 12, 2}, lowTint);
+            } else {
+                expectedRenderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
+            }
+        }
+        presenter.render(screen, lowResolver, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "a matching lowHealth state tints full meter segments only");
+    }
+
+    // 3) Visibility state hides the node at zero health.
+    {
+        auto screen = makeMeterScreen(ui::MeterMode::segmented, {"spr.heart"}, 1);
+        screen.root.layout.offsetX = 3;
+        screen.root.layout.offsetY = 2;
+        ui::StateDefinition dead;
+        dead.id = "dead";
+        dead.condition = ui::StateCondition{ui::BindingPath::playerHealthCurrent,
+                                            ui::ConditionOperator::equal, 0};
+        dead.visual.visible = false;
+        screen.root.states.push_back(dead);
+
+        HealthResolver zero;
+        zero.health = 0;
+        zero.maximum = 5;
+        render::Framebuffer expected(272, 224);
+        render::Framebuffer actual(272, 224);
+        render::Renderer2D actualRenderer(actual);
+        expected.clear(background);
+        actual.clear(background);
+        presenter.render(screen, zero, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "a state with visible=false hides the whole node");
+    }
+
+    // 4) Bar variant: fillHorizontal crops the liquid sprite by the value.
+    {
+        auto screen = makeMeterScreen(ui::MeterMode::fillHorizontal, {"spr.liquid"}, 0);
+        HealthResolver resolver;
+        resolver.health = 3;
+        resolver.maximum = 5;
+        render::Framebuffer expected(272, 224);
+        render::Framebuffer actual(272, 224);
+        render::Renderer2D expectedRenderer(expected);
+        render::Renderer2D actualRenderer(actual);
+        expected.clear(background);
+        actual.clear(background);
+        expectedRenderer.drawImageRegion(*liquidImage, {0, 0, 12, 8}, 10, 10);
+        presenter.render(screen, resolver, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "fillHorizontal meters render as a bar cropped by the value");
+    }
+
+    // 5) Orb variant: fillVertical grows bottom-to-top inside round liquid art.
+    {
+        auto screen = makeMeterScreen(ui::MeterMode::fillVertical, {"spr.orb"}, 0);
+        HealthResolver resolver;
+        resolver.health = 1;
+        resolver.maximum = 4;
+        render::Framebuffer expected(272, 224);
+        render::Framebuffer actual(272, 224);
+        render::Renderer2D expectedRenderer(expected);
+        render::Renderer2D actualRenderer(actual);
+        expected.clear(background);
+        actual.clear(background);
+        expectedRenderer.drawImageRegion(*orbImage, {0, 12, 16, 4}, 10, 10 + 12);
+        presenter.render(screen, resolver, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "fillVertical meters render bottom-up for orb-style liquids");
+    }
+
+    // 6) Proof 1b through the real content pipeline: a workspace that authors
+    // screen.hud as a bar overrides the builtin hearts by definition id only.
+    {
+        const auto workspaceRoot =
+            std::filesystem::temp_directory_path() / "underworld_ui_variant_switch";
+        std::error_code cleanup;
+        std::filesystem::remove_all(workspaceRoot, cleanup);
+        std::filesystem::create_directories(workspaceRoot, cleanup);
+        const char* barWorkspace = R"({
+            "format":"dungeon-underworld-content","version":7,
+            "visualImages":[{"id":"img.liquid","root":"gameAssets","relativePath":"ui/liquid.png"}],
+            "staticSprites":[{"id":"spr.liquid","imageId":"img.liquid","anchor":{"x":0,"y":0}}],
+            "uiScreens":[{"id":"screen.hud","kind":"hud","root":{"id":"hud.health","component":"meter",
+                "layout":{"anchor":"topLeft","offsetX":10,"offsetY":10},
+                "meter":{"mode":"fillHorizontal","segmentValue":1,"sprites":{"fill":"spr.liquid"},"spacing":0},
+                "bindings":[{"property":"value","source":"player.health.current"},
+                            {"property":"maximum","source":"player.health.max"}]}}]
+        })";
+        std::ofstream file(workspaceRoot / "content.json", std::ios::binary | std::ios::trunc);
+        file << barWorkspace;
+        file.close();
+
+        content::ContentSourceSelection selection;
+        selection.kind = content::ContentSourceKind::workspaceDirectory;
+        selection.workspaceRoot = workspaceRoot;
+        const auto source = content::loadContentSource(selection);
+        expect(source && source.content->registry.uiScreens().find({"screen.hud"}) != nullptr,
+               "the workspace content source resolves the overridden hud screen");
+        if (source) {
+            HealthResolver resolver;
+            resolver.health = 3;
+            resolver.maximum = 5;
+            render::Framebuffer expected(272, 224);
+            render::Framebuffer actual(272, 224);
+            render::Renderer2D expectedRenderer(expected);
+            render::Renderer2D actualRenderer(actual);
+            expected.clear(background);
+            actual.clear(background);
+            expectedRenderer.drawImageRegion(*liquidImage, {0, 0, 12, 8}, 10, 10);
+            const ui::ScreenDefinition& hudScreen =
+                *source.content->registry.uiScreens().find({"screen.hud"});
+            presenter.render(hudScreen, resolver, visuals, actualRenderer);
+            expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                              actual.pixels().begin(), actual.pixels().end()),
+                   "switching hearts to a bar happens through the definition only");
+        }
+        std::filesystem::remove_all(workspaceRoot, cleanup);
+    }
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -11974,6 +12249,7 @@ int main() {
         testUiScreenContentPipeline();
         testUiPresenterHudHeartParity();
         testUiScreenBuiltinAndBindings();
+        testUiStatesAndMeterVariants();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

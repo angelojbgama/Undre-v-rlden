@@ -1,6 +1,6 @@
 # UI Engine & UI Composer — decisão e desenho
 
-Status: **DECISÃO REGISTRADA — NÃO IMPLEMENTADA.** Aprovação do dono do projeto
+Status: **EM IMPLEMENTAÇÃO POR BLOCOS** (decisão aprovada em 2026-09-20). Aprovação do dono do projeto
 (2026-09-20) para evoluir a interface do jogo para conteúdo authored, modelável
 visualmente no Content Studio. Este documento preserva a decisão, define o modelo
 de dados mínimo, a arquitetura runtime, o desenho do Composer no Studio e a ordem
@@ -282,21 +282,31 @@ documentos vivos por documento, dirty state e save canônico atômico.
 
 ```text
 UI-0  este documento                                        DECISÃO REGISTRADA
-UI-1  núcleo C++: DTOs + decoder/encoder v7 + validação +
-      compile para UIDocument; componentes group/panel/
-      image/animatedImage/text/meter; Binding/Action
-      Registry + manifests; HUD de corações migrado para
-      definição com visual idêntico            (prova 1a)
-UI-2  estados condicionais + variantes barra/orbe
-      alternando somente a definição           (prova 1b)
+UI-1a núcleo de dados: DTOs + decoder/encoder v7 +
+      validação + ScreenCatalog no GameContentRegistry;
+      Binding/Action Registry HUD              CONCLUÍDO
+UI-1b runtime de apresentação (UiPresenter +
+      GameViewModelBindings); HUD de corações migrado
+      para definição com visual idêntico       (prova 1a) CONCLUÍDO
+UI-2  estados condicionais (tint/visibilidade) + variantes
+      barra (fillHorizontal) e orbe (fillVertical)
+      alternando somente a definição           (prova 1b) CONCLUÍDO
 UI-3  UI Composer no Studio (hierarchy/canvas/inspector/
-      preview data) + round-trip + validação espelhada
+      preview data) + round-trip + validação espelhada      PENDENTE
 UI-4  slot/repeater/grid + migração do overlay de
-      inventário/crafting                      (prova 2)
+      inventário/crafting                      (prova 2)   PENDENTE
 UI-5  screen/navigation quando existir o primeiro menu
       real (ex.: tela de save/load); conecta com a trilha
-      Scene/Game-State do roadmap
+      Scene/Game-State do roadmap                          PENDENTE
 ```
+
+Notas de implementação vigentes (UI-1/2): o tint do delta visual é
+multiplicativo (`drawImageRegionTinted`, arredondamento determinístico);
+o alpha do delta visual e o `animatedImage` permanecem deferidos até o
+primeiro uso real; `fillHorizontal` cresce da esquerda para a direita e
+`fillVertical` cresce de baixo para cima (líquido circular = orbe); a
+troca corações/barra/orbe acontece authoring `screen.hud` no workspace,
+que sobrescreve o builtin por id sem tocar em C++.
 
 Cada bloco termina em: testes portáteis passando, `content_check` cobrindo as
 rejeições novas, e gates Win32 (`build.bat`, smoke) quando tocar apresentação.

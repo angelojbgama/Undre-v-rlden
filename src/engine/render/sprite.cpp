@@ -27,6 +27,16 @@ void drawSprite(Renderer2D& renderer, const SpriteSheet& sheet, const SpriteFram
     }
 }
 
+void drawSpriteTinted(Renderer2D& renderer, const SpriteSheet& sheet, const SpriteFrame& frame,
+                      core::PointI logicalPosition, core::ColorRGBA8 tint,
+                      bool additionalFlipX) {
+    const bool flipX = frame.flipX != additionalFlipX;
+    const int effectiveAnchorX = flipX ? frame.source.width - frame.anchor.x : frame.anchor.x;
+    const int drawX = logicalPosition.x - effectiveAnchorX + frame.drawOffset.x;
+    const int drawY = logicalPosition.y - frame.anchor.y + frame.drawOffset.y;
+    renderer.drawImageRegionTinted(sheet.image(), frame.source, drawX, drawY, tint, flipX);
+}
+
 void drawSpriteSilhouette(Renderer2D& renderer, const SpriteSheet& sheet,
                           const SpriteFrame& frame, core::PointI logicalPosition,
                           core::ColorRGBA8 color) {

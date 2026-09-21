@@ -2060,7 +2060,7 @@ Não implementar: custos genéricos (MP/stamina), durabilidade de flechas,
 inimigos com ammo ou economia de recuperação automática; essas ficam como
 conteúdo/fases futuras.
 
-# Estado atual — UI Engine / UI Composer (decisão registrada, NÃO implementada)
+# Estado atual — UI Engine / UI Composer (blocos UI-1a, UI-1b e UI-2 concluídos)
 
 Decisão aprovada pelo dono do projeto (2026-09-20): a interface do jogo (HUD,
 inventário, overlays e futuros menus) passa a ser conteúdo authored modelável no
@@ -2084,10 +2084,13 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   fixas contra constantes.
 - Estado de UI (foco, seleção, transitórios) nunca é persistido no DSAV.
 - Ativação de telas permanece em C++ (roteamento modal atual) até o bloco UI-5.
-- Ordem acordada: UI-1 núcleo C++ + HUD de corações como definição (prova 1a) →
-  UI-2 estados + variantes barra/orbe por definição (prova 1b) → UI-3 UI Composer
-  no Studio → UI-4 repeater/slot + migração do overlay de inventário (prova 2) →
-  UI-5 screen/navigation com o primeiro menu real. As provas da seção 10 de
-  `docs/UI_ENGINE.md` são gates de aceite; prova reprovada bloqueia o bloco
-  seguinte. Themes, timeline de animação, scroll/tooltip e telas de conteúdo
-  inexistente (spellbook etc.) permanecem deferidos até caso real.
+- Estado: UI-1a (dados v7 + catálogos), UI-1b (UiPresenter + corações do HUD
+  como definição, prova 1a com paridade de pixels) e UI-2 (estados condicionais
+  com tint multiplicativo + variantes barra/orbe por fillHorizontal/fillVertical,
+  prova 1b via workspace sobrescrevendo `screen.hud`) concluídos e provados.
+  Pendentes: UI-3 (UI Composer no Studio), UI-4 (repeater/slot + overlay de
+  inventário, prova 2) e UI-5 (screen/navigation com o primeiro menu real).
+  Deferidos até caso real: alpha no delta visual, animatedImage no presenter,
+  themes, timeline de animação, scroll/tooltip e telas de conteúdo inexistente
+  (spellbook etc.). As provas da seção 10 de `docs/UI_ENGINE.md` são gates de
+  aceite; prova reprovada bloqueia o bloco seguinte.

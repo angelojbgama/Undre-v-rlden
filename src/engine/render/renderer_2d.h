@@ -24,6 +24,10 @@ public:
     void drawImage(const Image& image, int destinationX, int destinationY);
     void drawImageRegion(const Image& image, core::RectI source, int destinationX,
                          int destinationY);
+    // Multiplies each source channel by the tint (255 = unchanged) before the
+    // straight-alpha source-over blend. First consumer: authored UI states.
+    void drawImageRegionTinted(const Image& image, core::RectI source, int destinationX,
+                               int destinationY, core::ColorRGBA8 tint, bool flipX = false);
     void drawImageRegionFlipX(const Image& image, core::RectI source, int destinationX,
                               int destinationY);
     // Draws the sprite's alpha coverage as a flat color: used for mystery

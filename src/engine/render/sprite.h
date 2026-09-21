@@ -45,6 +45,10 @@ struct PixelMaskView final {
 
 void drawSprite(Renderer2D& renderer, const SpriteSheet& sheet, const SpriteFrame& frame,
                 core::PointI logicalPosition, bool additionalFlipX = false);
+// drawSprite with a multiplicative tint applied to the sprite pixels.
+void drawSpriteTinted(Renderer2D& renderer, const SpriteSheet& sheet, const SpriteFrame& frame,
+                      core::PointI logicalPosition, core::ColorRGBA8 tint,
+                      bool additionalFlipX = false);
 // Draws the sprite's alpha coverage in a flat color (mystery crafting entries).
 void drawSpriteSilhouette(Renderer2D& renderer, const SpriteSheet& sheet,
                           const SpriteFrame& frame, core::PointI logicalPosition,
