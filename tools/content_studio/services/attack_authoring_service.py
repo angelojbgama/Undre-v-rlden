@@ -37,6 +37,7 @@ EDITABLE_FIELDS = (
     "projectileDefinitionId",
     "timeline",
     "ammo",
+    "presentationEffectId",
 )
 
 @dataclass(
@@ -339,6 +340,12 @@ class AttackAuthoringService:
             kind,
         )
 
+        presentation_effect_id = (
+            self._validate_presentation_effect(
+                data.get("presentationEffectId"),
+            )
+        )
+
         melee_hitboxes = data.get(
             "meleeHitboxes"
         )
@@ -360,6 +367,9 @@ class AttackAuthoringService:
                 projectile_definition_id=None,
                 timeline=timeline,
                 ammo=None,
+                presentation_effect_id=(
+                    presentation_effect_id
+                ),
             )
 
         if (
@@ -384,6 +394,9 @@ class AttackAuthoringService:
             projectile_definition_id=projectile_id,
             timeline=timeline,
             ammo=ammo,
+            presentation_effect_id=(
+                presentation_effect_id
+            ),
         )
 
     def _validate_ammo(
@@ -433,6 +446,33 @@ class AttackAuthoringService:
             "itemId": item_id,
             "amount": int(amount),
         }
+
+    def _validate_presentation_effect(
+        self,
+        presentation_effect_id: object,
+    ) -> str | None:
+        if presentation_effect_id is None:
+            return None
+
+        if (
+            not isinstance(presentation_effect_id, str)
+            or not presentation_effect_id
+        ):
+            raise ValueError(
+                "attack presentationEffectId must be a "
+                "non-empty string or None"
+            )
+
+        if self.workspace.find(
+            "presentationEffects",
+            presentation_effect_id,
+        ) is None:
+            raise ValueError(
+                f"unknown presentation effect: "
+                f"{presentation_effect_id}"
+            )
+
+        return presentation_effect_id
 
     def _validate_timeline(
         self,
@@ -620,6 +660,7 @@ class AttackAuthoringService:
         projectile_definition_id: object,
         timeline: list[dict[str, object]],
         ammo: dict[str, object] | None,
+        presentation_effect_id: str | None,
     ) -> dict[str, object]:
         # Preserve shapes and any field this editor does not own so a
         # roundtrip through the dialog never erases authored masks.
@@ -657,6 +698,11 @@ class AttackAuthoringService:
 
         if ammo is not None:
             normalized["ammo"] = ammo
+
+        if presentation_effect_id is not None:
+            normalized["presentationEffectId"] = (
+                presentation_effect_id
+            )
 
         normalized.update(
             preserved

@@ -191,8 +191,8 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                            [](const auto& value) { return value.id; });
     const auto craftingRecipes = ids(pack.craftingRecipes, report, ContentKind::craftingRecipe,
                                      [](const auto& value) { return value.id; });
-    static_cast<void>(ids(pack.presentationEffects, report, ContentKind::presentationEffect,
-                          [](const auto& value) { return value.id; }));
+    const auto presentationEffects = ids(pack.presentationEffects, report, ContentKind::presentationEffect,
+                                         [](const auto& value) { return value.id; });
     const auto visualImages = ids(pack.visualImages, report, ContentKind::visualImage,
                                   [](const auto& value) { return value.id; });
     const auto staticSprites = ids(pack.staticSprites, report, ContentKind::staticSprite,
@@ -602,6 +602,9 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 error(report, ContentKind::attack, value.id, "invalid_value", "attack ammo amount must be positive", "ammo.amount");
             ammoAttacks.insert(std::string(value.id.value()));
         }
+        if (value.presentationEffectId && !contains(presentationEffects, *value.presentationEffectId))
+            error(report, ContentKind::attack, value.id, "unknown_reference",
+                  "attack presentation effect does not exist", "presentationEffectId");
     }
     for (const auto& value : pack.behaviors) {
         if (value.detectionRangePixels < 0 || value.disengageRangePixels < value.detectionRangePixels)

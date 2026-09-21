@@ -1975,6 +1975,22 @@ referências tipadas `itemId -> items` e `unlockQuestId -> quests`, e bloqueio
 de exclusão de Item usado por receita. Fora de escopo: crafting stations,
 receitas aprendidas fora de quests, probabilidades e timers de produção.
 
+# Estado atual — attack presentation cues
+
+Cue de apresentação por ataque implementado de ponta a ponta, apresentação
+permanece derivada de eventos e nunca é autoridade de gameplay:
+
+- `AttackDefinition.presentationEffectId` (Content JSON `attacks[].presentationEffectId`,
+  opcional): efeito da biblioteca `presentationEffects` requisitado via
+  `PresentationEffectRequested` quando um golpe desse ataque conecta — resolução
+  melee (espada do player, inimigos, objetos destrutíveis) ou impacto de projétil
+  em alvo (`CombatResolution.attackDefinitionId` atribui o ataque de origem).
+  `PresentationEffectSystem::play` já reinicia o transiente ativo, então múltiplos
+  alvos no mesmo tick colapsam num único efeito. Validação de conteúdo rejeita
+  referência a efeito inexistente; inimigos podem usar (diferente do ammo).
+- Studio: combo "Efeito de apresentação" no editor de ataques (ambos os kinds),
+  populado pela biblioteca `presentationEffects`; validação espelha o C++.
+
 # Estado atual — item consumption & projectile drops loop
 
 Loop autoral de munição implementado de ponta a ponta, interpretado pelo runtime

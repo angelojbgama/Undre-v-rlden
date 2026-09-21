@@ -90,6 +90,9 @@ struct CombatResolution final {
     bool defeated{};
     int requestedKnockbackX{};
     int requestedKnockbackY{};
+    // Attack definition that produced this resolution. Filled by projectile
+    // hits; melee callers convey the definition to the session directly.
+    simulation::DefinitionId attackDefinitionId{};
 };
 
 [[nodiscard]] bool factionsCanDamage(Faction attacker, Faction target) noexcept;

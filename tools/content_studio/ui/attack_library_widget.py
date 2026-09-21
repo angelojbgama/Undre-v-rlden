@@ -3416,6 +3416,36 @@ class AttackDefinitionDialog(QDialog):
             ),
         )
 
+        self.presentation_effect = QComboBox()
+
+        self.presentation_effect.addItem(
+            self.translate(
+                "attack_presentation_effect_none"
+            ),
+            "",
+        )
+
+        for effect in sorted(
+            self.workspace.definitions(
+                "presentationEffects"
+            ),
+            key=lambda entry: entry.definition_id,
+        ):
+            self.presentation_effect.addItem(
+                effect.definition_id,
+                effect.definition_id,
+            )
+
+        form.addRow(
+            self.translate(
+                "attack_presentation_effect"
+            ),
+            self._with_info(
+                self.presentation_effect,
+                "attack_presentation_effect_info",
+            ),
+        )
+
         self._refresh_projectiles()
 
         timeline_group = QGroupBox(
@@ -4011,6 +4041,21 @@ class AttackDefinitionDialog(QDialog):
 
         self.ammo_amount.setValue(
             int(ammo.get("amount", 1) or 1)
+        )
+
+        self.presentation_effect.setCurrentIndex(
+            max(
+                0,
+                self.presentation_effect.findData(
+                    str(
+                        data.get(
+                            "presentationEffectId",
+                            "",
+                        )
+                        or ""
+                    )
+                ),
+            )
         )
 
         melee = data.get("meleeHitboxes")
@@ -4953,6 +4998,15 @@ class AttackDefinitionDialog(QDialog):
                     "itemId": ammo_item,
                     "amount": self.ammo_amount.value(),
                 }
+
+        presentation_effect = str(
+            self.presentation_effect.currentData() or ""
+        )
+
+        if presentation_effect:
+            data["presentationEffectId"] = (
+                presentation_effect
+            )
 
         return data
 

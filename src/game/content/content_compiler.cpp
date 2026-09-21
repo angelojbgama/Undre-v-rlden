@@ -308,6 +308,9 @@ gameplay::AttackDefinition compileAttack(
     if (v.ammo) {
         result.ammo = gameplay::AttackAmmoCost{v.ammo->itemId, v.ammo->amount};
     }
+    if (v.presentationEffectId) {
+        result.presentationEffectId = v.presentationEffectId;
+    }
     for (const auto& authoredDirection : v.shapes) {
         for (const auto& frame : authoredDirection.frames) {
             auto& sample = collisionSample(

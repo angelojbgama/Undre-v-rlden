@@ -1,6 +1,7 @@
 #include "game/gameplay/crafting.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>

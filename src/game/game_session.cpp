@@ -464,8 +464,16 @@ void GameSession::advancePlayerAttack() {
     }
 }
 
-void GameSession::applyResolution(const gameplay::CombatResolution& resolution) {
+void GameSession::applyResolution(const gameplay::CombatResolution& resolution,
+                                  const gameplay::AttackDefinition* attack) {
     if (!resolution.damaged) { return; }
+    // Authored per-attack presentation: a hit from an attack that declares a
+    // presentation effect requests it. Presentation remains derived state;
+    // the system decides playback and the renderer composes the frame.
+    if (attack && attack->presentationEffectId) {
+        events_.emit(simulation::PresentationEffectRequested{
+            mapSession_->world()->id(), *attack->presentationEffectId});
+    }
     if (resolution.target == player_.entityHandle()) {
         activeSword_.enabled = false;
         if (playerAttack_) {
@@ -504,6 +512,10 @@ void GameSession::resolvePlayerSword() {
     const auto damage = effectivePlayerDamage(
         swordDefinition_->damage);
     const auto knockback = gameplay::directionVector(direction);
+    // The sword resolver only ever executes the player's sword definition;
+    // the ternary keeps the attribution tied to the executing attack.
+    const auto* attackDefinition =
+        playerAttack_ ? playerAttack_->definition : swordDefinition_;
 
     bool hasDebugBounds = false;
     world::AabbI debugBounds{};
@@ -581,7 +593,7 @@ void GameSession::resolvePlayerSword() {
             if (!visibleToObject) continue;
             applyResolution(combat_.resolve(
                 hitboxFor(*visibleToObject),
-                object.instance.combatTarget(), events_));
+                object.instance.combatTarget(), events_), attackDefinition);
         }
 
         resolveDoorAttacks(*tileVisible);
@@ -600,7 +612,7 @@ void GameSession::resolvePlayerSword() {
         for (auto& enemy : mapSession_->world()->enemies()) {
             applyResolution(combat_.resolve(
                 hitboxFor(*actorVisible),
-                enemy.instance.combatTarget(), events_));
+                enemy.instance.combatTarget(), events_), attackDefinition);
         }
     };
 
@@ -723,7 +735,8 @@ void GameSession::updateEnemies() {
                 active.definition->damage,
                 direction.x * active.definition->damage.knockbackPixels,
                 direction.y * active.definition->damage.knockbackPixels, true};
-            applyResolution(combat_.resolve(hitbox, player_.combatTarget(), events_));
+            applyResolution(combat_.resolve(hitbox, player_.combatTarget(), events_),
+                            active.definition);
         }
         if (active.finished) {
             combat_.finishAttack(active.key);
@@ -1341,7 +1354,13 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         std::vector<gameplay::CombatResolution> resolutions;
         projectiles_->update(map.collision(), map.tileSize(), targets, combat_, events_, resolutions,
                              movementCollisions);
-        for (const auto& resolution : resolutions) { applyResolution(resolution); }
+        for (const auto& resolution : resolutions) {
+            const auto* attack =
+                attackCatalog_ && !resolution.attackDefinitionId.empty()
+                    ? attackCatalog_->find(resolution.attackDefinitionId)
+                    : nullptr;
+            applyResolution(resolution, attack);
+        }
         resolveDoorProjectileImpacts();
         resolveProjectileDrops();
         resolveDefeatRewards();

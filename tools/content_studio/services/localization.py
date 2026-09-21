@@ -654,6 +654,13 @@ TRANSLATIONS["pt-BR"].update({
         "Item removido do inventário do Player quando o ataque começa. "
         "Sem o item no inventário, o ataque não dispara."
     ),
+    "attack_presentation_effect": "Efeito de apresentação",
+    "attack_presentation_effect_none": "Nenhum",
+    "attack_presentation_effect_info": (
+        "Efeito de tela (camera shake, overlay, máscara de visão, fade) "
+        "disparado quando um golpe deste ataque acerta um alvo. "
+        "A lista vem da biblioteca presentationEffects."
+    ),
     "attack_timeline_info": (
         "Cada faixa é um frame da animação e os círculos são eventos. Clique para inspecionar um tick."
     ),
@@ -796,6 +803,13 @@ TRANSLATIONS["en-US"].update({
     "attack_ammo_info": (
         "Item removed from the player inventory when the attack starts. "
         "Without the item in stock the attack never fires."
+    ),
+    "attack_presentation_effect": "Presentation effect",
+    "attack_presentation_effect_none": "None",
+    "attack_presentation_effect_info": (
+        "Screen effect (camera shake, overlay, vision mask, fade) triggered "
+        "when a hit from this attack connects with a target. "
+        "The list comes from the presentationEffects library."
     ),
     "attack_timeline_info": (
         "Each span is an animation frame and circles are events. Click to inspect a tick."

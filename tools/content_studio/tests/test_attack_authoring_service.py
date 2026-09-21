@@ -507,6 +507,113 @@ class AttackAuthoringServiceTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_configure_attack_presentation_effect(self) -> None:
+        from tools.content_studio.services.attack_authoring_service import (
+            AttackAuthoringService,
+        )
+
+        data = attack_content()
+        data["presentationEffects"] = [
+            {
+                "id": "effect.world.heavy_impact",
+                "lifetime": "transient",
+                "durationTicks": 24,
+                "priority": 80,
+            }
+        ]
+
+        temporary, workspace = make_workspace(data)
+
+        try:
+            sword = {
+                "id": "attack.player.sword",
+                "kind": "meleeHitbox",
+                "damage": {"amount": 1, "knockbackPixels": 4},
+                "totalTicks": 12,
+                "cooldownTicks": 0,
+                "minimumRangePixels": 0,
+                "maximumRangePixels": 24,
+                "visualActionId": "visual.player.sword",
+                "meleeHitboxes": {
+                    direction: {
+                        "offsetX": 0,
+                        "offsetY": 0,
+                        "width": 8,
+                        "height": 8,
+                    }
+                    for direction in ("down", "up", "left", "right")
+                },
+                "timeline": [],
+                "presentationEffectId": "effect.world.heavy_impact",
+            }
+
+            AttackAuthoringService(workspace).configure(
+                "attack.player.sword",
+                sword,
+            )
+
+            stored = workspace.find(
+                "attacks",
+                "attack.player.sword",
+            )
+
+            self.assertIsNotNone(stored)
+
+            assert stored is not None
+
+            self.assertEqual(
+                "effect.world.heavy_impact",
+                stored.data["presentationEffectId"],
+            )
+
+            # Clearing the effect drops the field.
+            without_effect = dict(sword)
+            without_effect["presentationEffectId"] = None
+
+            AttackAuthoringService(workspace).configure(
+                "attack.player.sword",
+                without_effect,
+            )
+
+            stored = workspace.find(
+                "attacks",
+                "attack.player.sword",
+            )
+
+            assert stored is not None
+
+            self.assertNotIn(
+                "presentationEffectId",
+                stored.data,
+            )
+
+            # Unknown effects and invalid values are rejected.
+            with self.assertRaisesRegex(
+                ValueError,
+                "unknown presentation effect",
+            ):
+                AttackAuthoringService(workspace).configure(
+                    "attack.player.sword",
+                    {
+                        **sword,
+                        "presentationEffectId": "effect.missing",
+                    },
+                )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "non-empty string",
+            ):
+                AttackAuthoringService(workspace).configure(
+                    "attack.player.sword",
+                    {
+                        **sword,
+                        "presentationEffectId": 7,
+                    },
+                )
+        finally:
+            temporary.cleanup()
+
     def test_delete_blocks_referenced_attack(self) -> None:
         from tools.content_studio.services.attack_authoring_service import (
             AttackAuthoringService,

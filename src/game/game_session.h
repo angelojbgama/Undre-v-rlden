@@ -142,7 +142,8 @@ private:
     [[nodiscard]] simulation::PlayerCommand gateAttackAmmo(
         const simulation::PlayerCommand& command) const;
     void consumePlayerAttackAmmo();
-    void applyResolution(const gameplay::CombatResolution& resolution);
+    void applyResolution(const gameplay::CombatResolution& resolution,
+                         const gameplay::AttackDefinition* attack = nullptr);
     void resolvePlayerSword();
     void resolveEnemyContacts();
     void updateEnemies();

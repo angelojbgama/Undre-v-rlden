@@ -64,8 +64,9 @@ void ProjectileSystem::update(const world::CollisionGrid& collision, int tileSiz
                     factionsCanDamage(projectile.faction, target.combatant.faction) &&
                     overlaps(hitbox.bounds, target.hurtbox.bounds);
                 if (validImpact) {
-                    const CombatResolution resolution = combat.resolve(hitbox, target, events);
+                    CombatResolution resolution = combat.resolve(hitbox, target, events);
                     if (resolution.damaged) {
+                        resolution.attackDefinitionId = projectile.attackDefinitionId;
                         resolutions.push_back(resolution);
                     }
                     events.emit(simulation::ProjectileImpact{

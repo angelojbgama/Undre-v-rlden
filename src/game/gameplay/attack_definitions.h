@@ -170,6 +170,11 @@ struct AttackDefinition final {
     // Optional ammo requirement; consumed by the player attack path when the
     // attack begins. Enemy attacks must not use ammo (validated).
     std::optional<AttackAmmoCost> ammo{};
+    // Optional presentation cue requested when a hit from this attack
+    // connects (melee resolution or projectile impact on a target).
+    // Resolved against the PresentationEffectCatalog; content authoring
+    // validates the reference.
+    std::optional<simulation::DefinitionId> presentationEffectId{};
 
     [[nodiscard]] bool hasCollisionSamples(
         FacingDirection facing) const noexcept;

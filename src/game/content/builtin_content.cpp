@@ -69,7 +69,7 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
                 animationValue.frames.push_back({
                     {column * frameWidth, rows[binding] * frameHeight,
                      frameWidth, frameHeight},
-                    anchor, {}, duration, {}});
+                    anchor, {}, duration, {}, false, {}});
                 animationValue.frames.back().flipX = mirrored[binding];
             }
             pack.animations.push_back(std::move(animationValue));
@@ -83,7 +83,7 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
         value.id = {id}; value.imageId = {imageId}; value.loop = loop;
         for (int column = 0; column < count; ++column)
             value.frames.push_back({{(startColumn + column) * width, 0, width, height},
-                                    anchor, {}, duration, {}});
+                                    anchor, {}, duration, {}, false, {}});
         pack.animations.push_back(std::move(value));
     };
 
@@ -125,13 +125,13 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
     objectAnimation("anim.object.fire_block.inactive", "image.object.fire_block", 16, 32, 1, 1, {8, 31}, true);
     objectAnimation("anim.object.fire_block.active", "image.object.fire_block_with_fire", 16, 32, 4, 4, {8, 31}, true);
     objectAnimation("anim.object.fire_block.destroyed", "image.object.fire_block_destroyed", 16, 32, 1, 1, {8, 31}, true);
-    pack.objectVisuals.push_back({{"visual.object.chest"}, {"anim.object.chest.idle"}, {"anim.object.chest.opened"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
-    pack.objectVisuals.push_back({{"visual.object.crate"}, {"anim.object.crate.idle"}, std::nullopt, {"anim.object.crate.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
-    pack.objectVisuals.push_back({{"visual.object.vase"}, {"anim.object.vase.idle"}, std::nullopt, {"anim.object.vase.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
-    pack.objectVisuals.push_back({{"visual.object.stone_block"}, {"anim.object.stone_block.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}});
-    pack.objectVisuals.push_back({{"visual.object.stone_block_2"}, {"anim.object.stone_block_2.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}});
-    pack.objectVisuals.push_back({{"visual.object.fire_block"}, {"anim.object.fire_block.inactive"}, std::nullopt, std::nullopt, {"anim.object.fire_block.inactive"}, {"anim.object.fire_block.active"}, std::nullopt, std::nullopt, std::nullopt, {"anim.object.fire_block.destroyed"}});
-    pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.chest"}, {"anim.object.chest.idle"}, {"anim.object.chest.opened"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.crate"}, {"anim.object.crate.idle"}, std::nullopt, {"anim.object.crate.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.vase"}, {"anim.object.vase.idle"}, std::nullopt, {"anim.object.vase.destroying"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.stone_block"}, {"anim.object.stone_block.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.stone_block_2"}, {"anim.object.stone_block_2.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, {"anim.object.stone_block.destroyed"}, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.fire_block"}, {"anim.object.fire_block.inactive"}, std::nullopt, std::nullopt, {"anim.object.fire_block.inactive"}, {"anim.object.fire_block.active"}, std::nullopt, std::nullopt, std::nullopt, {"anim.object.fire_block.destroyed"}, std::nullopt});
+    pack.objectVisuals.push_back({{"visual.object.bank_access"}, {"anim.object.chest.idle"}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt});
 
     // The built-in Player now uses the same authored visual pipeline as
     // workspace Players. These definitions form the fallback base layer.
@@ -179,7 +179,7 @@ void addBuiltinVisualContent(AuthoredContentPack& pack) {
 
 AuthoredContentPack makeBuiltinAuthoredContent() {
     AuthoredContentPack pack;
-    pack.tilesets.push_back({{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
+    pack.tilesets.push_back({{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12, {}});
     // Temporary development curve; final game balance is intentionally undecided.
     pack.playerProgressions.push_back({{"progression.player.default"}, {5}, {0, 100, 250}});
     pack.players.push_back({{"player.hero"}, {"visual.player.hero"},

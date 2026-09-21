@@ -2471,6 +2471,23 @@ void testProjectilesAndEffects() {
                        }),
            "projectile target impact is emitted for VFX observers");
 
+    gameplay::ProjectileSystem attributed(pool, projectileCatalog);
+    auto attributedTarget =
+        makeCombatTarget(pool.create(), {120, 100}, gameplay::Faction::enemy, 3);
+    [[maybe_unused]] const auto attributedProjectile = attributed.spawn(
+        {owner, 104}, gameplay::Faction::player, arrowDefinition.id, {100, 90},
+        gameplay::FacingDirection::right, {1, 6},
+        simulation::DefinitionId{"attack.player.bow"});
+    std::array<gameplay::CombatTargetRef, 1> attributedTargets{attributedTarget.target()};
+    std::vector<gameplay::CombatResolution> attributedResolutions;
+    for (int tick = 0; tick < 8 && !attributed.projectiles().empty(); ++tick) {
+        attributed.update(grid, 16, attributedTargets, combat, events, attributedResolutions);
+    }
+    expect(!attributedResolutions.empty() &&
+               attributedResolutions.front().attackDefinitionId ==
+                   simulation::DefinitionId{"attack.player.bow"},
+           "projectile resolutions attribute the authored source attack");
+
     gameplay::ProjectileSystem wallProjectiles(pool, projectileCatalog);
     underworld::world::CollisionGrid wall(64, 64);
     wall.setSolid(7, 6, true);
@@ -2794,6 +2811,118 @@ void testProjectileAmmoAndDrops() {
     }
 }
 
+void testAttackPresentationCue() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+
+    const auto findAttack = [](auto& attacks, const simulation::DefinitionId& id) {
+        const auto found = std::find_if(attacks.begin(), attacks.end(),
+                                        [&](const auto& value) { return value.id == id; });
+        return found == attacks.end() ? nullptr : &*found;
+    };
+
+    auto authored = content::makeCombatAuthoredContent();
+    authored.presentationEffects.push_back(
+        {{"effect.attack.heavy"}, presentation::PresentationEffectLifetime::transient,
+         24, 80, presentation::CameraShakeDefinition{6}, std::nullopt, std::nullopt,
+         std::nullopt});
+    findAttack(authored.attacks, gameplay::playerSwordAttackId())
+        ->presentationEffectId = simulation::DefinitionId{"effect.attack.heavy"};
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry &&
+               compiled.registry->attacks().require(gameplay::playerSwordAttackId())
+                       .presentationEffectId &&
+               *compiled.registry->attacks()
+                    .require(gameplay::playerSwordAttackId())
+                    .presentationEffectId ==
+                   simulation::DefinitionId{"effect.attack.heavy"},
+           "compiled attack carries its authored presentation effect");
+
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        findAttack(invalid.attacks, gameplay::playerSwordAttackId())
+            ->presentationEffectId = simulation::DefinitionId{"effect.missing"};
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects an attack cue referencing an unknown effect");
+    }
+
+    {
+        const auto json = content::encodeAuthoredContentJson(authored);
+        const auto decoded = content::decodeAuthoredContentJson(json);
+        const auto* decodedSword = decoded.content
+            ? findAttack(decoded.content->attacks, gameplay::playerSwordAttackId()) : nullptr;
+        expect(decodedSword && decodedSword->presentationEffectId &&
+                   *decodedSword->presentationEffectId ==
+                       simulation::DefinitionId{"effect.attack.heavy"},
+               "content JSON roundtrips the attack presentation effect");
+    }
+
+    const auto probeCue = [&](const auto& registry) {
+        maps::MapData map;
+        map.id = simulation::MapId{"map.attack.cue"};
+        map.width = 8;
+        map.height = 8;
+        map.tileSize = 16;
+        map.tileReferences.push_back(
+            {simulation::DefinitionId{"tileset.dungeon"}, 10, underworld::world::TileFlags::none});
+        maps::MapTileLayer ground{"ground", true, std::vector<std::optional<std::uint32_t>>(64)};
+        map.layers.push_back(std::move(ground));
+        map.collision.assign(64, 0);
+        map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {64, 40},
+                                    gameplay::FacingDirection::right});
+        map.objects.push_back({{2}, simulation::DefinitionId{"object.crate"}, {80, 40}, {}});
+
+        const auto validation = game::mapValidationCatalogs(registry);
+        simulation::EntityHandlePool handles;
+        const std::array visuals{gameplay::creatures::soldierVisualId(),
+                                 gameplay::creatures::skullVisualId()};
+        gameplay::creatures::EnemyFactory enemies(handles, registry.enemies(), registry.behaviors(),
+                                                  registry.attacks(), registry.projectiles(), visuals);
+        gameplay::WorldObjectFactory objects(handles, registry.objects(), registry.items());
+        game::RuntimeTilesetCatalog runtimeTilesets(registry.tilesets());
+        maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+        const auto dmapPath = std::filesystem::temp_directory_path() / "underworld_attack_cue.dmap";
+        std::error_code fsError;
+        std::filesystem::remove(dmapPath, fsError);
+        std::string ioError;
+        const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
+        maps::MapCatalog catalog;
+        if (dmapWritten) catalog.add(map.id, dmapPath);
+        game::GameSession session({0}, testProgression());
+        session.configureCombat(registry.attacks(), registry.projectiles(), registry.behaviors(),
+                                registry.attacks().require(gameplay::playerSwordAttackId()),
+                                registry.attacks().require(gameplay::playerBowAttackId()));
+        std::string sessionError;
+        if (!dmapWritten || !session.initializeMap(catalog, validation, builder, map.id,
+                                                   simulation::SpawnId{"entry.start"}, sessionError)) {
+            return false;
+        }
+        session.tick(actionCommand(1, true, false));
+        for (std::uint64_t tick = 2; tick <= 40; ++tick) {
+            session.tick(movementCommand(tick, 0, 0));
+            const bool cue = std::any_of(
+                session.events().events().begin(), session.events().events().end(),
+                [](const simulation::SimulationEvent& event) {
+                    const auto* requested =
+                        std::get_if<simulation::PresentationEffectRequested>(&event);
+                    return requested &&
+                           requested->effectId ==
+                               simulation::DefinitionId{"effect.attack.heavy"};
+                });
+            if (cue) return true;
+        }
+        return false;
+    };
+
+    expect(probeCue(*compiled.registry),
+           "sword hit on a destructible object requests the authored presentation cue");
+    expect(!probeCue(*content::compileContent(content::makeCombatAuthoredContent()).registry),
+           "attacks without a presentation effect never request cues");
+}
 void testPhase6CombatGeneralization() {
     namespace gameplay = underworld::game::gameplay;
     namespace simulation = underworld::simulation;
@@ -4286,7 +4415,7 @@ void testPhase8PersistentMapsAndSave() {
     creatures::EnemyCatalog enemies; enemies.add(creatures::makeSoldierEnemyDefinition());
     enemies.add(creatures::makeSkullEnemyDefinition());
     game::TilesetCatalog tilesets;
-    tilesets.add({simulation::DefinitionId{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12});
+    tilesets.add({simulation::DefinitionId{"tileset.dungeon"}, "Dungeon", "Tileset/tileset.png", 16, 19, 12, {}});
     maps::MapValidationCatalogs validation{&enemies,&objects,&items,&tilesets};
 
     auto map = makeSyntheticMap();
@@ -5661,7 +5790,7 @@ void testWorldObjectPersistencePolicies() {
                      world::AabbI{0, 0, 16, 16}}});
 
     game::TilesetCatalog tilesets;
-    tilesets.add({{"tileset.test"}, "Test", "test.png", 16, 1, 1});
+    tilesets.add({{"tileset.test"}, "Test", "test.png", 16, 1, 1, {}});
     creatures::EnemyCatalog enemies;
     creatures::BehaviorCatalog behaviors;
     gameplay::AttackCatalog attacks;
@@ -7042,7 +7171,8 @@ void testMultiTilesetAuthoringAndRuntime() {
         "test_a.png",
         16,
         2,
-        1
+        1,
+        {}
     };
 
     tilesetADefinition.tileCollisions.push_back({
@@ -7053,12 +7183,12 @@ void testMultiTilesetAuthoringAndRuntime() {
     });
 
     tilesets.add(std::move(tilesetADefinition));
-    tilesets.add({tilesetB, "Test B", "test_b.png", 16, 2, 1});
+    tilesets.add({tilesetB, "Test B", "test_b.png", 16, 2, 1, {}});
     expect(tilesets.find(tilesetA) && tilesets.require(tilesetB).tileCount() == 2 &&
                tilesets.definitions().size() == 2,
            "TilesetCatalog registers immutable metadata and reports tile counts");
     bool duplicateRejected = false;
-    try { tilesets.add({tilesetA, "Duplicate", "duplicate.png", 16, 1, 1}); }
+    try { tilesets.add({tilesetA, "Duplicate", "duplicate.png", 16, 1, 1, {}}); }
     catch (const std::logic_error&) { duplicateRejected = true; }
     expect(duplicateRejected, "TilesetCatalog rejects duplicate DefinitionIds");
 
@@ -7086,8 +7216,8 @@ void testMultiTilesetAuthoringAndRuntime() {
     auto invalidIndex = map; invalidIndex.tileReferences[0].sourceIndex = 2;
     auto sizeMismatch = map;
     game::TilesetCatalog wrongSize;
-    wrongSize.add({tilesetA, "Test A", "test_a.png", 32, 1, 1});
-    wrongSize.add({tilesetB, "Test B", "test_b.png", 16, 2, 1});
+    wrongSize.add({tilesetA, "Test A", "test_a.png", 32, 1, 1, {}});
+    wrongSize.add({tilesetB, "Test B", "test_b.png", 16, 2, 1, {}});
     const maps::MapValidationCatalogs wrongSizeValidation{
         &content.enemies(), &content.objects(), &content.items(), &wrongSize};
     expect(!maps::validateMapData(missing, &validation) &&
@@ -10150,7 +10280,7 @@ underworld::game::content::AuthoredContentPack makePhase17VisualContent() {
         content::AuthoredAnimation value;
         value.id = {id};
         value.imageId = {"image.external.character"};
-        value.frames.push_back({{0, 0, 16, 16}, {8, 15}, {1, 0}, duration, {"frame"}});
+        value.frames.push_back({{0, 0, 16, 16}, {8, 15}, {1, 0}, duration, {"frame"}, false, {}});
         value.loop = true;
         return value;
     };
@@ -11385,6 +11515,7 @@ int main() {
         testCombatSystem();
         testProjectilesAndEffects();
         testProjectileAmmoAndDrops();
+        testAttackPresentationCue();
         testPhase6CombatGeneralization();
         testCreatureDefinitionsAndBehavior();
         testCreatureCombatIntegration();
