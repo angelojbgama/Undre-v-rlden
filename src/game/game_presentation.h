@@ -62,6 +62,7 @@ struct GamePresentationFrame final {
     // Authored HUD screen (screen.hud) from the compiled content
     // registry; null when the workspace does not provide one.
     const ui::ScreenDefinition* hudScreen{};
+    const ui::ScreenDefinition* inventoryScreen{};
 };
 
 class GamePresentation final {

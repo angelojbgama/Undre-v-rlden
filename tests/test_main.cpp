@@ -11433,7 +11433,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 1 &&
+    expect(builtin.uiScreens.size() == 2 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.health" &&
                builtin.uiScreens.front().root.meter &&
@@ -11444,7 +11444,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the pixel-parity HUD hearts screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 1 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 2 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.meter->spacing == 1,
            "builtin ui screens compile into the runtime screen catalog");
@@ -11742,6 +11742,209 @@ void testUiStatesAndMeterVariants() {
         }
         std::filesystem::remove_all(workspaceRoot, cleanup);
     }
+}
+
+void testUiInventoryGridMigration() {
+    using namespace underworld;
+    namespace presentation = game::presentation;
+    namespace ui = game::ui;
+
+    // Synthetic 16x16 item sprite.
+    core::ImageData data;
+    data.width = 16;
+    data.height = 16;
+    data.strideBytes = static_cast<std::size_t>(16) * 4;
+    data.pixels.resize(static_cast<std::size_t>(16) * 16 * 4);
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            const auto base = (static_cast<std::size_t>(y) * 16 + static_cast<std::size_t>(x)) * 4;
+            data.pixels[base] = static_cast<std::uint8_t>(60 + x * 6);
+            data.pixels[base + 1] = static_cast<std::uint8_t>(30 + y * 4);
+            data.pixels[base + 2] = 90;
+            data.pixels[base + 3] = 255;
+        }
+    }
+    auto itemImage = std::make_shared<render::Image>(std::move(data));
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({{"spr.item"}, std::make_shared<render::SpriteSheet>(itemImage),
+                 render::SpriteFrame{{0, 0, 16, 16}, {0, 0}, {0, 0}, false}});
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    const ui::UiVisualContext visuals{sprites, font};
+
+    struct SlotEntry { bool hasIcon; std::uint64_t amount; };
+    std::vector<SlotEntry> slots;
+    for (int index = 0; index < 30; ++index) {
+        slots.push_back({index % 3 != 2, static_cast<std::uint64_t>(index % 4)});
+    }
+
+    struct InventoryResolver final : ui::UiBindingResolver {
+        const std::vector<SlotEntry>* entries{};
+        int selection{1};
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::vector<ui::UiCollectionContext> collection(
+            ui::BindingPath path) const override {
+            if (path != ui::BindingPath::playerInventorySlots) { return {}; }
+            std::vector<ui::UiCollectionContext> out;
+            out.reserve(entries->size());
+            std::int64_t index = 0;
+            for (const auto& entry : *entries) {
+                const std::optional<simulation::DefinitionId> ids =
+                    entry.hasIcon ? std::optional<simulation::DefinitionId>{simulation::DefinitionId{"spr.item"}}
+                                  : std::nullopt;
+                out.push_back({ids, ids, static_cast<std::int64_t>(entry.amount), index});
+                ++index;
+            }
+            return out;
+        }
+        [[nodiscard]] std::optional<std::int64_t> contextualNumber(
+            ui::BindingPath path, std::int64_t contextIndex) const override {
+            if (path != ui::BindingPath::overlayInventorySlotSelected) { return std::nullopt; }
+            return contextIndex == selection ? std::optional<std::int64_t>{1}
+                                             : std::optional<std::int64_t>{0};
+        }
+    };
+
+    InventoryResolver resolver;
+    resolver.entries = &slots;
+    resolver.selection = 1;
+
+    // Builds the panel/title/grid definition; every variant is the SAME data
+    // with a different authored arrangement.
+    const auto makeScreen = [](int columns, int cellWidth, int cellHeight,
+                               core::PointI panelOffset, int panelWidth, int panelHeight) {
+        ui::ScreenDefinition screen;
+        screen.id = {"screen.inventory"};
+        screen.kind = ui::ScreenKind::overlay;
+        ui::NodeDefinition panel;
+        panel.id = "inventory.panel";
+        panel.component = ui::ComponentKind::panel;
+        panel.layout.offsetX = panelOffset.x;
+        panel.layout.offsetY = panelOffset.y;
+        panel.layout.width = panelWidth;
+        panel.layout.height = panelHeight;
+        panel.background = core::ColorRGBA8{8, 10, 16, 245};
+        ui::NodeDefinition title;
+        title.id = "inventory.title";
+        title.component = ui::ComponentKind::text;
+        title.layout.offsetX = panelOffset.x + 4;
+        title.layout.offsetY = panelOffset.y + 3;
+        title.text = "INVENTORY";
+        ui::NodeDefinition grid;
+        grid.id = "inventory.grid";
+        grid.component = ui::ComponentKind::repeater;
+        grid.layout.offsetX = panelOffset.x + 4;
+        grid.layout.offsetY = panelOffset.y + 14;
+        grid.columns = columns;
+        grid.cellWidth = cellWidth;
+        grid.cellHeight = cellHeight;
+        grid.bindings.push_back({"source", ui::BindingPath::playerInventorySlots});
+        ui::NodeDefinition slot;
+        slot.id = "inventory.slot";
+        slot.component = ui::ComponentKind::slot;
+        slot.layout.width = 22;
+        slot.layout.height = 18;
+        slot.background = core::ColorRGBA8{54, 30, 38, 255};
+        slot.iconOffset = core::PointI{3, 1};
+        slot.countOffset = core::PointI{10, 9};
+        slot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
+        slot.bindings.push_back({"count", ui::BindingPath::contextItemAmount});
+        ui::StateDefinition selected;
+        selected.id = "selected";
+        selected.condition = ui::StateCondition{
+            ui::BindingPath::overlayInventorySlotSelected, ui::ConditionOperator::equal, 1};
+        selected.visual.background = core::ColorRGBA8{220, 180, 72, 255};
+        slot.states.push_back(std::move(selected));
+        grid.children.push_back(std::move(slot));
+        panel.children.push_back(std::move(title));
+        panel.children.push_back(std::move(grid));
+        screen.root = std::move(panel);
+        return screen;
+    };
+
+    const auto renderLegacy = [&](render::Renderer2D& renderer, core::PointI panelOffset,
+                                  int panelWidth, int panelHeight, int columns, int cellWidth,
+                                  int cellHeight) {
+        renderer.fillRect({panelOffset.x, panelOffset.y, panelWidth, panelHeight},
+                          {8, 10, 16, 245});
+        render::drawText(renderer, font, "INVENTORY", panelOffset.x + 4, panelOffset.y + 3);
+        for (int index = 0; index < 30; ++index) {
+            const int column = index % columns;
+            const int row = index / columns;
+            const int x = panelOffset.x + 4 + column * cellWidth;
+            const int y = panelOffset.y + 14 + row * cellHeight;
+            const bool selected = index == resolver.selection;
+            renderer.fillRect({x, y, 22, 18},
+                              selected ? core::ColorRGBA8{220, 180, 72, 255}
+                                       : core::ColorRGBA8{54, 30, 38, 255});
+            if (slots[static_cast<std::size_t>(index)].hasIcon) {
+                const auto& sprite = sprites.require({"spr.item"});
+                render::drawSprite(renderer, *sprite.sheet, sprite.frame,
+                                   {x + 3 + sprite.frame.anchor.x,
+                                    y + 1 + sprite.frame.anchor.y});
+                const auto amount = slots[static_cast<std::size_t>(index)].amount;
+                if (amount > 1) {
+                    render::drawText(renderer, font, std::to_string(amount), x + 10, y + 9);
+                }
+            }
+        }
+    };
+
+    const ui::UiPresenter presenter;
+
+    // Proof 1-style parity: the classic 10x3 grid is pixel-identical to the
+    // legacy overlay loop.
+    {
+        auto screen = makeScreen(10, 25, 20, {6, 52}, 260, 145);
+        render::Framebuffer legacy(272, 224);
+        render::Framebuffer modern(272, 224);
+        render::Renderer2D legacyRenderer(legacy);
+        render::Renderer2D modernRenderer(modern);
+        renderLegacy(legacyRenderer, {6, 52}, 260, 145, 10, 25, 20);
+        presenter.render(screen, resolver, visuals, modernRenderer);
+        expect(std::equal(legacy.pixels().begin(), legacy.pixels().end(),
+                          modern.pixels().begin(), modern.pixels().end()),
+               "definition-driven inventory grid is pixel-identical to the legacy overlay");
+    }
+
+    // Proof 2: the SAME data rearranged (5 columns, wider cells, moved panel)
+    // renders exactly per the new definition - a definition edit, no C++.
+    {
+        auto rearranged = makeScreen(5, 40, 24, {20, 24}, 230, 160);
+        render::Framebuffer expected(272, 224);
+        render::Framebuffer actual(272, 224);
+        render::Renderer2D expectedRenderer(expected);
+        render::Renderer2D actualRenderer(actual);
+        renderLegacy(expectedRenderer, {20, 24}, 230, 160, 5, 40, 24);
+        presenter.render(rearranged, resolver, visuals, actualRenderer);
+        expect(std::equal(expected.pixels().begin(), expected.pixels().end(),
+                          actual.pixels().begin(), actual.pixels().end()),
+               "rearranging the inventory grid happens through the definition only");
+    }
+
+    // Registry context paths resolve through the wrapper only.
+    ui::UiCollectionContext context{{simulation::DefinitionId{"spr.item"}},
+                                    {simulation::DefinitionId{"spr.item"}}, 7, 4};
+    const ui::UiContextResolver contextResolver{resolver, context};
+    expect(contextResolver.number(ui::BindingPath::contextItemAmount) ==
+                   std::optional<std::int64_t>{7} &&
+               contextResolver.number(ui::BindingPath::contextIndex) ==
+                   std::optional<std::int64_t>{4} &&
+               contextResolver.id(ui::BindingPath::contextItemIcon) ==
+                   std::optional<simulation::DefinitionId>{simulation::DefinitionId{"spr.item"}} &&
+               contextResolver.number(ui::BindingPath::overlayInventorySlotSelected) ==
+                   std::optional<std::int64_t>{0},
+           "context bindings resolve against the current repeater instance");
 }
 
 void testCraftingKnowledgeAndHistory() {
@@ -12250,6 +12453,7 @@ int main() {
         testUiPresenterHudHeartParity();
         testUiScreenBuiltinAndBindings();
         testUiStatesAndMeterVariants();
+        testUiInventoryGridMigration();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

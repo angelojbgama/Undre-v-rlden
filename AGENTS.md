@@ -2090,8 +2090,10 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   prova 1b via workspace sobrescrevendo `screen.hud`) e UI-3 (modo UI no Studio:
   UiAuthoringService com validação espelhada, manifest `ui_manifest` sincronizado
   por teste, composer com hierarchy/canvas/inspector/preview data e round-trip)
-  concluídos e provados. Pendentes: UI-4 (repeater/slot + overlay de
-  inventário, prova 2) e UI-5 (screen/navigation com o primeiro menu real).
+  e UI-4 (componentes slot/repeater com bindings de coleção/contexto; grade do
+  inventário migrada para screen.inventory com paridade de pixels; prova 2 —
+  reorganizar a grade é edição de definição apenas) concluídos e provados.
+  Pendente: UI-5 (screen/navigation com o primeiro menu real).
   Deferidos até caso real: alpha no delta visual, animatedImage no presenter,
   themes, timeline de animação, scroll/tooltip e telas de conteúdo inexistente
   (spellbook etc.). As provas da seção 10 de `docs/UI_ENGINE.md` são gates de

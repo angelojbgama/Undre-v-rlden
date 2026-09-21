@@ -62,12 +62,16 @@ std::string_view uiComponentName(ComponentKind component) noexcept {
         case ComponentKind::animatedImage: return "animatedImage";
         case ComponentKind::text: return "text";
         case ComponentKind::meter: return "meter";
+        case ComponentKind::slot: return "slot";
+        case ComponentKind::repeater: return "repeater";
     }
     return {};
 }
 
 bool isContainerComponent(ComponentKind component) noexcept {
-    return component == ComponentKind::group || component == ComponentKind::panel;
+    // The repeater accepts children too: they are its instance template.
+    return component == ComponentKind::group || component == ComponentKind::panel ||
+           component == ComponentKind::repeater;
 }
 
 bool componentAcceptsProperty(ComponentKind component, std::string_view property) {
@@ -76,6 +80,10 @@ bool componentAcceptsProperty(ComponentKind component, std::string_view property
             return property == "value" || property == "maximum";
         case ComponentKind::text:
             return property == "text";
+        case ComponentKind::repeater:
+            return property == "source";
+        case ComponentKind::slot:
+            return property == "icon" || property == "count";
         default:
             return false;
     }
@@ -104,9 +112,10 @@ std::string emitUiManifestJson() {
     JsonArray componentProperties;
     for (const ComponentKind component :
          {ComponentKind::group, ComponentKind::panel, ComponentKind::image,
-          ComponentKind::animatedImage, ComponentKind::text, ComponentKind::meter}) {
+          ComponentKind::animatedImage, ComponentKind::text, ComponentKind::meter,
+          ComponentKind::slot, ComponentKind::repeater}) {
         JsonArray properties;
-        for (const char* property : {"value", "maximum", "text"}) {
+        for (const char* property : {"value", "maximum", "text", "icon", "count", "source"}) {
             if (componentAcceptsProperty(component, property)) {
                 properties.push_back(text(std::string(property)));
             }
@@ -117,9 +126,9 @@ std::string emitUiManifestJson() {
         componentProperties.push_back(object(std::move(entry)));
     }
     JsonObject root;
-    root.emplace_back("components", strings(std::array<std::string_view, 6>{
+    root.emplace_back("components", strings(std::array<std::string_view, 8>{
                                         "group", "panel", "image", "animatedImage", "text",
-                                        "meter"}));
+                                        "meter", "slot", "repeater"}));
     root.emplace_back("componentProperties", array(std::move(componentProperties)));
     root.emplace_back("anchors", strings(std::array<std::string_view, 9>{
                                      "topLeft", "topCenter", "topRight", "centerLeft", "center",

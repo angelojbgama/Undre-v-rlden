@@ -243,6 +243,39 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
         case ui::ComponentKind::group:
         case ui::ComponentKind::panel:
             break;
+        case ui::ComponentKind::repeater: {
+            const bool hasSource = std::any_of(
+                node.bindings.begin(), node.bindings.end(),
+                [](const ui::BindingDefinition& binding) {
+                    return binding.property == "source" &&
+                           binding.source == ui::BindingPath::playerInventorySlots;
+                });
+            if (!hasSource)
+                error(report, ContentKind::uiScreen, screenId, "missing_binding",
+                      "repeater node requires a source binding over a collection", "bindings");
+            if (node.columns <= 0 || node.cellWidth <= 0 || node.cellHeight <= 0)
+                error(report, ContentKind::uiScreen, screenId, "invalid_grid",
+                      "repeater grid requires positive columns and cell size", "columns");
+            if (node.children.empty())
+                error(report, ContentKind::uiScreen, screenId, "missing_template",
+                      "repeater node requires children as its template", "children");
+            break;
+        }
+        case ui::ComponentKind::slot: {
+            const bool hasIcon = std::any_of(
+                node.bindings.begin(), node.bindings.end(),
+                [](const ui::BindingDefinition& binding) {
+                    return binding.property == "icon";
+                });
+            if (!hasIcon)
+                error(report, ContentKind::uiScreen, screenId, "missing_binding",
+                      "slot node requires an icon binding", "bindings");
+            if (node.background &&
+                (node.layout.width.value_or(0) <= 0 || node.layout.height.value_or(0) <= 0))
+                error(report, ContentKind::uiScreen, screenId, "invalid_slot",
+                      "slot background requires an authored cell size", "layout");
+            break;
+        }
     }
     std::unordered_set<std::string> boundProperties;
     for (const auto& binding : node.bindings) {
@@ -263,7 +296,8 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                   "ui state id is duplicated within the node", "states.id");
         }
         const bool hasDelta = state.visual.tint.has_value() || state.visual.alpha.has_value() ||
-                              state.visual.sprite.has_value() || state.visual.visible.has_value();
+                              state.visual.sprite.has_value() || state.visual.visible.has_value() ||
+                              state.visual.background.has_value();
         if (!hasDelta)
             error(report, ContentKind::uiScreen, screenId, "empty_state",
                   "ui state must change at least one visual property", "states.visual");

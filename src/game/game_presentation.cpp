@@ -537,6 +537,15 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         return;
     }
     if (!view.inventoryOpen) { return; }
+    // The inventory panel is authored UI content (screen.inventory,
+    // docs/UI_ENGINE.md proof 2): panel, title and the 30-slot grid render
+    // through the presenter; workspaces override by definition id only.
+    if (frame.inventoryScreen) {
+        const ui::UiPresenter presenter;
+        const GameViewModelBindings bindings{view};
+        const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+        presenter.render(*frame.inventoryScreen, bindings, visuals, renderer);
+    } else {
     renderer.fillRect({6, 52, 260, 145}, {8, 10, 16, 245});
     render::drawText(renderer, frame.font, "INVENTORY", 10, 55);
     for (std::size_t index = 0; index < view.inventory.size(); ++index) {
@@ -556,6 +565,7 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
                 render::drawText(renderer, frame.font, std::to_string(view.inventory[index].quantity), x + 10, y + 9);
             }
         }
+    }
     }
     render::drawText(renderer, frame.font, "EQUIPMENT", 10, 128);
     const auto drawEquipmentSlot = [&](const char* label, const ItemSlotView& item,

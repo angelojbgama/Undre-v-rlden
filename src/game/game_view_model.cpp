@@ -175,6 +175,31 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
     }
 }
 
+std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
+    ui::BindingPath path) const {
+    if (path != ui::BindingPath::playerInventorySlots) { return {}; }
+    std::vector<ui::UiCollectionContext> entries;
+    entries.reserve(view_->inventory.size());
+    std::int64_t index = 0;
+    for (const auto& slot : view_->inventory) {
+        entries.push_back({slot.itemId, slot.visualId,
+                           static_cast<std::int64_t>(slot.quantity), index});
+        ++index;
+    }
+    return entries;
+}
+
+std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
+    ui::BindingPath path, std::int64_t contextIndex) const {
+    if (path != ui::BindingPath::overlayInventorySlotSelected) { return number(path); }
+    // Derived presentation flag: the slot is highlighted exactly when the
+    // inventory tab owns the focus and the context index is the selection.
+    return view_->inventoryFocus == gameplay::InventoryOverlayFocus::inventory &&
+                   contextIndex == static_cast<std::int64_t>(view_->inventorySelection)
+               ? std::optional<std::int64_t>{1}
+               : std::optional<std::int64_t>{0};
+}
+
 std::optional<simulation::DefinitionId> GameViewModelBindings::id(ui::BindingPath path) const {
     const auto slotItem = [this](std::size_t index) -> std::optional<simulation::DefinitionId> {
         return view_->quickSlots[index].itemId;

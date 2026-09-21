@@ -9,6 +9,15 @@
 
 namespace underworld::game::ui {
 
+// One repeater instance (UI-4): the identity/visual/amount the template reads
+// through the context.* binding paths.
+struct UiCollectionContext final {
+    std::optional<simulation::DefinitionId> itemId;
+    std::optional<simulation::DefinitionId> icon;
+    std::int64_t amount{};
+    std::int64_t index{};
+};
+
 // Value source for the registered binding paths. Implemented over the
 // GameViewModel snapshot in the game layer and over synthetic preview data in
 // tests; the UI never reaches into gameplay types directly.
@@ -16,12 +25,45 @@ class UiBindingResolver {
 public:
     [[nodiscard]] virtual std::optional<std::int64_t> number(BindingPath path) const = 0;
     [[nodiscard]] virtual std::optional<simulation::DefinitionId> id(BindingPath path) const = 0;
+    // Collection source for repeaters; empty for non-collection paths.
+    [[nodiscard]] virtual std::vector<UiCollectionContext> collection(BindingPath) const {
+        return {};
+    }
+    // Derived per-instance values (overlay.inventory.slotSelected composes
+    // focus+selection+context index in the game adapter); defaults to number().
+    [[nodiscard]] virtual std::optional<std::int64_t> contextualNumber(
+        BindingPath path, std::int64_t) const {
+        return number(path);
+    }
 
 protected:
     UiBindingResolver() = default;
     ~UiBindingResolver() = default;
     UiBindingResolver(const UiBindingResolver&) = delete;
     UiBindingResolver& operator=(const UiBindingResolver&) = delete;
+};
+
+// Wraps the base resolver so repeater template bindings resolve against the
+// current instance: context.* paths come from the entry, derived contextual
+// paths flow through contextualNumber with the instance index.
+class UiContextResolver final : public UiBindingResolver {
+public:
+    UiContextResolver(const UiBindingResolver& base, const UiCollectionContext& context)
+        noexcept : base_(&base), context_(context) {}
+
+    [[nodiscard]] std::optional<std::int64_t> number(BindingPath path) const override;
+    [[nodiscard]] std::optional<simulation::DefinitionId> id(BindingPath path) const override;
+    [[nodiscard]] std::vector<UiCollectionContext> collection(BindingPath path) const override {
+        return base_->collection(path);
+    }
+    [[nodiscard]] virtual std::optional<std::int64_t> contextualNumber(
+        BindingPath path, std::int64_t) const {
+        return number(path);
+    }
+
+private:
+    const UiBindingResolver* base_;
+    UiCollectionContext context_;
 };
 
 // Runtime visual dependencies of a render pass.
@@ -40,7 +82,8 @@ public:
 
 private:
     void renderNode(const NodeDefinition& node, const UiBindingResolver& resolver,
-                    const UiVisualContext& context, render::Renderer2D& renderer) const;
+                    const UiVisualContext& context, render::Renderer2D& renderer,
+                    core::PointI offset = {0, 0}) const;
 };
 
 // Anchors position the node box inside the 272x224 logical screen. Boxes use

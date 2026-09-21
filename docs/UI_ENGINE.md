@@ -296,8 +296,12 @@ UI-3  UI Composer no Studio (modo UI, hierarchy/canvas/
       espelhada + manifest p/ pickers           CONCLUÍDO
       (v1: canvas é preview data-driven; arte real e
       retradução ao vivo ficam como refinamento)
-UI-4  slot/repeater/grid + migração do overlay de
-      inventário/crafting                      (prova 2)   PENDENTE
+UI-4  slot/repeater + migração da grade do overlay de
+      inventário (screen.inventory); a reorganização de
+      painéis acontece somente pela definição  (prova 2) CONCLUÍDO
+      (equipamento/banco/loja/crafting permanecem hardcoded
+      até necessidade real; canvas do Composer ainda não
+      pré-visualiza slot/repeater)
 UI-5  screen/navigation quando existir o primeiro menu
       real (ex.: tela de save/load); conecta com a trilha
       Scene/Game-State do roadmap                          PENDENTE

@@ -131,6 +131,10 @@ public:
 
     [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override;
     [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath path) const override;
+    [[nodiscard]] std::vector<ui::UiCollectionContext> collection(
+        ui::BindingPath path) const override;
+    [[nodiscard]] std::optional<std::int64_t> contextualNumber(
+        ui::BindingPath path, std::int64_t contextIndex) const override;
 
 private:
     const GameViewModel* view_;

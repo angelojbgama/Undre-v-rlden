@@ -296,6 +296,59 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     hearts.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
     hudScreen.root = std::move(hearts);
     pack.uiScreens.push_back(std::move(hudScreen));
+
+    // Inventory overlay as authored UI content (docs/UI_ENGINE.md proof 2):
+    // the definition reproduces the legacy inventory panel pixel-for-pixel —
+    // panel rect, title and the 30-slot grid through repeater+slot with the
+    // derived selection flag. Rearranging the grid is a definition edit only.
+    ui::ScreenDefinition inventoryScreen;
+    inventoryScreen.id = simulation::DefinitionId{"screen.inventory"};
+    inventoryScreen.kind = ui::ScreenKind::overlay;
+    ui::NodeDefinition panel;
+    panel.id = "inventory.panel";
+    panel.component = ui::ComponentKind::panel;
+    panel.layout.anchor = ui::Anchor::topLeft;
+    panel.layout.offsetX = 6;
+    panel.layout.offsetY = 52;
+    panel.layout.width = 260;
+    panel.layout.height = 145;
+    panel.background = core::ColorRGBA8{8, 10, 16, 245};
+    ui::NodeDefinition title;
+    title.id = "inventory.title";
+    title.component = ui::ComponentKind::text;
+    title.layout.offsetX = 10;
+    title.layout.offsetY = 55;
+    title.text = "INVENTORY";
+    ui::NodeDefinition grid;
+    grid.id = "inventory.grid";
+    grid.component = ui::ComponentKind::repeater;
+    grid.layout.offsetX = 10;
+    grid.layout.offsetY = 66;
+    grid.columns = 10;
+    grid.cellWidth = 25;
+    grid.cellHeight = 20;
+    grid.bindings.push_back({"source", ui::BindingPath::playerInventorySlots});
+    ui::NodeDefinition slot;
+    slot.id = "inventory.slot";
+    slot.component = ui::ComponentKind::slot;
+    slot.layout.width = 22;
+    slot.layout.height = 18;
+    slot.background = core::ColorRGBA8{54, 30, 38, 255};
+    slot.iconOffset = core::PointI{3, 1};
+    slot.countOffset = core::PointI{10, 9};
+    slot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
+    slot.bindings.push_back({"count", ui::BindingPath::contextItemAmount});
+    ui::StateDefinition selected;
+    selected.id = "selected";
+    selected.condition = ui::StateCondition{
+        ui::BindingPath::overlayInventorySlotSelected, ui::ConditionOperator::equal, 1};
+    selected.visual.background = core::ColorRGBA8{220, 180, 72, 255};
+    slot.states.push_back(std::move(selected));
+    grid.children.push_back(std::move(slot));
+    panel.children.push_back(std::move(title));
+    panel.children.push_back(std::move(grid));
+    inventoryScreen.root = std::move(panel);
+    pack.uiScreens.push_back(std::move(inventoryScreen));
     return pack;
 }
 

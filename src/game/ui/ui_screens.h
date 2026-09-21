@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/color_rgba8.h"
+#include "engine/core/geometry.h"
 #include "engine/simulation/definition_id.h"
 
 #include <array>
@@ -18,7 +19,13 @@ namespace underworld::game::ui {
 // these definitions arrives in block UI-1b.
 
 enum class ScreenKind { hud, overlay, screen };
-enum class ComponentKind { group, panel, image, animatedImage, text, meter };
+enum class ComponentKind {
+    group, panel, image, animatedImage, text, meter,
+    // UI-4: repeated collections. repeater resolves a collection binding and
+    // instantiates its children per entry (grid stride via columns/cell);
+    // slot renders one item cell driven by context bindings.
+    slot, repeater
+};
 enum class Anchor {
     topLeft, topCenter, topRight,
     centerLeft, center, centerRight,
@@ -51,6 +58,16 @@ enum class BindingPath {
     playerQuickSlot3ItemId,
     playerQuickSlot3Amount,
     playerQuickSlot3Icon,
+    // UI-4 collection + context paths: the repeater source resolves to the
+    // 30 inventory slots; context paths resolve against the current repeater
+    // instance; the derived selection flag composes focus+selection+index in
+    // the GameViewModel adapter so authored states stay single-condition.
+    playerInventorySlots,
+    contextIndex,
+    contextItemId,
+    contextItemIcon,
+    contextItemAmount,
+    overlayInventorySlotSelected,
 };
 
 struct BindingPathEntry final {
@@ -58,7 +75,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 19> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 25> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -78,6 +95,12 @@ inline constexpr std::array<BindingPathEntry, 19> bindingPathTable{{
     {BindingPath::playerQuickSlot3ItemId, "player.quickSlots.3.itemId"},
     {BindingPath::playerQuickSlot3Amount, "player.quickSlots.3.amount"},
     {BindingPath::playerQuickSlot3Icon, "player.quickSlots.3.icon"},
+    {BindingPath::playerInventorySlots, "player.inventory.slots"},
+    {BindingPath::contextIndex, "context.index"},
+    {BindingPath::contextItemId, "context.item.id"},
+    {BindingPath::contextItemIcon, "context.item.icon"},
+    {BindingPath::contextItemAmount, "context.item.amount"},
+    {BindingPath::overlayInventorySlotSelected, "overlay.inventory.slotSelected"},
 }};
 
 [[nodiscard]] std::optional<BindingPath> findBindingPath(std::string_view path);
@@ -163,6 +186,7 @@ struct VisualDelta final {
     std::optional<std::uint8_t> alpha;
     std::optional<simulation::DefinitionId> sprite;
     std::optional<bool> visible;
+    std::optional<core::ColorRGBA8> background;
 };
 
 struct StateDefinition final {
@@ -193,6 +217,17 @@ struct NodeDefinition final {
     std::vector<StateDefinition> states;
     std::vector<ActionDefinition> actions;
     std::vector<NodeDefinition> children;
+    // Slot visuals: background fills the slot cell; icon/count offsets mirror
+    // the authored cell-local placement. Optional panel/group background
+    // fills the container box (the overlay panel rectangles).
+    std::optional<core::ColorRGBA8> background;
+    core::PointI iconOffset{0, 0};
+    core::PointI countOffset{0, 0};
+    // Repeater grid: instances are placed at origin + (i % columns) *
+    // cellWidth, (i / columns) * cellHeight.
+    int columns{1};
+    int cellWidth{0};
+    int cellHeight{0};
 };
 
 struct ScreenDefinition final {

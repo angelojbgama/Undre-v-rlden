@@ -8,7 +8,7 @@ when this mirror drifts, so edit both sides together.
 from __future__ import annotations
 
 COMPONENTS: tuple[str, ...] = (
-    "group", "panel", "image", "animatedImage", "text", "meter",
+    "group", "panel", "image", "animatedImage", "text", "meter", "slot", "repeater",
 )
 
 COMPONENT_PROPERTIES: dict[str, tuple[str, ...]] = {
@@ -18,6 +18,8 @@ COMPONENT_PROPERTIES: dict[str, tuple[str, ...]] = {
     "animatedImage": (),
     "text": ("text",),
     "meter": ("value", "maximum"),
+    "slot": ("icon", "count"),
+    "repeater": ("source",),
 }
 
 ANCHORS: tuple[str, ...] = (
@@ -55,6 +57,12 @@ BINDING_PATHS: tuple[str, ...] = (
     "player.quickSlots.3.itemId",
     "player.quickSlots.3.amount",
     "player.quickSlots.3.icon",
+    "player.inventory.slots",
+    "context.index",
+    "context.item.id",
+    "context.item.icon",
+    "context.item.amount",
+    "overlay.inventory.slotSelected",
 )
 
 # Action Registry ids mapping onto existing PlayerCommand intents.
@@ -78,4 +86,5 @@ def component_accepts_property(component: str, property: str) -> bool:
 
 
 def is_container_component(component: str) -> bool:
-    return component in ("group", "panel")
+    # The repeater accepts children too: they are its instance template.
+    return component in ("group", "panel", "repeater")
