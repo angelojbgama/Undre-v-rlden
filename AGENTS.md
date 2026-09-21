@@ -1975,6 +1975,27 @@ referências tipadas `itemId -> items` e `unlockQuestId -> quests`, e bloqueio
 de exclusão de Item usado por receita. Fora de escopo: crafting stations,
 receitas aprendidas fora de quests, probabilidades e timers de produção.
 
+# Estado atual — authored map transition fades
+
+Transição de mapa com fade autoral, orquestrada pela `GameSession` e derivada de
+eventos (apresentação nunca bloqueia ou altera gameplay):
+
+- Ids convencionados opcionais `effect.map.transition_out` /
+  `effect.map.transition_in` (`presentation::mapTransitionOutEffectId()` /
+  `mapTransitionInEffectId()`): quando o pack define esses efeitos transient
+  (fade preto 0→255 e 255→0), o primeiro tick com swap pendente toca o fade-out
+  no mapa atual e a troca é adiada pela duração autoral do efeito
+  (`GameSession::beginTransitionFadeOut`); ao entrar, o fade-in é emitido depois
+  do `MapEntered` (o controller limpa o estado na entrada e o cue sobrevive na
+  mesma leva de eventos). Sem os ids, a troca permanece imediata em um tick.
+- O conteúdo builtin NÃO define os ids (neutro por decisão); produção adota
+  autoralmente adicionando as duas definições ao `presentationEffects` do
+  content.json (o Studio faz round-trip; editor dedicado de presentation effects
+  continua como incremento futuro).
+- `MapSession::catalogs()` expõe os `MapValidationCatalogs` (fonte do catálogo de
+  presentation effects na sessão); o estado de deferral é efêmero e reseta em
+  `initializeMap`/`restoreMap`.
+
 # Estado atual — attack presentation cues
 
 Cue de apresentação por ataque implementado de ponta a ponta, apresentação

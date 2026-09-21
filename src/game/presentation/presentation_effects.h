@@ -74,6 +74,13 @@ private:
     std::vector<PresentationEffectDefinition> definitions_;
 };
 
+// Well-known optional transition cues. When the active content pack defines
+// these transient effects, a map swap plays the fade-out cue on the leaving
+// map, defers the swap for the authored duration, then plays the fade-in cue
+// on the arrival map. Absent ids keep the single-tick swap.
+[[nodiscard]] const simulation::DefinitionId& mapTransitionOutEffectId() noexcept;
+[[nodiscard]] const simulation::DefinitionId& mapTransitionInEffectId() noexcept;
+
 struct PresentationEffectSourceKey final {
     PresentationEffectSourceKind kind{PresentationEffectSourceKind::region};
     simulation::MapId mapId{};

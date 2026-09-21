@@ -255,4 +255,14 @@ PresentationEffectFrame PresentationEffectSystem::resolveFrame() const {
     return result;
 }
 
+const simulation::DefinitionId& mapTransitionOutEffectId() noexcept {
+    static const simulation::DefinitionId value{"effect.map.transition_out"};
+    return value;
+}
+
+const simulation::DefinitionId& mapTransitionInEffectId() noexcept {
+    static const simulation::DefinitionId value{"effect.map.transition_in"};
+    return value;
+}
+
 } // namespace underworld::game::presentation

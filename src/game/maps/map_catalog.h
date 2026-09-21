@@ -55,6 +55,7 @@ public:
     [[nodiscard]] const RuntimeWorld* world() const noexcept { return world_.get(); }
     [[nodiscard]] const MapData* data() const noexcept { return data_ ? &*data_ : nullptr; }
     [[nodiscard]] const std::optional<PendingMapTransition>& pending() const noexcept { return pending_; }
+    [[nodiscard]] const MapValidationCatalogs& catalogs() const noexcept { return catalogs_; }
 private:
     [[nodiscard]] TransitionResult prepareAndSwap(const simulation::MapId& mapId,
                                                   const simulation::SpawnId& spawnId);

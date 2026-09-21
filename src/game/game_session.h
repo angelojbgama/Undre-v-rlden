@@ -144,6 +144,10 @@ private:
     void consumePlayerAttackAmmo();
     void applyResolution(const gameplay::CombatResolution& resolution,
                          const gameplay::AttackDefinition* attack = nullptr);
+    // Authored map transition cues: the fade-out effect defers the pending
+    // swap by its authored duration; the fade-in effect plays on arrival.
+    [[nodiscard]] std::uint32_t beginTransitionFadeOut();
+    void emitTransitionFadeIn();
     void resolvePlayerSword();
     void resolveEnemyContacts();
     void updateEnemies();
@@ -226,6 +230,9 @@ private:
     std::optional<simulation::DefinitionId> pendingSceneId_;
     std::optional<simulation::PersistentInstanceId>
         pendingDoorTransitionObjectId_;
+    // Remaining authored fade-out ticks before the pending map swap commits;
+    // zero keeps the swap immediate (no transition cues authored).
+    std::uint32_t transitionFadeTicks_{};
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;

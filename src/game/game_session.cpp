@@ -995,6 +995,32 @@ void GameSession::requestCompletedDoorTransition() {
     }
 }
 
+std::uint32_t GameSession::beginTransitionFadeOut() {
+    if (!mapSession_) { return 0; }
+    const auto* effects = mapSession_->catalogs().presentationEffects;
+    const auto* effect = effects
+        ? effects->find(presentation::mapTransitionOutEffectId())
+        : nullptr;
+    if (!effect ||
+        effect->lifetime != presentation::PresentationEffectLifetime::transient ||
+        effect->durationTicks == 0) {
+        return 0;
+    }
+    events_.emit(simulation::PresentationEffectRequested{
+        mapSession_->world()->id(), presentation::mapTransitionOutEffectId()});
+    return effect->durationTicks;
+}
+
+void GameSession::emitTransitionFadeIn() {
+    const auto* effects = mapSession_->catalogs().presentationEffects;
+    const auto* effect = effects
+        ? effects->find(presentation::mapTransitionInEffectId())
+        : nullptr;
+    if (!effect) { return; }
+    events_.emit(simulation::PresentationEffectRequested{
+        mapSession_->world()->id(), presentation::mapTransitionInEffectId()});
+}
+
 bool GameSession::handleDialogueCommand(const simulation::PlayerCommand& command) {
     if (!dialogue_ || !dialogue_->isOpen()) { return false; }
     const bool sceneOwnsDialogue = sceneController_.active();
@@ -1240,6 +1266,7 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
     if (!activated.changed) { error = activated.error; return false; }
     pendingSceneId_.reset();
     pendingDoorTransitionObjectId_.reset();
+    transitionFadeTicks_ = 0;
     player_.relocate(activated.spawn.position, activated.spawn.facing);
     mapSession_ = std::move(candidate);
     mapEnteredPending_ = true;
@@ -1390,14 +1417,23 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
     mapSession_->beginTick();
     static_cast<void>(mapSession_->requestTransition(player_.collisionBody()));
     if (mapSession_->pending()) {
-        const auto transition = mapSession_->commitPending();
-        if (transition.changed) {
-            if (sceneController_.active()) sceneController_.abort(events_, "scene aborted by map transition");
-            pendingDoorTransitionObjectId_.reset();
-            clearCombatTransients();
-            closeDialogue();
-            player_.relocate(transition.spawn.position, transition.spawn.facing);
-            events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+        // Authored transition cues: the first pending tick plays the fade-out
+        // effect and the swap defers until its authored duration elapses.
+        // Without the effect (or once it elapsed) the swap stays immediate.
+        if (transitionFadeTicks_ == 0) { transitionFadeTicks_ = beginTransitionFadeOut(); }
+        const bool deferForFade = transitionFadeTicks_ > 1;
+        if (transitionFadeTicks_ > 0) { --transitionFadeTicks_; }
+        if (!deferForFade) {
+            transitionFadeTicks_ = 0;
+            const auto transition = mapSession_->commitPending();
+            if (transition.changed) {
+                if (sceneController_.active()) sceneController_.abort(events_, "scene aborted by map transition");
+                pendingDoorTransitionObjectId_.reset();
+                clearCombatTransients();
+                closeDialogue();
+                player_.relocate(transition.spawn.position, transition.spawn.facing);
+                events_.emit(simulation::MapEntered{mapSession_->world()->id()});
+                emitTransitionFadeIn();
             regionTracker_.update(mapSession_->world()->id(), mapSession_->data()->regions,
                                   player_.feetPosition(), events_);
             // Pressure activation is derived from the newly spawned player position.
@@ -1421,6 +1457,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
                 return;
             }
             mapEnteredPending_ = false;
+            }
         }
     }
     collectNearbyPickups();
@@ -1501,6 +1538,7 @@ bool GameSession::restoreMap(const simulation::MapId& mapId,
     if (!restored.changed) { error = restored.error; return false; }
     pendingSceneId_.reset();
     pendingDoorTransitionObjectId_.reset();
+    transitionFadeTicks_ = 0;
     clearCombatTransients();
     closeDialogue();
     player_.relocate(restored.spawn.position, restored.spawn.facing);

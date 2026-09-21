@@ -2923,6 +2923,138 @@ void testAttackPresentationCue() {
     expect(!probeCue(*content::compileContent(content::makeCombatAuthoredContent()).registry),
            "attacks without a presentation effect never request cues");
 }
+underworld::game::maps::MapData makeSyntheticMap(std::string mapName, std::string target);
+
+void testMapTransitionFadeCues() {
+    namespace content = underworld::game::content;
+    namespace game = underworld::game;
+    namespace gameplay = underworld::game::gameplay;
+    namespace maps = underworld::game::maps;
+    namespace presentation = underworld::game::presentation;
+    namespace simulation = underworld::simulation;
+
+    auto authored = content::makeCombatAuthoredContent();
+    authored.presentationEffects.push_back(
+        {{presentation::mapTransitionOutEffectId()},
+         presentation::PresentationEffectLifetime::transient, 12, 90,
+         std::nullopt, std::nullopt, std::nullopt,
+         presentation::FadeDefinition{{0, 0, 0, 255}, 0, 255}});
+    authored.presentationEffects.push_back(
+        {{presentation::mapTransitionInEffectId()},
+         presentation::PresentationEffectLifetime::transient, 12, 90,
+         std::nullopt, std::nullopt, std::nullopt,
+         presentation::FadeDefinition{{0, 0, 0, 255}, 255, 0}});
+    const auto compiled = content::compileContent(authored);
+    expect(compiled.registry.has_value(),
+           "transition fade fixture compiles with authored transition cues");
+    if (!compiled.registry) { return; }
+
+    maps::MapData mapA = makeSyntheticMap("map.fade.a", "map.fade.b");
+    maps::MapData mapB = makeSyntheticMap("map.fade.b", "map.fade.a");
+    const auto dmapA = std::filesystem::temp_directory_path() / "underworld_fade_a.dmap";
+    const auto dmapB = std::filesystem::temp_directory_path() / "underworld_fade_b.dmap";
+    std::error_code fsError;
+    std::filesystem::remove(dmapA, fsError);
+    std::filesystem::remove(dmapB, fsError);
+    std::string ioError;
+    const bool mapsWritten = maps::writeDmap(dmapA, mapA, ioError) &&
+                             maps::writeDmap(dmapB, mapB, ioError);
+    maps::MapCatalog catalog;
+    if (mapsWritten) {
+        catalog.add(mapA.id, dmapA);
+        catalog.add(mapB.id, dmapB);
+    }
+
+    const auto validation = game::mapValidationCatalogs(*compiled.registry);
+    simulation::EntityHandlePool handles;
+    const std::array visuals{gameplay::creatures::soldierVisualId(),
+                             gameplay::creatures::skullVisualId()};
+    gameplay::creatures::EnemyFactory enemies(handles, compiled.registry->enemies(),
+                                              compiled.registry->behaviors(),
+                                              compiled.registry->attacks(),
+                                              compiled.registry->projectiles(), visuals);
+    gameplay::WorldObjectFactory objects(handles, compiled.registry->objects(),
+                                         compiled.registry->items());
+    game::RuntimeTilesetCatalog runtimeTilesets(compiled.registry->tilesets());
+    maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+
+    const auto walkUntilEntered = [&](const maps::MapValidationCatalogs& catalogs,
+                                      std::uint64_t& fadeOutTick,
+                                      std::uint64_t& enteredTick,
+                                      bool& fadeInOrdered,
+                                      bool& strayCues) {
+        game::GameSession session({0}, testProgression());
+        session.configureCombat(compiled.registry->attacks(), compiled.registry->projectiles(),
+                                compiled.registry->behaviors(),
+                                compiled.registry->attacks().require(gameplay::playerSwordAttackId()),
+                                compiled.registry->attacks().require(gameplay::playerBowAttackId()));
+        session.configureItems(compiled.registry->items());
+        std::string sessionError;
+        if (!mapsWritten ||
+            !session.initializeMap(catalog, catalogs, builder, mapA.id,
+                                   simulation::SpawnId{"entry.start"}, sessionError)) {
+            return false;
+        }
+        fadeOutTick = 0;
+        enteredTick = 0;
+        fadeInOrdered = true;
+        strayCues = false;
+        // Approach briefly, then place the player inside the link trigger:
+        // the authored chest/crate solids block a pure walk on this fixture.
+        session.relocatePlayer(underworld::core::WorldPointI{16, 24},
+                               gameplay::FacingDirection::right);
+        session.tick(movementCommand(1, 1, 0));
+        session.tick(movementCommand(2, 1, 0));
+        session.relocatePlayer(underworld::core::WorldPointI{58, 24},
+                               gameplay::FacingDirection::right);
+        std::uint64_t tick = 3;
+        for (; tick <= 120 && enteredTick == 0; ++tick) {
+            session.tick(movementCommand(tick, 0, 0));
+            std::size_t enteredIndex = session.events().events().size();
+            std::size_t fadeInIndex = session.events().events().size();
+            for (std::size_t index = 0; index < session.events().events().size(); ++index) {
+                const auto& event = session.events().events()[index];
+                if (const auto* entered = std::get_if<simulation::MapEntered>(&event)) {
+                    if (entered->mapId == mapB.id) { enteredIndex = index; }
+                } else if (const auto* requested =
+                               std::get_if<simulation::PresentationEffectRequested>(&event)) {
+                    if (requested->effectId == presentation::mapTransitionOutEffectId()) {
+                        if (fadeOutTick == 0) { fadeOutTick = tick; }
+                        else { strayCues = true; }
+                    }
+                    if (requested->effectId == presentation::mapTransitionInEffectId()) {
+                        fadeInIndex = index;
+                    }
+                }
+            }
+            if (enteredIndex < session.events().events().size()) {
+                enteredTick = tick;
+                fadeInOrdered = fadeInIndex > enteredIndex;
+            }
+        }
+        return enteredTick != 0;
+    };
+
+    std::uint64_t fadeOutTick = 0;
+    std::uint64_t enteredTick = 0;
+    bool fadeInOrdered = false;
+    bool strayCues = false;
+    expect(walkUntilEntered(validation, fadeOutTick, enteredTick, fadeInOrdered, strayCues) &&
+               fadeOutTick != 0 && enteredTick == fadeOutTick + 11 && fadeInOrdered && !strayCues,
+           "authored transition cues defer the swap for the fade-out duration and cue the fade-in on arrival");
+
+    auto withoutPresentation = validation;
+    withoutPresentation.presentationEffects = nullptr;
+    std::uint64_t immediateOutTick = 0;
+    std::uint64_t immediateEnteredTick = 0;
+    bool immediateFadeInOrdered = false;
+    bool immediateStrayCues = false;
+    expect(walkUntilEntered(withoutPresentation, immediateOutTick, immediateEnteredTick,
+                            immediateFadeInOrdered, immediateStrayCues) &&
+               immediateOutTick == 0 && immediateStrayCues == false,
+           "transitions without authored cues keep the immediate single-tick swap");
+}
+
 void testPhase6CombatGeneralization() {
     namespace gameplay = underworld::game::gameplay;
     namespace simulation = underworld::simulation;
@@ -11516,6 +11648,7 @@ int main() {
         testProjectilesAndEffects();
         testProjectileAmmoAndDrops();
         testAttackPresentationCue();
+        testMapTransitionFadeCues();
         testPhase6CombatGeneralization();
         testCreatureDefinitionsAndBehavior();
         testCreatureCombatIntegration();
