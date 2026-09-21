@@ -1665,3 +1665,30 @@ optional `SCNE` chunk. `WorldLogic` starts them only through the existing
 `WorldActionKind::startScene` action. Legacy UMAP v1–v3 and DMAP v1.0–1.4 remain
 readable with no scenes and persistent object placements by default; DSAV 1.8 does
 not persist an active scene timeline.
+
+### UI Engine & UI Composer — decisão registrada, não iniciada
+
+Decisão aprovada pelo dono do projeto (2026-09-20): a interface do jogo (HUD,
+inventário, overlays e futuros menus) passa a ser conteúdo authored modelável no
+Content Studio, com o runtime C++ como único intérprete e autoridade de gameplay.
+O desenho completo — princípios, modelo de dados mínimo, Content JSON v7,
+arquitetura runtime, desenho painel a painel do UI Composer e provas de aceite —
+está em `docs/UI_ENGINE.md`.
+
+Ordem de blocos acordada (nenhum iniciado):
+
+```text
+UI-1  núcleo C++ + HUD de corações como definição      (prova 1a)
+UI-2  estados + variantes barra/orbe por definição     (prova 1b)
+UI-3  UI Composer no Studio (hierarchy/canvas/inspector/preview data)
+UI-4  repeater/slot + migração do overlay de inventário (prova 2)
+UI-5  screen/navigation com o primeiro menu real
+```
+
+Limites já fechados na decisão: resolução lógica fixa 272×224 (sem responsive
+layout/multi-resolução), keyboard-first (sem mouse/hover/gamepad), sem áudio, sem
+linguagem de expressão nem scripting, Binding/Action Registry expondo somente o
+que o `GameViewModel`/`GameSession` já fornecem, ativação de telas permanece em
+C++ até o UI-5, e nada de UI é persistido no DSAV. Não iniciar UI-1 sem seguir os
+critérios de incremento do `AGENTS.md`; as provas da seção 10 de `docs/UI_ENGINE.md`
+são os gates de aceite de cada bloco.

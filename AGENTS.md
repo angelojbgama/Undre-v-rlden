@@ -2038,3 +2038,35 @@ sem branches por conteúdo:
 Não implementar: custos genéricos (MP/stamina), durabilidade de flechas,
 inimigos com ammo ou economia de recuperação automática; essas ficam como
 conteúdo/fases futuras.
+
+# Estado atual — UI Engine / UI Composer (decisão registrada, NÃO implementada)
+
+Decisão aprovada pelo dono do projeto (2026-09-20): a interface do jogo (HUD,
+inventário, overlays e futuros menus) passa a ser conteúdo authored modelável no
+Content Studio — dado ≠ aparência, com o runtime C++ como único intérprete e o
+gameplay como única autoridade. O desenho completo (princípios, modelo de dados,
+Content JSON v7, arquitetura runtime, UI Composer painel a painel, blocos e
+provas de aceite) está em `docs/UI_ENGINE.md`; nenhum código existe ainda.
+
+Fronteiras já fechadas nesta decisão, válidas para qualquer implementação futura:
+
+- UI é conteúdo: categoria nova `uiScreens` no Content JSON v7 (retrocompatível
+  v1–v6), entrando por `AuthoredContentPack` → `ContentValidator`/`ContentCompiler`;
+  validação rejeita binding/ação/componente/asset desconhecido.
+- Binding Registry formaliza a fronteira existente do `GameViewModel` (não cria
+  camada paralela); Action Registry mapeia somente para comandos/intents que já
+  existem na `GameSession`/`CommandBuilder`. UI nunca muta gameplay diretamente.
+- Resolução lógica fixa 272×224: anchors em pixels lógicos; SEM responsive
+  layout, SEM preview multi-resolução. Keyboard-first: sem mouse/hover, sem
+  gamepad. Sem áudio em estados. Sem linguagem de expressão/scripting — valores
+  derivados vêm prontos do Binding Registry; condições de estado são comparações
+  fixas contra constantes.
+- Estado de UI (foco, seleção, transitórios) nunca é persistido no DSAV.
+- Ativação de telas permanece em C++ (roteamento modal atual) até o bloco UI-5.
+- Ordem acordada: UI-1 núcleo C++ + HUD de corações como definição (prova 1a) →
+  UI-2 estados + variantes barra/orbe por definição (prova 1b) → UI-3 UI Composer
+  no Studio → UI-4 repeater/slot + migração do overlay de inventário (prova 2) →
+  UI-5 screen/navigation com o primeiro menu real. As provas da seção 10 de
+  `docs/UI_ENGINE.md` são gates de aceite; prova reprovada bloqueia o bloco
+  seguinte. Themes, timeline de animação, scroll/tooltip e telas de conteúdo
+  inexistente (spellbook etc.) permanecem deferidos até caso real.
