@@ -20,6 +20,7 @@ COMPONENT_PROPERTIES: dict[str, tuple[str, ...]] = {
     "meter": ("value", "maximum"),
     "slot": ("icon", "count"),
     "repeater": ("source",),
+    "image": ("icon",),
 }
 
 ANCHORS: tuple[str, ...] = (
@@ -58,6 +59,8 @@ BINDING_PATHS: tuple[str, ...] = (
     "player.quickSlots.3.amount",
     "player.quickSlots.3.icon",
     "player.inventory.slots",
+    "player.ammo.present",
+    "player.quickSlots.slots",
     "context.index",
     "context.item.id",
     "context.item.icon",

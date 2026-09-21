@@ -167,6 +167,9 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
             return static_cast<std::int64_t>(view_->gold);
         case ui::BindingPath::playerAmmoAmount:
             return static_cast<std::int64_t>(view_->ammo.quantity);
+        case ui::BindingPath::playerAmmoPresent:
+            return view_->ammo.itemId ? std::optional<std::int64_t>{1}
+                                      : std::optional<std::int64_t>{0};
         case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
@@ -177,6 +180,17 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
 
 std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
     ui::BindingPath path) const {
+    if (path == ui::BindingPath::playerQuickSlotSlots) {
+        std::vector<ui::UiCollectionContext> entries;
+        entries.reserve(view_->quickSlots.size());
+        std::int64_t index = 0;
+        for (const auto& slot : view_->quickSlots) {
+            entries.push_back({slot.itemId, slot.visualId,
+                               static_cast<std::int64_t>(slot.quantity), index});
+            ++index;
+        }
+        return entries;
+    }
     if (path != ui::BindingPath::playerInventorySlots) { return {}; }
     std::vector<ui::UiCollectionContext> entries;
     entries.reserve(view_->inventory.size());

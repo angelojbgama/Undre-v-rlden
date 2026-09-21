@@ -59,6 +59,9 @@ bool conditionMatches(const StateCondition& condition, const UiBindingResolver& 
 // the previous value, so later states win deterministically.
 NodeVisual resolveVisual(const NodeDefinition& node, const UiBindingResolver& resolver) {
     NodeVisual visual{};
+    // The authored layout visibility is the base; state deltas override it,
+    // so a node can start hidden and be revealed by a condition.
+    visual.visible = node.layout.visible;
     for (const auto& state : node.states) {
         if (state.condition && !conditionMatches(*state.condition, resolver)) continue;
         if (state.visual.visible) visual.visible = *state.visual.visible;
@@ -177,7 +180,11 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
     }
     switch (node.component) {
         case ComponentKind::image: {
-            const auto& spriteId = visual.sprite ? visual.sprite : node.spriteId;
+            // Icons may be authored (sprite) or bound to a dynamic id
+            // (player.ammo.icon): a missing bound id simply draws nothing.
+            auto spriteId = boundId(node, "icon", resolver);
+            if (!spriteId) spriteId = visual.sprite ? visual.sprite : node.spriteId;
+            if (!spriteId) spriteId = node.spriteId;
             if (!spriteId) break;
             const auto* sprite = context.staticSprites.find(*spriteId);
             if (!sprite) break;
@@ -289,7 +296,8 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
             render::drawSprite(renderer, *icon->sheet, icon->frame,
                                {position.x + node.iconOffset.x + icon->frame.anchor.x,
                                 position.y + node.iconOffset.y + icon->frame.anchor.y});
-            if (const auto count = boundNumber(node, "count", resolver); count && *count > 1) {
+            if (const auto count = boundNumber(node, "count", resolver);
+                count && (node.countAlways || *count > 1)) {
                 render::drawText(renderer, context.font, std::to_string(*count),
                                  position.x + node.countOffset.x,
                                  position.y + node.countOffset.y);

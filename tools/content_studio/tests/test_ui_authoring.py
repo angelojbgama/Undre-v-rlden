@@ -175,11 +175,12 @@ class BuiltinScreensTests(unittest.TestCase):
             service = UiAuthoringService(make_workspace(root))
             self.assertTrue(service.is_builtin_only("screen.hud"))
             override = service.override_builtin("screen.hud")
-            self.assertEqual("hud.health", override.data["root"]["id"])
+            self.assertEqual("hud.root", override.data["root"]["id"])
             self.assertFalse(service.is_builtin_only("screen.hud"))
             service.set_layout("screen.hud", "hud.health", offset_x=20)
-            self.assertEqual(20, service.find("screen.hud").data["root"]["layout"]["offsetX"])
-            self.assertEqual(3, service.builtin_find("screen.hud")["root"]["layout"]["offsetX"])
+            hearts = service.find("screen.hud").data["root"]["children"][1]
+            self.assertEqual(20, hearts["layout"]["offsetX"])
+            self.assertEqual(3, service.builtin_find("screen.hud")["root"]["children"][1]["layout"]["offsetX"])
             # builtin visuals resolve for overrides, like the C++ overlay
             service.set_meter("screen.hud", "hud.health",
                               sprites={"full": "spr.hud.heart"})

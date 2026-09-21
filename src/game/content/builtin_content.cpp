@@ -268,22 +268,37 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     addBuiltinDungeonSemantics(pack);
     addBuiltinVisualContent(pack);
 
-    // HUD health hearts as authored UI content (docs/UI_ENGINE.md proof 1a):
-    // the definition reproduces the legacy HUD bar hearts pixel-for-pixel —
-    // full segment Icons/heart_complete.png at (3 + i*12, 2), empty segments
-    // as the legacy inset {54,30,38} rect at (+0,+1). Workspaces override by
-    // definition id only.
+    // HUD as authored UI content (docs/UI_ENGINE.md proof 1a, extended): the
+    // full legacy HUD bar — hearts, gold, ammo, quickslots — reproduces the
+    // hardcoded draw pixel-for-pixel and becomes Studio-editable. "MAP:" and
+    // the last-event label stay runtime-drawn (world state, not player state).
     pack.visualImages.push_back(
-        {{ "img.hud.heart" }, presentation::VisualAssetRoot::gameAssets, "Icons/heart_complete.png"});
+        {{"img.hud.heart" }, presentation::VisualAssetRoot::gameAssets, "Icons/heart_complete.png"});
     pack.staticSprites.push_back(
-        {{ "spr.hud.heart" }, { "img.hud.heart" }, std::nullopt, core::PointI{0, 0}});
+        {{"spr.hud.heart" }, { "img.hud.heart" }, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.hud.money" }, presentation::VisualAssetRoot::gameAssets, "Icons/money.png"});
+    pack.staticSprites.push_back(
+        {{"spr.hud.money" }, { "img.hud.money" }, std::nullopt, core::PointI{0, 0}});
     ui::ScreenDefinition hudScreen;
     hudScreen.id = simulation::DefinitionId{"screen.hud"};
     hudScreen.kind = ui::ScreenKind::hud;
+    ui::NodeDefinition hudRoot;
+    hudRoot.id = "hud.root";
+    hudRoot.component = ui::ComponentKind::group;
+    const auto hudChild = [&hudRoot](ui::NodeDefinition node) {
+        hudRoot.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition topBar;
+    topBar.id = "hud.topBar";
+    topBar.component = ui::ComponentKind::panel;
+    topBar.layout.width = 272;
+    topBar.layout.height = 14;
+    topBar.background = core::ColorRGBA8{8, 10, 16, 220};
+    hudChild(std::move(topBar));
     ui::NodeDefinition hearts;
     hearts.id = "hud.health";
     hearts.component = ui::ComponentKind::meter;
-    hearts.layout.anchor = ui::Anchor::topLeft;
     hearts.layout.offsetX = 3;
     hearts.layout.offsetY = 2;
     ui::MeterDefinition healthMeter;
@@ -295,7 +310,101 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     hearts.meter = healthMeter;
     hearts.bindings.push_back({"value", ui::BindingPath::playerHealthCurrent});
     hearts.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
-    hudScreen.root = std::move(hearts);
+    hudChild(std::move(hearts));
+    ui::NodeDefinition moneyIcon;
+    moneyIcon.id = "hud.gold.icon";
+    moneyIcon.component = ui::ComponentKind::image;
+    moneyIcon.spriteId = simulation::DefinitionId{"spr.hud.money"};
+    moneyIcon.layout.offsetX = 68;
+    moneyIcon.layout.offsetY = 2;
+    hudChild(std::move(moneyIcon));
+    ui::NodeDefinition goldText;
+    goldText.id = "hud.gold.text";
+    goldText.component = ui::ComponentKind::text;
+    goldText.layout.offsetX = 79;
+    goldText.layout.offsetY = 2;
+    goldText.bindings.push_back({"text", ui::BindingPath::playerGold});
+    hudChild(std::move(goldText));
+    // Ammo (bottom right): hidden unless the player carries the authored
+    // attack ammo; the icon is bound to the carried item's visual.
+    const auto gated = [](ui::NodeDefinition node) {
+        node.layout.visible = false;
+        ui::StateDefinition present;
+        present.id = "carrying";
+        present.condition = ui::StateCondition{
+            ui::BindingPath::playerAmmoPresent, ui::ConditionOperator::equal, 1};
+        present.visual.visible = true;
+        node.states.push_back(std::move(present));
+        return node;
+    };
+    ui::NodeDefinition ammoIcon = gated(ui::NodeDefinition{});
+    ammoIcon.id = "hud.ammo.icon";
+    ammoIcon.component = ui::ComponentKind::image;
+    ammoIcon.layout.offsetX = 246;
+    ammoIcon.layout.offsetY = 199;
+    ammoIcon.bindings.push_back({"icon", ui::BindingPath::playerAmmoIcon});
+    hudChild(std::move(ammoIcon));
+    ui::NodeDefinition ammoPrefix = gated(ui::NodeDefinition{});
+    ammoPrefix.id = "hud.ammo.prefix";
+    ammoPrefix.component = ui::ComponentKind::text;
+    ammoPrefix.layout.offsetX = 226;
+    ammoPrefix.layout.offsetY = 209;
+    ammoPrefix.text = "x";
+    hudChild(std::move(ammoPrefix));
+    ui::NodeDefinition ammoCount = gated(ui::NodeDefinition{});
+    ammoCount.id = "hud.ammo.count";
+    ammoCount.component = ui::ComponentKind::text;
+    ammoCount.layout.offsetX = 233;
+    ammoCount.layout.offsetY = 209;
+    ammoCount.bindings.push_back({"text", ui::BindingPath::playerAmmoAmount});
+    hudChild(std::move(ammoCount));
+    ui::NodeDefinition bottomBar;
+    bottomBar.id = "hud.bottomBar";
+    bottomBar.component = ui::ComponentKind::panel;
+    bottomBar.layout.offsetY = 194;
+    bottomBar.layout.width = 272;
+    bottomBar.layout.height = 30;
+    bottomBar.background = core::ColorRGBA8{8, 10, 16, 220};
+    hudChild(std::move(bottomBar));
+    ui::NodeDefinition quickSlots;
+    quickSlots.id = "hud.quickSlots";
+    quickSlots.component = ui::ComponentKind::repeater;
+    quickSlots.layout.offsetX = 4;
+    quickSlots.layout.offsetY = 197;
+    quickSlots.columns = 4;
+    quickSlots.cellWidth = 40;
+    quickSlots.cellHeight = 23;
+    quickSlots.bindings.push_back({"source", ui::BindingPath::playerQuickSlotSlots});
+    ui::NodeDefinition quickSlot;
+    quickSlot.id = "hud.quickSlot";
+    quickSlot.component = ui::ComponentKind::slot;
+    quickSlot.layout.width = 34;
+    quickSlot.layout.height = 23;
+    quickSlot.background = core::ColorRGBA8{54, 30, 38, 255};
+    quickSlot.iconOffset = core::PointI{10, 2};
+    quickSlot.countOffset = core::PointI{22, 12};
+    quickSlot.countAlways = true;
+    quickSlot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
+    quickSlot.bindings.push_back({"count", ui::BindingPath::contextItemAmount});
+    quickSlots.children.push_back(std::move(quickSlot));
+    hudChild(std::move(quickSlots));
+    for (int index = 0; index < 4; ++index) {
+        ui::NodeDefinition number;
+        number.id = "hud.quickSlot.number" + std::to_string(index + 1);
+        number.component = ui::ComponentKind::text;
+        number.layout.offsetX = 4 + index * 40 + 2;
+        number.layout.offsetY = 199;
+        number.text = std::to_string(index + 1);
+        hudChild(std::move(number));
+    }
+    ui::NodeDefinition hint;
+    hint.id = "hud.hint";
+    hint.component = ui::ComponentKind::text;
+    hint.layout.offsetX = 169;
+    hint.layout.offsetY = 203;
+    hint.text = "I ITEMS  E OPEN";
+    hudChild(std::move(hint));
+    hudScreen.root = std::move(hudRoot);
     pack.uiScreens.push_back(std::move(hudScreen));
 
     // Inventory overlay as authored UI content (docs/UI_ENGINE.md proof 2):

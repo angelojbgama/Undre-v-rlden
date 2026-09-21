@@ -85,7 +85,7 @@ class UiComposerWidgetTests(unittest.TestCase):
             widget.hierarchy.setCurrentItem(widget.hierarchy.topLevelItem(0))
             # A canvas drag commits the subtree delta through the service.
             widget._commit_node_move("hud.health", 5, 4)
-            node = widget.service.find("screen.hud").data["root"]
+            node = widget.service.find("screen.hud").data["root"]["children"][1]
             self.assertEqual(8, node["layout"]["offsetX"])
             self.assertEqual(6, node["layout"]["offsetY"])
 

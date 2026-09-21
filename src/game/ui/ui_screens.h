@@ -63,6 +63,8 @@ enum class BindingPath {
     // instance; the derived selection flag composes focus+selection+index in
     // the GameViewModel adapter so authored states stay single-condition.
     playerInventorySlots,
+    playerAmmoPresent,
+    playerQuickSlotSlots,
     contextIndex,
     contextItemId,
     contextItemIcon,
@@ -75,7 +77,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 25> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 27> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -96,6 +98,8 @@ inline constexpr std::array<BindingPathEntry, 25> bindingPathTable{{
     {BindingPath::playerQuickSlot3Amount, "player.quickSlots.3.amount"},
     {BindingPath::playerQuickSlot3Icon, "player.quickSlots.3.icon"},
     {BindingPath::playerInventorySlots, "player.inventory.slots"},
+    {BindingPath::playerAmmoPresent, "player.ammo.present"},
+    {BindingPath::playerQuickSlotSlots, "player.quickSlots.slots"},
     {BindingPath::contextIndex, "context.index"},
     {BindingPath::contextItemId, "context.item.id"},
     {BindingPath::contextItemIcon, "context.item.icon"},
@@ -231,6 +235,9 @@ struct NodeDefinition final {
     int columns{1};
     int cellWidth{0};
     int cellHeight{0};
+    // Slots hide the stack count at 1 by default (inventory semantics);
+    // quickslots author countAlways to mirror the legacy always-on number.
+    bool countAlways{false};
 };
 
 struct ScreenDefinition final {

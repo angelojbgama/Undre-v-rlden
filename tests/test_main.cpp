@@ -11436,18 +11436,18 @@ void testUiScreenBuiltinAndBindings() {
     const auto builtin = content::makeBuiltinAuthoredContent();
     expect(builtin.uiScreens.size() == 3 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
-               builtin.uiScreens.front().root.id == "hud.health" &&
-               builtin.uiScreens.front().root.meter &&
-               builtin.uiScreens.front().root.meter->sprites.full &&
-               builtin.uiScreens.front().root.meter->spacing == 1 &&
-               builtin.uiScreens.front().root.meter->emptyRect &&
-               builtin.uiScreens.front().root.meter->emptyRect->offsetY == 1,
-           "builtin content authors the pixel-parity HUD hearts screen");
+               builtin.uiScreens.front().root.id == "hud.root" &&
+               builtin.uiScreens.front().root.children[1].id == "hud.health" &&
+               builtin.uiScreens.front().root.children[1].meter &&
+               builtin.uiScreens.front().root.children[1].meter->sprites.full &&
+               builtin.uiScreens.front().root.children[1].meter->spacing == 1,
+           "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
     expect(compiled && compiled.registry->uiScreens().values().size() == 3 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
-               compiled.registry->uiScreens().require({"screen.hud"}).root.meter->spacing == 1,
+               compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
+                   .meter->spacing == 1,
            "builtin ui screens compile into the runtime screen catalog");
 
     game::GameViewModel view;
@@ -12079,6 +12079,154 @@ void testUiRuntimeMenuNavigation() {
     expect(outlineFound, "the focused node draws its focus outline");
 }
 
+void testUiHudCompleteParity() {
+    using namespace underworld;
+    namespace game_ns = game;
+    namespace presentation = game::presentation;
+    namespace ui = game::ui;
+
+    const auto makeImage = [](int width, int height, std::uint8_t seed) {
+        core::ImageData data;
+        data.width = width;
+        data.height = height;
+        data.strideBytes = static_cast<std::size_t>(width) * 4;
+        data.pixels.resize(static_cast<std::size_t>(width) * height * 4);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const auto base =
+                    (static_cast<std::size_t>(y) * width + static_cast<std::size_t>(x)) * 4;
+                data.pixels[base] = static_cast<std::uint8_t>(seed + x * 5);
+                data.pixels[base + 1] = static_cast<std::uint8_t>(seed + y * 3);
+                data.pixels[base + 2] = static_cast<std::uint8_t>(seed);
+                data.pixels[base + 3] = 255;
+            }
+        }
+        return std::make_shared<const render::Image>(std::move(data));
+    };
+    auto heartImage = makeImage(11, 10, 40);
+    auto moneyImage = makeImage(8, 8, 200);
+
+    game::presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({{"spr.hud.heart"}, std::make_shared<render::SpriteSheet>(heartImage),
+                 render::SpriteFrame{{0, 0, 11, 10}, {0, 0}, {0, 0}, false}});
+    sprites.add({{"spr.hud.money"}, std::make_shared<render::SpriteSheet>(moneyImage),
+                 render::SpriteFrame{{0, 0, 8, 8}, {0, 0}, {0, 0}, false}});
+    sprites.add({{"spr.hud.ammo"}, std::make_shared<render::SpriteSheet>(makeImage(10, 10, 120)),
+                 render::SpriteFrame{{0, 0, 10, 10}, {0, 0}, {0, 0}, false}});
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+
+    struct HudResolver final : ui::UiBindingResolver {
+        int health{3};
+        int maximum{5};
+        std::uint64_t gold{152};
+        bool ammoPresent{true};
+        std::uint64_t ammoAmount{7};
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override {
+            switch (path) {
+                case ui::BindingPath::playerHealthCurrent: return health;
+                case ui::BindingPath::playerHealthMax: return maximum;
+                case ui::BindingPath::playerGold: return static_cast<std::int64_t>(gold);
+                case ui::BindingPath::playerAmmoPresent:
+                    return ammoPresent ? std::optional<std::int64_t>{1}
+                                       : std::optional<std::int64_t>{0};
+                case ui::BindingPath::playerAmmoAmount:
+                    return static_cast<std::int64_t>(ammoAmount);
+                default: return std::nullopt;
+            }
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath path) const override {
+            if (path == ui::BindingPath::playerAmmoIcon) {
+                return simulation::DefinitionId{"spr.hud.ammo"};
+            }
+            return std::nullopt;
+        }
+        [[nodiscard]] std::vector<ui::UiCollectionContext> collection(
+            ui::BindingPath path) const override {
+            if (path != ui::BindingPath::playerQuickSlotSlots) { return {}; }
+            std::vector<ui::UiCollectionContext> entries;
+            for (int index = 0; index < 4; ++index) {
+                const bool bound = index != 2;
+                const std::optional<simulation::DefinitionId> icon =
+                    bound ? std::optional<simulation::DefinitionId>{simulation::DefinitionId{"spr.hud.ammo"}}
+                          : std::nullopt;
+                entries.push_back({icon, icon, static_cast<std::int64_t>(index), index});
+            }
+            return entries;
+        }
+    };
+
+    // Compile the builtin HUD and render it against the full legacy HUD loop.
+    const auto builtin = game::content::makeBuiltinAuthoredContent();
+    const auto compiled = game::content::compileContent(builtin);
+    expect(static_cast<bool>(compiled), "the complete authored HUD compiles");
+    if (!compiled) { return; }
+    const auto& hudScreen = *compiled.registry->uiScreens().find({"screen.hud"});
+
+    const ui::UiPresenter presenter;
+    const auto renderLegacy = [&](render::Renderer2D& renderer, bool ammoPresent) {
+        renderer.fillRect({0, 0, 272, 14}, {8, 10, 16, 220});
+        for (int index = 0; index < 5; ++index) {
+            if (index < 3) {
+                renderer.drawImage(*heartImage, 3 + index * 12, 2);
+            } else {
+                renderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
+            }
+        }
+        renderer.drawImage(*moneyImage, 68, 2);
+        render::drawText(renderer, font, std::to_string(152), 79, 2);
+        if (ammoPresent) {
+            const auto& ammoSprite = sprites.require({"spr.hud.ammo"});
+            render::drawSprite(renderer, *ammoSprite.sheet, ammoSprite.frame,
+                               {246 + ammoSprite.frame.anchor.x, 199 + ammoSprite.frame.anchor.y});
+            render::drawText(renderer, font, "x" + std::to_string(7), 226, 209);
+        }
+        renderer.fillRect({0, 194, 272, 30}, {8, 10, 16, 220});
+        for (int index = 0; index < 4; ++index) {
+            const int x = 4 + index * 40;
+            renderer.fillRect({x, 197, 34, 23}, {54, 30, 38, 255});
+            render::drawText(renderer, font, std::to_string(index + 1), x + 2, 199);
+            if (index != 2) {
+                const auto& sprite = sprites.require({"spr.hud.ammo"});
+                render::drawSprite(renderer, *sprite.sheet, sprite.frame,
+                                   {x + 10 + sprite.frame.anchor.x, 199 + sprite.frame.anchor.y});
+                render::drawText(renderer, font, std::to_string(index), x + 22, 209);
+            }
+        }
+        render::drawText(renderer, font, "I ITEMS  E OPEN", 169, 203);
+    };
+
+    HudResolver resolver;
+    render::Framebuffer legacy(272, 224);
+    render::Framebuffer modern(272, 224);
+    render::Renderer2D legacyRenderer(legacy);
+    render::Renderer2D modernRenderer(modern);
+    const ui::UiVisualContext visuals{sprites, font};
+    renderLegacy(legacyRenderer, true);
+    presenter.render(hudScreen, resolver, visuals, modernRenderer);
+    expect(std::equal(legacy.pixels().begin(), legacy.pixels().end(),
+                      modern.pixels().begin(), modern.pixels().end()),
+           "the complete authored HUD is pixel-identical to the legacy draw");
+
+    // Without carried ammo the gated nodes vanish exactly like the legacy
+    // conditional branch.
+    resolver.ammoPresent = false;
+    render::Framebuffer legacyEmpty(272, 224);
+    render::Framebuffer modernEmpty(272, 224);
+    render::Renderer2D legacyEmptyRenderer(legacyEmpty);
+    render::Renderer2D modernEmptyRenderer(modernEmpty);
+    renderLegacy(legacyEmptyRenderer, false);
+    presenter.render(hudScreen, resolver, visuals, modernEmptyRenderer);
+    expect(std::equal(legacyEmpty.pixels().begin(), legacyEmpty.pixels().end(),
+                      modernEmpty.pixels().begin(), modernEmpty.pixels().end()),
+           "the ammo nodes hide through their authored visibility state");
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -12586,6 +12734,7 @@ int main() {
         testUiScreenBuiltinAndBindings();
         testUiStatesAndMeterVariants();
         testUiInventoryGridMigration();
+        testUiHudCompleteParity();
         testUiRuntimeMenuNavigation();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();

@@ -84,6 +84,8 @@ bool componentAcceptsProperty(ComponentKind component, std::string_view property
             return property == "source";
         case ComponentKind::slot:
             return property == "icon" || property == "count";
+        case ComponentKind::image:
+            return property == "icon";
         default:
             return false;
     }

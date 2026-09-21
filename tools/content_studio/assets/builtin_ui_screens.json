@@ -123,6 +123,11 @@
     "id": "img.hud.heart",
     "root": "gameAssets",
     "relativePath": "Icons/heart_complete.png"
+    },
+  {
+    "id": "img.hud.money",
+    "root": "gameAssets",
+    "relativePath": "Icons/money.png"
     }
   ],
 "staticSprites": [
@@ -169,6 +174,14 @@
   {
     "id": "spr.hud.heart",
     "imageId": "img.hud.heart",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.hud.money",
+    "imageId": "img.hud.money",
     "anchor": {
       "x": 0,
       "y": 0
@@ -1971,42 +1984,317 @@
     "id": "screen.hud",
     "kind": "hud",
     "root": {
-      "id": "hud.health",
-      "component": "meter",
+      "id": "hud.root",
+      "component": "group",
       "layout": {
         "anchor": "topLeft",
-        "offsetX": 3,
-        "offsetY": 2,
+        "offsetX": 0,
+        "offsetY": 0,
         "z": 0
         },
-      "meter": {
-        "mode": "segmented",
-        "segmentValue": 1,
-        "sprites": {
-          "full": "spr.hud.heart"
-          },
-        "spacing": 1,
-        "emptyRect": {
-          "color": {
-            "r": 54,
-            "g": 30,
-            "b": 38,
-            "a": 255
+      "children": [
+        {
+          "id": "hud.topBar",
+          "component": "panel",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 0,
+            "offsetY": 0,
+            "width": 272,
+            "height": 14,
+            "z": 0
             },
-          "offsetX": 0,
-          "offsetY": 1,
-          "width": 9,
-          "height": 8
-          }
-        },
-      "bindings": [
-        {
-          "property": "value",
-          "source": "player.health.current"
+          "background": {
+            "r": 8,
+            "g": 10,
+            "b": 16,
+            "a": 220
+            }
           },
         {
-          "property": "maximum",
-          "source": "player.health.max"
+          "id": "hud.health",
+          "component": "meter",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 3,
+            "offsetY": 2,
+            "z": 0
+            },
+          "meter": {
+            "mode": "segmented",
+            "segmentValue": 1,
+            "sprites": {
+              "full": "spr.hud.heart"
+              },
+            "spacing": 1,
+            "emptyRect": {
+              "color": {
+                "r": 54,
+                "g": 30,
+                "b": 38,
+                "a": 255
+                },
+              "offsetX": 0,
+              "offsetY": 1,
+              "width": 9,
+              "height": 8
+              }
+            },
+          "bindings": [
+            {
+              "property": "value",
+              "source": "player.health.current"
+              },
+            {
+              "property": "maximum",
+              "source": "player.health.max"
+              }
+            ]
+          },
+        {
+          "id": "hud.gold.icon",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 68,
+            "offsetY": 2,
+            "z": 0
+            },
+          "sprite": "spr.hud.money"
+          },
+        {
+          "id": "hud.gold.text",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 79,
+            "offsetY": 2,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.gold"
+              }
+            ]
+          },
+        {
+          "id": "hud.ammo.icon",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 246,
+            "offsetY": 199,
+            "z": 0,
+            "visible": false
+            },
+          "bindings": [
+            {
+              "property": "icon",
+              "source": "player.ammo.icon"
+              }
+            ],
+          "states": [
+            {
+              "id": "carrying",
+              "condition": {
+                "source": "player.ammo.present",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "hud.ammo.prefix",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 226,
+            "offsetY": 209,
+            "z": 0,
+            "visible": false
+            },
+          "text": "x",
+          "states": [
+            {
+              "id": "carrying",
+              "condition": {
+                "source": "player.ammo.present",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "hud.ammo.count",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 233,
+            "offsetY": 209,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.ammo.amount"
+              }
+            ],
+          "states": [
+            {
+              "id": "carrying",
+              "condition": {
+                "source": "player.ammo.present",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "hud.bottomBar",
+          "component": "panel",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 0,
+            "offsetY": 194,
+            "width": 272,
+            "height": 30,
+            "z": 0
+            },
+          "background": {
+            "r": 8,
+            "g": 10,
+            "b": 16,
+            "a": 220
+            }
+          },
+        {
+          "id": "hud.quickSlots",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 4,
+            "offsetY": 197,
+            "z": 0
+            },
+          "columns": 4,
+          "cellWidth": 40,
+          "cellHeight": 23,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "player.quickSlots.slots"
+              }
+            ],
+          "children": [
+            {
+              "id": "hud.quickSlot",
+              "component": "slot",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 34,
+                "height": 23,
+                "z": 0
+                },
+              "background": {
+                "r": 54,
+                "g": 30,
+                "b": 38,
+                "a": 255
+                },
+              "iconOffset": {
+                "x": 10,
+                "y": 2
+                },
+              "countOffset": {
+                "x": 22,
+                "y": 12
+                },
+              "countAlways": true,
+              "bindings": [
+                {
+                  "property": "icon",
+                  "source": "context.item.icon"
+                  },
+                {
+                  "property": "count",
+                  "source": "context.item.amount"
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "hud.quickSlot.number1",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 6,
+            "offsetY": 199,
+            "z": 0
+            },
+          "text": "1"
+          },
+        {
+          "id": "hud.quickSlot.number2",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 46,
+            "offsetY": 199,
+            "z": 0
+            },
+          "text": "2"
+          },
+        {
+          "id": "hud.quickSlot.number3",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 86,
+            "offsetY": 199,
+            "z": 0
+            },
+          "text": "3"
+          },
+        {
+          "id": "hud.quickSlot.number4",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 126,
+            "offsetY": 199,
+            "z": 0
+            },
+          "text": "4"
+          },
+        {
+          "id": "hud.hint",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 169,
+            "offsetY": 203,
+            "z": 0
+            },
+          "text": "I ITEMS  E OPEN"
           }
         ]
       }

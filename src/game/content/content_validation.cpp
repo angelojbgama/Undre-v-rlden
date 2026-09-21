@@ -180,11 +180,17 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
         error(report, ContentKind::uiScreen, screenId, "unexpected_property",
               "meter configuration belongs to the meter component", "meter");
     switch (node.component) {
-        case ui::ComponentKind::image:
-            if (!node.spriteId)
+        case ui::ComponentKind::image: {
+            const bool hasIconBinding = std::any_of(
+                node.bindings.begin(), node.bindings.end(),
+                [](const ui::BindingDefinition& binding) {
+                    return binding.property == "icon";
+                });
+            if (!node.spriteId && !hasIconBinding)
                 error(report, ContentKind::uiScreen, screenId, "missing_property",
-                      "image node requires a sprite", "sprite");
+                      "image node requires a sprite or an icon binding", "sprite");
             break;
+        }
         case ui::ComponentKind::animatedImage:
             if (!node.animationId)
                 error(report, ContentKind::uiScreen, screenId, "missing_property",
@@ -248,7 +254,8 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                 node.bindings.begin(), node.bindings.end(),
                 [](const ui::BindingDefinition& binding) {
                     return binding.property == "source" &&
-                           binding.source == ui::BindingPath::playerInventorySlots;
+                           (binding.source == ui::BindingPath::playerInventorySlots ||
+                            binding.source == ui::BindingPath::playerQuickSlotSlots);
                 });
             if (!hasSource)
                 error(report, ContentKind::uiScreen, screenId, "missing_binding",
