@@ -509,12 +509,24 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\content_check.exe" ^
     ole32.lib windowscodecs.lib
 if errorlevel 1 goto :build_failed
 
+echo Compiling ui manifest tool...
+cl.exe %COMMON_FLAGS% /Fo"build\obj\ui_manifest.obj" "src\tools\ui_manifest.cpp"
+if errorlevel 1 goto :build_failed
+
+echo Linking ui_manifest.exe...
+link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\ui_manifest.exe" ^
+    "build\obj\ui_manifest.obj" ^
+    "build\obj\ui_screens.obj" ^
+    "build\obj\json.obj" "build\obj\utf8.obj"
+if errorlevel 1 goto :build_failed
+
 echo.
 echo Build succeeded:
 echo   build\bin\game.exe
 echo   build\bin\tests.exe
 echo   build\bin\playtest_runner.exe
 echo   build\bin\content_check.exe
+echo   build\bin\ui_manifest.exe
 
 popd
 exit /b 0

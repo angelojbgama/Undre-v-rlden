@@ -53,6 +53,7 @@ from .attack_library_widget import AttackLibraryWidget
 from .item_library_widget import ItemLibraryWidget
 from .crafting_library_widget import CraftingLibraryWidget
 from .presentation_library_widget import PresentationLibraryWidget
+from .ui_composer_widget import UiComposerWidget
 from .terrain.smart_terrain_palette import SmartTerrainPalette
 from .terrain.tile_semantic_editor import TileSemanticEditor
 from ..services.tile_semantic_catalog import TileSemanticCatalog
@@ -392,8 +393,12 @@ class MainWindow(QMainWindow):
         content_split.setStretchFactor(1, 1)
         self._content_split = content_split
         content_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
+        self.ui_composer = UiComposerWidget(self.workspace, self.translator)
+        self._ui_split = QSplitter(Qt.Orientation.Horizontal)
+        self._ui_split.addWidget(self.ui_composer)
         self.mode_tabs.addTab(self.translator("maps_mode"))
         self.mode_tabs.addTab(self.translator("content_mode"))
+        self.mode_tabs.addTab(self.translator("ui_mode"))
         # Vertical section rail (audit G2): 15 sections never fit as
         # horizontal tabs; a sidebar keeps every section reachable.
         self._section_sidebar = QListWidget()
@@ -405,7 +410,8 @@ class MainWindow(QMainWindow):
         self._workspace_pages = QStackedWidget()
         self._workspace_pages.addWidget(map_split)
         self._workspace_pages.addWidget(content_split)
-        self._mode_section_indexes = [0, 0]
+        self._workspace_pages.addWidget(self._ui_split)
+        self._mode_section_indexes = [0, 0, 0]
         self.mode_tabs.currentChanged.connect(self._select_mode)
         workspace = QWidget()
         workspace_layout = QVBoxLayout(workspace)
@@ -484,7 +490,7 @@ class MainWindow(QMainWindow):
         if mode_index < 0:
             return
         self._workspace_pages.setCurrentIndex(mode_index)
-        self.command_coordinator.mark("content" if mode_index == 1 else "map")
+        self.command_coordinator.mark("map" if mode_index == 0 else "content")
         map_mode = mode_index == 0
         self._toolbar.setVisible(map_mode)
         for action_key in ("grid", "snap", "frame"):
@@ -503,6 +509,9 @@ class MainWindow(QMainWindow):
     def _select_section(self, section_index: int) -> None:
         mode_index = self.mode_tabs.currentIndex()
         if mode_index < 0 or section_index < 0:
+            return
+        if mode_index >= 2:
+            # The UI mode has a single composer page and no sections.
             return
         self._mode_section_indexes[mode_index] = section_index
         panels = self._content_panels if mode_index == 1 else self._map_panels
@@ -590,6 +599,7 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root)
         self.presentation_library.set_context(
             self.workspace, self.asset_root)
+        self.ui_composer.set_context(self.workspace, self.translator)
         self.semantic_palette.set_workspace(self.workspace)
         self.semantic_palette.set_asset_root(self.asset_root)
         self.semantic_editor.set_workspace(self.workspace)

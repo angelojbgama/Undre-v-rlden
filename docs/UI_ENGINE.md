@@ -291,8 +291,11 @@ UI-1b runtime de apresentação (UiPresenter +
 UI-2  estados condicionais (tint/visibilidade) + variantes
       barra (fillHorizontal) e orbe (fillVertical)
       alternando somente a definição           (prova 1b) CONCLUÍDO
-UI-3  UI Composer no Studio (hierarchy/canvas/inspector/
-      preview data) + round-trip + validação espelhada      PENDENTE
+UI-3  UI Composer no Studio (modo UI, hierarchy/canvas/
+      inspector/preview data) + round-trip + validação
+      espelhada + manifest p/ pickers           CONCLUÍDO
+      (v1: canvas é preview data-driven; arte real e
+      retradução ao vivo ficam como refinamento)
 UI-4  slot/repeater/grid + migração do overlay de
       inventário/crafting                      (prova 2)   PENDENTE
 UI-5  screen/navigation quando existir o primeiro menu

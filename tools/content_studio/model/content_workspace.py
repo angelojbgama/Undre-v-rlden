@@ -14,7 +14,8 @@ DISPLAY_CATEGORY = "authoringDescriptors"
 
 # Categories whose authored entries require the current schema version, so
 # creating one in an older project promotes the file on save.
-_VERSIONED_CATEGORIES = frozenset({"tileSemantics", "craftingRecipes"})
+_VERSIONED_CATEGORIES = frozenset(
+    {"tileSemantics", "craftingRecipes", "uiScreens"})
 
 
 def _ensure_schema_version(content_file: "ContentFile", category: str) -> None:
@@ -638,5 +639,9 @@ def default_definition(category: str, definition_id: str) -> dict[str, JsonValue
         "enemyVisuals": {"id": definition_id, "idle": {}, "actions": []},
         "objectVisuals": {"id": definition_id, "idleAnimationId": "", "openedAnimationId": None, "damagedAnimationId": None, "destroyingAnimationId": None, "activationInactiveAnimationId": None, "activationActiveAnimationId": None, "doorLockedAnimationId": None, "doorClosedAnimationId": None, "doorOpenAnimationId": None, "destroyedAnimationId": None},
         "playerVisuals": {"id": definition_id, "idle": {}, "walk": {}, "hurt": None, "actions": []},
+        "uiScreens": {"id": definition_id, "kind": "hud",
+                      "root": {"id": definition_id + ".root", "component": "group",
+                               "layout": {"anchor": "topLeft", "offsetX": 0, "offsetY": 0, "z": 0},
+                               "children": []}},
     }
     return copy.deepcopy(defaults[category])

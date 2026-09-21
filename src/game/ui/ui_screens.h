@@ -212,7 +212,14 @@ private:
     std::vector<ScreenDefinition> definitions_;
 };
 
+[[nodiscard]] std::string_view uiComponentName(ComponentKind component) noexcept;
 [[nodiscard]] bool isContainerComponent(ComponentKind component) noexcept;
 [[nodiscard]] bool componentAcceptsProperty(ComponentKind component, std::string_view property);
+
+// Deterministic JSON manifest of the registries for the Studio UI Composer
+// pickers (docs/UI_ENGINE.md, block UI-3). Python keeps a mirrored table in
+// tools/content_studio/services/ui_registry.py; a Studio test runs the
+// ui_manifest tool and fails loudly when the two drift apart.
+[[nodiscard]] std::string emitUiManifestJson();
 
 } // namespace underworld::game::ui
