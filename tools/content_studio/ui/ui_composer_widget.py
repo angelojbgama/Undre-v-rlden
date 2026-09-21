@@ -13,6 +13,9 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QInputDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -33,6 +36,7 @@ from ..model.content_workspace import ContentWorkspace
 from ..services.localization import Translator
 from ..services.ui_authoring_service import UiAuthoringService
 from ..services import ui_registry
+from .icon_registry import icon
 
 LOGICAL_WIDTH = 272
 LOGICAL_HEIGHT = 224
@@ -219,6 +223,9 @@ class UiComposerWidget(QWidget):
         self.service = UiAuthoringService(workspace)
         self._selected_screen: str | None = None
         self._selected_node: str | None = None
+        # True while the inspector rebuilds: setValue/setCurrentText would
+        # otherwise fire commit handlers with freshly loaded values.
+        self._reloading = False
         self._preview_values: dict[str, int] = {
             "player.health.current": 3,
             "player.health.max": 5,
@@ -238,8 +245,10 @@ class UiComposerWidget(QWidget):
         self.screens_list.currentRowChanged.connect(self._screen_row_changed)
         screen_buttons = QHBoxLayout()
         self.add_screen_button = QPushButton(self.translator("ui_composer_add_screen"))
+        self.add_screen_button.setIcon(icon("add"))
         self.add_screen_button.clicked.connect(self._add_screen)
         self.remove_screen_button = QPushButton(self.translator("ui_composer_remove_screen"))
+        self.remove_screen_button.setIcon(icon("delete"))
         self.remove_screen_button.clicked.connect(self._remove_screen)
         screen_buttons.addWidget(self.add_screen_button)
         screen_buttons.addWidget(self.remove_screen_button)
@@ -251,8 +260,10 @@ class UiComposerWidget(QWidget):
         self.hierarchy.currentItemChanged.connect(self._hierarchy_changed)
         node_buttons = QHBoxLayout()
         self.add_node_button = QPushButton(self.translator("ui_composer_add_node"))
+        self.add_node_button.setIcon(icon("add"))
         self.add_node_button.clicked.connect(self._add_node)
         self.remove_node_button = QPushButton(self.translator("ui_composer_remove_node"))
+        self.remove_node_button.setIcon(icon("delete"))
         self.remove_node_button.clicked.connect(self._remove_node)
         node_buttons.addWidget(self.add_node_button)
         node_buttons.addWidget(self.remove_node_button)
@@ -444,6 +455,13 @@ class UiComposerWidget(QWidget):
     # -- inspector ---------------------------------------------------------
 
     def _reload_inspector(self) -> None:
+        self._reloading = True
+        try:
+            self._reload_inspector_fields()
+        finally:
+            self._reloading = False
+
+    def _reload_inspector_fields(self) -> None:
         while self._inspector_layout.count():
             item = self._inspector_layout.takeAt(0)
             widget = item.widget()
@@ -543,8 +561,10 @@ class UiComposerWidget(QWidget):
         self._binding_source.addItems(list(ui_registry.BINDING_PATHS))
         bind_row = QHBoxLayout()
         bind_button = QPushButton(self.translator("ui_composer_bind"))
+        bind_button.setIcon(icon("links"))
         bind_button.clicked.connect(self._commit_binding)
         unbind_button = QPushButton(self.translator("ui_composer_unbind"))
+        unbind_button.setIcon(icon("unbind"))
         unbind_button.clicked.connect(self._commit_unbind)
         bind_row.addWidget(self._binding_property)
         bind_row.addWidget(self._binding_source)
@@ -561,8 +581,10 @@ class UiComposerWidget(QWidget):
         self._inspector_layout.addRow(self.translator("ui_composer_states"), self._states_list)
         state_row = QHBoxLayout()
         add_state_button = QPushButton(self.translator("ui_composer_add_state"))
+        add_state_button.setIcon(icon("add"))
         add_state_button.clicked.connect(self._commit_add_state)
         remove_state_button = QPushButton(self.translator("ui_composer_remove_state"))
+        remove_state_button.setIcon(icon("delete"))
         remove_state_button.clicked.connect(self._commit_remove_state)
         state_row.addWidget(add_state_button)
         state_row.addWidget(remove_state_button)
@@ -575,6 +597,7 @@ class UiComposerWidget(QWidget):
         self._action_combo = QComboBox()
         self._action_combo.addItems(list(ui_registry.ACTIONS))
         add_action_button = QPushButton(self.translator("ui_composer_new_action"))
+        add_action_button.setIcon(icon("add"))
         add_action_button.clicked.connect(self._commit_add_action)
         action_row = QHBoxLayout()
         action_row.addWidget(self._action_combo)
@@ -594,20 +617,20 @@ class UiComposerWidget(QWidget):
         self._update_canvas()
 
     def _commit_component(self, value: str) -> None:
-        if not self._selected_node:
+        if self._reloading or not self._selected_node:
             return
         self._try(lambda: self.service.set_component(self._selected_screen, self._selected_node, value))
         self._reload_hierarchy()
         self._reload_inspector()
 
     def _commit_anchor(self, value: str) -> None:
-        if not self._selected_node:
+        if self._reloading or not self._selected_node:
             return
         self._try(lambda: self.service.set_layout(self._selected_screen, self._selected_node,
                                                   anchor=value))
 
     def _commit_layout(self) -> None:
-        if not self._selected_node:
+        if self._reloading or not self._selected_node:
             return
         width = self._width_spin.value()
         height = self._height_spin.value()
@@ -618,22 +641,28 @@ class UiComposerWidget(QWidget):
             height=height if height > 0 else None))
 
     def _commit_sprite(self) -> None:
+        if self._reloading:
+            return
         text = self._sprite_edit.text().strip()
         self._try(lambda: self.service.set_sprite(
             self._selected_screen, self._selected_node, text or None))
 
     def _commit_animation(self) -> None:
+        if self._reloading:
+            return
         text = self._animation_edit.text().strip()
         self._try(lambda: self.service.set_animation(
             self._selected_screen, self._selected_node, text or None))
 
     def _commit_text(self) -> None:
+        if self._reloading:
+            return
         self._try(lambda: self.service.set_text(
             self._selected_screen, self._selected_node,
             self._text_edit.text() or None))
 
     def _commit_meter(self) -> None:
-        if not self._selected_node:
+        if self._reloading or not self._selected_node:
             return
         self._try(lambda: self.service.set_meter(
             self._selected_screen, self._selected_node,
@@ -641,6 +670,8 @@ class UiComposerWidget(QWidget):
             spacing=self._meter_spacing.value()))
 
     def _commit_meter_sprites(self) -> None:
+        if self._reloading:
+            return
         sprites: dict[str, str] = {}
         for token in self._meter_sprites.text().split():
             if ":" in token:
@@ -650,7 +681,7 @@ class UiComposerWidget(QWidget):
             self._selected_screen, self._selected_node, sprites=sprites))
 
     def _commit_binding(self) -> None:
-        if not self._selected_node:
+        if self._reloading or not self._selected_node:
             return
         self._try(lambda: self.service.bind_property(
             self._selected_screen, self._selected_node,
@@ -658,7 +689,7 @@ class UiComposerWidget(QWidget):
         self._reload_inspector()
 
     def _commit_unbind(self) -> None:
-        if not self._selected_node or not self._bindings_list.currentItem():
+        if self._reloading or not self._selected_node or not self._bindings_list.currentItem():
             return
         property = self._bindings_list.currentItem().text().split(" <- ")[0].split(" ")[0]
         self._try(lambda: self.service.unbind_property(
@@ -733,30 +764,22 @@ class UiComposerWidget(QWidget):
         return None
 
     def _prompt_text(self, title: str, label: str, default: str) -> tuple[str, bool]:
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle(title)
-        dialog.setText(label)
-        edit = QLineEdit(default)
-        layout = QVBoxLayout()
-        layout.addWidget(edit)
-        dialog.layout().addLayout(layout)
-        dialog.setStandardButtons(QMessageBox.StandardButton.Ok |
-                                  QMessageBox.StandardButton.Cancel)
-        if dialog.exec() == QMessageBox.StandardButton.Ok:
-            return edit.text().strip(), True
-        return "", False
+        text, ok = QInputDialog.getText(self, title, label, text=default)
+        return text.strip(), bool(ok)
 
     def _prompt_choice(self, title: str, options, default: str) -> tuple[str, bool]:
-        dialog = QMessageBox(self)
+        dialog = QDialog(self)
         dialog.setWindowTitle(title)
         combo = QComboBox()
         combo.addItems(list(options))
         combo.setCurrentText(default)
-        layout = QVBoxLayout()
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                   QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout = QVBoxLayout(dialog)
         layout.addWidget(combo)
-        dialog.layout().addLayout(layout)
-        dialog.setStandardButtons(QMessageBox.StandardButton.Ok |
-                                  QMessageBox.StandardButton.Cancel)
-        if dialog.exec() == QMessageBox.StandardButton.Ok:
+        layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             return combo.currentText(), True
         return "", False
