@@ -626,7 +626,8 @@ struct GameRuntime::State final {
             tilesetVisuals, npcCatalogVisuals, npcVisuals, enemyVisualCatalog, objectVisualCatalog,
             runtimeVisualContent.staticSprites, runtimeVisualContent.animations, font, hudHeartImage, hudMoneyImage,
             session.dialogue(), view, combatDebug, session.activeSword(),
-            session.scenePresentation(), lastEvent, collisionOverlay});
+            session.scenePresentation(), lastEvent, collisionOverlay,
+            content.uiScreens().find(simulation::DefinitionId{"screen.hud"})});
     }
 
 

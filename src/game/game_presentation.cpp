@@ -6,6 +6,7 @@
 #include "engine/render/renderer_2d.h"
 #include "game/actor_render_order.h"
 #include "game/presentation/presentation_effect_renderer.h"
+#include "game/ui/ui_presenter.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -445,12 +446,15 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
                                  const GamePresentationFrame& frame) const {
     const auto& view = frame.view;
     renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 14}, {8, 10, 16, 220});
-    for (int index = 0; index < view.playerMaximumHealth; ++index) {
-        if (index < view.playerHealth) {
-            renderer.drawImage(*frame.hudHeartImage, 3 + index * 12, 2);
-        } else {
-            renderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
-        }
+    // Health hearts are authored UI content (screen.hud, docs/UI_ENGINE.md
+    // proof 1a): the definition-driven render reproduces the legacy HUD bar
+    // pixel-for-pixel. The definition always exists because builtin content
+    // provides it and workspaces only overlay it.
+    if (frame.hudScreen) {
+        const ui::UiPresenter presenter;
+        const GameViewModelBindings bindings{view};
+        const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+        presenter.render(*frame.hudScreen, bindings, visuals, renderer);
     }
     renderer.drawImage(*frame.hudMoneyImage, 68, 2);
     render::drawText(renderer, frame.font, std::to_string(view.gold), 79, 2);

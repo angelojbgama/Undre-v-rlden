@@ -133,10 +133,23 @@ struct MeterSprites final {
     std::optional<simulation::DefinitionId> empty;
 };
 
+// Solid-rect fallback for empty segments in segmented meters. Drawn at
+// (segment.x + offsetX, segment.y + offsetY) with the authored size, so legacy
+// HUD placeholders (inset rectangles) can be reproduced pixel-exactly.
+struct MeterEmptyRect final {
+    core::ColorRGBA8 color{};
+    int offsetX{};
+    int offsetY{};
+    int width{};
+    int height{};
+};
+
 struct MeterDefinition final {
     MeterMode mode{MeterMode::segmented};
     std::uint32_t segmentValue{1};
     MeterSprites sprites{};
+    int spacing{0};
+    std::optional<MeterEmptyRect> emptyRect;
 };
 
 struct StateCondition final {

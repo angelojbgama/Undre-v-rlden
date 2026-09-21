@@ -149,4 +149,52 @@ GameViewModel buildGameViewModel(const gameplay::Player& player,
     return result;
 }
 
+std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) const {
+    const auto slotAmount = [this](std::size_t index) -> std::optional<std::int64_t> {
+        // An unbound quick slot has no item, so it exposes no value at all.
+        if (!view_->quickSlots[index].itemId) { return std::nullopt; }
+        return static_cast<std::int64_t>(view_->quickSlots[index].quantity);
+    };
+    switch (path) {
+        case ui::BindingPath::playerHealthCurrent:
+            return static_cast<std::int64_t>(view_->playerHealth);
+        case ui::BindingPath::playerHealthMax:
+            return static_cast<std::int64_t>(view_->playerMaximumHealth);
+        case ui::BindingPath::playerHealthPercentage:
+            if (view_->playerMaximumHealth <= 0) { return std::nullopt; }
+            return (static_cast<std::int64_t>(view_->playerHealth) * 100) / view_->playerMaximumHealth;
+        case ui::BindingPath::playerGold:
+            return static_cast<std::int64_t>(view_->gold);
+        case ui::BindingPath::playerAmmoAmount:
+            return static_cast<std::int64_t>(view_->ammo.quantity);
+        case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
+        case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
+        case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
+        case ui::BindingPath::playerQuickSlot3Amount: return slotAmount(3);
+        default: return std::nullopt;
+    }
+}
+
+std::optional<simulation::DefinitionId> GameViewModelBindings::id(ui::BindingPath path) const {
+    const auto slotItem = [this](std::size_t index) -> std::optional<simulation::DefinitionId> {
+        return view_->quickSlots[index].itemId;
+    };
+    const auto slotIcon = [this](std::size_t index) -> std::optional<simulation::DefinitionId> {
+        return view_->quickSlots[index].visualId;
+    };
+    switch (path) {
+        case ui::BindingPath::playerAmmoItemId: return view_->ammo.itemId;
+        case ui::BindingPath::playerAmmoIcon: return view_->ammo.visualId;
+        case ui::BindingPath::playerQuickSlot0ItemId: return slotItem(0);
+        case ui::BindingPath::playerQuickSlot1ItemId: return slotItem(1);
+        case ui::BindingPath::playerQuickSlot2ItemId: return slotItem(2);
+        case ui::BindingPath::playerQuickSlot3ItemId: return slotItem(3);
+        case ui::BindingPath::playerQuickSlot0Icon: return slotIcon(0);
+        case ui::BindingPath::playerQuickSlot1Icon: return slotIcon(1);
+        case ui::BindingPath::playerQuickSlot2Icon: return slotIcon(2);
+        case ui::BindingPath::playerQuickSlot3Icon: return slotIcon(3);
+        default: return std::nullopt;
+    }
+}
+
 } // namespace underworld::game

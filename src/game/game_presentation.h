@@ -20,6 +20,7 @@
 #include "game/maps/runtime_world.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content_loader.h"
+#include "game/ui/ui_screens.h"
 #include "game/gameplay/scenes/scene_controller.h"
 
 #include <memory>
@@ -58,6 +59,9 @@ struct GamePresentationFrame final {
     const gameplay::scenes::ScenePresentationState& scenePresentation;
     std::string_view lastEvent;
     bool collisionOverlay{};
+    // Authored HUD screen (screen.hud) from the compiled content
+    // registry; null when the workspace does not provide one.
+    const ui::ScreenDefinition* hudScreen{};
 };
 
 class GamePresentation final {

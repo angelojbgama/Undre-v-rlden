@@ -11319,6 +11319,156 @@ void testUiScreenContentPipeline() {
            "ui screen catalog resolves screens by definition id");
 }
 
+void testUiPresenterHudHeartParity() {
+    using namespace underworld;
+    namespace ui = game::ui;
+    namespace presentation = game::presentation;
+    namespace render = underworld::render;
+
+    // Synthetic 11x10 heart with a deterministic opaque pattern.
+    core::ImageData data;
+    data.width = 11;
+    data.height = 10;
+    data.strideBytes = static_cast<std::size_t>(11) * 4;
+    data.pixels.resize(static_cast<std::size_t>(11) * 10 * 4);
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 11; ++x) {
+            const auto base = (static_cast<std::size_t>(y) * 11 + static_cast<std::size_t>(x)) * 4;
+            data.pixels[base] = static_cast<std::uint8_t>(40 + x * 7);
+            data.pixels[base + 1] = static_cast<std::uint8_t>(20 + y * 5);
+            data.pixels[base + 2] = 60;
+            data.pixels[base + 3] = 255;
+        }
+    }
+    auto heartImage = std::make_shared<render::Image>(std::move(data));
+    auto sheet = std::make_shared<render::SpriteSheet>(heartImage);
+
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({{"spr.heart"}, sheet, render::SpriteFrame{{0, 0, 11, 10}, {0, 0}, {0, 0}, false}});
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+
+    ui::ScreenDefinition screen;
+    screen.id = {"screen.hud"};
+    screen.kind = ui::ScreenKind::hud;
+    ui::NodeDefinition hearts;
+    hearts.id = "hud.health";
+    hearts.component = ui::ComponentKind::meter;
+    hearts.layout.offsetX = 3;
+    hearts.layout.offsetY = 2;
+    ui::MeterDefinition meter;
+    meter.mode = ui::MeterMode::segmented;
+    meter.segmentValue = 1;
+    meter.sprites.full = {"spr.heart"};
+    meter.spacing = 1;
+    meter.emptyRect = ui::MeterEmptyRect{{54, 30, 38, 255}, 0, 1, 9, 8};
+    hearts.meter = meter;
+    hearts.bindings.push_back({"value", ui::BindingPath::playerHealthCurrent});
+    hearts.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
+    screen.root = hearts;
+
+    struct StubResolver final : ui::UiBindingResolver {
+        int health{};
+        int maximum{};
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override {
+            if (path == ui::BindingPath::playerHealthCurrent) { return health; }
+            if (path == ui::BindingPath::playerHealthMax) { return maximum; }
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    };
+
+    const ui::UiPresenter presenter;
+    const std::pair<int, int> cases[] = {{0, 0}, {0, 5}, {1, 5}, {3, 5}, {5, 5}, {7, 5}};
+    for (const auto& [health, maximum] : cases) {
+        render::Framebuffer legacy(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight);
+        render::Framebuffer modern(core::GameMetrics::logicalWidth, core::GameMetrics::logicalHeight);
+        render::Renderer2D legacyRenderer(legacy);
+        render::Renderer2D modernRenderer(modern);
+
+        // Exact legacy HUD bar heart loop.
+        for (int index = 0; index < maximum; ++index) {
+            if (index < health) {
+                legacyRenderer.drawImage(*heartImage, 3 + index * 12, 2);
+            } else {
+                legacyRenderer.fillRect({3 + index * 12, 3, 9, 8}, {54, 30, 38, 255});
+            }
+        }
+
+        StubResolver resolver;
+        resolver.health = health;
+        resolver.maximum = maximum;
+        const ui::UiVisualContext visuals{sprites, font};
+        presenter.render(screen, resolver, visuals, modernRenderer);
+
+        expect(std::equal(legacy.pixels().begin(), legacy.pixels().end(),
+                          modern.pixels().begin(), modern.pixels().end()),
+               "definition-driven hearts render pixel-identical to the legacy HUD loop");
+    }
+
+    expect(resolveNodePosition(screen.root.layout, {0, 0}).x == 3 &&
+               resolveNodePosition(screen.root.layout, {0, 0}).y == 2,
+           "top-left anchors pass offsets through unchanged");
+    ui::LayoutDefinition rightLayout;
+    rightLayout.anchor = ui::Anchor::bottomRight;
+    rightLayout.offsetX = -8;
+    rightLayout.offsetY = -6;
+    rightLayout.width = 40;
+    rightLayout.height = 20;
+    expect(resolveNodePosition(rightLayout, {0, 0}).x == 272 - 40 - 8 &&
+               resolveNodePosition(rightLayout, {0, 0}).y == 224 - 20 - 6,
+           "bottom-right anchors position the node box inside the logical screen");
+}
+
+void testUiScreenBuiltinAndBindings() {
+    using namespace underworld;
+    namespace content = game::content;
+    namespace ui = game::ui;
+
+    const auto builtin = content::makeBuiltinAuthoredContent();
+    expect(builtin.uiScreens.size() == 1 &&
+               builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
+               builtin.uiScreens.front().root.id == "hud.health" &&
+               builtin.uiScreens.front().root.meter &&
+               builtin.uiScreens.front().root.meter->sprites.full &&
+               builtin.uiScreens.front().root.meter->spacing == 1 &&
+               builtin.uiScreens.front().root.meter->emptyRect &&
+               builtin.uiScreens.front().root.meter->emptyRect->offsetY == 1,
+           "builtin content authors the pixel-parity HUD hearts screen");
+
+    const auto compiled = content::compileContent(builtin);
+    expect(compiled && compiled.registry->uiScreens().values().size() == 1 &&
+               compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
+               compiled.registry->uiScreens().require({"screen.hud"}).root.meter->spacing == 1,
+           "builtin ui screens compile into the runtime screen catalog");
+
+    game::GameViewModel view;
+    view.playerHealth = 3;
+    view.playerMaximumHealth = 5;
+    view.gold = 152;
+    view.ammo = {{ "item.arrow" }, { "visual.arrow" }, 7};
+    const game::GameViewModelBindings bindings{view};
+    expect(bindings.number(ui::BindingPath::playerHealthCurrent) == std::optional<std::int64_t>{3} &&
+               bindings.number(ui::BindingPath::playerHealthMax) == std::optional<std::int64_t>{5} &&
+               bindings.number(ui::BindingPath::playerHealthPercentage) == std::optional<std::int64_t>{60} &&
+               bindings.number(ui::BindingPath::playerGold) == std::optional<std::int64_t>{152} &&
+               bindings.number(ui::BindingPath::playerAmmoAmount) == std::optional<std::int64_t>{7} &&
+               bindings.id(ui::BindingPath::playerAmmoItemId) ==
+                   std::optional<simulation::DefinitionId>{simulation::DefinitionId{"item.arrow"}} &&
+               bindings.id(ui::BindingPath::playerAmmoIcon) ==
+                   std::optional<simulation::DefinitionId>{simulation::DefinitionId{"visual.arrow"}} &&
+               !bindings.number(ui::BindingPath::playerAmmoIcon).has_value() &&
+               !bindings.number(ui::BindingPath::playerQuickSlot3Amount).has_value(),
+           "GameViewModelBindings maps the snapshot onto the binding registry");
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -11822,6 +11972,8 @@ int main() {
         testCraftingEngine();
         testCraftingContentPipeline();
         testUiScreenContentPipeline();
+        testUiPresenterHudHeartParity();
+        testUiScreenBuiltinAndBindings();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

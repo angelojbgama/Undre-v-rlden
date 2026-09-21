@@ -9,6 +9,8 @@
 #include "game/gameplay/rpg/equipment.h"
 #include "game/gameplay/rpg/shops.h"
 #include "game/gameplay/shop_overlay.h"
+#include "game/ui/ui_presenter.h"
+#include "game/ui/ui_screens.h"
 
 #include <array>
 #include <cstddef>
@@ -119,5 +121,19 @@ struct GameViewModel final {
     const gameplay::CraftingCatalog& crafting,
     const gameplay::CraftingKnowledge& craftingKnowledge,
     const gameplay::CraftingHistory& craftedRecipes);
+
+// Maps the GameViewModel snapshot onto the UI Engine binding registry
+// (docs/UI_ENGINE.md). Read-only presentation adapter: number and id reads
+// only, never gameplay mutations.
+class GameViewModelBindings final : public ui::UiBindingResolver {
+public:
+    explicit GameViewModelBindings(const GameViewModel& view) noexcept : view_(&view) {}
+
+    [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath path) const override;
+    [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath path) const override;
+
+private:
+    const GameViewModel* view_;
+};
 
 } // namespace underworld::game

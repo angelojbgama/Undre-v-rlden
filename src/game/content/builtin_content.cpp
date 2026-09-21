@@ -266,6 +266,36 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"object.bank_access"}, "Bank Access", AuthoringCategory::object, {"bank", "storage"}}};
     addBuiltinDungeonSemantics(pack);
     addBuiltinVisualContent(pack);
+
+    // HUD health hearts as authored UI content (docs/UI_ENGINE.md proof 1a):
+    // the definition reproduces the legacy HUD bar hearts pixel-for-pixel —
+    // full segment Icons/heart_complete.png at (3 + i*12, 2), empty segments
+    // as the legacy inset {54,30,38} rect at (+0,+1). Workspaces override by
+    // definition id only.
+    pack.visualImages.push_back(
+        {{ "img.hud.heart" }, presentation::VisualAssetRoot::gameAssets, "Icons/heart_complete.png"});
+    pack.staticSprites.push_back(
+        {{ "spr.hud.heart" }, { "img.hud.heart" }, std::nullopt, core::PointI{0, 0}});
+    ui::ScreenDefinition hudScreen;
+    hudScreen.id = simulation::DefinitionId{"screen.hud"};
+    hudScreen.kind = ui::ScreenKind::hud;
+    ui::NodeDefinition hearts;
+    hearts.id = "hud.health";
+    hearts.component = ui::ComponentKind::meter;
+    hearts.layout.anchor = ui::Anchor::topLeft;
+    hearts.layout.offsetX = 3;
+    hearts.layout.offsetY = 2;
+    ui::MeterDefinition healthMeter;
+    healthMeter.mode = ui::MeterMode::segmented;
+    healthMeter.segmentValue = 1;
+    healthMeter.sprites.full = simulation::DefinitionId{"spr.hud.heart"};
+    healthMeter.spacing = 1;
+    healthMeter.emptyRect = ui::MeterEmptyRect{core::ColorRGBA8{54, 30, 38, 255}, 0, 1, 9, 8};
+    hearts.meter = healthMeter;
+    hearts.bindings.push_back({"value", ui::BindingPath::playerHealthCurrent});
+    hearts.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
+    hudScreen.root = std::move(hearts);
+    pack.uiScreens.push_back(std::move(hudScreen));
     return pack;
 }
 

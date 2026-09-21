@@ -208,6 +208,10 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
             if (node.meter->segmentValue == 0)
                 error(report, ContentKind::uiScreen, screenId, "invalid_meter",
                       "meter segment value must be positive", "meter.segmentValue");
+            if (node.meter->emptyRect &&
+                (node.meter->emptyRect->width <= 0 || node.meter->emptyRect->height <= 0))
+                error(report, ContentKind::uiScreen, screenId, "invalid_meter",
+                      "meter empty rect must have positive size", "meter.emptyRect");
             if (node.meter->mode == ui::MeterMode::segmented && !node.meter->sprites.full)
                 error(report, ContentKind::uiScreen, screenId, "invalid_meter",
                       "segmented meter requires a full segment sprite", "meter.sprites.full");
