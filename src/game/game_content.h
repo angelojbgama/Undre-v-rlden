@@ -14,6 +14,7 @@
 #include "game/tilesets.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content.h"
+#include "game/ui/ui_screens.h"
 #include "game/authoring/authoring_semantics.h"
 #include "game/gameplay/rpg/player_progression.h"
 #include "game/gameplay/rpg/rewards.h"
@@ -83,6 +84,7 @@ public:
     [[nodiscard]] const presentation::EnemyVisualDefinitionCatalog& enemyVisuals() const noexcept { return enemyVisuals_; }
     [[nodiscard]] const presentation::PlayerVisualDefinitionCatalog& playerVisuals() const noexcept { return playerVisuals_; }
     [[nodiscard]] const presentation::WorldObjectVisualDefinitionCatalog& objectVisuals() const noexcept { return objectVisuals_; }
+    [[nodiscard]] const ui::ScreenCatalog& uiScreens() const noexcept { return uiScreens_; }
 
     [[nodiscard]] const gameplay::PickupDefinition* pickup(
         const simulation::DefinitionId& id) const noexcept;
@@ -123,6 +125,7 @@ private:
     presentation::EnemyVisualDefinitionCatalog enemyVisuals_;
     presentation::PlayerVisualDefinitionCatalog playerVisuals_;
     presentation::WorldObjectVisualDefinitionCatalog objectVisuals_;
+    ui::ScreenCatalog uiScreens_;
     std::vector<gameplay::PickupDefinition> pickups_;
     std::vector<AuthoringDescriptor> authoringDescriptors_;
 };

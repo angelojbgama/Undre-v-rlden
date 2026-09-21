@@ -18,6 +18,7 @@
 #include "game/tilesets.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/visual_content.h"
+#include "game/ui/ui_screens.h"
 
 #include <optional>
 #include <string>
@@ -118,6 +119,11 @@ struct AuthoredShopOffer final { simulation::DefinitionId itemId{}; std::optiona
 struct AuthoredShop final { simulation::DefinitionId id{}; std::vector<AuthoredShopOffer> offers; };
 struct AuthoredCraftingIngredient final { simulation::DefinitionId itemId{}; std::uint32_t quantity{1}; };
 struct AuthoredCraftingRecipe final { simulation::DefinitionId id{}; std::vector<AuthoredCraftingIngredient> inputs; std::vector<AuthoredCraftingIngredient> outputs; std::optional<simulation::DefinitionId> unlockQuestId{}; };
+// Authored UI screens reuse the validated ui definition shape directly: the
+// authored form and the compiled form are intentionally the same tree
+// (docs/UI_ENGINE.md block UI-1a). Duplicate/unknown ids are rejected by the
+// strict decoder and the content validator.
+using AuthoredUiScreen = ui::ScreenDefinition;
 struct AuthoringDescriptor final { simulation::DefinitionId definitionId{}; std::string displayName; AuthoringCategory category{AuthoringCategory::enemy}; std::vector<std::string> tags; };
 
 struct AuthoredPresentationEffect final {
@@ -151,6 +157,7 @@ struct AuthoredContentPack final {
     std::vector<AuthoredEnemyVisual> enemyVisuals;
     std::vector<AuthoredWorldObjectVisual> objectVisuals;
     std::vector<AuthoredPlayerVisual> playerVisuals;
+    std::vector<AuthoredUiScreen> uiScreens;
 };
 
 } // namespace underworld::game::content

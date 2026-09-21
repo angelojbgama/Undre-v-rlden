@@ -144,6 +144,7 @@ if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_json.obj" "src\game\content\content_json.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_json_decoder.obj" "src\game\content\content_json_decoder.cpp"
+cl.exe %COMMON_FLAGS% /Fo"build\obj\ui_screens.obj" "src\game\ui\ui_screens.cpp"
 if errorlevel 1 goto :build_failed
 cl.exe %COMMON_FLAGS% /Fo"build\obj\content_validation.obj" "src\game\content\content_validation.cpp"
 if errorlevel 1 goto :build_failed
@@ -385,7 +386,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json_decoder.obj" "build\obj\ui_screens.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
@@ -419,7 +420,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" "build\obj\game_launch.obj" ^
     "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\ui_screens.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\equipment.obj" "build\obj\player_progression.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
@@ -452,7 +453,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" ^
     "build\obj\game_launch.obj" "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\ui_screens.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^
@@ -488,7 +489,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\content_check.exe" ^
     "build\obj\byte_io.obj" "build\obj\json.obj" "build\obj\map_data.obj" "build\obj\dmap.obj" "build\obj\authored_map.obj" ^
     "build\obj\game_launch.obj" "build\obj\runtime_world.obj" ^
     "build\obj\save_data.obj" "build\obj\map_catalog.obj" "build\obj\official_maps.obj" ^
-    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
+    "build\obj\game_content.obj" "build\obj\content_validation.obj" "build\obj\content_compiler.obj" "build\obj\content_json.obj" "build\obj\content_json_decoder.obj" "build\obj\ui_screens.obj" "build\obj\content_workspace.obj" "build\obj\content_source.obj" "build\obj\builtin_content.obj" "build\obj\tilesets.obj" "build\obj\authoring_semantics.obj" ^
     "build\obj\map_composition.obj" "build\obj\reachability.obj" ^
     "build\obj\combat_types.obj" "build\obj\attack_definitions.obj" "build\obj\attack_shapes.obj" "build\obj\player_progression.obj" "build\obj\equipment.obj" "build\obj\rewards.obj" "build\obj\reward_grants.obj" "build\obj\player_bank.obj" "build\obj\bank_overlay.obj" "build\obj\shop_overlay.obj" "build\obj\shops.obj" ^
     "build\obj\combat_system.obj" "build\obj\projectile_system.obj" ^

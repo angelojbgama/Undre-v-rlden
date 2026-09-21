@@ -8316,8 +8316,9 @@ void testPhase13AJsonFoundation() {
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":4})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":5})").content &&
                decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":6})").content &&
-               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7})").content,
-           "content JSON accepts v1-v6 and rejects wrong format identifiers and unsupported versions");
+               decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7})").content &&
+               !decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":8})").content,
+           "content JSON accepts v1-v7 and rejects wrong format identifiers and unsupported versions");
     const auto coreJson = R"({"format":"dungeon-underworld-content","version":1,"tilesets":[{"id":"tileset.decoder","displayName":"T","relativeAssetPath":"t.png","tileSize":16,"columns":2,"rows":3}],"behaviors":[{"id":"behavior.decoder","detectionRangePixels":12,"disengageRangePixels":18,"idleDurationTicks":7,"wanderDurationTicks":9}],"items":[{"id":"item.decoder","visualId":"visual.decoder","category":"consumable","stackLimit":66,"use":{"kind":"restoreHealth","amount":3}},{"id":"item.armor","visualId":"visual.armor","category":"equipment","stackLimit":1,"equipment":{"slot":"armor","modifiers":{"maximumHealthBonus":2,"playerAttackDamageBonus":0}}}],"npcVisuals":[{"id":"visual.decoder.npc","markerColor":{"r":1,"g":2,"b":3,"a":255}}],"playerProgressions":[{"id":"progression.decoder","baseStats":{"maximumHealth":5},"cumulativeExperienceThresholds":[0,100,18446744073709551615]}],"rewardProfiles":[{"id":"reward.decoder","experience":18446744073709551615,"loot":[]}],"rewardGrants":[{"id":"grant.decoder","experience":4,"gold":5,"items":[{"itemId":"item.decoder","quantity":100}]}],"shops":[{"id":"shop.decoder","offers":[{"itemId":"item.decoder","playerBuyPrice":0,"playerSellPrice":null},{"itemId":"item.armor","playerSellPrice":80}]}],"authoringDescriptors":[{"definitionId":"item.decoder","displayName":"Decoder","category":"item","tags":["test"]}]})";
     const auto roundtrip = decodeAuthoredContentJson(coreJson);
     expect(roundtrip.content && roundtrip.diagnostics.empty() && roundtrip.content->tilesets.size() == 1 &&
@@ -10507,7 +10508,7 @@ void testPhase17VisualContentBoundary() {
     const auto json = content::encodeAuthoredContentJson(authored);
     const auto decoded = content::decodeAuthoredContentJson(json);
     expect(decoded.content && decoded.diagnostics.empty() &&
-               json.find("\"version\": 6") != std::string::npos &&
+               json.find("\"version\": 7") != std::string::npos &&
                decoded.content->visualImages.size() == 1 &&
                decoded.content->animations.size() == 3 &&
                decoded.content->enemyVisuals.front().idle.defaultAnimation &&
@@ -11085,10 +11086,10 @@ void testCraftingContentPipeline() {
            "crafting recipe definitions carry workspace source origins");
 
     const auto encoded = content::encodeAuthoredContentJson(*decoded.content);
-    expect(encoded.find("\"version\": 6") != std::string::npos &&
+    expect(encoded.find("\"version\": 7") != std::string::npos &&
                encoded.find("\"craftingRecipes\"") != std::string::npos &&
                encoded.find("\"itemId\"") != std::string::npos,
-           "content encoder emits version 6 with serialized crafting recipes");
+           "content encoder emits version 7 with serialized crafting recipes");
     const auto roundtrip = content::decodeAuthoredContentJson(encoded);
     expect(roundtrip && roundtrip.content->craftingRecipes.size() == 2 &&
                roundtrip.content->craftingRecipes[1].inputs.back().itemId ==
@@ -11189,6 +11190,133 @@ void testCraftingContentPipeline() {
                workspaceOnly.workspace->registry.craftingRecipes().values().size() == 1 &&
                workspaceOnly.workspace->registry.craftingRecipes().require({"recipe.life_potion"}).inputs.size() == 2,
            "merged workspaces compile recipes into the runtime crafting catalog");
+}
+
+void testUiScreenContentPipeline() {
+    using namespace underworld;
+    namespace content = game::content;
+    namespace ui = game::ui;
+
+    const char* v7 = R"({
+        "format":"dungeon-underworld-content","version":7,
+        "visualImages":[
+            {"id":"img.ui","root":"gameAssets","relativePath":"ui/ui.png"}
+        ],
+        "staticSprites":[
+            {"id":"spr.heart.full","imageId":"img.ui","anchor":{"x":0,"y":0}},
+            {"id":"spr.heart.half","imageId":"img.ui","anchor":{"x":0,"y":0}},
+            {"id":"spr.heart.empty","imageId":"img.ui","anchor":{"x":0,"y":0}}
+        ],
+        "uiScreens":[{
+            "id":"screen.hud","kind":"hud",
+            "root":{"id":"hud.root","component":"group",
+                "layout":{"anchor":"topLeft","offsetX":0,"offsetY":0,"z":0},
+                "children":[
+                    {"id":"hud.health","component":"meter",
+                     "layout":{"anchor":"topLeft","offsetX":8,"offsetY":8,"width":88,"height":16,"z":0},
+                     "meter":{"mode":"segmented","segmentValue":2,
+                              "sprites":{"full":"spr.heart.full","half":"spr.heart.half","empty":"spr.heart.empty"}},
+                     "bindings":[{"property":"value","source":"player.health.current"},
+                                 {"property":"maximum","source":"player.health.max"}],
+                     "states":[{"id":"lowHealth",
+                                "condition":{"source":"player.health.percentage","operator":"lessOrEqual","value":30},
+                                "visual":{"tint":{"r":180,"g":40,"b":40,"a":255}}}]},
+                    {"id":"hud.gold","component":"text",
+                     "layout":{"anchor":"topRight","offsetX":-8,"offsetY":8,"z":0},
+                     "bindings":[{"property":"text","source":"player.gold"}]}
+                ]}}]
+    })";
+    const auto decoded = content::decodeAuthoredContentJson(v7);
+    expect(decoded && decoded.content->uiScreens.size() == 1 &&
+               decoded.content->uiScreens[0].root.children.size() == 2 &&
+               decoded.content->uiScreens[0].root.children[0].meter &&
+               decoded.content->uiScreens[0].root.children[0].meter->segmentValue == 2 &&
+               decoded.content->uiScreens[0].root.children[0].bindings.front().source ==
+                   ui::BindingPath::playerHealthCurrent &&
+               decoded.content->uiScreens[0].root.children[0].states.front().condition &&
+               decoded.content->uiScreens[0].root.children[1].component == ui::ComponentKind::text,
+           "content JSON v7 decodes authored ui screens with bindings, states and meters");
+    expect(decoded &&
+               std::any_of(decoded.origins.begin(), decoded.origins.end(),
+                           [](const auto& origin) { return origin.category == "uiScreens"; }),
+           "ui screen definitions carry workspace source origins");
+
+    const auto encoded = content::encodeAuthoredContentJson(*decoded.content);
+    expect(encoded.find("\"version\": 7") != std::string::npos &&
+               encoded.find("\"uiScreens\"") != std::string::npos,
+           "content encoder emits version 7 with serialized ui screens");
+    const auto roundtrip = content::decodeAuthoredContentJson(encoded);
+    expect(roundtrip && roundtrip.content->uiScreens.size() == 1 &&
+               roundtrip.content->uiScreens[0].root.children[0].bindings.front().source ==
+                   ui::BindingPath::playerHealthCurrent &&
+               roundtrip.content->uiScreens[0].root.children[0].meter->sprites.half &&
+               roundtrip.content->uiScreens[0].root.children[0].meter->sprites.half->value() == "spr.heart.half",
+           "ui screens survive a decode/encode round trip");
+
+    expect(!content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":6,
+        "uiScreens":[{"id":"screen.hud","kind":"hud","root":{"id":"hud.root","component":"group","layout":{"anchor":"topLeft","offsetX":0,"offsetY":0,"z":0}}}]})").content,
+           "uiScreens require content schema version 7");
+    expect(content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7,
+        "items":[{"id":"item.a","visualId":"visual.a","category":"misc","stackLimit":9}]})").content.has_value(),
+           "content v7 without uiScreens keeps loading");
+    expect(!content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7,
+        "uiScreens":[{"id":"screen.hud","kind":"hud","root":{"id":"hud.root","component":"meter",
+            "layout":{"anchor":"topLeft","offsetX":0,"offsetY":0,"z":0},
+            "bindings":[{"property":"value","source":"player.mana.current"}]}}]})").content,
+           "unknown ui binding paths are rejected by the decoder");
+    expect(!content::decodeAuthoredContentJson(R"({"format":"dungeon-underworld-content","version":7,
+        "uiScreens":[{"id":"screen.hud","kind":"hud","root":{"id":"hud.root","component":"group",
+            "layout":{"anchor":"topLeft","offsetX":0,"offsetY":0,"z":0},
+            "actions":[{"event":"activate","action":"game.quit"}]}}]})").content,
+           "unknown ui action ids are rejected by the decoder");
+
+    const auto compiled = content::compileContent(*decoded.content);
+    expect(compiled && compiled.registry->uiScreens().values().size() == 1 &&
+               compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
+               compiled.registry->uiScreens().require({"screen.hud"}).kind == ui::ScreenKind::hud,
+           "content compiler registers screens into the ui screen catalog");
+
+    auto invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].meter->sprites.full.reset();
+    expect(!content::compileContent(invalid),
+           "segmented meters without a full segment sprite are rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].meter->segmentValue = 0;
+    expect(!content::compileContent(invalid),
+           "meters with zero segment value are rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].id = "hud.root";
+    expect(!content::compileContent(invalid),
+           "duplicated ui node ids are rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[1].children.push_back(invalid.uiScreens[0].root.children[1]);
+    expect(!content::compileContent(invalid),
+           "children on non-container ui components are rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].bindings.push_back({"value", ui::BindingPath::playerHealthMax});
+    expect(!content::compileContent(invalid),
+           "binding the same ui property twice is rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].states.front().visual = {};
+    expect(!content::compileContent(invalid),
+           "ui states without a visual delta are rejected");
+
+    invalid = *decoded.content;
+    invalid.uiScreens[0].root.children[0].actions.push_back({"activate", ui::ActionId::gameSave});
+    invalid.uiScreens[0].root.children[0].actions.front().event = "onClick";
+    expect(!content::compileContent(invalid),
+           "ui actions with unsupported events are rejected");
+
+    ui::ScreenCatalog catalog;
+    catalog.add(ui::ScreenDefinition{{"screen.test"}, ui::ScreenKind::overlay, {}});
+    expect(catalog.find({"screen.test"}) != nullptr &&
+               catalog.find({"screen.missing"}) == nullptr,
+           "ui screen catalog resolves screens by definition id");
 }
 
 void testCraftingKnowledgeAndHistory() {
@@ -11693,6 +11821,7 @@ int main() {
         testPhase12E3ShopInterface();
         testCraftingEngine();
         testCraftingContentPipeline();
+        testUiScreenContentPipeline();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

@@ -1,9 +1,9 @@
-# External Authored Content — JSON schema v6
+# External Authored Content — JSON schema v7
 
 This is the external representation of `AuthoredContentPack`. It is strict UTF-8
 JSON, identified by `"format": "dungeon-underworld-content"` and
-`"version": 6`. The decoder remains compatible with schema versions 1 through 5;
-the encoder emits v6. Runtime definitions, C++ and DMAP are not authoring formats.
+`"version": 7`. The decoder remains compatible with schema versions 1 through 6;
+the encoder emits v7. Runtime definitions, C++ and DMAP are not authoring formats.
 
 The canonical top-level field order is:
 
@@ -11,14 +11,18 @@ The canonical top-level field order is:
 `items`, `objects`, `pickups`, `npcVisuals`, `npcs`, `dialogues`, `quests`,
 `playerProgressions`, `rewardProfiles`, `rewardGrants`, `shops`, `craftingRecipes`,
 `authoringDescriptors`, `tileSemantics`, `stamps`, `presentationEffects`,
-`visualImages`, `staticSprites`, `animations`, `enemyVisuals`, `objectVisuals`.
+`visualImages`, `staticSprites`, `animations`, `enemyVisuals`, `objectVisuals`,
+`players`, `playerVisuals`, `uiScreens`.
 
 Each category is an array; an omitted category decodes as empty. The categories are
 merged by the workspace loader after per-file strict decoding.
 Schema v2 added door capabilities, v3 added presentation effects, schema v4 added
-object activation capabilities, schema v5 added visual definitions and schema v6
-added `craftingRecipes`. `craftingRecipes` present in a file whose version is below
-6 is an error. Unknown fields, unknown enum strings, duplicate object keys,
+object activation capabilities, schema v5 added visual definitions, schema v6
+added `craftingRecipes` and schema v7 added `uiScreens` (the UI Engine screen
+definitions of `docs/UI_ENGINE.md`; the decoder resolves binding/action ids
+against the runtime registries). `craftingRecipes` present in a file whose
+version is below 6 is an error; `uiScreens` present in a file whose version is
+below 7 is an error. Unknown fields, unknown enum strings, duplicate object keys,
 comments, trailing commas and future versions are errors. Definition IDs are
 strings. Optional fields may be omitted or `null`. Variants use an explicit `kind`
 string. Integer fields are parsed from their lexemes with exact range checks;

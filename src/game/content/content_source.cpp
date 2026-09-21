@@ -64,6 +64,7 @@ AuthoredContentPack overlayBuiltinContent(const AuthoredContentPack& authored) {
     OVERLAY_CATEGORY(enemyVisuals, id);
     OVERLAY_CATEGORY(objectVisuals, id);
     OVERLAY_CATEGORY(playerVisuals, id);
+    OVERLAY_CATEGORY(uiScreens, id);
 #undef OVERLAY_CATEGORY
     return result;
 }

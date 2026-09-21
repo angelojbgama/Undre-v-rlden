@@ -145,7 +145,7 @@ class CraftingAuthoringServiceTests(unittest.TestCase):
                     [{"itemId": POTION, "quantity": 1}, {"itemId": POTION, "quantity": 1}])
             self.assertIsNone(workspace.find("craftingRecipes", "recipe.x"))
 
-    def test_create_recipe_promotes_workspace_file_to_version_6(self) -> None:
+    def test_create_recipe_promotes_workspace_file_to_current_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = make_workspace(Path(directory), version=5)
             service = crafting_service(workspace)
@@ -153,19 +153,18 @@ class CraftingAuthoringServiceTests(unittest.TestCase):
 
             service.create_recipe("Poção", "recipe.potion", BASE_INPUTS, BASE_OUTPUTS)
 
-            self.assertEqual(6, workspace.files[0].data["version"])
+            self.assertEqual(CONTENT_VERSION, workspace.files[0].data["version"])
             workspace.save_all()
             reloaded = ContentWorkspace.open(Path(directory))
-            self.assertEqual(6, reloaded.files[0].data["version"])
+            self.assertEqual(CONTENT_VERSION, reloaded.files[0].data["version"])
             self.assertIsNotNone(reloaded.find("craftingRecipes", "recipe.potion"))
 
-    def test_new_workspace_initializes_crafting_category_at_version_6(self) -> None:
+    def test_new_workspace_initializes_crafting_category_at_current_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = ContentWorkspace.new(Path(directory) / "content.json")
-            self.assertEqual(CONTENT_VERSION, 6)
             self.assertIn("craftingRecipes", workspace.files[0].data)
             self.assertEqual([], workspace.files[0].data["craftingRecipes"])
-            self.assertEqual(6, workspace.files[0].data["version"])
+            self.assertEqual(CONTENT_VERSION, workspace.files[0].data["version"])
 
     def test_update_recipe_replaces_ingredients(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -251,7 +250,7 @@ class CraftingAuthoringServiceTests(unittest.TestCase):
             recipe = reloaded.find("craftingRecipes", "recipe.potion")
             self.assertIsNotNone(recipe)
             self.assertEqual(HERB, recipe.data["inputs"][0]["itemId"])
-            self.assertEqual(6, reloaded.files[0].data["version"])
+            self.assertEqual(CONTENT_VERSION, reloaded.files[0].data["version"])
 
     def test_recipes_support_three_and_four_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

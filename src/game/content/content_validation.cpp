@@ -141,6 +141,141 @@ void validateAttack(const AuthoredAttack& value,
     }
 }
 
+void validateUiNode(const ui::NodeDefinition& node, const simulation::DefinitionId& screenId,
+                    const std::unordered_set<std::string>& staticSprites,
+                    const std::unordered_set<std::string>& animations,
+                    std::unordered_set<std::string>& nodeIds,
+                    ContentValidationReport& report) {
+    if (node.id.empty()) {
+        error(report, ContentKind::uiScreen, screenId, "empty_id",
+              "ui node id must not be empty", "id");
+    } else if (!nodeIds.emplace(node.id).second) {
+        error(report, ContentKind::uiScreen, screenId, "duplicate_id",
+              "ui node id is duplicated within the screen", "id");
+    }
+    const bool container = ui::isContainerComponent(node.component);
+    if (!container && !node.children.empty())
+        error(report, ContentKind::uiScreen, screenId, "children_not_allowed",
+              "only container components accept children", "children");
+    if (node.spriteId) {
+        if (node.component != ui::ComponentKind::image)
+            error(report, ContentKind::uiScreen, screenId, "unexpected_property",
+                  "sprite belongs to the image component", "sprite");
+        else if (!contains(staticSprites, *node.spriteId))
+            error(report, ContentKind::uiScreen, screenId, "unknown_reference",
+                  "ui sprite does not exist", "sprite");
+    }
+    if (node.animationId) {
+        if (node.component != ui::ComponentKind::animatedImage)
+            error(report, ContentKind::uiScreen, screenId, "unexpected_property",
+                  "animation belongs to the animatedImage component", "animation");
+        else if (!contains(animations, *node.animationId))
+            error(report, ContentKind::uiScreen, screenId, "unknown_reference",
+                  "ui animation does not exist", "animation");
+    }
+    if (!node.text.empty() && node.component != ui::ComponentKind::text)
+        error(report, ContentKind::uiScreen, screenId, "unexpected_property",
+              "text belongs to the text component", "text");
+    if (node.meter && node.component != ui::ComponentKind::meter)
+        error(report, ContentKind::uiScreen, screenId, "unexpected_property",
+              "meter configuration belongs to the meter component", "meter");
+    switch (node.component) {
+        case ui::ComponentKind::image:
+            if (!node.spriteId)
+                error(report, ContentKind::uiScreen, screenId, "missing_property",
+                      "image node requires a sprite", "sprite");
+            break;
+        case ui::ComponentKind::animatedImage:
+            if (!node.animationId)
+                error(report, ContentKind::uiScreen, screenId, "missing_property",
+                      "animatedImage node requires an animation", "animation");
+            break;
+        case ui::ComponentKind::text: {
+            const bool hasTextBinding = std::any_of(
+                node.bindings.begin(), node.bindings.end(),
+                [](const ui::BindingDefinition& binding) { return binding.property == "text"; });
+            if (node.text.empty() && !hasTextBinding)
+                error(report, ContentKind::uiScreen, screenId, "missing_property",
+                      "text node requires literal text or a text binding", "text");
+            break;
+        }
+        case ui::ComponentKind::meter: {
+            if (!node.meter) {
+                error(report, ContentKind::uiScreen, screenId, "missing_property",
+                      "meter node requires meter configuration", "meter");
+                break;
+            }
+            if (node.meter->segmentValue == 0)
+                error(report, ContentKind::uiScreen, screenId, "invalid_meter",
+                      "meter segment value must be positive", "meter.segmentValue");
+            if (node.meter->mode == ui::MeterMode::segmented && !node.meter->sprites.full)
+                error(report, ContentKind::uiScreen, screenId, "invalid_meter",
+                      "segmented meter requires a full segment sprite", "meter.sprites.full");
+            if (node.meter->mode != ui::MeterMode::segmented && !node.meter->sprites.fill)
+                error(report, ContentKind::uiScreen, screenId, "invalid_meter",
+                      "fill meter requires a fill sprite", "meter.sprites.fill");
+            const std::pair<const std::optional<simulation::DefinitionId>*, const char*> meterSprites[] = {
+                {&node.meter->sprites.fill, "meter.sprites.fill"},
+                {&node.meter->sprites.full, "meter.sprites.full"},
+                {&node.meter->sprites.half, "meter.sprites.half"},
+                {&node.meter->sprites.empty, "meter.sprites.empty"}};
+            for (const auto& [sprite, field] : meterSprites) {
+                if (*sprite && !contains(staticSprites, **sprite))
+                    error(report, ContentKind::uiScreen, screenId, "unknown_reference",
+                          "ui sprite does not exist", field);
+            }
+            for (const char* required : {"value", "maximum"}) {
+                const bool bound = std::any_of(
+                    node.bindings.begin(), node.bindings.end(),
+                    [required](const ui::BindingDefinition& binding) {
+                        return binding.property == required;
+                    });
+                if (!bound)
+                    error(report, ContentKind::uiScreen, screenId, "missing_binding",
+                          "meter node requires a binding for the property", "bindings");
+            }
+            break;
+        }
+        case ui::ComponentKind::group:
+        case ui::ComponentKind::panel:
+            break;
+    }
+    std::unordered_set<std::string> boundProperties;
+    for (const auto& binding : node.bindings) {
+        if (!ui::componentAcceptsProperty(node.component, binding.property))
+            error(report, ContentKind::uiScreen, screenId, "invalid_property",
+                  "binding property is not valid for this component", "bindings.property");
+        else if (!boundProperties.emplace(binding.property).second)
+            error(report, ContentKind::uiScreen, screenId, "duplicate_property",
+                  "component property is bound more than once", "bindings.property");
+    }
+    std::unordered_set<std::string> stateIds;
+    for (const auto& state : node.states) {
+        if (state.id.empty()) {
+            error(report, ContentKind::uiScreen, screenId, "empty_id",
+                  "ui state id must not be empty", "states.id");
+        } else if (!stateIds.emplace(state.id).second) {
+            error(report, ContentKind::uiScreen, screenId, "duplicate_id",
+                  "ui state id is duplicated within the node", "states.id");
+        }
+        const bool hasDelta = state.visual.tint.has_value() || state.visual.alpha.has_value() ||
+                              state.visual.sprite.has_value() || state.visual.visible.has_value();
+        if (!hasDelta)
+            error(report, ContentKind::uiScreen, screenId, "empty_state",
+                  "ui state must change at least one visual property", "states.visual");
+        if (state.visual.sprite && !contains(staticSprites, *state.visual.sprite))
+            error(report, ContentKind::uiScreen, screenId, "unknown_reference",
+                  "ui sprite does not exist", "states.visual.sprite");
+    }
+    for (const auto& action : node.actions) {
+        if (action.event != "activate")
+            error(report, ContentKind::uiScreen, screenId, "unknown_event",
+                  "ui action event is not supported", "actions.event");
+    }
+    for (const auto& child : node.children)
+        validateUiNode(child, screenId, staticSprites, animations, nodeIds, report);
+}
+
 } // namespace
 
 bool ContentValidationReport::hasErrors() const noexcept {
@@ -875,6 +1010,12 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         if (value.definitionId.empty() || value.displayName.empty()) error(report, ContentKind::authoringDescriptor, value.definitionId, "invalid_value", "authoring descriptor requires id and display name", "descriptor");
         const bool known = (value.category == AuthoringCategory::enemy && contains(enemies, value.definitionId)) || (value.category == AuthoringCategory::object && contains(objects, value.definitionId)) || (value.category == AuthoringCategory::pickup && contains(pickups, value.definitionId)) || (value.category == AuthoringCategory::npc && contains(npcs, value.definitionId)) || (value.category == AuthoringCategory::player && contains(players, value.definitionId)) || (value.category == AuthoringCategory::item && contains(items, value.definitionId)) || (value.category == AuthoringCategory::rewardProfile && contains(rewards, value.definitionId)) || (value.category == AuthoringCategory::rewardGrant && contains(grants, value.definitionId)) || (value.category == AuthoringCategory::shop && contains(shops, value.definitionId)) || (value.category == AuthoringCategory::craftingRecipe && contains(craftingRecipes, value.definitionId));
         if (!known) error(report, ContentKind::authoringDescriptor, value.definitionId, "unknown_reference", "descriptor target does not exist in its category", "definitionId");
+    }
+    (void)ids(pack.uiScreens, report, ContentKind::uiScreen,
+              [](const auto& value) { return value.id; });
+    for (const auto& value : pack.uiScreens) {
+        std::unordered_set<std::string> nodeIds;
+        validateUiNode(value.root, value.id, staticSprites, animations, nodeIds, report);
     }
     return report;
 }

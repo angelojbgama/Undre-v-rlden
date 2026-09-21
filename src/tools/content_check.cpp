@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
               + authored.animations.size() + authored.enemyVisuals.size()
               + authored.objectVisuals.size()
               + authored.players.size() + authored.playerVisuals.size()
+              + authored.uiScreens.size()
               << "\n";
     return 0;
 }

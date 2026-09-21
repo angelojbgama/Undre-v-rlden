@@ -11,7 +11,7 @@ enum class ContentDiagnosticSeverity { error, warning };
 enum class ContentKind {
     tileset, attack, projectile, behavior, enemy, item, object, pickup, npc, player,
     dialogue, quest, authoringDescriptor, tileSemantic, stamp, playerProgression, rewardProfile, rewardGrant, shop, craftingRecipe, npcVisual, presentationEffect,
-    visualImage, staticSprite, animation, enemyVisual, objectVisual, playerVisual
+    visualImage, staticSprite, animation, enemyVisual, objectVisual, playerVisual, uiScreen
 };
 
 struct ContentDiagnostic final {

@@ -634,6 +634,7 @@ ContentCompileResult ContentCompiler::compile(const AuthoredContentPack& authore
         for (const auto& value : authored.enemyVisuals) registry.enemyVisuals_.add(compileEnemyVisual(value));
         for (const auto& value : authored.playerVisuals) registry.playerVisuals_.add(compilePlayerVisual(value));
         for (const auto& value : authored.objectVisuals) registry.objectVisuals_.add(compileObjectVisual(value));
+        for (const auto& value : authored.uiScreens) registry.uiScreens_.add(value);
         result.registry.emplace(std::move(registry));
     } catch (const std::exception& exception) {
         result.report.diagnostics.push_back({ContentDiagnosticSeverity::error, "catalog_rejected", exception.what(), ContentKind::tileset, {}, "registry"});

@@ -45,6 +45,7 @@ std::string_view categoryName(ContentKind kind) noexcept {
     case ContentKind::enemyVisual: return "enemyVisuals";
     case ContentKind::objectVisual: return "objectVisuals";
     case ContentKind::playerVisual: return "playerVisuals";
+    case ContentKind::uiScreen: return "uiScreens";
     }
     return {};
 }
@@ -198,6 +199,7 @@ ContentWorkspaceLoadResult buildContentWorkspace(
         mergeCategory(file, "enemyVisuals", file.content.enemyVisuals, merged.enemyVisuals, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "objectVisuals", file.content.objectVisuals, merged.objectVisuals, sources, result, [](const auto& v) { return v.id; });
         mergeCategory(file, "playerVisuals", file.content.playerVisuals, merged.playerVisuals, sources, result, [](const auto& v) { return v.id; });
+        mergeCategory(file, "uiScreens", file.content.uiScreens, merged.uiScreens, sources, result, [](const auto& v) { return v.id; });
     }
     result.mergedAuthored = merged;
     result.sources = sources;
