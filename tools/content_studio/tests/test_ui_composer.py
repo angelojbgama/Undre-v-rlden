@@ -89,6 +89,32 @@ class UiComposerWidgetTests(unittest.TestCase):
             self.assertEqual(8, node["layout"]["offsetX"])
             self.assertEqual(6, node["layout"]["offsetY"])
 
+    def test_builtin_only_screen_previews_on_canvas(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        with tempfile.TemporaryDirectory() as directory:
+            # No workspace screens: selecting a builtin row must still feed
+            # the canvas/hierarchy (read-only) instead of showing an empty
+            # black frame.
+            widget = UiComposerWidget(make_workspace(Path(directory)), Translator("pt-BR"))
+            widget.refresh()
+            widget.screens_list.setCurrentRow(0)
+            self.assertEqual("screen.hud", widget._selected_screen)
+            self.assertTrue(widget.service.is_builtin_only("screen.hud"))
+            self.assertIsNotNone(widget.canvas._screen_data)
+            self.assertEqual("screen.hud", widget.canvas._screen_data.get("id"))
+            self.assertTrue(widget.canvas._read_only)
+            root_item = widget.hierarchy.topLevelItem(0)
+            self.assertIsNotNone(root_item)
+            self.assertEqual("hud.root — group", root_item.text(0))
+            # The canvas paints authored content: the first heart box is pink.
+            widget.canvas.set_preview_values({"player.health.current": 3,
+                                              "player.health.max": 5})
+            widget.canvas.repaint()
+            image = widget.canvas.grab().toImage()
+            heart = image.pixelColor(4 * 2 + 1, 3 * 2 + 1)
+            self.assertEqual("#d84868", heart.name())
+
     def test_canvas_geometry_is_the_logical_screen(self) -> None:
         app = QApplication.instance() or QApplication([])
         assert app is not None

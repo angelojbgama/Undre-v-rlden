@@ -253,6 +253,7 @@ TRANSLATIONS["pt-BR"].update({
     "ui_composer_builtin": "builtin",
     "ui_composer_override": "Editar cópia",
     "ui_composer_builtin_readonly": "Esta tela é do engine. Use \"Editar cópia\" para criar uma versão editável.",
+    "ui_composer_ok": "OK",
 })
 
 # depth-occlusion-localization-v1
@@ -309,6 +310,7 @@ TRANSLATIONS.setdefault("en-US", {}).update({
     "ui_composer_builtin": "builtin",
     "ui_composer_override": "Edit copy",
     "ui_composer_builtin_readonly": "This screen ships with the engine. Use \"Edit copy\" to create an editable version.",
+    "ui_composer_ok": "OK",
 })
 
 for _english_key in ("en-US", "en"):

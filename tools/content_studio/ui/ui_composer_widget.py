@@ -81,6 +81,7 @@ class UiCanvas(QWidget):
         self._drag_start: tuple[float, float] | None = None
         self._drag_moved = False
         self._pending_shifts: dict[str, tuple[int, int]] = {}
+        self._read_only = False
         self.setFixedSize(LOGICAL_WIDTH * self._zoom, LOGICAL_HEIGHT * self._zoom)
 
     def set_screen_data(self, screen_data: dict | None) -> None:
@@ -90,6 +91,9 @@ class UiCanvas(QWidget):
         self._drag_start = None
         self._drag_moved = False
         self.update()
+
+    def set_read_only(self, read_only: bool) -> None:
+        self._read_only = read_only
 
     def set_preview_values(self, values: dict[str, int]) -> None:
         self._preview = values
@@ -109,7 +113,7 @@ class UiCanvas(QWidget):
         for rect, node_id in reversed(self._node_rects):
             if rect.contains(position):
                 self.node_selected.emit(node_id)
-                if event.button() == Qt.MouseButton.LeftButton:
+                if (event.button() == Qt.MouseButton.LeftButton and not self._read_only):
                     self._drag_node_id = node_id
                     self._drag_start = (position.x(), position.y())
                     self._drag_moved = False
@@ -414,6 +418,16 @@ class UiComposerWidget(QWidget):
         self._reload_validation()
         self._update_canvas()
 
+    def _screen_data_source(self, screen_id: str | None) -> tuple[dict | None, bool]:
+        """Returns (data, editable) for a workspace screen or builtin fallback."""
+        screen = self.service.find(screen_id) if screen_id else None
+        if screen is not None:
+            return screen.data, True
+        builtin = self.service.builtin_find(screen_id) if screen_id else None
+        if builtin is not None:
+            return builtin, False
+        return None, False
+
     # -- screens -----------------------------------------------------------
 
     def _screen_row_changed(self, row: int) -> None:
@@ -499,8 +513,8 @@ class UiComposerWidget(QWidget):
     def _reload_hierarchy(self) -> None:
         self.hierarchy.blockSignals(True)
         self.hierarchy.clear()
-        screen = self.service.find(self._selected_screen) if self._selected_screen else None
-        if screen is not None:
+        data, _ = self._screen_data_source(self._selected_screen)
+        if data is not None:
             def add_children(parent_item: QTreeWidgetItem, node: dict) -> None:
                 for child in node.get("children", []):
                     item = QTreeWidgetItem([f"{child.get('id', '?')} — {child.get('component', '?')}"])
@@ -508,7 +522,7 @@ class UiComposerWidget(QWidget):
                     parent_item.addChild(item)
                     add_children(item, child)
 
-            root = screen.data.get("root", {})
+            root = data.get("root", {})
             root_item = QTreeWidgetItem([f"{root.get('id', '?')} — {root.get('component', '?')}"])
             root_item.setData(0, Qt.ItemDataRole.UserRole, str(root.get("id", "")))
             self.hierarchy.addTopLevelItem(root_item)
@@ -585,11 +599,11 @@ class UiComposerWidget(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        screen = self.service.find(self._selected_screen) if self._selected_screen else None
-        if screen is None or not self._selected_node:
+        data, _ = self._screen_data_source(self._selected_screen)
+        if data is None or not self._selected_node:
             self._inspector_layout.addRow(QLabel(self.translator("ui_composer_select_node")))
             return
-        node = self._find_node(screen.data.get("root", {}), self._selected_node)
+        node = self._find_node(data.get("root", {}), self._selected_node)
         if node is None:
             return
 
@@ -853,6 +867,13 @@ class UiComposerWidget(QWidget):
         self.validation_list.clear()
         if not self._selected_screen:
             return
+        data, editable = self._screen_data_source(self._selected_screen)
+        if data is None:
+            return
+        if not editable:
+            self.validation_list.addItem(
+                QListWidgetItem(self.translator("ui_composer_builtin_readonly")))
+            return
         try:
             issues = self.service.validate_screen(self._selected_screen)
         except ValueError as error:
@@ -860,7 +881,7 @@ class UiComposerWidget(QWidget):
         for issue in issues:
             self.validation_list.addItem(QListWidgetItem(issue))
         if not issues:
-            self.validation_list.addItem(QListWidgetItem(self.tr("OK")))
+            self.validation_list.addItem(QListWidgetItem(self.translator("ui_composer_ok")))
 
     def _preview_changed(self) -> None:
         for path, spin in self._preview_spins.items():
@@ -868,9 +889,10 @@ class UiComposerWidget(QWidget):
         self._update_canvas()
 
     def _update_canvas(self) -> None:
-        screen = self.service.find(self._selected_screen) if self._selected_screen else None
+        data, editable = self._screen_data_source(self._selected_screen)
+        self.canvas.set_read_only(not editable)
         self.canvas.set_preview_values(self._preview_values)
-        self.canvas.set_screen_data(dict(screen.data) if screen else None)
+        self.canvas.set_screen_data(dict(data) if data else None)
 
     # -- helpers -----------------------------------------------------------
 
