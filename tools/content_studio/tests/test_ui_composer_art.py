@@ -168,6 +168,59 @@ class UiCanvasArtTests(unittest.TestCase):
         # count text: widget pixel (50, 48) = logical (25, 24).
         self.assertEqual(QColor(54, 30, 38).name(), image.pixelColor(50, 48).name())
 
+    def test_repeater_paints_one_instance_per_previewed_slot(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = UiCanvas()
+        self.addCleanup(canvas.deleteLater)
+        canvas.set_preview_values({"player.inventory.slots": 30})
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "group",
+                     "layout": {"offsetX": 0, "offsetY": 0},
+                     "children": [
+                         {"id": "grid", "component": "repeater",
+                          "layout": {"offsetX": 8, "offsetY": 40},
+                          "columns": 10, "cellWidth": 26, "cellHeight": 15,
+                          "bindings": [{"property": "source",
+                                        "source": "player.inventory.slots"}],
+                          "children": [
+                              {"id": "cell", "component": "slot",
+                               "layout": {"width": 24, "height": 13},
+                               "background": {"r": 200, "g": 120, "b": 40, "a": 255}}]}]},
+        })
+        image = self._grab(canvas)
+        # Instance 0 fills cell (8,40)..(32,53); sample logical (20,45).
+        self.assertEqual(QColor(200, 120, 40).name(), image.pixelColor(40, 90).name())
+        # Instance 9 sits in column 9: cell (242,40)..(266,53); logical (250,45).
+        self.assertEqual(QColor(200, 120, 40).name(), image.pixelColor(500, 90).name())
+        # Instance 10 wraps to row 2, column 0: cell origin (8, 55).
+        self.assertEqual(QColor(200, 120, 40).name(), image.pixelColor(40, 120).name())
+
+    def test_repeater_without_previewed_instances_keeps_extent_only(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = UiCanvas()
+        self.addCleanup(canvas.deleteLater)
+        canvas.set_preview_values({"player.inventory.slots": 0})
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "repeater",
+                     "layout": {"offsetX": 8, "offsetY": 40},
+                     "columns": 10, "cellWidth": 26, "cellHeight": 15,
+                     "bindings": [{"property": "source",
+                                   "source": "player.inventory.slots"}],
+                     "children": [
+                         {"id": "cell", "component": "slot",
+                          "layout": {"width": 24, "height": 13},
+                          "background": {"r": 200, "g": 120, "b": 40, "a": 255}}]},
+        })
+        image = self._grab(canvas)
+        # No instances: the cell area stays canvas-dark; the extent outline
+        # marks where the grid would be.
+        self.assertNotEqual(QColor(200, 120, 40).name(), image.pixelColor(40, 90).name())
+        self.assertNotEqual("#000000", image.pixelColor(16, 80).name())
+
 
 class UiComposerSwapArtTests(unittest.TestCase):
     @classmethod

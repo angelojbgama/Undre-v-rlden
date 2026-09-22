@@ -293,7 +293,11 @@ documentos vivos por documento, dirty state e save canônico atômico.
   export/playtest, padrão atual do Studio).
 - **Preview Data**: valores simulados por binding (HP 37/100, gold 152,
   inventário com N itens) e toggles de estado (lowHealth etc.) para testar a UI
-  sem abrir o jogo.
+  sem abrir o jogo. Os caminhos de coleção (`player.inventory.slots`,
+  `dialogue.choices` etc.) entram como tamanhos simulados: o canvas desenha um
+  instantâneo do repeater por unidade, com células espelhando o presenter
+  (origem + coluna/linha × célula), então grades como o inventário 10×3 são
+  editáveis visualmente.
 - **Arte real no canvas** (pós-UI-5): o canvas resolve staticSprites via
   `StudioVisualResolver` (com cache) e desenha image/slot/meter/panel com a
   arte e o background authored, seguindo o contrato de placement do presenter
@@ -327,9 +331,9 @@ UI-3  UI Composer no Studio (modo UI, hierarchy/canvas/
 UI-4  slot/repeater + migração da grade do overlay de
       inventário (screen.inventory); a reorganização de
       painéis acontece somente pela definição  (prova 2) CONCLUÍDO
-      (equipamento/banco/loja/crafting permanecem hardcoded
-      até necessidade real; canvas do Composer ainda não
-      pré-visualiza slot/repeater)
+      (posterior: banco/loja/crafting/diálogo migrados; o
+      canvas passou a pré-visualizar repeaters por tamanho
+      de coleção no preview data, com arte real)
 UI-5  screen/navigation com o primeiro menu real —
       screen.menu (pausa: SAVE/LOAD/RESUME, ESC abre/fecha,
       setas movem o foco com wrap, E ativa; SAVE/LOAD

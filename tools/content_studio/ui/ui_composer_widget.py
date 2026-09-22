@@ -195,12 +195,20 @@ class UiCanvas(QWidget):
             return None
 
     def _paint_node(self, painter: QPainter, node: dict, parent: dict | None,
-                    shift: tuple[int, int] = (0, 0)) -> None:
+                    shift: tuple[int, int] = (0, 0),
+                    origin: tuple[int, int] | None = None) -> None:
         layout = dict(node.get("layout", {}))
         pending = self._pending_shifts.get(str(node.get("id", "")), (0, 0))
         total = (shift[0] + pending[0], shift[1] + pending[1])
         layout["offsetX"] = int(layout.get("offsetX", 0)) + total[0]
         layout["offsetY"] = int(layout.get("offsetY", 0)) + total[1]
+        if origin is not None:
+            # Repeater instances: the template subtree is cell-relative, so
+            # every descendant shifts by the instance cell origin. Folding
+            # the origin into the layout keeps the per-branch position
+            # recomputes (image/slot/meter/text) cell-relative too.
+            layout["offsetX"] += origin[0]
+            layout["offsetY"] += origin[1]
         content = (LOGICAL_WIDTH, LOGICAL_HEIGHT)
         x, y = resolve_position(layout, content)
         zoom = self._zoom
@@ -227,7 +235,32 @@ class UiCanvas(QWidget):
             painter.setPen(QColor(150, 160, 200))
             painter.drawText(QPointF(x + 2, y + 9), node_id)
             for child in node.get("children", []):
-                self._paint_node(painter, child, node, total)
+                self._paint_node(painter, child, node, total, origin)
+            return
+
+        if component == "repeater":
+            # The template renders once per previewed instance, cell offsets
+            # mirroring the C++ presenter (origin + column/row * cell size).
+            source = None
+            for binding in node.get("bindings", []):
+                if binding.get("property") == "source":
+                    source = str(binding.get("source"))
+            columns = max(1, int(node.get("columns", 1)))
+            cell_w = int(node.get("cellWidth", 16))
+            cell_h = int(node.get("cellHeight", 16))
+            count = self._value(source, 0) if source else 0
+            count = max(0, min(int(count), 64))
+            rows = (count + columns - 1) // columns if count else 1
+            painter.setPen(QPen(QColor(90, 100, 140, 200), 0))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(QRectF(x, y, columns * cell_w, rows * cell_h))
+            self._node_rects.append((QRectF(x, y, columns * cell_w, rows * cell_h),
+                                     node_id))
+            for child in node.get("children", []):
+                for index in range(count):
+                    cell = (x + (index % columns) * cell_w,
+                            y + (index // columns) * cell_h)
+                    self._paint_node(painter, child, node, (0, 0), cell)
             return
 
         if component == "meter":
@@ -399,6 +432,16 @@ class UiComposerWidget(QWidget):
             "player.health.max": 5,
             "player.gold": 152,
             "player.ammo.amount": 7,
+            # Collection sizes: the canvas paints one repeater instance per
+            # unit so authored grids are laid out exactly like in game.
+            "player.inventory.slots": 30,
+            "player.quickSlots.slots": 4,
+            "bank.slots": 24,
+            "quests.journal": 2,
+            "shop.offers": 4,
+            "crafting.recipes": 5,
+            "dialogue.pageLines": 2,
+            "dialogue.choices": 3,
         }
         self._build_ui()
         self.refresh()
