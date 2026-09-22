@@ -74,8 +74,8 @@ class UiComposerWidgetTests(unittest.TestCase):
         assert app is not None
         with tempfile.TemporaryDirectory() as directory:
             widget = UiComposerWidget(make_workspace(Path(directory)), Translator("pt-BR"))
-            # No workspace screens yet: the five builtin screens are listed.
-            self.assertEqual(5, widget.screens_list.count())
+            # No workspace screens yet: the six builtin screens are listed.
+            self.assertEqual(6, widget.screens_list.count())
             self.assertTrue(widget.service.is_builtin_only("screen.hud"))
             widget.service.override_builtin("screen.hud")
             widget.refresh()
