@@ -258,6 +258,12 @@ não de código — é exatamente a prova de aceite da seção 10.
   linhas, mesmo contrato do render legado) e as choices já chegam numeradas.
   Convenção de layout vigente: coordenadas de filhos de painéis são absolutas
   na tela lógica (o offset do pai não é propagado).
+- Título como shell authored (pós-UI-5): `screen.title` abre no boot do
+  game.exe com o gameplay congelado (`UiRuntime` em modo título);
+  `screen.open.saves` leva à tela de saves em modo start (`saves.startMode`
+  esconde os botões SAVE; LOAD continua um slot salvo ou inicia novo jogo no
+  slot vazio) e BACK volta ao título. Drivers headless/playtest bootam direto
+  no gameplay (`GameLaunchOptions::titleScreen`; `--no-title` desliga).
 
 ## 8. UI Composer no Studio
 
@@ -288,6 +294,15 @@ documentos vivos por documento, dirty state e save canônico atômico.
 - **Preview Data**: valores simulados por binding (HP 37/100, gold 152,
   inventário com N itens) e toggles de estado (lowHealth etc.) para testar a UI
   sem abrir o jogo.
+- **Arte real no canvas** (pós-UI-5): o canvas resolve staticSprites via
+  `StudioVisualResolver` (com cache) e desenha image/slot/meter/panel com a
+  arte e o background authored, seguindo o contrato de placement do presenter
+  (posição − anchor + drawOffset). Ícones dinâmicos de slot permanecem
+  placeholder (preview data só carrega números). O Inspector troca o campo
+  livre de sprite por um picker (combo dos staticSprites do workspace + preview
+  da arte); trocar a arte é escolher outro item — o commit passa pelo
+  `set_sprite` existente e o canvas repinta. O C++ permanece a autoridade de
+  pixel.
 - Fora do primeiro Composer: play interativo, timeline de animação, editor de
   themes — incrementos futuros com caso real.
 

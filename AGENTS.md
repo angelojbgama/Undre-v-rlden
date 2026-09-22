@@ -2118,3 +2118,31 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   builtin: coordenadas de filhos de painéis são absolutas na tela lógica (o
   presenter não propaga o offset do pai resolvido). Playtest e `content_check`
   usam o conteúdo de produção; o fallback sintético ficou restrito a fixtures.
+
+# Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
+
+Trilha Scene/Game-State: implementada a menor camada de shell necessária, sem
+framework de cenas. O `UiRuntime` ganhou modo título (`setTitleScreen`,
+`titleMode`, `exitTitleMode`): o boot do `game.exe` abre a tela authored
+`screen.title` (nova tela builtin, dim sobre o mundo estático) e o gameplay
+fica congelado (sem tick) até a escolha de slot. E no título abre a tela
+`saves` em modo start: `saves.startMode` (binding novo) esconde os botões
+SAVE, LOAD em slot salvo continua o jogo e em slot vazio inicia novo jogo no
+slot escolhido; BACK volta ao título. A saída do modo título pertence ao sink
+do shell (`GameRuntime::State`); mundo já boota fresh, então "novo jogo" não
+precisa reset. `GameLaunchOptions::titleScreen` liga o shell (parse de
+game.exe assume true, `--no-title` desliga; drivers headless/playtest não
+usam). Correção incluída: o construtor do runtime registrava o ActionSink
+duas vezes e o segundo registro descartava as ações save.slot.N/load.slot.N —
+agora há um sink único que trata menu e slots.
+
+Trilha Composer: o canvas do UI Composer agora desenha arte real via
+`StudioVisualResolver` (staticSprites + visualImages, com cache): image
+respeita anchor/drawOffset do contrato do presenter, panel/group/slot pintam
+o background authored, meter usa a arte do segmento (segmented) ou o fill
+recortado pela fração (fillHorizontal/fillVertical). Ícones dinâmicos de slot
+(ambiente de repeater) continuam placeholder — preview data só carrega
+números. O Inspector trocou o campo de sprite por um picker (combo com os
+staticSprites do workspace + preview da arte); trocar a arte é escolher outro
+item, o commit passa pelo `set_sprite` existente e o canvas repinta. O
+C++/runtime permanece a autoridade de pixel; nada disso muda o Content JSON.

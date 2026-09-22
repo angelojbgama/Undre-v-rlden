@@ -393,7 +393,8 @@ class MainWindow(QMainWindow):
         content_split.setStretchFactor(1, 1)
         self._content_split = content_split
         content_split.setSizes([self.preferences.left_panel_width, 700, self.preferences.right_panel_width])
-        self.ui_composer = UiComposerWidget(self.workspace, self.translator)
+        self.ui_composer = UiComposerWidget(self.workspace, self.translator,
+                                            asset_root=self.asset_root)
         self._ui_split = QSplitter(Qt.Orientation.Horizontal)
         self._ui_split.addWidget(self.ui_composer)
         self.mode_tabs.addTab(self.translator("maps_mode"))

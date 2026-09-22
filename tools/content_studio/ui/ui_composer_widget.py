@@ -1,15 +1,18 @@
 """UI Composer — visual authoring for the UI Engine screens (docs/UI_ENGINE.md, UI-3).
 
 Layout/hierarchy/canvas/inspector over the UiAuthoringService. The canvas is a
-data-driven preview (layout, meter fills, bindings against Preview Data); the
-C++ runtime remains the pixel authority. Preview Data is editor-local state
-and is never serialized into authored content.
+data-driven preview (layout, backgrounds, real staticSprite art, meter fills,
+bindings against Preview Data); the C++ runtime remains the pixel authority.
+Preview Data is editor-local state and is never serialized into authored
+content.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -37,6 +40,7 @@ from ..services.localization import Translator
 from ..services.ui_authoring_service import UiAuthoringService
 from ..services import ui_registry
 from .icon_registry import icon
+from .studio_visual_resolver import ResolvedStudioVisual, StudioVisualResolver
 
 LOGICAL_WIDTH = 272
 LOGICAL_HEIGHT = 224
@@ -58,6 +62,21 @@ def resolve_position(layout: dict, content_size: tuple[int, int]) -> tuple[int, 
     if anchor.startswith("bottom"):
         y += LOGICAL_HEIGHT - height
     return x, y
+
+
+def _node_color(background: object) -> QColor | None:
+    """Authored background dict {r,g,b,a} -> QColor; None when absent."""
+    if not isinstance(background, dict):
+        return None
+    try:
+        return QColor(
+            int(background.get("r", 0)),
+            int(background.get("g", 0)),
+            int(background.get("b", 0)),
+            int(background.get("a", 255)),
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 class UiCanvas(QWidget):
@@ -82,7 +101,14 @@ class UiCanvas(QWidget):
         self._drag_moved = False
         self._pending_shifts: dict[str, tuple[int, int]] = {}
         self._read_only = False
+        # Real-art resolver over the workspace staticSprites; None keeps the
+        # placeholder boxes (tests / missing asset root).
+        self._visuals: StudioVisualResolver | None = None
         self.setFixedSize(LOGICAL_WIDTH * self._zoom, LOGICAL_HEIGHT * self._zoom)
+
+    def set_visuals(self, visuals: StudioVisualResolver | None) -> None:
+        self._visuals = visuals
+        self.update()
 
     def set_screen_data(self, screen_data: dict | None) -> None:
         self._screen_data = screen_data
@@ -160,6 +186,14 @@ class UiCanvas(QWidget):
             self._paint_node(painter, self._screen_data.get("root", {}), None)
         painter.end()
 
+    def _resolved_sprite(self, sprite_id: str) -> ResolvedStudioVisual | None:
+        if not sprite_id or self._visuals is None:
+            return None
+        try:
+            return self._visuals.resolve_static_sprite(sprite_id)
+        except Exception:  # noqa: BLE001 - a broken asset must not break painting
+            return None
+
     def _paint_node(self, painter: QPainter, node: dict, parent: dict | None,
                     shift: tuple[int, int] = (0, 0)) -> None:
         layout = dict(node.get("layout", {}))
@@ -178,9 +212,17 @@ class UiCanvas(QWidget):
             width = int(layout.get("width", LOGICAL_WIDTH))
             height = int(layout.get("height", LOGICAL_HEIGHT))
             rect = QRectF(x, y, width, height)
-            painter.setPen(QPen(QColor(90, 100, 140, 200), 0))
-            painter.setBrush(QColor(40, 48, 80, 60))
-            painter.drawRect(rect)
+            background = _node_color(node.get("background"))
+            if background is not None:
+                # Authored background: paint it exactly like the runtime.
+                painter.fillRect(rect, background)
+                painter.setPen(QPen(QColor(90, 100, 140, 200), 0))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect)
+            else:
+                painter.setPen(QPen(QColor(90, 100, 140, 200), 0))
+                painter.setBrush(QColor(40, 48, 80, 60))
+                painter.drawRect(rect)
             self._node_rects.append((rect, node_id))
             painter.setPen(QColor(150, 160, 200))
             painter.drawText(QPointF(x + 2, y + 9), node_id)
@@ -192,9 +234,15 @@ class UiCanvas(QWidget):
             meter = node.get("meter", {})
             sprites = meter.get("sprites", {})
             full_id = sprites.get("full") or sprites.get("fill")
-            # Preview geometry: 11x10 segments / 24x12 fill until real art
-            # metadata is resolvable; the C++ runtime remains the authority.
-            box_w, box_h = (11, 10) if meter.get("mode") == "segmented" else (24, 12)
+            # Real art when the sprite resolves; otherwise preview geometry
+            # (11x10 segments / 24x12 fill). The C++ runtime stays the
+            # pixel authority either way.
+            resolved_full = self._resolved_sprite(str(full_id)) if full_id else None
+            if resolved_full is not None and resolved_full.image.width() > 0:
+                box_w, box_h = resolved_full.image.width(), resolved_full.image.height()
+            else:
+                resolved_full = None
+                box_w, box_h = (11, 10) if meter.get("mode") == "segmented" else (24, 12)
             value = self._bound_value(node, "value", 0)
             maximum = self._bound_value(node, "maximum", 1)
             spacing = int(meter.get("spacing", 0))
@@ -206,7 +254,10 @@ class UiCanvas(QWidget):
                 for index in range(max(0, int(maximum))):
                     ex = x + index * stride
                     if index < value:
-                        painter.fillRect(QRectF(ex, y, box_w, box_h), QColor("#d84868"))
+                        if resolved_full is not None:
+                            painter.drawImage(QPointF(ex, y), resolved_full.image)
+                        else:
+                            painter.fillRect(QRectF(ex, y, box_w, box_h), QColor("#d84868"))
                     elif empty:
                         e = empty
                         painter.fillRect(
@@ -222,16 +273,26 @@ class UiCanvas(QWidget):
             else:
                 fraction = 0.0 if maximum <= 0 else max(0.0, min(1.0, value / maximum))
                 x, y = resolve_position(layout, (box_w, box_h))
-                painter.setPen(QPen(QColor(90, 100, 140), 0))
-                painter.drawRect(QRectF(x, y, box_w, box_h))
                 if meter.get("mode") == "fillHorizontal":
                     fill_w = round(box_w * fraction)
-                    painter.fillRect(QRectF(x, y, fill_w, box_h), QColor("#58c0d8"))
+                    if resolved_full is not None and fill_w > 0:
+                        painter.drawImage(QPointF(x, y), resolved_full.image.copy(
+                            0, 0, fill_w, box_h))
+                    else:
+                        painter.setPen(QPen(QColor(90, 100, 140), 0))
+                        painter.drawRect(QRectF(x, y, box_w, box_h))
+                        painter.fillRect(QRectF(x, y, fill_w, box_h), QColor("#58c0d8"))
                     rect = QRectF(x, y, box_w, box_h)
                 else:
                     fill_h = round(box_h * fraction)
-                    painter.fillRect(QRectF(x, y + box_h - fill_h, box_w, fill_h),
-                                     QColor("#58c0d8"))
+                    if resolved_full is not None and fill_h > 0:
+                        painter.drawImage(QPointF(x, y + box_h - fill_h),
+                                          resolved_full.image.copy(0, box_h - fill_h, box_w, fill_h))
+                    else:
+                        painter.setPen(QPen(QColor(90, 100, 140), 0))
+                        painter.drawRect(QRectF(x, y, box_w, box_h))
+                        painter.fillRect(QRectF(x, y + box_h - fill_h, box_w, fill_h),
+                                         QColor("#58c0d8"))
                     rect = QRectF(x, y, box_w, box_h)
             self._node_rects.append((rect, node_id))
             painter.setPen(QColor(150, 160, 200))
@@ -253,8 +314,52 @@ class UiCanvas(QWidget):
                                      node_id))
             return
 
-        # image / animatedImage preview boxes (art resolution stays with the
-        # runtime; the composer previews placement and bindings).
+        if component == "image":
+            resolved = self._resolved_sprite(str(node.get("sprite", "")))
+            if resolved is not None and resolved.image.width() > 0:
+                # Same placement contract as the C++ presenter: the node
+                # position is the top-left box; the art hangs off the
+                # authored anchor (position - anchor + drawOffset).
+                art_w = resolved.image.width()
+                art_h = resolved.image.height()
+                x, y = resolve_position(layout, (art_w, art_h))
+                draw_x = x - resolved.anchor_x + resolved.draw_offset_x
+                draw_y = y - resolved.anchor_y + resolved.draw_offset_y
+                painter.drawImage(QPointF(draw_x, draw_y), resolved.image)
+                self._node_rects.append((QRectF(draw_x, draw_y, art_w, art_h), node_id))
+                return
+        elif component == "slot":
+            width = int(layout.get("width", 16))
+            height = int(layout.get("height", 16))
+            x, y = resolve_position(layout, (width, height))
+            rect = QRectF(x, y, width, height)
+            background = _node_color(node.get("background"))
+            if background is not None:
+                painter.fillRect(rect, background)
+            else:
+                painter.setBrush(QColor(56, 60, 90, 120))
+                painter.setPen(QPen(QColor(120, 130, 170), 0))
+                painter.drawRect(rect)
+            # Slot icons come from repeater context bindings, which preview
+            # data (numbers only) cannot resolve; the cell previews an inner
+            # placeholder where the icon art would land.
+            icon_offset = node.get("iconOffset", {})
+            icon_x = x + int(icon_offset.get("x", 0))
+            icon_y = y + int(icon_offset.get("y", 0))
+            painter.setPen(QPen(QColor(120, 130, 170), 0))
+            painter.drawRect(QRectF(icon_x, icon_y, max(4, width - 2), max(4, height - 2)))
+            count = self._bound_value(node, "count", 0)
+            if count and (node.get("countAlways") or count > 1):
+                count_offset = node.get("countOffset", {})
+                painter.setPen(QColor(230, 230, 240))
+                painter.drawText(
+                    QPointF(x + int(count_offset.get("x", 0)), y + int(count_offset.get("y", 0)) + 8),
+                    str(count))
+            self._node_rects.append((rect, node_id))
+            return
+
+        # animatedImage / unresolved image preview boxes (animation playback
+        # and dynamic icons stay with the runtime).
         width = int(layout.get("width", 16))
         height = int(layout.get("height", 16))
         x, y = resolve_position(layout, (width, height))
@@ -274,11 +379,16 @@ class UiComposerWidget(QWidget):
     """Screens + hierarchy + canvas + inspector for authored uiScreens."""
 
     def __init__(self, workspace: ContentWorkspace, translator: Translator,
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None,
+                 asset_root: Path | None = None) -> None:
         super().__init__(parent)
         self.workspace = workspace
         self.translator = translator
+        self.asset_root = asset_root
         self.service = UiAuthoringService(workspace)
+        # Real-art resolver for the canvas and the sprite picker previews.
+        self.visuals = StudioVisualResolver()
+        self.visuals.set_context(workspace, asset_root)
         self._selected_screen: str | None = None
         self._selected_node: str | None = None
         # True while the inspector rebuilds: setValue/setCurrentText would
@@ -335,6 +445,7 @@ class UiComposerWidget(QWidget):
         center = QWidget()
         center_layout = QVBoxLayout(center)
         self.canvas = UiCanvas()
+        self.canvas.set_visuals(self.visuals)
         self.canvas.node_selected.connect(self._select_node)
         self.canvas.node_moved.connect(self._commit_node_move)
         center_layout.addWidget(self.canvas, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -380,6 +491,7 @@ class UiComposerWidget(QWidget):
         self.workspace = workspace
         self.translator = translator
         self.service.set_context(workspace)
+        self.visuals.set_context(workspace, self.asset_root)
         self.refresh()
 
     def refresh(self) -> None:
@@ -651,9 +763,25 @@ class UiComposerWidget(QWidget):
 
         component = str(node.get("component"))
         if component == "image":
-            self._sprite_edit = QLineEdit(str(node.get("sprite", "")))
-            self._sprite_edit.editingFinished.connect(self._commit_sprite)
-            self._inspector_layout.addRow(self.translator("ui_composer_sprite"), self._sprite_edit)
+            # Sprite picker over the workspace staticSprites with a live art
+            # preview: swapping the art is choosing another entry; the canvas
+            # repaints through the same resolver the runtime draw follows.
+            self._sprite_combo = QComboBox()
+            sprite_ids = sorted(
+                str(definition.definition_id)
+                for definition in self.workspace.definitions("staticSprites"))
+            self._sprite_combo.addItem("")
+            self._sprite_combo.addItems(sprite_ids)
+            current_sprite = str(node.get("sprite", ""))
+            self._sprite_combo.setCurrentText(current_sprite)
+            self._sprite_combo.currentTextChanged.connect(self._commit_sprite)
+            sprite_row = QHBoxLayout()
+            sprite_row.addWidget(self._sprite_combo, 1)
+            self._sprite_preview = QLabel()
+            self._sprite_preview.setFixedSize(36, 36)
+            self._update_sprite_preview(current_sprite)
+            sprite_row.addWidget(self._sprite_preview)
+            self._inspector_layout.addRow(self.translator("ui_composer_sprite"), sprite_row)
         if component == "animatedImage":
             self._animation_edit = QLineEdit(str(node.get("animation", "")))
             self._animation_edit.editingFinished.connect(self._commit_animation)
@@ -775,12 +903,27 @@ class UiComposerWidget(QWidget):
             width=width if width > 0 else None,
             height=height if height > 0 else None))
 
-    def _commit_sprite(self) -> None:
-        if self._reloading:
+    def _update_sprite_preview(self, sprite_id: str) -> None:
+        preview = getattr(self, "_sprite_preview", None)
+        if preview is None:
             return
-        text = self._sprite_edit.text().strip()
+        resolved = self.visuals.resolve_static_sprite(sprite_id) if sprite_id else None
+        if resolved is None or resolved.image.isNull():
+            preview.setPixmap(QPixmap())
+            return
+        preview.setPixmap(QPixmap.fromImage(resolved.image).scaled(
+            32, 32,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation))
+
+    def _commit_sprite(self) -> None:
+        if self._reloading or not self._selected_node:
+            return
+        text = self._sprite_combo.currentText().strip()
         self._try(lambda: self.service.set_sprite(
             self._selected_screen, self._selected_node, text or None))
+        self._update_sprite_preview(text)
+        self.canvas.update()
 
     def _commit_animation(self) -> None:
         if self._reloading:
