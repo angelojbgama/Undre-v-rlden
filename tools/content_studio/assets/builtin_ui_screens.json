@@ -3005,7 +3005,8 @@
             "offsetY": 72,
             "width": 40,
             "height": 16,
-            "z": 0
+            "z": 0,
+            "visible": false
             },
           "background": {
             "r": 54,
@@ -3013,6 +3014,19 @@
             "b": 38,
             "a": 255
             },
+          "states": [
+            {
+              "id": "play-mode",
+              "condition": {
+                "source": "saves.startMode",
+                "operator": "equal",
+                "value": 0
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ],
           "actions": [
             {
               "event": "activate",
@@ -3096,7 +3110,8 @@
             "offsetY": 102,
             "width": 40,
             "height": 16,
-            "z": 0
+            "z": 0,
+            "visible": false
             },
           "background": {
             "r": 54,
@@ -3104,6 +3119,19 @@
             "b": 38,
             "a": 255
             },
+          "states": [
+            {
+              "id": "play-mode",
+              "condition": {
+                "source": "saves.startMode",
+                "operator": "equal",
+                "value": 0
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ],
           "actions": [
             {
               "event": "activate",
@@ -3187,7 +3215,8 @@
             "offsetY": 132,
             "width": 40,
             "height": 16,
-            "z": 0
+            "z": 0,
+            "visible": false
             },
           "background": {
             "r": 54,
@@ -3195,6 +3224,19 @@
             "b": 38,
             "a": 255
             },
+          "states": [
+            {
+              "id": "play-mode",
+              "condition": {
+                "source": "saves.startMode",
+                "operator": "equal",
+                "value": 0
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ],
           "actions": [
             {
               "event": "activate",
@@ -3251,6 +3293,100 @@
               "text": "BACK"
               }
             ]
+          }
+        ]
+      }
+    },
+  {
+    "id": "screen.title",
+    "kind": "screen",
+    "root": {
+      "id": "title.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 0,
+        "offsetY": 0,
+        "width": 272,
+        "height": 224,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 10,
+        "b": 16,
+        "a": 216
+        },
+      "children": [
+        {
+          "id": "title.name",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 87,
+            "offsetY": 62,
+            "z": 0
+            },
+          "text": "UNDERWORLD"
+          },
+        {
+          "id": "title.subtitle",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 93,
+            "offsetY": 76,
+            "z": 0
+            },
+          "text": "DUNGEON UNDERWORLD"
+          },
+        {
+          "id": "title.start",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 94,
+            "offsetY": 138,
+            "width": 84,
+            "height": 18,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "actions": [
+            {
+              "event": "activate",
+              "action": "screen.open.saves"
+              }
+            ],
+          "children": [
+            {
+              "id": "title.start.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 111,
+                "offsetY": 143,
+                "z": 0
+                },
+              "text": "PRESS E"
+              }
+            ]
+          },
+        {
+          "id": "title.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 64,
+            "offsetY": 186,
+            "z": 0
+            },
+          "text": "ARROWS SELECT  E CONFIRM"
           }
         ]
       }

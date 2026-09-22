@@ -784,8 +784,8 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
     presentation::PresentationEffectRenderer::applyWorld(
         framebuffer, frame.presentationEffects, playerLogical);
     renderDebug(renderer, frame, visible, cameraPosition);
-    renderHud(renderer, frame);
-    if (frame.journalOpen && frame.journalScreen) {
+    if (!frame.shellTitle) { renderHud(renderer, frame); }
+    if (frame.journalOpen && frame.journalScreen && !frame.shellTitle) {
         const GameViewModelBindings bindings{frame.view};
         const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
         const ui::UiPresenter presenter;

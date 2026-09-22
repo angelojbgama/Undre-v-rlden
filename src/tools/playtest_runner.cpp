@@ -233,6 +233,8 @@ public:
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
+        // The title shell boots in front of gameplay only for its scenario.
+        launch.titleScreen = scenario_ == "title_start";
         // Production scenarios play the authored map with the authored
         // content pipeline (builtin + workspace overlay), exactly like
         // game.exe. Only the isolated fixture scenarios override content.
@@ -1207,6 +1209,35 @@ bool runRewards(ScenarioContext& context) {
     return rewarded;
 }
 
+// Title shell end to end: gameplay stays frozen behind the authored title,
+// E opens the saves screen as the start picker, and activating the focused
+// LOAD slot starts a new game (the playtest directory has no save file),
+// after which scripted movement drives the player again.
+bool runTitleStart(ScenarioContext& context) {
+    const auto initial = context.snapshot();
+    platform::InputState held;
+    held.moveRight = true;
+    for (int index = 0; index < 5; ++index) {
+        if (!context.step(held)) { return false; }
+    }
+    const auto frozen = context.snapshot();
+    if (!context.require(frozen.playerX == initial.playerX && frozen.playerY == initial.playerY,
+                         "title shell did not freeze gameplay movement")) { return false; }
+    platform::InputState confirm;
+    confirm.interactPressed = true;
+    if (!context.step(confirm)) { return false; }
+    if (!context.step({})) { return false; }
+    if (!context.step(confirm)) { return false; }
+    if (!context.step({})) { return false; }
+    if (!context.checkpoint("title_started")) { return false; }
+    for (int index = 0; index < 20; ++index) {
+        if (!context.step(held)) { return false; }
+    }
+    const auto& moved = context.snapshot();
+    return context.require(moved.playerX != frozen.playerX || moved.playerY != frozen.playerY,
+                           "leaving the title shell did not start gameplay");
+}
+
 struct ScenarioResult final {
     bool passed{};
     std::uint64_t ticks{};
@@ -1237,6 +1268,7 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
                                                         "inventory did not open from logical input");
     }
     else if (name == "save_load") { passed = runSaveLoad(context); }
+    else if (name == "title_start") { passed = runTitleStart(context); }
     else if (name == "map_01_to_02") { passed = runTransition(context, "map.dungeon.02"); }
     else if (name == "map_02_to_01") { passed = runTransition(context, "map.dungeon.01"); }
     else if (name == "map_02_to_03") { passed = runTransition(context, "map.dungeon.03"); }
@@ -1270,7 +1302,7 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
 // fixture world and need re-basing onto production content first.
 const std::vector<std::string> allScenarios{
     "startup", "movement", "collision", "inventory", "quick_slot",
-    "inventory_navigation", "save_load", "presentation_feedback"};
+    "inventory_navigation", "save_load", "title_start", "presentation_feedback"};
 
 } // namespace
 

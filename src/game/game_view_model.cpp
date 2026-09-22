@@ -210,6 +210,9 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
             return view_->dialogueOpen && view_->dialogueChoicesVisible
                        ? std::optional<std::int64_t>{1}
                        : std::optional<std::int64_t>{0};
+        case ui::BindingPath::savesStartMode:
+            return view_->savesStartMode ? std::optional<std::int64_t>{1}
+                                         : std::optional<std::int64_t>{0};
         default: return std::nullopt;
     }
 }

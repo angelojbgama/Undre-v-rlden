@@ -38,6 +38,24 @@ void UiRuntime::setSavesScreen(const ScreenDefinition* screen) noexcept {
     saves_ = screen;
 }
 
+void UiRuntime::setTitleScreen(const ScreenDefinition* screen) noexcept {
+    title_ = screen;
+    titleMode_ = screen != nullptr;
+    open_ = titleMode_;
+    active_ = screen;
+    focusables_.clear();
+    focusIndex_ = 0;
+    rebuildFocusables();
+}
+
+void UiRuntime::exitTitleMode() noexcept {
+    titleMode_ = false;
+    open_ = false;
+    active_ = nullptr;
+    focusables_.clear();
+    focusIndex_ = 0;
+}
+
 void UiRuntime::setActionSink(ActionSink sink) {
     sink_ = std::move(sink);
 }
@@ -58,7 +76,9 @@ void UiRuntime::rebuildFocusables() {
 
 void UiRuntime::update(const platform::InputState& input, bool interactionAllowed) {
     const bool menuEdge = input.menuPressed && !previous_.menuPressed;
-    if (interactionAllowed && menuEdge) {
+    // The title shell has no gameplay to fall back to, so the menu toggle is
+    // inert there and only navigation/activation runs.
+    if (!titleMode_ && interactionAllowed && menuEdge) {
         open_ = !open_ && menu_ != nullptr;
         active_ = open_ ? menu_ : nullptr;
         rebuildFocusables();
@@ -88,6 +108,16 @@ void UiRuntime::activateFocused() {
     if (node == nullptr || node->actions.empty()) { return; }
     const ActionId action = node->actions.front().action;
     if (action == ActionId::screenClose) {
+        if (titleMode_) {
+            // BACK from the saves screen returns to the title; the title
+            // itself has nothing to close into.
+            if (active_ == saves_) {
+                active_ = title_;
+                rebuildFocusables();
+                focusIndex_ = 0;
+            }
+            return;
+        }
         open_ = false;
         active_ = nullptr;
         return;

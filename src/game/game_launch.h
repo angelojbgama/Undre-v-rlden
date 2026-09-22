@@ -19,6 +19,10 @@ struct GameLaunchOptions final {
     std::optional<std::filesystem::path> contentRoot;
     std::optional<simulation::SpawnId> spawnId;
     bool auditEnabled{};
+    // Boot into the authored title shell (title screen + start/new-game slot
+    // picker). Default false so headless/playtest drivers start in gameplay;
+    // the game's own option parsing turns it on unless --no-title is passed.
+    bool titleScreen{};
 };
 
 enum class StartupMapSource { explicitPath, officialGameplay };

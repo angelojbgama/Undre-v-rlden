@@ -60,6 +60,9 @@ struct GamePresentationFrame final {
     const gameplay::scenes::ScenePresentationState& scenePresentation;
     std::string_view lastEvent;
     bool collisionOverlay{};
+    // Title shell: the authored title/saves screens replace the HUD while
+    // the shell waits for a start/new-game slot choice.
+    bool shellTitle{};
     // Authored HUD screen (screen.hud) from the compiled content
     // registry; null when the workspace does not provide one.
     const ui::ScreenDefinition* hudScreen{};

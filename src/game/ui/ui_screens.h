@@ -119,6 +119,9 @@ enum class BindingPath {
     contextChoiceLine,
     overlayDialogueChoiceSelected,
     dialogueChoicesVisible,
+    // Shell readout for the saves screen: 1 while the title shell uses the
+    // screen as the start/new-game picker (SAVE buttons stay hidden there).
+    savesStartMode,
 };
 
 struct BindingPathEntry final {
@@ -126,7 +129,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 72> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 73> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -199,6 +202,7 @@ inline constexpr std::array<BindingPathEntry, 72> bindingPathTable{{
     {BindingPath::contextChoiceLine, "context.choiceLine"},
     {BindingPath::overlayDialogueChoiceSelected, "overlay.dialogue.choiceSelected"},
     {BindingPath::dialogueChoicesVisible, "dialogue.choices.visible"},
+    {BindingPath::savesStartMode, "saves.startMode"},
 }};
 
 [[nodiscard]] std::optional<BindingPath> findBindingPath(std::string_view path);

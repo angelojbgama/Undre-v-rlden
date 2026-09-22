@@ -20,9 +20,16 @@ public:
     // Navigation set: the menu plus screens it can open (saves). Opening is
     // driven by authored screen.open.* actions; screen.close always closes.
     void setSavesScreen(const ScreenDefinition* screen) noexcept;
+    // Title shell (boot state): the authored title screen is open from the
+    // start and gameplay stays frozen until the shell leaves title mode. The
+    // saves screen doubles as the start/new-game picker there, so BACK from
+    // the saves screen returns to the title instead of closing the shell.
+    void setTitleScreen(const ScreenDefinition* screen) noexcept;
+    void exitTitleMode() noexcept;
     void setActionSink(ActionSink sink);
 
     [[nodiscard]] bool menuOpen() const noexcept { return open_; }
+    [[nodiscard]] bool titleMode() const noexcept { return titleMode_; }
     [[nodiscard]] const NodeDefinition* focusedNode() const noexcept;
 
     // Processes one input tick. Edges derive from the previous snapshot, so
@@ -39,7 +46,9 @@ private:
 
     const ScreenDefinition* menu_{};
     const ScreenDefinition* saves_{};
+    const ScreenDefinition* title_{};
     const ScreenDefinition* active_{};
+    bool titleMode_{};
     bool open_{};
     std::size_t focusIndex_{};
     std::vector<const NodeDefinition*> focusables_;

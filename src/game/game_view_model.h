@@ -138,6 +138,9 @@ struct GameViewModel final {
     std::vector<std::string> dialogueChoiceLines;
     std::size_t dialogueSelectedChoice{};
     bool dialogueChoicesVisible{};
+    // Shell mode readout for the saves screen: 1 while the title shell uses
+    // it as the start/new-game picker.
+    bool savesStartMode{};
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(

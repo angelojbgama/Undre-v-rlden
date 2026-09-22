@@ -169,14 +169,27 @@ struct GameRuntime::State final {
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
         ui.setSavesScreen(content.uiScreens().find(simulation::DefinitionId{"screen.saves"}));
+        ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
         ui.setActionSink([this](ui::ActionId action) {
             if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
             if (action == ui::ActionId::gameLoad) { uiLoadDispatched = true; }
             const auto slotAction = [&](ui::ActionId id, int slot, bool save) {
-                if (action == id) {
-                    currentSlot = slot;
-                    if (save) { uiSaveDispatched = true; } else { uiLoadDispatched = true; }
+                if (action != id) { return; }
+                currentSlot = slot;
+                if (ui.titleMode()) {
+                    // Start picker: LOAD continues a saved slot or starts a
+                    // new game into an empty one (the booted world is already
+                    // the fresh authored state); SAVE writes the fresh game.
+                    ui.exitTitleMode();
+                    if (save) {
+                        uiSaveDispatched = true;
+                    } else if (std::filesystem::exists(
+                                   saveSlotPath(this->executableDirectory, slot))) {
+                        uiLoadDispatched = true;
+                    }
+                    return;
                 }
+                if (save) { uiSaveDispatched = true; } else { uiLoadDispatched = true; }
             };
             slotAction(ui::ActionId::gameSaveSlot1, 0, true);
             slotAction(ui::ActionId::gameSaveSlot2, 1, true);
@@ -185,11 +198,9 @@ struct GameRuntime::State final {
             slotAction(ui::ActionId::gameLoadSlot2, 1, false);
             slotAction(ui::ActionId::gameLoadSlot3, 2, false);
         });
-        ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
-        ui.setActionSink([this](ui::ActionId action) {
-            if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
-            if (action == ui::ActionId::gameLoad) { uiLoadDispatched = true; }
-        });
+        if (launchOptions.titleScreen) {
+            ui.setTitleScreen(content.uiScreens().find(simulation::DefinitionId{"screen.title"}));
+        }
         const auto* playerDefinition = selectedPlayerDefinition(content);
         if (!playerDefinition) {
             throw std::runtime_error("default PlayerDefinition is missing");
@@ -582,6 +593,28 @@ struct GameRuntime::State final {
 
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
+        if (ui.titleMode()) {
+            // Title shell: navigation only. Gameplay stays frozen (no tick,
+            // no effects) until a slot action leaves the title mode; the tick
+            // that starts the game runs the dispatched save/load on the fresh
+            // world and advances one empty command.
+            ui.update(input, true);
+            if (!ui.titleMode()) {
+                const bool dispatchSave = uiSaveDispatched;
+                const bool dispatchLoad = uiLoadDispatched;
+                uiSaveDispatched = false;
+                uiLoadDispatched = false;
+                const simulation::PlayerCommand command =
+                    commandBuilder.build(tick, localPlayerId, {});
+                if (dispatchSave) { saveGame(); }
+                if (dispatchLoad) { loadGame(); }
+                session.tick(command);
+                commitTransitionIfRequested();
+                lastTick = tick;
+                lastSequence = command.sequence;
+            }
+            return;
+        }
         presentationEffects.advance();
         // Kept in the Runtime until dialogue/inventory pause semantics are
         // fully owned by the Session. This preserves the old rule that the
@@ -650,6 +683,7 @@ struct GameRuntime::State final {
             slotView.exists = std::filesystem::exists(saveSlotPath(executableDirectory, slot));
             slotView.label = slotView.exists ? "SAVED" : "EMPTY";
         }
+        view.savesStartMode = ui.titleMode();
         buildQuestJournal(view, session.questState(), content.quests());
         buildCraftingDetails(view);
         buildDialogueDetails(view, session.dialogue());
@@ -673,6 +707,7 @@ struct GameRuntime::State final {
             runtimeVisualContent.staticSprites, runtimeVisualContent.animations, font, hudHeartImage, hudMoneyImage,
             session.dialogue(), view, combatDebug, session.activeSword(),
             session.scenePresentation(), lastEvent, collisionOverlay,
+            ui.titleMode(),
             content.uiScreens().find(simulation::DefinitionId{"screen.hud"}),
             content.uiScreens().find(simulation::DefinitionId{"screen.inventory"}),
             &ui,

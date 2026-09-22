@@ -11435,7 +11435,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 9 &&
+    expect(builtin.uiScreens.size() == 10 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11445,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 9 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 10 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12078,6 +12078,102 @@ void testUiRuntimeMenuNavigation() {
         if (pixel.r == 240 && pixel.g == 240 && pixel.b == 240) { outlineFound = true; break; }
     }
     expect(outlineFound, "the focused node draws its focus outline");
+}
+
+void testUiTitleShell() {
+    using namespace underworld;
+    namespace ui = game::ui;
+
+    // Compile the builtin shell screens: the title opens by default and the
+    // saves screen doubles as its start/new-game picker.
+    const auto builtin = game::content::makeBuiltinAuthoredContent();
+    const auto compiled = game::content::compileContent(builtin);
+    expect(static_cast<bool>(compiled), "builtin screens compile for the title shell");
+    if (!compiled) { return; }
+    const auto* titleScreen = compiled.registry->uiScreens().find({"screen.title"});
+    expect(titleScreen != nullptr, "the builtin content authors the title shell screen");
+
+    ui::UiRuntime shell;
+    shell.setSavesScreen(compiled.registry->uiScreens().find({"screen.saves"}));
+    shell.setMenuScreen(compiled.registry->uiScreens().find({"screen.menu"}));
+    shell.setTitleScreen(titleScreen);
+    expect(shell.titleMode() && shell.menuOpen() && shell.focusedNode() != nullptr &&
+               shell.focusedNode()->id == "title.start",
+           "the title shell boots open on the authored PRESS E node");
+
+    // The menu toggle is inert on the title shell: ESC has no gameplay to
+    // fall back to.
+    platform::InputState escape;
+    escape.menuPressed = true;
+    shell.update(escape, true);
+    expect(shell.titleMode() && shell.menuOpen() &&
+               shell.focusedNode()->id == "title.start",
+           "the menu toggle does not disturb the title shell");
+    shell.update(platform::InputState{}, true);
+
+    // E confirms PRESS E: the saves picker opens on the first LOAD slot.
+    const auto confirm = [&shell]() {
+        platform::InputState input;
+        input.interactPressed = true;
+        shell.update(input, true);
+    };
+    const auto release = [&shell]() { shell.update(platform::InputState{}, true); };
+    const auto tapDown = [&shell, &release]() {
+        platform::InputState down;
+        down.moveDown = true;
+        shell.update(down, true);
+        release();
+    };
+    confirm();
+    expect(shell.titleMode() && shell.menuOpen() &&
+               shell.focusedNode() != nullptr &&
+               shell.focusedNode()->id == "saves.slot1.load",
+           "confirming the title opens the saves picker on the first slot");
+    release();
+
+    // Navigating to BACK and activating it returns to the title instead of
+    // closing the shell.
+    for (int index = 0; index < 6; ++index) { tapDown(); }
+    expect(shell.focusedNode() != nullptr && shell.focusedNode()->id == "saves.back",
+           "the picker navigates down to the authored BACK button");
+    confirm();
+    expect(shell.titleMode() && shell.focusedNode() != nullptr &&
+               shell.focusedNode()->id == "title.start",
+           "back from the start picker returns the focus to the title");
+    release();
+
+    // Confirming PRESS E and then the focused LOAD slot leaves the title
+    // shell through the sink with the slot action dispatched (the shell
+    // sink owns the title-mode exit, mirroring GameRuntime).
+    confirm();
+    release();
+    std::vector<ui::ActionId> dispatched;
+    shell.setActionSink([&](ui::ActionId action) {
+        dispatched.push_back(action);
+        shell.exitTitleMode();
+    });
+    confirm();
+    expect(!shell.titleMode() && !shell.menuOpen() && dispatched.size() == 1 &&
+               dispatched.front() == ui::ActionId::gameLoadSlot1,
+           "activating a slot exits the title shell and dispatches its action");
+
+    // A fresh shell ignores the title screen unless the runtime opts in.
+    ui::UiRuntime gameplayShell;
+    gameplayShell.setMenuScreen(compiled.registry->uiScreens().find({"screen.menu"}));
+    gameplayShell.setSavesScreen(compiled.registry->uiScreens().find({"screen.saves"}));
+    expect(!gameplayShell.titleMode() && !gameplayShell.menuOpen(),
+           "shells without a title screen boot straight into gameplay");
+
+    // The saves screen start-mode readout gates the SAVE buttons authored
+    // state; the shell owns the value, the binding only mirrors it.
+    game::GameViewModel view;
+    view.savesStartMode = true;
+    const game::GameViewModelBindings bindings{view};
+    expect(bindings.number(ui::BindingPath::savesStartMode) == std::optional<std::int64_t>{1},
+           "the start-mode readout resolves while the title shell owns the picker");
+    view.savesStartMode = false;
+    expect(bindings.number(ui::BindingPath::savesStartMode) == std::optional<std::int64_t>{0},
+           "the start-mode readout clears once gameplay owns the saves screen");
 }
 
 void testUiHudCompleteParity() {
@@ -13187,6 +13283,7 @@ int main() {
         testUiSavesScreenAndSlots();
         testUiEquipmentBindings();
         testUiRuntimeMenuNavigation();
+        testUiTitleShell();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
         testPhase13AJsonFoundation();

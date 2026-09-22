@@ -111,6 +111,7 @@ BINDING_PATHS: tuple[str, ...] = (
     "context.choiceLine",
     "overlay.dialogue.choiceSelected",
     "dialogue.choices.visible",
+    "saves.startMode",
 )
 
 # Action Registry ids mapping onto existing PlayerCommand intents.

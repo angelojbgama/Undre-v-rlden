@@ -95,6 +95,10 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             options.auditEnabled = true;
             continue;
         }
+        if (argument == L"--no-title") {
+            options.titleScreen = false;
+            continue;
+        }
         error = "unknown game option: " + narrowId(argv[index]);
         return std::nullopt;
     }
@@ -105,6 +109,8 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
     int argc, const char* const* argv, std::string& error) {
     error.clear();
     GameLaunchOptions options;
+    // The interactive game boots into the authored title shell by default.
+    options.titleScreen = true;
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index] == nullptr ? "" : argv[index];
         const auto consumeValue = [&](const char* name, std::optional<std::filesystem::path>& target)
@@ -170,6 +176,10 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
             continue;
         }
         if (argument == "--audit") { options.auditEnabled = true; continue; }
+        if (argument == "--no-title") {
+            options.titleScreen = false;
+            continue;
+        }
         error = "unknown game option: " + argument;
         return std::nullopt;
     }

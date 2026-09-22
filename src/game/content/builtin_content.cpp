@@ -715,6 +715,15 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         saveButton.layout.width = 40;
         saveButton.layout.height = 16;
         saveButton.background = core::ColorRGBA8{54, 30, 38, 255};
+        // Hidden while the title shell uses this screen as the start picker
+        // (saves.startMode == 1): overwriting saves makes no sense there.
+        saveButton.layout.visible = false;
+        ui::StateDefinition saveVisible;
+        saveVisible.id = "play-mode";
+        saveVisible.condition = ui::StateCondition{ui::BindingPath::savesStartMode,
+                                                   ui::ConditionOperator::equal, 0};
+        saveVisible.visual.visible = true;
+        saveButton.states.push_back(std::move(saveVisible));
         const ui::ActionId saveActions[] = {ui::ActionId::gameSaveSlot1,
                                             ui::ActionId::gameSaveSlot2,
                                             ui::ActionId::gameSaveSlot3};
@@ -750,6 +759,65 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     savesPanel.children.push_back(std::move(backButton));
     savesScreen.root = std::move(savesPanel);
     pack.uiScreens.push_back(std::move(savesScreen));
+
+    // Title shell (boot state, Scene/Game-State trilha): a dim over the
+    // static world with the authored name and a single PRESS E node whose
+    // activation opens the saves screen in start mode — LOAD continues a
+    // saved slot or starts a new game into an empty one; BACK returns here.
+    ui::ScreenDefinition titleScreen;
+    titleScreen.id = simulation::DefinitionId{"screen.title"};
+    titleScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition titlePanel;
+    titlePanel.id = "title.panel";
+    titlePanel.component = ui::ComponentKind::panel;
+    titlePanel.layout.offsetX = 0;
+    titlePanel.layout.offsetY = 0;
+    titlePanel.layout.width = 272;
+    titlePanel.layout.height = 224;
+    titlePanel.background = core::ColorRGBA8{8, 10, 16, 216};
+    const auto titleChild = [&](ui::NodeDefinition node) {
+        titlePanel.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition titleName;
+    titleName.id = "title.name";
+    titleName.component = ui::ComponentKind::text;
+    titleName.layout.offsetX = 87;
+    titleName.layout.offsetY = 62;
+    titleName.text = "UNDERWORLD";
+    titleChild(std::move(titleName));
+    ui::NodeDefinition titleSubtitle;
+    titleSubtitle.id = "title.subtitle";
+    titleSubtitle.component = ui::ComponentKind::text;
+    titleSubtitle.layout.offsetX = 93;
+    titleSubtitle.layout.offsetY = 76;
+    titleSubtitle.text = "DUNGEON UNDERWORLD";
+    titleChild(std::move(titleSubtitle));
+    ui::NodeDefinition titleStart;
+    titleStart.id = "title.start";
+    titleStart.component = ui::ComponentKind::group;
+    titleStart.layout.offsetX = 94;
+    titleStart.layout.offsetY = 138;
+    titleStart.layout.width = 84;
+    titleStart.layout.height = 18;
+    titleStart.background = core::ColorRGBA8{54, 30, 38, 255};
+    titleStart.actions.push_back({"activate", ui::ActionId::screenOpenSaves});
+    ui::NodeDefinition titleStartText;
+    titleStartText.id = "title.start.label";
+    titleStartText.component = ui::ComponentKind::text;
+    titleStartText.layout.offsetX = 111;
+    titleStartText.layout.offsetY = 143;
+    titleStartText.text = "PRESS E";
+    titleStart.children.push_back(std::move(titleStartText));
+    titleChild(std::move(titleStart));
+    ui::NodeDefinition titleHints;
+    titleHints.id = "title.hints";
+    titleHints.component = ui::ComponentKind::text;
+    titleHints.layout.offsetX = 64;
+    titleHints.layout.offsetY = 186;
+    titleHints.text = "ARROWS SELECT  E CONFIRM";
+    titleChild(std::move(titleHints));
+    titleScreen.root = std::move(titlePanel);
+    pack.uiScreens.push_back(std::move(titleScreen));
 
     // Bank overlay as authored UI content: carried grid, storage grid (both
     // repeaters with selection-gated states) and the gold readout.
