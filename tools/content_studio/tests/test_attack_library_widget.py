@@ -64,8 +64,10 @@ class AttackLibraryWidgetTests(unittest.TestCase):
             for row in range(widget.attacks.count())
         ]
 
+        # One authored attack plus the two builtin player attacks (sword and
+        # bow), which the library lists read-only from the engine registry.
         self.assertEqual(
-            5,
+            3,
             len(labels),
         )
 
@@ -306,7 +308,7 @@ class PlayerAttackContextMenuTests(unittest.TestCase):
         manager = widget._build_attack_manager()
 
         self.assertEqual(
-            5,
+            3,
             manager.library.attacks.count(),
         )
 
@@ -319,7 +321,7 @@ class PlayerAttackContextMenuTests(unittest.TestCase):
         manager.library.refresh()
 
         self.assertEqual(
-            6,
+            4,
             manager.library.attacks.count(),
         )
 

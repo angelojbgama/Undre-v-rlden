@@ -145,7 +145,10 @@ MapValidationResult validateMapData(const MapData& data,
         const gameplay::WorldObjectDefinition* definition = nullptr;
         if (catalogs && catalogs->objects) {
             definition = catalogs->objects->find(object.definitionId);
-            if (!definition) { return failure("object placement references an unknown definition"); }
+            if (!definition) {
+                return failure("object placement references an unknown definition: " +
+                    std::string(object.definitionId.value()));
+            }
         }
         if (!object.initialContents.empty() && definition && !definition->container) {
             return failure("non-container object placement has initial contents");

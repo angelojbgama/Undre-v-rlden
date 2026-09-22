@@ -11,6 +11,48 @@ ATTACK_KINDS = (
     "projectile",
 )
 
+# Player attacks ship as builtin runtime content (src/game/content/
+# builtin_content.cpp + attack_definitions.cpp); they are listed read-only
+# in the library and editing one creates an authored workspace override that
+# shadows the builtin id - the same overlay semantics the runtime applies.
+BUILTIN_ATTACKS: tuple[dict[str, object], ...] = (
+    {
+        "id": "attack.player.sword",
+        "kind": "meleeHitbox",
+        "damage": {"amount": 1, "knockbackPixels": 32},
+        "totalTicks": 24,
+        "cooldownTicks": 0,
+        "minimumRangePixels": 0,
+        "maximumRangePixels": 27,
+        "visualActionId": "visual.player.sword",
+        "meleeHitboxes": {
+            "down": {"offsetX": -10, "offsetY": -1, "width": 20, "height": 18},
+            "up": {"offsetX": -10, "offsetY": -27, "width": 20, "height": 19},
+            "left": {"offsetX": -27, "offsetY": -18, "width": 21, "height": 18},
+            "right": {"offsetX": 6, "offsetY": -18, "width": 21, "height": 18},
+        },
+        "projectileDefinitionId": None,
+        "timeline": [
+            {"tick": 6, "kind": "activateHitbox"},
+            {"tick": 18, "kind": "deactivateHitbox"},
+        ],
+    },
+    {
+        "id": "attack.player.bow",
+        "kind": "projectile",
+        "damage": {"amount": 1, "knockbackPixels": 32},
+        "totalTicks": 16,
+        "cooldownTicks": 0,
+        "minimumRangePixels": 0,
+        "maximumRangePixels": 512,
+        "visualActionId": "visual.player.bow",
+        "projectileDefinitionId": "projectile.player.arrow",
+        "timeline": [
+            {"tick": 8, "kind": "spawnProjectile"},
+        ],
+    },
+)
+
 TIMELINE_KINDS = (
     "activateHitbox",
     "deactivateHitbox",
@@ -68,6 +110,7 @@ class AttackAuthoringService:
     ) -> list[AttackCatalogEntry]:
         referenced_by = self._references()
 
+        authored_ids: set[str] = set()
         result = [
             self._entry(
                 definition.definition_id,
@@ -77,6 +120,22 @@ class AttackAuthoringService:
             )
             for definition in self.workspace.definitions("attacks")
         ]
+        authored_ids.update(
+            entry.definition_id for entry in result
+        )
+
+        for builtin in BUILTIN_ATTACKS:
+            builtin_id = str(builtin["id"])
+            if builtin_id in authored_ids:
+                continue
+            result.append(
+                self._entry(
+                    builtin_id,
+                    builtin,
+                    "builtin",
+                    referenced_by,
+                )
+            )
 
         result.sort(key=lambda entry: entry.definition_id)
 
@@ -91,13 +150,16 @@ class AttackAuthoringService:
             definition_id,
         )
 
-        if definition is None:
-            raise ValueError(
-                f"unknown attack definition: "
-                f"{definition_id}"
-            )
-
-        data = copy.deepcopy(definition.data)
+        if definition is not None:
+            data = copy.deepcopy(definition.data)
+        else:
+            builtin = self._builtin(definition_id)
+            if builtin is None:
+                raise ValueError(
+                    f"unknown attack definition: "
+                    f"{definition_id}"
+                )
+            data = copy.deepcopy(builtin)
 
         data.setdefault(
             "id",
@@ -133,6 +195,12 @@ class AttackAuthoringService:
                 )
             ],
         )
+
+    def _builtin(self, definition_id: str) -> dict[str, object] | None:
+        for builtin in BUILTIN_ATTACKS:
+            if str(builtin["id"]) == definition_id:
+                return builtin
+        return None
 
     def delete(
         self,

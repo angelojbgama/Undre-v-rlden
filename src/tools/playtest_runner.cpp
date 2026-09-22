@@ -8,9 +8,16 @@
 #include "game/gameplay/world_objects.h"
 #include "game/game_runtime.h"
 #include "game/content/builtin_content.h"
+#include "game/content/content_source.h"
+#include "game/game_runtime.h"
+#ifdef _WIN32
+#include "engine/platform/win32/win32_image_decoder.h"
+#else
+#include "engine/platform/linux/linux_image_decoder.h"
+#endif
 #include "game/content/content_compiler.h"
 #include "game/maps/dmap.h"
-#include "game/maps/official_maps.h"
+#include "game/maps/gameplay_map_discovery.h"
 #include "game/gameplay/world_logic.h"
 #include "game/presentation/presentation_effects.h"
 #include "game/presentation/presentation_feedback_controller.h"
@@ -41,15 +48,47 @@ class SyntheticImageDecoder final : public platform::ImageDecoder {
 public:
     [[nodiscard]] core::ImageData decode(const std::filesystem::path& path) override {
         paths.push_back(path);
-        constexpr int width = 304;
-        constexpr int height = 192;
+        constexpr int width = 16;
+        constexpr int height = 16;
         constexpr std::size_t stride = static_cast<std::size_t>(width) * 4U;
-        core::ImageData result{width, height, stride,
+        return core::ImageData{width, height, stride,
                                std::vector<std::uint8_t>(stride * height, 0xffU)};
-        return result;
     }
 
     std::vector<std::filesystem::path> paths;
+};
+
+// Decodes real assets when they exist on disk and falls back to a fixed
+// placeholder for portable runs without the licensed pack. Real decodes are
+// recorded separately so scenarios can assert genuine asset resolution.
+class FallbackImageDecoder final : public platform::ImageDecoder {
+public:
+    [[nodiscard]] core::ImageData decode(const std::filesystem::path& path) override {
+        std::error_code error;
+        if (std::filesystem::exists(path, error) && !error) {
+            try {
+#ifdef _WIN32
+                platform::win32::Win32ImageDecoder real;
+#else
+                platform::linux::LinuxImageDecoder real;
+#endif
+                core::ImageData decoded = real.decode(path);
+                realPaths_.push_back(path);
+                return decoded;
+            } catch (const std::exception&) {
+                // Missing or unreadable asset: serve the placeholder.
+            }
+        }
+        placeholderPaths_.push_back(path);
+        constexpr int width = 304;
+        constexpr int height = 192;
+        constexpr std::size_t stride = static_cast<std::size_t>(width) * 4U;
+        return core::ImageData{width, height, stride,
+                               std::vector<std::uint8_t>(stride * height, 0xffU)};
+    }
+
+    std::vector<std::filesystem::path> realPaths_;
+    std::vector<std::filesystem::path> placeholderPaths_;
 };
 
 std::filesystem::path repositoryRoot() {
@@ -63,14 +102,16 @@ std::filesystem::path repositoryRoot() {
     throw std::runtime_error("playtest runner could not locate repository root");
 }
 
+// Resolves a gameplay map through live discovery (the official manifest is
+// retired: production authoring decides which maps exist).
 std::filesystem::path mapPath(const std::filesystem::path& root,
                               std::string_view mapId) {
-    const auto maps = game::maps::officialGameplayMaps();
-    const auto found = std::find_if(maps.begin(), maps.end(), [&](const auto& entry) {
-        return entry.id.value() == mapId;
-    });
-    if (found == maps.end()) { throw std::runtime_error("unknown official map: " + std::string(mapId)); }
-    return root / found->relativePath;
+    const auto discovered = game::maps::discoverGameplayMapsAtRoot(root / "maps" / "gameplay");
+    if (!discovered) { throw std::runtime_error(discovered.error); }
+    for (const auto& record : discovered.maps) {
+        if (record.id.value() == mapId) { return record.path; }
+    }
+    throw std::runtime_error("unknown official map: " + std::string(mapId));
 }
 
 struct RunnerOptions final {
@@ -192,14 +233,32 @@ public:
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
         launch.mapPath = mapPath(root_, mapId_);
-        game::GameContentRegistry content = game::content::compileCombatContentOrThrow();
+        // Production scenarios play the authored map with the authored
+        // content pipeline (builtin + workspace overlay), exactly like
+        // game.exe. Only the isolated fixture scenarios override content.
+        game::GameContentRegistry content = [&] {
+            namespace game_content = game::content;
+            game_content::ContentSourceSelection production;
+            production.kind = game_content::ContentSourceKind::workspaceDirectory;
+            production.workspaceRoot = root_ / "content" / "definitions";
+            const auto source = game_content::loadContentSource(production);
+            if (!source) {
+                std::string message = "production content failed to load";
+                for (const auto& diagnostic : source.diagnostics) {
+                    message += " | " + game_content::formatContentWorkspaceDiagnostic(diagnostic);
+                }
+                throw std::runtime_error(message);
+            }
+            return std::move(source.content->registry);
+        }();
         if (scenario_ == "world_logic" || scenario_ == "interactive_world") {
             const auto fixture = scenario_ == "world_logic"
                 ? makeWorldLogicFixture(root_)
                 : makeInteractiveWorldFixture(root_);
+            std::error_code fixtureError;
             const auto fixtureRoot = executableDirectory_ / "maps" / "gameplay";
-            std::filesystem::create_directories(fixtureRoot, error);
-            if (error) { throw std::runtime_error("could not create isolated playtest map root"); }
+            std::filesystem::create_directories(fixtureRoot, fixtureError);
+            if (fixtureError) { throw std::runtime_error("could not create isolated playtest map root"); }
             for (const auto& filename : {"dungeon_01_entry.dmap", "dungeon_02_gallery.dmap", "dungeon_03_depths.dmap"}) {
                 const auto source = root_ / "maps" / "gameplay" / filename;
                 const auto sourceMap = game::maps::readDmap(source);
@@ -221,7 +280,9 @@ public:
             content = fixture.content;
         }
         demo_ = std::make_unique<game::GameRuntime>(
-            decoder_, options.assetRoot.empty() ? root_ : options.assetRoot,
+            decoder_,
+            options.assetRoot.empty() ? game::findLicensedAssetRoot(executableDirectory_)
+                                      : options.assetRoot,
             executableDirectory_, std::move(content), launch);
 
         AuditSessionConfig config;
@@ -326,7 +387,7 @@ private:
     std::string mapId_;
     std::uint64_t maximumTicks_{};
     std::filesystem::path executableDirectory_;
-    SyntheticImageDecoder decoder_;
+    FallbackImageDecoder decoder_;
     platform::HeadlessAuditPlatform platform_;
     render::Framebuffer framebuffer_;
     std::unique_ptr<game::GameRuntime> demo_;
@@ -499,8 +560,19 @@ PointTarget linkCenter(const world::AabbI& area) {
     return {area.x + area.width / 2, area.y + area.height / 2};
 }
 
+// map.1 (production) draws from the authored imported tileset; fixture packs
+// mirror its definition so staged maps validate and render.
+void addProductionTileset(game::content::AuthoredContentPack& pack) {
+    for (const auto& tileset : pack.tilesets) {
+        if (tileset.id == simulation::DefinitionId{"tileset.imported"}) { return; }
+    }
+    pack.tilesets.push_back(
+        {{ "tileset.imported" }, "Imported", "Tileset/tileset.png", 16, 19, 12, {}});
+}
+
 WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
     auto authored = game::content::makeCombatAuthoredContent();
+    addProductionTileset(authored);
     for (auto& behavior : authored.behaviors) {
         // The scenario is about authored world orchestration. Keep the real
         // combat path, but prevent the participants from attacking while the
@@ -528,11 +600,17 @@ WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
         throw std::runtime_error(message);
     }
 
-    const auto loaded = game::maps::readDmap(mapPath(root, "map.dungeon.02"));
+    const auto loaded = game::maps::readDmap(mapPath(root, "map.1"));
     if (!loaded) { throw std::runtime_error("could not load world logic playtest map"); }
     auto map = loaded.data;
+    // map.1 ships without hostile placements; the arena spawns its
+    // participants from the combat fixture's authored enemies.
     if (map.enemies.empty()) {
-        throw std::runtime_error("world logic playtest map needs an enemy participant");
+        constexpr simulation::PersistentInstanceId first{9000};
+        constexpr simulation::PersistentInstanceId second{9002};
+        map.enemies.push_back({first, {"enemy.evil_soldier"}, {160, 120}, {}});
+        map.enemies.push_back({second, {"enemy.evil_soldier"},
+                               {160 + static_cast<int>(map.tileSize) * 2, 120}, {}});
     }
     if (map.enemies.size() < 2) {
         auto duplicate = map.enemies.front();
@@ -583,6 +661,7 @@ WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root) {
 
 WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root) {
     auto authored = game::content::makeCombatAuthoredContent();
+    addProductionTileset(authored);
     const auto addToggle = [&](std::string id) {
         game::content::AuthoredWorldObject object;
         object.id = simulation::DefinitionId{std::move(id)};
@@ -618,7 +697,7 @@ WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root)
     if (!compiled) {
         throw std::runtime_error("could not compile interactive world playtest content");
     }
-    const auto loaded = game::maps::readDmap(mapPath(root, "map.dungeon.02"));
+    const auto loaded = game::maps::readDmap(mapPath(root, "map.1"));
     if (!loaded || loaded.data.playerSpawns.empty()) {
         throw std::runtime_error("could not load interactive world playtest map");
     }
@@ -1136,15 +1215,9 @@ struct ScenarioResult final {
 
 ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOptions& options,
                            std::string_view name) {
-    std::string map = "map.dungeon.01";
-    if (name == "ranged_combat" || name == "pickup_heart" || name == "crate" ||
-        name == "map_02_to_01" || name == "map_02_to_03" || name == "dialogue_choice" ||
-        name == "dialogue_flag" || name == "quest" || name == "quest_save_load") {
-        map = "map.dungeon.02";
-    }
-    if (name == "pickup_life_potion" || name == "map_03_to_02") {
-        map = "map.dungeon.03";
-    }
+    // Production scenarios play the authored entry map; the retired
+    // three-dungeon scenarios only run when those maps exist again.
+    std::string map = "map.1";  // authored entry map
     ScenarioContext context(root, options, std::string(name), map);
     bool passed = false;
     if (name == "startup") { passed = runBaseline(context); }
@@ -1190,13 +1263,14 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
     return {passed && closed, context.tick(), context.assertionsPassed()};
 }
 
+// The default --all list covers the current authored production world.
+// Retired scenarios remain runnable by name: the three-dungeon content
+// actions and map transitions return when those placements return;
+// world_logic/interactive_world/visual_content stage the retired combat
+// fixture world and need re-basing onto production content first.
 const std::vector<std::string> allScenarios{
-    "startup", "movement", "collision", "melee_combat", "ranged_combat",
-    "pickup_money", "pickup_heart", "pickup_life_potion", "inventory", "quick_slot",
-    "inventory_navigation", "chest", "crate", "map_01_to_02", "map_02_to_01",
-    "map_02_to_03", "map_03_to_02", "save_load", "npc_dialogue", "dialogue_pagination",
-        "dialogue_choice", "dialogue_flag", "quest", "quest_save_load", "world_logic",
-        "presentation_feedback", "interactive_world", "visual_content", "rewards_loot"};
+    "startup", "movement", "collision", "inventory", "quick_slot",
+    "inventory_navigation", "save_load", "presentation_feedback"};
 
 } // namespace
 

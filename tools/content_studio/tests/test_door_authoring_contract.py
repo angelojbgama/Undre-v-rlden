@@ -67,9 +67,9 @@ def door_map() -> dict:
 
 
 class DoorPlacementContractTests(unittest.TestCase):
-    def test_umap_v5_accepts_per_instance_door_configuration(self) -> None:
+    def test_umap_accepts_per_instance_door_configuration(self) -> None:
         self.assertEqual(
-            5,
+            6,
             MAP_VERSION,
         )
 
@@ -181,9 +181,9 @@ class DoorPlacementContractTests(unittest.TestCase):
                 data
             )
 
-    def test_python_dmap_writer_emits_minor_7_and_key_reference(self) -> None:
+    def test_python_dmap_writer_emits_current_minor_and_key_reference(self) -> None:
         self.assertEqual(
-            7,
+            8,
             DMAP_MINOR,
         )
 
@@ -208,7 +208,7 @@ class DoorPlacementContractTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            7,
+            8,
             minor,
         )
 

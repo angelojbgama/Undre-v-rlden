@@ -131,8 +131,14 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 for entry in entries
             }
 
+            # Authored entries plus the builtin player attacks, listed
+            # read-only from the engine registry.
             self.assertEqual(
-                {"attack.slime.bounce": "authored"},
+                {
+                    "attack.slime.bounce": "authored",
+                    "attack.player.bow": "builtin",
+                    "attack.player.sword": "builtin",
+                },
                 {
                     definition_id: entry.status
                     for definition_id, entry in by_id.items()
@@ -158,8 +164,18 @@ class AttackAuthoringServiceTests(unittest.TestCase):
                 AttackAuthoringService(
                     workspace
                 ).configuration(
-                    "attack.player.sword"
+                    "attack.ghost"
                 )
+            # Builtin attacks resolve read-only for the editor.
+            configuration = AttackAuthoringService(
+                workspace
+            ).configuration(
+                "attack.player.sword"
+            )
+            self.assertEqual(
+                "meleeHitbox",
+                configuration["kind"],
+            )
         finally:
             temporary.cleanup()
 

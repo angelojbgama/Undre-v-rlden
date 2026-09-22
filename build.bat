@@ -447,6 +447,7 @@ if errorlevel 1 goto :build_failed
 echo Linking playtest_runner.exe...
 link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" ^
+    "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
     "build\obj\renderer_2d.obj" "build\obj\sprite.obj" ^
     "build\obj\animation.obj" "build\obj\bitmap_font.obj" "build\obj\utf8.obj" ^
     "build\obj\camera_2d.obj" "build\obj\asset_manager.obj" ^
@@ -472,7 +473,8 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\playtest_runner.exe" ^
     "build\obj\player_visual.obj" "build\obj\game_runtime.obj" ^
     "build\obj\audit_snapshot.obj" "build\obj\audit_session.obj" ^
     "build\obj\bmp_writer.obj" "build\obj\headless_audit_platform.obj" ^
-    "build\obj\playtest_runner.obj"
+    "build\obj\playtest_runner.obj" ^
+    ole32.lib windowscodecs.lib
 if errorlevel 1 goto :build_failed
 
 echo Compiling content checker...

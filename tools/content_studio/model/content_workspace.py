@@ -113,7 +113,8 @@ class ContentWorkspace:
     @staticmethod
     def _fallback_name(definition_id: str) -> str:
         value = definition_id.rsplit(".", 1)[-1].replace("_", " ").replace("-", " ")
-        return value[:1].upper() + value[1:]
+        # Title-case every word so multi-word ids read naturally.
+        return " ".join(word[:1].upper() + word[1:] for word in value.split())
 
     def definitions(self, category: str | None = None, query: str = "") -> list[ContentDefinition]:
         return [definition for definition in self._definitions

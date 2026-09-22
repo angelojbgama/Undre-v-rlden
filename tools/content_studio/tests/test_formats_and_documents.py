@@ -1002,9 +1002,11 @@ class CppCompatibilityTests(unittest.TestCase):
     def test_invalid_authored_content_is_rejected_by_cpp_validator(self) -> None:
         result = subprocess.run(
             [str(self.content_check), str(FIXTURES / "phase16-content-invalid-activation")],
-            capture_output=True, text=True, check=False)
+            capture_output=True, check=False)
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("missing required field", result.stderr)
+        # Tool output may embed non-UTF-8 paths on Windows; the marker is ASCII.
+        stderr_text = result.stderr.decode("utf-8", errors="replace")
+        self.assertIn("missing required field", stderr_text)
 
 
 if __name__ == "__main__":
