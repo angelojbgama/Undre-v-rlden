@@ -67,6 +67,7 @@ struct GamePresentationFrame final {
     const ui::UiRuntime* ui{};
     const ui::ScreenDefinition* journalScreen{};
     bool journalOpen{};
+    const ui::ScreenDefinition* bankScreen{};
 };
 
 class GamePresentation final {

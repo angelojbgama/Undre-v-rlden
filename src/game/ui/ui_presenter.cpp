@@ -143,6 +143,8 @@ std::optional<std::int64_t> UiContextResolver::number(BindingPath path) const {
         case BindingPath::contextQuestCompleted:
             return context_.flag ? 1 : 0;
         case BindingPath::overlayInventorySlotSelected:
+        case BindingPath::overlayBankInventorySelected:
+        case BindingPath::overlayBankStorageSelected:
             return base_->contextualNumber(path, context_.index);
         default:
             return base_->number(path);

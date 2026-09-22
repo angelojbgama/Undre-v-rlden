@@ -3254,6 +3254,280 @@
           }
         ]
       }
+    },
+  {
+    "id": "screen.bank",
+    "kind": "overlay",
+    "root": {
+      "id": "bank.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 4,
+        "offsetY": 24,
+        "width": 264,
+        "height": 169,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 10,
+        "b": 16,
+        "a": 248
+        },
+      "children": [
+        {
+          "id": "bank.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 27,
+            "z": 0
+            },
+          "text": "BANK"
+          },
+        {
+          "id": "bank.inventory.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 43,
+            "z": 0
+            },
+          "text": "INVENTORY"
+          },
+        {
+          "id": "bank.inventory.grid",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 53,
+            "z": 0
+            },
+          "columns": 10,
+          "cellWidth": 26,
+          "cellHeight": 15,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "player.inventory.slots"
+              }
+            ],
+          "children": [
+            {
+              "id": "bank.inventory.grid.slot",
+              "component": "slot",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 24,
+                "height": 13,
+                "z": 0
+                },
+              "background": {
+                "r": 54,
+                "g": 30,
+                "b": 38,
+                "a": 255
+                },
+              "iconOffset": {
+                "x": 1,
+                "y": 0
+                },
+              "countOffset": {
+                "x": 1,
+                "y": 4
+                },
+              "bindings": [
+                {
+                  "property": "icon",
+                  "source": "context.item.icon"
+                  },
+                {
+                  "property": "count",
+                  "source": "context.item.amount"
+                  }
+                ],
+              "states": [
+                {
+                  "id": "selected",
+                  "condition": {
+                    "source": "overlay.bank.inventorySelected",
+                    "operator": "equal",
+                    "value": 1
+                    },
+                  "visual": {
+                    "background": {
+                      "r": 220,
+                      "g": 180,
+                      "b": 72,
+                      "a": 255
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "bank.storage.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 105,
+            "z": 0
+            },
+          "text": "STORAGE"
+          },
+        {
+          "id": "bank.storage.grid",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 115,
+            "z": 0
+            },
+          "columns": 10,
+          "cellWidth": 26,
+          "cellHeight": 15,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "bank.slots"
+              }
+            ],
+          "children": [
+            {
+              "id": "bank.storage.grid.slot",
+              "component": "slot",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 24,
+                "height": 13,
+                "z": 0
+                },
+              "background": {
+                "r": 54,
+                "g": 30,
+                "b": 38,
+                "a": 255
+                },
+              "iconOffset": {
+                "x": 1,
+                "y": 0
+                },
+              "countOffset": {
+                "x": 1,
+                "y": 4
+                },
+              "bindings": [
+                {
+                  "property": "icon",
+                  "source": "context.item.icon"
+                  },
+                {
+                  "property": "count",
+                  "source": "context.item.amount"
+                  }
+                ],
+              "states": [
+                {
+                  "id": "selected",
+                  "condition": {
+                    "source": "overlay.bank.storageSelected",
+                    "operator": "equal",
+                    "value": 1
+                    },
+                  "visual": {
+                    "background": {
+                      "r": 220,
+                      "g": 180,
+                      "b": 72,
+                      "a": 255
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "bank.carried.label",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 188,
+            "z": 0
+            },
+          "text": "CARRIED"
+          },
+        {
+          "id": "bank.carried.gold",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 57,
+            "offsetY": 188,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.gold"
+              }
+            ]
+          },
+        {
+          "id": "bank.stored.label",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 104,
+            "offsetY": 188,
+            "z": 0
+            },
+          "text": "STORED"
+          },
+        {
+          "id": "bank.stored.gold",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 141,
+            "offsetY": 188,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "bank.goldStored"
+              }
+            ]
+          },
+        {
+          "id": "bank.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 152,
+            "offsetY": 208,
+            "z": 0
+            },
+          "text": "Z TRANSFER  I CLOSE"
+          }
+        ]
+      }
     }
   ]
 }

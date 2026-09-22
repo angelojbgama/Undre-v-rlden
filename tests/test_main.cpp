@@ -11435,7 +11435,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 5 &&
+    expect(builtin.uiScreens.size() == 6 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11445,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 5 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 6 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,

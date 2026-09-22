@@ -256,6 +256,7 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                     return binding.property == "source" &&
                            (binding.source == ui::BindingPath::playerInventorySlots ||
                             binding.source == ui::BindingPath::playerQuickSlotSlots ||
+                            binding.source == ui::BindingPath::bankSlots ||
                             binding.source == ui::BindingPath::questsJournal);
                 });
             if (!hasSource)

@@ -675,7 +675,8 @@ struct GameRuntime::State final {
             content.uiScreens().find(simulation::DefinitionId{"screen.inventory"}),
             &ui,
             content.uiScreens().find(simulation::DefinitionId{"screen.journal"}),
-            journalOpen});
+            journalOpen,
+            content.uiScreens().find(simulation::DefinitionId{"screen.bank"})});
     }
 
 

@@ -501,6 +501,13 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
     }
     if (view.shopOpen) { renderShopOverlay(renderer, frame); return; }
     if (view.craftingOpen) { renderCraftingOverlay(renderer, frame); return; }    if (view.bankOpen) {
+        if (frame.bankScreen) {
+            const ui::UiPresenter presenter;
+            const GameViewModelBindings bindings{view};
+            const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+            presenter.render(*frame.bankScreen, bindings, visuals, renderer);
+            return;
+        }
         renderer.fillRect({4, 24, 264, 169}, {8, 10, 16, 248});
         render::drawText(renderer, frame.font, "BANK", 8, 27);
         const auto drawGrid = [&](const auto& slots, std::size_t selected,

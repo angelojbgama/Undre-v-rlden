@@ -184,6 +184,8 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
             return static_cast<std::int64_t>(view_->derivedMaximumHealth);
         case ui::BindingPath::playerAttackDamageBonus:
             return static_cast<std::int64_t>(view_->playerAttackDamageBonus);
+        case ui::BindingPath::bankGoldStored:
+            return static_cast<std::int64_t>(view_->bankGold);
         case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
@@ -199,6 +201,17 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
         entries.reserve(view_->quickSlots.size());
         std::int64_t index = 0;
         for (const auto& slot : view_->quickSlots) {
+            entries.push_back({slot.itemId, slot.visualId,
+                               static_cast<std::int64_t>(slot.quantity), index});
+            ++index;
+        }
+        return entries;
+    }
+    if (path == ui::BindingPath::bankSlots) {
+        std::vector<ui::UiCollectionContext> entries;
+        entries.reserve(view_->bank.size());
+        std::int64_t index = 0;
+        for (const auto& slot : view_->bank) {
             entries.push_back({slot.itemId, slot.visualId,
                                static_cast<std::int64_t>(slot.quantity), index});
             ++index;
@@ -233,13 +246,22 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
 
 std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
     ui::BindingPath path, std::int64_t contextIndex) const {
-    if (path != ui::BindingPath::overlayInventorySlotSelected) { return number(path); }
-    // Derived presentation flag: the slot is highlighted exactly when the
-    // inventory tab owns the focus and the context index is the selection.
-    return view_->inventoryFocus == gameplay::InventoryOverlayFocus::inventory &&
-                   contextIndex == static_cast<std::int64_t>(view_->inventorySelection)
-               ? std::optional<std::int64_t>{1}
-               : std::optional<std::int64_t>{0};
+    if (path == ui::BindingPath::overlayInventorySlotSelected ||
+        path == ui::BindingPath::overlayBankInventorySelected) {
+        // Derived presentation flag: highlighted exactly when the inventory
+        // context owns the focus and the context index is the selection.
+        return view_->inventoryFocus == gameplay::InventoryOverlayFocus::inventory &&
+                       contextIndex == static_cast<std::int64_t>(view_->inventorySelection)
+                   ? std::optional<std::int64_t>{1}
+                   : std::optional<std::int64_t>{0};
+    }
+    if (path == ui::BindingPath::overlayBankStorageSelected) {
+        return view_->bankFocus == gameplay::BankOverlayFocus::bank &&
+                       contextIndex == static_cast<std::int64_t>(view_->bankSelection)
+                   ? std::optional<std::int64_t>{1}
+                   : std::optional<std::int64_t>{0};
+    }
+    return number(path);
 }
 
 std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {

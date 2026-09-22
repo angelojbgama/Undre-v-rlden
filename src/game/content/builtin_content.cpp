@@ -750,6 +750,85 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     savesPanel.children.push_back(std::move(backButton));
     savesScreen.root = std::move(savesPanel);
     pack.uiScreens.push_back(std::move(savesScreen));
+
+    // Bank overlay as authored UI content: carried grid, storage grid (both
+    // repeaters with selection-gated states) and the gold readout.
+    ui::ScreenDefinition bankScreen;
+    bankScreen.id = simulation::DefinitionId{"screen.bank"};
+    bankScreen.kind = ui::ScreenKind::overlay;
+    ui::NodeDefinition bankPanel;
+    bankPanel.id = "bank.panel";
+    bankPanel.component = ui::ComponentKind::panel;
+    bankPanel.layout.offsetX = 4;
+    bankPanel.layout.offsetY = 24;
+    bankPanel.layout.width = 264;
+    bankPanel.layout.height = 169;
+    bankPanel.background = core::ColorRGBA8{8, 10, 16, 248};
+    const auto bankText = [&](const char* id, const char* value, int x, int y) {
+        ui::NodeDefinition node;
+        node.id = id;
+        node.component = ui::ComponentKind::text;
+        node.layout.offsetX = x;
+        node.layout.offsetY = y;
+        node.text = value;
+        bankPanel.children.push_back(std::move(node));
+    };
+    bankText("bank.title", "BANK", 8, 27);
+    bankText("bank.inventory.title", "INVENTORY", 8, 43);
+    const auto makeBankGrid = [&](const char* id, ui::BindingPath source,
+                                  ui::BindingPath selectedPath, int y) {
+        ui::NodeDefinition grid;
+        grid.id = id;
+        grid.component = ui::ComponentKind::repeater;
+        grid.layout.offsetX = 8;
+        grid.layout.offsetY = y;
+        grid.columns = 10;
+        grid.cellWidth = 26;
+        grid.cellHeight = 15;
+        grid.bindings.push_back({"source", source});
+        ui::NodeDefinition slot;
+        slot.id = std::string(id) + ".slot";
+        slot.component = ui::ComponentKind::slot;
+        slot.layout.width = 24;
+        slot.layout.height = 13;
+        slot.background = core::ColorRGBA8{54, 30, 38, 255};
+        slot.iconOffset = core::PointI{1, 0};
+        slot.countOffset = core::PointI{1, 4};
+        slot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
+        slot.bindings.push_back({"count", ui::BindingPath::contextItemAmount});
+        ui::StateDefinition selected;
+        selected.id = "selected";
+        selected.condition = ui::StateCondition{selectedPath,
+                                                ui::ConditionOperator::equal, 1};
+        selected.visual.background = core::ColorRGBA8{220, 180, 72, 255};
+        slot.states.push_back(std::move(selected));
+        grid.children.push_back(std::move(slot));
+        bankPanel.children.push_back(std::move(grid));
+    };
+    makeBankGrid("bank.inventory.grid", ui::BindingPath::playerInventorySlots,
+                 ui::BindingPath::overlayBankInventorySelected, 53);
+    bankText("bank.storage.title", "STORAGE", 8, 105);
+    makeBankGrid("bank.storage.grid", ui::BindingPath::bankSlots,
+                 ui::BindingPath::overlayBankStorageSelected, 115);
+    bankText("bank.carried.label", "CARRIED", 8, 188);
+    ui::NodeDefinition carriedGold;
+    carriedGold.id = "bank.carried.gold";
+    carriedGold.component = ui::ComponentKind::text;
+    carriedGold.layout.offsetX = 57;
+    carriedGold.layout.offsetY = 188;
+    carriedGold.bindings.push_back({"text", ui::BindingPath::playerGold});
+    bankPanel.children.push_back(std::move(carriedGold));
+    bankText("bank.stored.label", "STORED", 104, 188);
+    ui::NodeDefinition storedGold;
+    storedGold.id = "bank.stored.gold";
+    storedGold.component = ui::ComponentKind::text;
+    storedGold.layout.offsetX = 141;
+    storedGold.layout.offsetY = 188;
+    storedGold.bindings.push_back({"text", ui::BindingPath::bankGoldStored});
+    bankPanel.children.push_back(std::move(storedGold));
+    bankText("bank.hints", "Z TRANSFER  I CLOSE", 152, 208);
+    bankScreen.root = std::move(bankPanel);
+    pack.uiScreens.push_back(std::move(bankScreen));
     return pack;
 }
 
