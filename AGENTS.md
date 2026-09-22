@@ -2119,6 +2119,38 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   presenter não propaga o offset do pai resolvido). Playtest e `content_check`
   usam o conteúdo de produção; o fallback sintético ficou restrito a fixtures.
 
+# Estado atual — conteúdo de produção map.1 (A1–A6 aplicados)
+
+O mapa de produção `map.1` (sala 9×8 autoriada pelo dono) recebeu o primeiro
+conteúdo jogável completo, autorado pelos serviços Python do Studio:
+
+- Conjunto de combate authored no workspace (behaviors, soldier/skull com
+  visuais, ataques e projéteis de inimigo, reward profiles com loot) — o
+  builtin nunca carregou combate; a cópia do fixture é a base e os overrides
+  de behavior ajustam a sala inicial (detecção 56/64px, sentinela parada no
+  posto, skull lenta 96 subpixels/tick).
+- NPC keeper (diálogo que inicia `quest.underworld.awakening`: matar 2
+  soldados + recuperar uma moeda; recompensa 25 XP + 40 ouro + 2 élixires) e
+  NPC trader com diálogo que abre `shop.underworld.general`.
+- `object.bank_access` colocado; baú e crate posicionados; pickups (moeda,
+  coração, poção) distribuídos.
+- Crafting: `recipe.elixir.distilled` (gate pela quest) e
+  `recipe.charm.reinforced` livre, sobre itens copiados para o workspace
+  (life_potion/training_armor/power_charm + item.elixir +
+  item.reinforced_charm).
+- `effect.map.transition_out/in` (fade preto 18 ticks) adotados no content.
+- Colisão de borda pintada no map.1 (a parede era só visual).
+
+Regras de schema que o autoramento precisou respeitar: caixas NPC/objeto usam
+`x/y` (não `offsetX/offsetY`); ids de receita vivem no namespace `recipe.*`;
+receitas exigem 2–4 inputs distintos; o validador de export resolve
+definitionIds de placements e visualId de pickups no workspace (cópias de
+conteúdo builtin precisam existir no workspace). Os 9 cenários de playtest
+aposentados por falta de placements voltaram ao `--all` (18/18): os cenários
+de traversal agora limpam os hostis lutando de verdade (`clearHostiles`/
+`fightToDeath`) antes da tarefa, com aproximação NPC lateral (a caixa de
+interação fica acima dos pés) e sidestep contra bloqueios.
+
 # Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
 
 Trilha Scene/Game-State: implementada a menor camada de shell necessária, sem
