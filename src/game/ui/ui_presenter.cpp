@@ -336,18 +336,19 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
             break;
         }
         case ComponentKind::group:
-        case ComponentKind::panel:
-            if (node.background && node.layout.width && node.layout.height) {
+        case ComponentKind::panel: {
+            const auto background = visual.background ? visual.background : node.background;
+            if (background && node.layout.width && node.layout.height) {
                 const auto size =
                     core::PointI{*node.layout.width, *node.layout.height};
                 const auto position =
                     addOffset(resolveNodePosition(node.layout, size), offset);
-                renderer.fillRect({position.x, position.y, size.x, size.y}, *node.background);
+                renderer.fillRect({position.x, position.y, size.x, size.y}, *background);
             }
             for (const auto& child : node.children) {
                 renderNode(child, resolver, context, renderer, offset);
             }
-            break;
+            } break;
         case ComponentKind::animatedImage:
             // Animated clips need per-node playback state; they join with the
             // first authored use of an animated HUD/menu element.

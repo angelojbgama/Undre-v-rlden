@@ -12448,6 +12448,87 @@ void testUiSavesScreenAndSlots() {
     expect(!runtime.menuOpen(), "BACK closes the shell screen entirely");
 }
 
+void testUiEquipmentBindings() {
+    using namespace underworld;
+    namespace ui = game::ui;
+    namespace content = game::content;
+
+    game::GameViewModel view;
+    view.armor = {{"item.plate"}, {"visual.plate"}, 1};
+    view.accessory = {{"item.charm"}, {"visual.charm"}, 1};
+    view.derivedMaximumHealth = 8;
+    view.playerAttackDamageBonus = 2;
+    view.inventoryFocus = game::gameplay::InventoryOverlayFocus::equipment;
+    view.equipmentSelection = game::gameplay::rpg::EquipmentSlot::accessory;
+    const game::GameViewModelBindings bindings{view};
+
+    expect(bindings.id(ui::BindingPath::playerArmorIcon) ==
+               std::optional<simulation::DefinitionId>{simulation::DefinitionId{"visual.plate"}} &&
+               bindings.id(ui::BindingPath::playerAccessoryIcon) ==
+                   std::optional<simulation::DefinitionId>{simulation::DefinitionId{"visual.charm"}},
+           "equipment icons resolve through the adapter");
+    expect(bindings.number(ui::BindingPath::overlayEquipmentArmorSelected) ==
+                   std::optional<std::int64_t>{0} &&
+               bindings.number(ui::BindingPath::overlayEquipmentAccessorySelected) ==
+                   std::optional<std::int64_t>{1},
+           "the equipment selection flag follows focus and selection");
+    view.inventoryFocus = game::gameplay::InventoryOverlayFocus::inventory;
+    expect(bindings.number(ui::BindingPath::overlayEquipmentAccessorySelected) ==
+               std::optional<std::int64_t>{0},
+           "leaving the equipment focus clears the selection flags");
+    expect(bindings.number(ui::BindingPath::playerDerivedMaxHealth) ==
+                   std::optional<std::int64_t>{8} &&
+               bindings.number(ui::BindingPath::playerAttackDamageBonus) ==
+                   std::optional<std::int64_t>{2},
+           "derived stats resolve for the equipment stats line");
+
+    // The builtin inventory overlay authors the equipment section.
+    const auto builtin = game::content::makeBuiltinAuthoredContent();
+    const auto inventory = std::find_if(
+        builtin.uiScreens.begin(), builtin.uiScreens.end(),
+        [](const game::content::AuthoredUiScreen& screen) {
+            return screen.id == simulation::DefinitionId{"screen.inventory"};
+        });
+    expect(inventory != builtin.uiScreens.end() &&
+               inventory->root.children.size() == 10 &&
+               std::any_of(inventory->root.children.begin(), inventory->root.children.end(),
+                           [](const ui::NodeDefinition& node) {
+                               return node.id == "inventory.equipment.armor";
+                           }) &&
+               std::any_of(inventory->root.children.begin(), inventory->root.children.end(),
+                           [](const ui::NodeDefinition& node) {
+                               return node.id == "inventory.stats.attack";
+                           }),
+           "the builtin inventory authors the complete equipment section");
+
+    // Render smoke: the authored inventory renders with equipment selection.
+    game::presentation::RuntimeStaticSpriteCatalog sprites;
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    const ui::UiVisualContext visuals{sprites, font};
+    view.inventoryFocus = game::gameplay::InventoryOverlayFocus::equipment;
+    view.equipmentSelection = game::gameplay::rpg::EquipmentSlot::armor;
+    render::Framebuffer framebuffer(272, 224);
+    framebuffer.clear({0, 0, 0, 255});
+    framebuffer.clear({0, 0, 0, 255});
+    render::Renderer2D renderer(framebuffer);
+    const ui::UiPresenter presenter;
+    const auto compiled = content::compileContent(builtin);
+    if (compiled) {
+        presenter.render(*compiled.registry->uiScreens().find({"screen.inventory"}),
+                         bindings, visuals, renderer);
+    }
+    expect(static_cast<bool>(compiled), "the builtin inventory with equipment compiles");
+    // The armor slot carries the selection background; dump the corner pixels.
+    expect(framebufferPixel(framebuffer, 10, 138) ==
+               core::ColorRGBA8{220, 180, 72, 255},
+           "the authored equipment slot renders its selection state");
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -12958,6 +13039,7 @@ int main() {
         testUiHudCompleteParity();
         testUiJournalScreen();
         testUiSavesScreenAndSlots();
+        testUiEquipmentBindings();
         testUiRuntimeMenuNavigation();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();

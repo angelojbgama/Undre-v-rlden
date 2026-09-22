@@ -2405,6 +2405,214 @@
                 ]
               }
             ]
+          },
+        {
+          "id": "inventory.equipment.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 10,
+            "offsetY": 128,
+            "z": 0
+            },
+          "text": "EQUIPMENT"
+          },
+        {
+          "id": "inventory.equipment.armor",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 10,
+            "offsetY": 138,
+            "width": 92,
+            "height": 22,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "states": [
+            {
+              "id": "selected",
+              "condition": {
+                "source": "overlay.equipment.armorSelected",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "background": {
+                  "r": 220,
+                  "g": 180,
+                  "b": 72,
+                  "a": 255
+                  }
+                }
+              }
+            ],
+          "children": [
+            {
+              "id": "inventory.equipment.armor.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 13,
+                "offsetY": 141,
+                "z": 0
+                },
+              "text": "ARMOR"
+              },
+            {
+              "id": "inventory.equipment.armor.icon",
+              "component": "image",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 65,
+                "offsetY": 140,
+                "z": 0
+                },
+              "bindings": [
+                {
+                  "property": "icon",
+                  "source": "player.armor.icon"
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "inventory.equipment.accessory",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 108,
+            "offsetY": 138,
+            "width": 92,
+            "height": 22,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "states": [
+            {
+              "id": "selected",
+              "condition": {
+                "source": "overlay.equipment.accessorySelected",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "background": {
+                  "r": 220,
+                  "g": 180,
+                  "b": 72,
+                  "a": 255
+                  }
+                }
+              }
+            ],
+          "children": [
+            {
+              "id": "inventory.equipment.accessory.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 111,
+                "offsetY": 141,
+                "z": 0
+                },
+              "text": "ACCESSORY"
+              },
+            {
+              "id": "inventory.equipment.accessory.icon",
+              "component": "image",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 163,
+                "offsetY": 140,
+                "z": 0
+                },
+              "bindings": [
+                {
+                  "property": "icon",
+                  "source": "player.accessory.icon"
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "inventory.stats.label",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 10,
+            "offsetY": 164,
+            "z": 0
+            },
+          "text": "MAX HP"
+          },
+        {
+          "id": "inventory.stats.health",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 59,
+            "offsetY": 164,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.derivedMaxHealth"
+              }
+            ]
+          },
+        {
+          "id": "inventory.stats.attack.label",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 87,
+            "offsetY": 164,
+            "z": 0
+            },
+          "text": "ATK"
+          },
+        {
+          "id": "inventory.stats.attack",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 115,
+            "offsetY": 164,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.attackDamageBonus"
+              }
+            ]
+          },
+        {
+          "id": "inventory.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 10,
+            "offsetY": 181,
+            "z": 0
+            },
+          "text": "Z USE/EQUIP  1-4 BIND  I CLOSE"
           }
         ]
       }

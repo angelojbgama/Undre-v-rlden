@@ -170,6 +170,20 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
         case ui::BindingPath::playerAmmoPresent:
             return view_->ammo.itemId ? std::optional<std::int64_t>{1}
                                       : std::optional<std::int64_t>{0};
+        case ui::BindingPath::overlayEquipmentArmorSelected:
+            return view_->inventoryFocus == gameplay::InventoryOverlayFocus::equipment &&
+                           view_->equipmentSelection == gameplay::rpg::EquipmentSlot::armor
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
+        case ui::BindingPath::overlayEquipmentAccessorySelected:
+            return view_->inventoryFocus == gameplay::InventoryOverlayFocus::equipment &&
+                           view_->equipmentSelection == gameplay::rpg::EquipmentSlot::accessory
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
+        case ui::BindingPath::playerDerivedMaxHealth:
+            return static_cast<std::int64_t>(view_->derivedMaximumHealth);
+        case ui::BindingPath::playerAttackDamageBonus:
+            return static_cast<std::int64_t>(view_->playerAttackDamageBonus);
         case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
@@ -278,6 +292,8 @@ std::optional<simulation::DefinitionId> GameViewModelBindings::id(ui::BindingPat
     switch (path) {
         case ui::BindingPath::playerAmmoItemId: return view_->ammo.itemId;
         case ui::BindingPath::playerAmmoIcon: return view_->ammo.visualId;
+        case ui::BindingPath::playerArmorIcon: return view_->armor.visualId;
+        case ui::BindingPath::playerAccessoryIcon: return view_->accessory.visualId;
         case ui::BindingPath::playerQuickSlot0ItemId: return slotItem(0);
         case ui::BindingPath::playerQuickSlot1ItemId: return slotItem(1);
         case ui::BindingPath::playerQuickSlot2ItemId: return slotItem(2);

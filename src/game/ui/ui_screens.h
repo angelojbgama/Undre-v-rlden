@@ -71,6 +71,12 @@ enum class BindingPath {
     saveSlot1Label,
     saveSlot2Label,
     saveSlot3Label,
+    playerArmorIcon,
+    playerAccessoryIcon,
+    overlayEquipmentArmorSelected,
+    overlayEquipmentAccessorySelected,
+    playerDerivedMaxHealth,
+    playerAttackDamageBonus,
     contextIndex,
     contextItemId,
     contextItemIcon,
@@ -83,7 +89,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 33> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 39> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -112,6 +118,12 @@ inline constexpr std::array<BindingPathEntry, 33> bindingPathTable{{
     {BindingPath::saveSlot1Label, "saves.slot.1.label"},
     {BindingPath::saveSlot2Label, "saves.slot.2.label"},
     {BindingPath::saveSlot3Label, "saves.slot.3.label"},
+    {BindingPath::playerArmorIcon, "player.armor.icon"},
+    {BindingPath::playerAccessoryIcon, "player.accessory.icon"},
+    {BindingPath::overlayEquipmentArmorSelected, "overlay.equipment.armorSelected"},
+    {BindingPath::overlayEquipmentAccessorySelected, "overlay.equipment.accessorySelected"},
+    {BindingPath::playerDerivedMaxHealth, "player.derivedMaxHealth"},
+    {BindingPath::playerAttackDamageBonus, "player.attackDamageBonus"},
     {BindingPath::contextIndex, "context.index"},
     {BindingPath::contextItemId, "context.item.id"},
     {BindingPath::contextItemIcon, "context.item.icon"},

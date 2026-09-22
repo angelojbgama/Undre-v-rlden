@@ -457,6 +457,91 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     grid.children.push_back(std::move(slot));
     panel.children.push_back(std::move(title));
     panel.children.push_back(std::move(grid));
+
+    // Equipment section: authored slot groups with selection-gated
+    // background states and dynamically bound icons; the stats line and the
+    // control hints close the overlay.
+    ui::NodeDefinition equipmentTitle;
+    equipmentTitle.id = "inventory.equipment.title";
+    equipmentTitle.component = ui::ComponentKind::text;
+    equipmentTitle.layout.offsetX = 10;
+    equipmentTitle.layout.offsetY = 128;
+    equipmentTitle.text = "EQUIPMENT";
+    panel.children.push_back(std::move(equipmentTitle));
+    const auto makeEquipmentSlot = [&](const char* id, const char* label, int x,
+                                       ui::BindingPath iconPath,
+                                       ui::BindingPath selectedPath) {
+        ui::NodeDefinition slotGroup;
+        slotGroup.id = id;
+        slotGroup.component = ui::ComponentKind::group;
+        slotGroup.layout.offsetX = x;
+        slotGroup.layout.offsetY = 138;
+        slotGroup.layout.width = 92;
+        slotGroup.layout.height = 22;
+        slotGroup.background = core::ColorRGBA8{54, 30, 38, 255};
+        ui::StateDefinition selected;
+        selected.id = "selected";
+        selected.condition = ui::StateCondition{selectedPath,
+                                                ui::ConditionOperator::equal, 1};
+        selected.visual.background = core::ColorRGBA8{220, 180, 72, 255};
+        slotGroup.states.push_back(std::move(selected));
+        ui::NodeDefinition labelText;
+        labelText.id = std::string(id) + ".label";
+        labelText.component = ui::ComponentKind::text;
+        labelText.layout.offsetX = x + 3;
+        labelText.layout.offsetY = 141;
+        labelText.text = label;
+        slotGroup.children.push_back(std::move(labelText));
+        ui::NodeDefinition icon;
+        icon.id = std::string(id) + ".icon";
+        icon.component = ui::ComponentKind::image;
+        icon.layout.offsetX = x + 55;
+        icon.layout.offsetY = 140;
+        icon.bindings.push_back({"icon", iconPath});
+        slotGroup.children.push_back(std::move(icon));
+        panel.children.push_back(std::move(slotGroup));
+    };
+    makeEquipmentSlot("inventory.equipment.armor", "ARMOR", 10,
+                      ui::BindingPath::playerArmorIcon,
+                      ui::BindingPath::overlayEquipmentArmorSelected);
+    makeEquipmentSlot("inventory.equipment.accessory", "ACCESSORY", 108,
+                      ui::BindingPath::playerAccessoryIcon,
+                      ui::BindingPath::overlayEquipmentAccessorySelected);
+    ui::NodeDefinition statsLabel;
+    statsLabel.id = "inventory.stats.label";
+    statsLabel.component = ui::ComponentKind::text;
+    statsLabel.layout.offsetX = 10;
+    statsLabel.layout.offsetY = 164;
+    statsLabel.text = "MAX HP";
+    panel.children.push_back(std::move(statsLabel));
+    ui::NodeDefinition statsHealth;
+    statsHealth.id = "inventory.stats.health";
+    statsHealth.component = ui::ComponentKind::text;
+    statsHealth.layout.offsetX = 59;
+    statsHealth.layout.offsetY = 164;
+    statsHealth.bindings.push_back({"text", ui::BindingPath::playerDerivedMaxHealth});
+    panel.children.push_back(std::move(statsHealth));
+    ui::NodeDefinition statsAttackLabel;
+    statsAttackLabel.id = "inventory.stats.attack.label";
+    statsAttackLabel.component = ui::ComponentKind::text;
+    statsAttackLabel.layout.offsetX = 87;
+    statsAttackLabel.layout.offsetY = 164;
+    statsAttackLabel.text = "ATK";
+    panel.children.push_back(std::move(statsAttackLabel));
+    ui::NodeDefinition statsAttack;
+    statsAttack.id = "inventory.stats.attack";
+    statsAttack.component = ui::ComponentKind::text;
+    statsAttack.layout.offsetX = 115;
+    statsAttack.layout.offsetY = 164;
+    statsAttack.bindings.push_back({"text", ui::BindingPath::playerAttackDamageBonus});
+    panel.children.push_back(std::move(statsAttack));
+    ui::NodeDefinition hints;
+    hints.id = "inventory.hints";
+    hints.component = ui::ComponentKind::text;
+    hints.layout.offsetX = 10;
+    hints.layout.offsetY = 181;
+    hints.text = "Z USE/EQUIP  1-4 BIND  I CLOSE";
+    panel.children.push_back(std::move(hints));
     inventoryScreen.root = std::move(panel);
     pack.uiScreens.push_back(std::move(inventoryScreen));
 
