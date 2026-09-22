@@ -49,39 +49,10 @@ core::LogicalPointI toLogical(core::WorldPointI world, core::WorldPointI camera)
 void drawWrappedText(render::Renderer2D& renderer, const render::BitmapFont& font,
                      std::string_view text, int x, int y, std::size_t maximumColumns,
                      std::size_t maximumLines) {
-    std::string line;
-    std::size_t linesDrawn = 0;
-    std::size_t cursor = 0;
-    while (cursor < text.size() && linesDrawn < maximumLines) {
-        while (cursor < text.size() && text[cursor] == ' ') { ++cursor; }
-        const auto nextSpace = text.find_first_of(" \n", cursor);
-        const auto wordEnd = nextSpace == std::string_view::npos ? text.size() : nextSpace;
-        const std::string word{text.substr(cursor, wordEnd - cursor)};
-        if (line.empty()) {
-            line = word;
-        } else if (line.size() + 1U + word.size() <= maximumColumns) {
-            line += ' ';
-            line += word;
-        } else {
-            render::drawText(renderer, font, line, x,
-                              y + static_cast<int>(linesDrawn) * font.lineHeight());
-            ++linesDrawn;
-            line = word;
-        }
-        cursor = wordEnd;
-        if (cursor < text.size() && text[cursor] == '\n') {
-            render::drawText(renderer, font, line, x,
-                              y + static_cast<int>(linesDrawn) * font.lineHeight());
-            ++linesDrawn;
-            line.clear();
-            ++cursor;
-        } else if (cursor < text.size()) {
-            ++cursor;
-        }
-    }
-    if (!line.empty() && linesDrawn < maximumLines) {
-        render::drawText(renderer, font, line, x,
-                         y + static_cast<int>(linesDrawn) * font.lineHeight());
+    const auto lines = wrapTextLines(text, maximumColumns, maximumLines);
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        render::drawText(renderer, font, lines[index], x,
+                         y + static_cast<int>(index) * font.lineHeight());
     }
 }
 
@@ -483,6 +454,17 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
     }
     render::drawText(renderer, frame.font, "I ITEMS  E OPEN", 169, 203);
     if (frame.dialogue.isOpen()) {
+        // Dialogue box is authored UI content (screen.dialogue,
+        // docs/UI_ENGINE.md): the definition-driven render reproduces the
+        // legacy overlay; the hand-drawn block below stays as the fallback
+        // for workspaces that opt out of the builtin screens.
+        if (frame.dialogueScreen) {
+            const ui::UiPresenter presenter;
+            const GameViewModelBindings bindings{view};
+            const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+            presenter.render(*frame.dialogueScreen, bindings, visuals, renderer);
+            return;
+        }
         renderer.fillRect({8, 130, 256, 62}, {8, 10, 16, 248});
         renderer.fillRect({9, 131, 254, 60}, {54, 30, 38, 255});
         render::drawText(renderer, frame.font, std::string(frame.dialogue.speaker()), 14, 134);

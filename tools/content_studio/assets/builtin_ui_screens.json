@@ -4455,6 +4455,215 @@
           }
         ]
       }
+    },
+  {
+    "id": "screen.dialogue",
+    "kind": "overlay",
+    "root": {
+      "id": "dialogue.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 8,
+        "offsetY": 130,
+        "width": 256,
+        "height": 62,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 10,
+        "b": 16,
+        "a": 248
+        },
+      "children": [
+        {
+          "id": "dialogue.panel.inner",
+          "component": "panel",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 9,
+            "offsetY": 131,
+            "width": 254,
+            "height": 60,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            }
+          },
+        {
+          "id": "dialogue.speaker",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 14,
+            "offsetY": 134,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "dialogue.speaker"
+              }
+            ]
+          },
+        {
+          "id": "dialogue.page.counter",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 238,
+            "offsetY": 134,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "dialogue.page.text"
+              }
+            ]
+          },
+        {
+          "id": "dialogue.page.lines",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 14,
+            "offsetY": 145,
+            "z": 0
+            },
+          "columns": 1,
+          "cellWidth": 250,
+          "cellHeight": 9,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "dialogue.pageLines"
+              }
+            ],
+          "children": [
+            {
+              "id": "dialogue.page.line",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "z": 0
+                },
+              "text": "",
+              "bindings": [
+                {
+                  "property": "text",
+                  "source": "context.pageLine"
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "dialogue.choices",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 12,
+            "offsetY": 163,
+            "z": 0
+            },
+          "columns": 1,
+          "cellWidth": 244,
+          "cellHeight": 11,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "dialogue.choices"
+              }
+            ],
+          "children": [
+            {
+              "id": "dialogue.choice.row",
+              "component": "group",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 244,
+                "height": 10,
+                "z": 0
+                },
+              "states": [
+                {
+                  "id": "selected",
+                  "condition": {
+                    "source": "overlay.dialogue.choiceSelected",
+                    "operator": "equal",
+                    "value": 1
+                    },
+                  "visual": {
+                    "background": {
+                      "r": 96,
+                      "g": 62,
+                      "b": 54,
+                      "a": 255
+                      }
+                    }
+                  }
+                ],
+              "children": [
+                {
+                  "id": "dialogue.choice.line",
+                  "component": "text",
+                  "layout": {
+                    "anchor": "topLeft",
+                    "offsetX": 2,
+                    "offsetY": 1,
+                    "z": 0
+                    },
+                  "text": "",
+                  "bindings": [
+                    {
+                      "property": "text",
+                      "source": "context.choiceLine"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "dialogue.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 14,
+            "offsetY": 181,
+            "z": 0,
+            "visible": false
+            },
+          "text": "E NEXT  X CLOSE",
+          "states": [
+            {
+              "id": "text-mode",
+              "condition": {
+                "source": "dialogue.choices.visible",
+                "operator": "equal",
+                "value": 0
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

@@ -11435,7 +11435,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 8 &&
+    expect(builtin.uiScreens.size() == 9 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11445,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 8 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 9 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12226,6 +12226,151 @@ void testUiHudCompleteParity() {
     expect(std::equal(legacyEmpty.pixels().begin(), legacyEmpty.pixels().end(),
                       modernEmpty.pixels().begin(), modernEmpty.pixels().end()),
            "the ammo nodes hide through their authored visibility state");
+}
+
+void testUiDialogueScreen() {
+    using namespace underworld;
+    namespace dialogue = game::gameplay::dialogue;
+    namespace ui = game::ui;
+
+    // The shared wrap helper folds words on spaces and forced newlines and
+    // caps the line count exactly like the legacy overlay renderer.
+    const auto shortPage = game::wrapTextLines("Halt, traveler.", 34, 2);
+    expect(shortPage.size() == 1 && shortPage.front() == "Halt, traveler.",
+           "wrapTextLines keeps a short page on a single line");
+    const auto folded = game::wrapTextLines("alpha beta gamma delta epsilon zeta eta", 12, 3);
+    expect(folded.size() == 3 && folded[0] == "alpha beta" && folded[1] == "gamma delta" &&
+               folded[2] == "epsilon zeta",
+           "wrapTextLines folds long pages at word boundaries");
+    const auto capped = game::wrapTextLines("a b c d e f g", 1, 2);
+    expect(capped.size() == 2 && capped[0] == "a" && capped[1] == "b",
+           "wrapTextLines caps the line count");
+
+    const auto content = game::content::compileCombatContentOrThrow();
+    dialogue::DialogueFlagSet flags;
+    dialogue::DialogueSession session(content.dialogues(), flags);
+    std::string error;
+    expect(session.begin(dialogue::guardDialogueId(), error), "guard dialogue opens");
+
+    game::GameViewModel view;
+    game::buildDialogueDetails(view, session);
+    expect(view.dialogueOpen && view.dialogueSpeaker == "Guard" &&
+               view.dialoguePageText == "1/2" && view.dialoguePageLines.size() == 1 &&
+               view.dialoguePageLines.front() == "Halt, traveler." &&
+               !view.dialogueChoicesVisible && view.dialogueChoiceLines.empty(),
+           "dialogue read model composes speaker, page counter and wrapped page");
+
+    const game::GameViewModelBindings bindings{view};
+    expect(bindings.string(ui::BindingPath::dialogueSpeaker) ==
+                   std::optional<std::string>{"Guard"} &&
+               bindings.string(ui::BindingPath::dialoguePageText) ==
+                   std::optional<std::string>{"1/2"} &&
+               bindings.number(ui::BindingPath::dialogueChoicesVisible) ==
+                   std::optional<std::int64_t>{0} &&
+               bindings.collection(ui::BindingPath::dialoguePageLines).size() == 1 &&
+               bindings.collection(ui::BindingPath::dialogueChoices).empty(),
+           "dialogue bindings resolve speaker, counter, page lines and empty choices");
+
+    const auto builtin = game::content::makeBuiltinAuthoredContent();
+    const auto compiledScreens = game::content::compileContent(builtin);
+    expect(static_cast<bool>(compiledScreens), "builtin screens compile");
+    if (!compiledScreens) { return; }
+    const auto& dialogueScreen = *compiledScreens.registry->uiScreens().find({"screen.dialogue"});
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    const game::presentation::RuntimeStaticSpriteCatalog sprites;
+    const ui::UiPresenter presenter;
+    const ui::UiVisualContext visuals{sprites, font};
+
+    const auto renderLegacyText = [&](render::Renderer2D& renderer) {
+        renderer.fillRect({8, 130, 256, 62}, {8, 10, 16, 248});
+        renderer.fillRect({9, 131, 254, 60}, {54, 30, 38, 255});
+        render::drawText(renderer, font, std::string(session.speaker()), 14, 134);
+        render::drawText(renderer, font,
+                         std::to_string(session.pageIndex() + 1) + "/" +
+                             std::to_string(session.pageCount()),
+                         238, 134);
+        const auto lines = game::wrapTextLines(session.currentPage(), 34, 2);
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            render::drawText(renderer, font, lines[index], 14, 145 + static_cast<int>(index) * 9);
+        }
+        render::drawText(renderer, font, "E NEXT  X CLOSE", 14, 181);
+    };
+    render::Framebuffer legacyText(272, 224);
+    render::Framebuffer modernText(272, 224);
+    render::Renderer2D legacyTextRenderer(legacyText);
+    render::Renderer2D modernTextRenderer(modernText);
+    renderLegacyText(legacyTextRenderer);
+    presenter.render(dialogueScreen, bindings, visuals, modernTextRenderer);
+    expect(std::equal(legacyText.pixels().begin(), legacyText.pixels().end(),
+                      modernText.pixels().begin(), modernText.pixels().end()),
+           "the authored dialogue screen is pixel-identical to the legacy overlay in text state");
+
+    expect(session.begin(dialogue::scholarDialogueId(), error) &&
+               session.handleCommand(actionCommand(1, true, false)) && session.choicesVisible() &&
+               session.choiceCount() == 2 && session.selectedChoice() == 0,
+           "scholar dialogue reveals two selectable choices");
+    game::buildDialogueDetails(view, session);
+    const auto expectedCounter = std::to_string(session.pageIndex() + 1) + "/" +
+                                 std::to_string(session.pageCount());
+    expect(view.dialogueSpeaker == std::string(session.speaker()) &&
+               view.dialoguePageText == expectedCounter &&
+               view.dialogueChoiceLines.size() == 2 &&
+               view.dialogueChoiceLines.front().substr(0, 3) == "1: " &&
+               view.dialogueChoicesVisible,
+           "dialogue read model composes numbered choice lines in the choices state");
+
+    const game::GameViewModelBindings choiceBindings{view};
+    expect(choiceBindings.contextualNumber(ui::BindingPath::overlayDialogueChoiceSelected, 0) ==
+                   std::optional<std::int64_t>{1} &&
+               choiceBindings.contextualNumber(ui::BindingPath::overlayDialogueChoiceSelected, 1) ==
+                   std::optional<std::int64_t>{0} &&
+               choiceBindings.number(ui::BindingPath::dialogueChoicesVisible) ==
+                   std::optional<std::int64_t>{1} &&
+               choiceBindings.collection(ui::BindingPath::dialogueChoices).size() == 2,
+           "the dialogue selection flag composes session state with the context index");
+
+    const auto renderLegacyChoices = [&](render::Renderer2D& renderer) {
+        renderer.fillRect({8, 130, 256, 62}, {8, 10, 16, 248});
+        renderer.fillRect({9, 131, 254, 60}, {54, 30, 38, 255});
+        render::drawText(renderer, font, std::string(session.speaker()), 14, 134);
+        render::drawText(renderer, font, expectedCounter, 238, 134);
+        const auto lines = game::wrapTextLines(session.currentPage(), 34, 2);
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            render::drawText(renderer, font, lines[index], 14, 145 + static_cast<int>(index) * 9);
+        }
+        for (std::size_t index = 0; index < session.choiceCount(); ++index) {
+            const int y = 164 + static_cast<int>(index) * 11;
+            if (index == session.selectedChoice()) {
+                renderer.fillRect({12, y - 1, 244, 10}, {96, 62, 54, 255});
+            }
+            render::drawText(renderer, font, std::to_string(index + 1) + ": " +
+                                 std::string(session.choiceLabel(index)), 14, y);
+        }
+    };
+    render::Framebuffer legacyChoices(272, 224);
+    render::Framebuffer modernChoices(272, 224);
+    render::Renderer2D legacyChoicesRenderer(legacyChoices);
+    render::Renderer2D modernChoicesRenderer(modernChoices);
+    renderLegacyChoices(legacyChoicesRenderer);
+    presenter.render(dialogueScreen, choiceBindings, visuals, modernChoicesRenderer);
+    expect(std::equal(legacyChoices.pixels().begin(), legacyChoices.pixels().end(),
+                      modernChoices.pixels().begin(), modernChoices.pixels().end()),
+           "the authored dialogue screen is pixel-identical to the legacy overlay in choices state");
+
+    session.close();
+    game::buildDialogueDetails(view, session);
+    expect(!view.dialogueOpen &&
+               !bindings.string(ui::BindingPath::dialogueSpeaker).has_value() &&
+               bindings.number(ui::BindingPath::dialogueChoicesVisible) ==
+                   std::optional<std::int64_t>{0} &&
+               view.dialogueChoiceLines.empty(),
+           "the dialogue read model resets when the session closes");
 }
 
 void testUiJournalScreen() {
@@ -13037,6 +13182,7 @@ int main() {
         testUiStatesAndMeterVariants();
         testUiInventoryGridMigration();
         testUiHudCompleteParity();
+        testUiDialogueScreen();
         testUiJournalScreen();
         testUiSavesScreenAndSlots();
         testUiEquipmentBindings();

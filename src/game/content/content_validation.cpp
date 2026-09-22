@@ -259,7 +259,9 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                             binding.source == ui::BindingPath::bankSlots ||
                             binding.source == ui::BindingPath::questsJournal ||
                             binding.source == ui::BindingPath::shopOffers ||
-                            binding.source == ui::BindingPath::craftingRecipesPath);
+                            binding.source == ui::BindingPath::craftingRecipesPath ||
+                            binding.source == ui::BindingPath::dialoguePageLines ||
+                            binding.source == ui::BindingPath::dialogueChoices);
                 });
             if (!hasSource)
                 error(report, ContentKind::uiScreen, screenId, "missing_binding",

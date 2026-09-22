@@ -107,6 +107,18 @@ enum class BindingPath {
     contextItemIcon,
     contextItemAmount,
     overlayInventorySlotSelected,
+    // Dialogue read model (screen.dialogue): speaker/page header strings are
+    // composed at frame build; the page lines and the numbered choice lines
+    // are repeater collections, the selection flag composes session state
+    // with the context index, and choicesVisible gates the advance hint.
+    dialogueSpeaker,
+    dialoguePageText,
+    dialoguePageLines,
+    contextPageLine,
+    dialogueChoices,
+    contextChoiceLine,
+    overlayDialogueChoiceSelected,
+    dialogueChoicesVisible,
 };
 
 struct BindingPathEntry final {
@@ -114,7 +126,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 64> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 72> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -179,6 +191,14 @@ inline constexpr std::array<BindingPathEntry, 64> bindingPathTable{{
     {BindingPath::contextItemIcon, "context.item.icon"},
     {BindingPath::contextItemAmount, "context.item.amount"},
     {BindingPath::overlayInventorySlotSelected, "overlay.inventory.slotSelected"},
+    {BindingPath::dialogueSpeaker, "dialogue.speaker"},
+    {BindingPath::dialoguePageText, "dialogue.page.text"},
+    {BindingPath::dialoguePageLines, "dialogue.pageLines"},
+    {BindingPath::contextPageLine, "context.pageLine"},
+    {BindingPath::dialogueChoices, "dialogue.choices"},
+    {BindingPath::contextChoiceLine, "context.choiceLine"},
+    {BindingPath::overlayDialogueChoiceSelected, "overlay.dialogue.choiceSelected"},
+    {BindingPath::dialogueChoicesVisible, "dialogue.choices.visible"},
 }};
 
 [[nodiscard]] std::optional<BindingPath> findBindingPath(std::string_view path);

@@ -78,6 +78,12 @@ public:
         if (path == BindingPath::contextQuestTitle && !context_.text.empty()) {
             return context_.text;
         }
+        if (path == BindingPath::contextPageLine && !context_.text.empty()) {
+            return context_.text;
+        }
+        if (path == BindingPath::contextChoiceLine && !context_.text.empty()) {
+            return context_.text;
+        }
         return base_->string(path);
     }
     [[nodiscard]] virtual std::optional<std::int64_t> contextualNumber(

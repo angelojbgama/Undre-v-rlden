@@ -18,9 +18,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace underworld::game::gameplay { class Player; }
+namespace underworld::game::gameplay::dialogue { class DialogueSession; }
 
 namespace underworld::game {
 
@@ -126,6 +129,15 @@ struct GameViewModel final {
         std::string label;
     };
     std::array<SaveSlotView, 3> saveSlots;
+    // Dialogue read model: composed at frame build from the live session —
+    // wrapped page lines and numbered choice lines ready for string bindings.
+    bool dialogueOpen{};
+    std::string dialogueSpeaker;
+    std::string dialoguePageText;
+    std::vector<std::string> dialoguePageLines;
+    std::vector<std::string> dialogueChoiceLines;
+    std::size_t dialogueSelectedChoice{};
+    bool dialogueChoicesVisible{};
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
@@ -160,6 +172,18 @@ void buildCraftingDetails(GameViewModel& view);
 void buildQuestJournal(GameViewModel& view,
                        const gameplay::quests::QuestStateStore& quests,
                        const gameplay::quests::QuestCatalog& catalog);
+
+// Word-wraps text into at most maximumLines lines of maximumColumns cells,
+// breaking on spaces and forced newlines. Shared by the dialogue read model
+// and the legacy fallback renderer so both wrap identically.
+[[nodiscard]] std::vector<std::string> wrapTextLines(std::string_view text,
+                                                     std::size_t maximumColumns,
+                                                     std::size_t maximumLines);
+
+// Composes the dialogue read model (speaker, page counter, wrapped page
+// lines, numbered choice lines) from the live session for screen.dialogue.
+void buildDialogueDetails(GameViewModel& view,
+                          const gameplay::dialogue::DialogueSession& session);
 
 // Maps the GameViewModel snapshot onto the UI Engine binding registry
 // (docs/UI_ENGINE.md). Read-only presentation adapter: number and id reads

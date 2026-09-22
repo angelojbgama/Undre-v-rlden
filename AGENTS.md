@@ -2103,3 +2103,18 @@ Fronteiras já fechadas nesta decisão, válidas para qualquer implementação f
   themes, timeline de animação, scroll/tooltip e telas de conteúdo inexistente
   (spellbook etc.). As provas da seção 10 de `docs/UI_ENGINE.md` são gates de
   aceite; prova reprovada bloqueia o bloco seguinte.
+- Estado — migração dos overlays concluída: além do HUD e do inventário, os
+  overlays de menu, saves, journal, banco, loja, crafting e diálogo são telas
+  authored builtin (`screen.menu`, `screen.saves`, `screen.journal`,
+  `screen.bank`, `screen.shop`, `screen.crafting`, `screen.dialogue` — 9 no
+  total), cada uma com fallback legado preservado para workspaces que removam
+  o builtin. O diálogo lê o `DialogueSession` pelo read model do
+  `GameViewModel` (`buildDialogueDetails`): `dialogue.speaker`,
+  `dialogue.page.text`, `dialogue.pageLines` + `context.pageLine`,
+  `dialogue.choices` + `context.choiceLine`,
+  `overlay.dialogue.choiceSelected`, `dialogue.choices.visible`; a quebra de
+  linha da página acontece no `GameViewModel` (`wrapTextLines`, 34 colunas ×
+  2 linhas, compartilhado com o render legado). Convenção de layout das telas
+  builtin: coordenadas de filhos de painéis são absolutas na tela lógica (o
+  presenter não propaga o offset do pai resolvido). Playtest e `content_check`
+  usam o conteúdo de produção; o fallback sintético ficou restrito a fixtures.

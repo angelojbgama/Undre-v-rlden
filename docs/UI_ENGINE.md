@@ -245,6 +245,19 @@ não de código — é exatamente a prova de aceite da seção 10.
   quando houver tela de menu real.
 - Migração incremental: HUD primeiro. O overlay de inventário/banco/loja/crafting
   continua desenhado como está até o bloco UI-4.
+- Migração dos overlays restantes CONCLUÍDA: inventário, menu, saves, journal,
+  banco, loja, crafting e diálogo são telas authored builtin
+  (`screen.hud`, `screen.inventory`, `screen.menu`, `screen.saves`,
+  `screen.journal`, `screen.bank`, `screen.shop`, `screen.crafting`,
+  `screen.dialogue`), cada uma com o desenho legado preservado como fallback
+  para workspaces que removam o builtin. O diálogo expõe o read model
+  `dialogue.speaker` / `dialogue.page.text` / `dialogue.pageLines` +
+  `context.pageLine` / `dialogue.choices` + `context.choiceLine` /
+  `overlay.dialogue.choiceSelected` / `dialogue.choices.visible`; as linhas de
+  página são quebradas em `GameViewModel` (`wrapTextLines`, 34 colunas × 2
+  linhas, mesmo contrato do render legado) e as choices já chegam numeradas.
+  Convenção de layout vigente: coordenadas de filhos de painéis são absolutas
+  na tela lógica (o offset do pai não é propagado).
 
 ## 8. UI Composer no Studio
 

@@ -1190,6 +1190,109 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     craftingChild(std::move(bookList));
     craftingScreen.root = std::move(craftingPanel);
     pack.uiScreens.push_back(std::move(craftingScreen));
+
+    // Dialogue box as authored UI content: the speaker/page header, the
+    // wrapped page text as a repeater over the composed lines, the numbered
+    // choices as a repeater with a selection highlight (the session reports
+    // zero choices while text pages advance, so no extra gating is needed),
+    // and the advance hint gated on the choices visibility.
+    ui::ScreenDefinition dialogueScreen;
+    dialogueScreen.id = simulation::DefinitionId{"screen.dialogue"};
+    dialogueScreen.kind = ui::ScreenKind::overlay;
+    ui::NodeDefinition dialoguePanel;
+    dialoguePanel.id = "dialogue.panel";
+    dialoguePanel.component = ui::ComponentKind::panel;
+    dialoguePanel.layout.offsetX = 8;
+    dialoguePanel.layout.offsetY = 130;
+    dialoguePanel.layout.width = 256;
+    dialoguePanel.layout.height = 62;
+    dialoguePanel.background = core::ColorRGBA8{8, 10, 16, 248};
+    const auto dialogueChild = [&](ui::NodeDefinition node) {
+        dialoguePanel.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition dialogueInner;
+    dialogueInner.id = "dialogue.panel.inner";
+    dialogueInner.component = ui::ComponentKind::panel;
+    dialogueInner.layout.offsetX = 9;
+    dialogueInner.layout.offsetY = 131;
+    dialogueInner.layout.width = 254;
+    dialogueInner.layout.height = 60;
+    dialogueInner.background = core::ColorRGBA8{54, 30, 38, 255};
+    dialogueChild(std::move(dialogueInner));
+    ui::NodeDefinition dialogueSpeaker;
+    dialogueSpeaker.id = "dialogue.speaker";
+    dialogueSpeaker.component = ui::ComponentKind::text;
+    dialogueSpeaker.layout.offsetX = 14;
+    dialogueSpeaker.layout.offsetY = 134;
+    dialogueSpeaker.bindings.push_back({"text", ui::BindingPath::dialogueSpeaker});
+    dialogueChild(std::move(dialogueSpeaker));
+    ui::NodeDefinition dialoguePageCounter;
+    dialoguePageCounter.id = "dialogue.page.counter";
+    dialoguePageCounter.component = ui::ComponentKind::text;
+    dialoguePageCounter.layout.offsetX = 238;
+    dialoguePageCounter.layout.offsetY = 134;
+    dialoguePageCounter.bindings.push_back({"text", ui::BindingPath::dialoguePageText});
+    dialogueChild(std::move(dialoguePageCounter));
+    ui::NodeDefinition dialoguePageLines;
+    dialoguePageLines.id = "dialogue.page.lines";
+    dialoguePageLines.component = ui::ComponentKind::repeater;
+    dialoguePageLines.layout.offsetX = 14;
+    dialoguePageLines.layout.offsetY = 145;
+    dialoguePageLines.columns = 1;
+    dialoguePageLines.cellWidth = 250;
+    dialoguePageLines.cellHeight = 9; // bitmap font line height
+    dialoguePageLines.bindings.push_back({"source", ui::BindingPath::dialoguePageLines});
+    ui::NodeDefinition dialoguePageLine;
+    dialoguePageLine.id = "dialogue.page.line";
+    dialoguePageLine.component = ui::ComponentKind::text;
+    dialoguePageLine.bindings.push_back({"text", ui::BindingPath::contextPageLine});
+    dialoguePageLines.children.push_back(std::move(dialoguePageLine));
+    dialogueChild(std::move(dialoguePageLines));
+    ui::NodeDefinition dialogueChoices;
+    dialogueChoices.id = "dialogue.choices";
+    dialogueChoices.component = ui::ComponentKind::repeater;
+    dialogueChoices.layout.offsetX = 12;
+    dialogueChoices.layout.offsetY = 163;
+    dialogueChoices.columns = 1;
+    dialogueChoices.cellWidth = 244;
+    dialogueChoices.cellHeight = 11;
+    dialogueChoices.bindings.push_back({"source", ui::BindingPath::dialogueChoices});
+    ui::NodeDefinition dialogueChoiceRow;
+    dialogueChoiceRow.id = "dialogue.choice.row";
+    dialogueChoiceRow.component = ui::ComponentKind::group;
+    dialogueChoiceRow.layout.width = 244;
+    dialogueChoiceRow.layout.height = 10;
+    ui::StateDefinition dialogueChoiceSelected;
+    dialogueChoiceSelected.id = "selected";
+    dialogueChoiceSelected.condition = ui::StateCondition{
+        ui::BindingPath::overlayDialogueChoiceSelected, ui::ConditionOperator::equal, 1};
+    dialogueChoiceSelected.visual.background = core::ColorRGBA8{96, 62, 54, 255};
+    dialogueChoiceRow.states.push_back(std::move(dialogueChoiceSelected));
+    ui::NodeDefinition dialogueChoiceLine;
+    dialogueChoiceLine.id = "dialogue.choice.line";
+    dialogueChoiceLine.component = ui::ComponentKind::text;
+    dialogueChoiceLine.layout.offsetX = 2;
+    dialogueChoiceLine.layout.offsetY = 1;
+    dialogueChoiceLine.bindings.push_back({"text", ui::BindingPath::contextChoiceLine});
+    dialogueChoiceRow.children.push_back(std::move(dialogueChoiceLine));
+    dialogueChoices.children.push_back(std::move(dialogueChoiceRow));
+    dialogueChild(std::move(dialogueChoices));
+    ui::NodeDefinition dialogueHints;
+    dialogueHints.id = "dialogue.hints";
+    dialogueHints.component = ui::ComponentKind::text;
+    dialogueHints.layout.offsetX = 14;
+    dialogueHints.layout.offsetY = 181;
+    dialogueHints.layout.visible = false;
+    dialogueHints.text = "E NEXT  X CLOSE";
+    ui::StateDefinition dialogueHintsShow;
+    dialogueHintsShow.id = "text-mode";
+    dialogueHintsShow.condition = ui::StateCondition{ui::BindingPath::dialogueChoicesVisible,
+                                                     ui::ConditionOperator::equal, 0};
+    dialogueHintsShow.visual.visible = true;
+    dialogueHints.states.push_back(std::move(dialogueHintsShow));
+    dialogueChild(std::move(dialogueHints));
+    dialogueScreen.root = std::move(dialoguePanel);
+    pack.uiScreens.push_back(std::move(dialogueScreen));
     return pack;
 }
 

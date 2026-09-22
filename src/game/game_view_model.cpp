@@ -1,5 +1,6 @@
 #include "game/game_view_model.h"
 
+#include "game/gameplay/dialogue/dialogue_session.h"
 #include "game/gameplay/player.h"
 
 namespace underworld::game {
@@ -205,12 +206,35 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
         case ui::BindingPath::playerQuickSlot3Amount: return slotAmount(3);
+        case ui::BindingPath::dialogueChoicesVisible:
+            return view_->dialogueOpen && view_->dialogueChoicesVisible
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
         default: return std::nullopt;
     }
 }
 
 std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
     ui::BindingPath path) const {
+    if (path == ui::BindingPath::dialoguePageLines ||
+        path == ui::BindingPath::dialogueChoices) {
+        // Both dialogue repeaters are plain text lines composed at frame
+        // build; the choice lines already carry their "N: " prefix.
+        const auto& lines = path == ui::BindingPath::dialoguePageLines
+                                ? view_->dialoguePageLines
+                                : view_->dialogueChoiceLines;
+        std::vector<ui::UiCollectionContext> entries;
+        entries.reserve(lines.size());
+        std::int64_t index = 0;
+        for (const auto& line : lines) {
+            ui::UiCollectionContext entry;
+            entry.text = line;
+            entry.index = index;
+            entries.push_back(std::move(entry));
+            ++index;
+        }
+        return entries;
+    }
     if (path == ui::BindingPath::playerQuickSlotSlots) {
         std::vector<ui::UiCollectionContext> entries;
         entries.reserve(view_->quickSlots.size());
@@ -369,10 +393,24 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
                    ? std::optional<std::int64_t>{1}
                    : std::optional<std::int64_t>{0};
     }
+    if (path == ui::BindingPath::overlayDialogueChoiceSelected) {
+        return view_->dialogueChoicesVisible &&
+                       contextIndex == static_cast<std::int64_t>(view_->dialogueSelectedChoice)
+                   ? std::optional<std::int64_t>{1}
+                   : std::optional<std::int64_t>{0};
+    }
     return number(path);
 }
 
 std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {
+    if (path == ui::BindingPath::dialogueSpeaker) {
+        return view_->dialogueOpen ? std::optional<std::string>{view_->dialogueSpeaker}
+                                   : std::nullopt;
+    }
+    if (path == ui::BindingPath::dialoguePageText) {
+        return view_->dialogueOpen ? std::optional<std::string>{view_->dialoguePageText}
+                                   : std::nullopt;
+    }
     if (path == ui::BindingPath::craftingIngredient0) { return view_->craftingIngredient0Text; }
     if (path == ui::BindingPath::craftingIngredient1) { return view_->craftingIngredient1Text; }
     if (path == ui::BindingPath::craftingIngredient2) { return view_->craftingIngredient2Text; }
@@ -425,6 +463,64 @@ void buildQuestJournal(GameViewModel& view,
             entry.objectives.push_back(std::move(objectiveView));
         }
         view.journal.push_back(std::move(entry));
+    }
+}
+
+std::vector<std::string> wrapTextLines(const std::string_view text,
+                                       const std::size_t maximumColumns,
+                                       const std::size_t maximumLines) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::size_t cursor = 0;
+    while (cursor < text.size() && lines.size() < maximumLines) {
+        while (cursor < text.size() && text[cursor] == ' ') { ++cursor; }
+        const auto nextSpace = text.find_first_of(" \n", cursor);
+        const auto wordEnd = nextSpace == std::string_view::npos ? text.size() : nextSpace;
+        const std::string word{text.substr(cursor, wordEnd - cursor)};
+        if (line.empty()) {
+            line = word;
+        } else if (line.size() + 1U + word.size() <= maximumColumns) {
+            line += ' ';
+            line += word;
+        } else {
+            lines.push_back(line);
+            line = word;
+        }
+        cursor = wordEnd;
+        if (cursor < text.size() && text[cursor] == '\n') {
+            lines.push_back(line);
+            line.clear();
+            ++cursor;
+        } else if (cursor < text.size()) {
+            ++cursor;
+        }
+    }
+    if (!line.empty() && lines.size() < maximumLines) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+void buildDialogueDetails(GameViewModel& view,
+                          const gameplay::dialogue::DialogueSession& session) {
+    view.dialogueOpen = session.isOpen();
+    view.dialogueSpeaker.clear();
+    view.dialoguePageText.clear();
+    view.dialoguePageLines.clear();
+    view.dialogueChoiceLines.clear();
+    view.dialogueSelectedChoice = 0;
+    view.dialogueChoicesVisible = false;
+    if (!session.isOpen()) { return; }
+    view.dialogueSpeaker.assign(session.speaker());
+    view.dialoguePageText = std::to_string(session.pageIndex() + 1) + "/" +
+                            std::to_string(session.pageCount());
+    // Same wrap contract as the legacy overlay: 34 columns, two lines.
+    view.dialoguePageLines = wrapTextLines(session.currentPage(), 34, 2);
+    view.dialogueChoicesVisible = session.choicesVisible();
+    view.dialogueSelectedChoice = session.selectedChoice();
+    for (std::size_t index = 0; index < session.choiceCount(); ++index) {
+        view.dialogueChoiceLines.push_back(std::to_string(index + 1) + ": " +
+                                           std::string(session.choiceLabel(index)));
     }
 }
 

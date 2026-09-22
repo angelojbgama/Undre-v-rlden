@@ -103,6 +103,14 @@ BINDING_PATHS: tuple[str, ...] = (
     "context.item.icon",
     "context.item.amount",
     "overlay.inventory.slotSelected",
+    "dialogue.speaker",
+    "dialogue.page.text",
+    "dialogue.pageLines",
+    "context.pageLine",
+    "dialogue.choices",
+    "context.choiceLine",
+    "overlay.dialogue.choiceSelected",
+    "dialogue.choices.visible",
 )
 
 # Action Registry ids mapping onto existing PlayerCommand intents.
