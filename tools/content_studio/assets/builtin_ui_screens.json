@@ -3935,6 +3935,526 @@
           }
         ]
       }
+    },
+  {
+    "id": "screen.crafting",
+    "kind": "overlay",
+    "root": {
+      "id": "crafting.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 6,
+        "offsetY": 52,
+        "width": 260,
+        "height": 145,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 10,
+        "b": 16,
+        "a": 245
+        },
+      "children": [
+        {
+          "id": "crafting.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 10,
+            "offsetY": 55,
+            "z": 0
+            },
+          "text": "INVENTORY"
+          },
+        {
+          "id": "crafting.tabs",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 150,
+            "offsetY": 55,
+            "z": 0
+            },
+          "text": "ITEMS  CRAFTING  BOOK"
+          },
+        {
+          "id": "crafting.tab.craft.highlight",
+          "component": "panel",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 158,
+            "offsetY": 53,
+            "width": 52,
+            "height": 11,
+            "z": 0,
+            "visible": false
+            },
+          "background": {
+            "r": 96,
+            "g": 62,
+            "b": 54,
+            "a": 160
+            },
+          "states": [
+            {
+              "id": "active",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.tab.book.highlight",
+          "component": "panel",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 214,
+            "offsetY": 53,
+            "width": 28,
+            "height": 11,
+            "z": 0,
+            "visible": false
+            },
+          "background": {
+            "r": 96,
+            "g": 62,
+            "b": 54,
+            "a": 160
+            },
+          "states": [
+            {
+              "id": "active",
+              "condition": {
+                "source": "overlay.crafting.tabBook",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.craft.list",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 38,
+            "z": 0,
+            "visible": false
+            },
+          "columns": 1,
+          "cellWidth": 250,
+          "cellHeight": 11,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "crafting.recipes"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ],
+          "children": [
+            {
+              "id": "crafting.craft.row",
+              "component": "group",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 250,
+                "height": 10,
+                "z": 0
+                },
+              "states": [
+                {
+                  "id": "selected",
+                  "condition": {
+                    "source": "overlay.crafting.rowSelected",
+                    "operator": "equal",
+                    "value": 1
+                    },
+                  "visual": {
+                    "background": {
+                      "r": 96,
+                      "g": 62,
+                      "b": 54,
+                      "a": 255
+                      }
+                    }
+                  }
+                ],
+              "children": [
+                {
+                  "id": "crafting.craft.line",
+                  "component": "text",
+                  "layout": {
+                    "anchor": "topLeft",
+                    "offsetX": 3,
+                    "offsetY": 1,
+                    "z": 0
+                    },
+                  "text": "",
+                  "bindings": [
+                    {
+                      "property": "text",
+                      "source": "context.craft.line"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+        {
+          "id": "crafting.ingredient0",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 11,
+            "offsetY": 133,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.ingredient0"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.ingredient1",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 77,
+            "offsetY": 133,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.ingredient1"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.ingredient2",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 11,
+            "offsetY": 142,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.ingredient2"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.ingredient3",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 77,
+            "offsetY": 142,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.ingredient3"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.output",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 150,
+            "offsetY": 133,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.outputLine"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.qty",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 150,
+            "offsetY": 144,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.qtyLine"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.feedback",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 177,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "crafting.feedbackLine"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 188,
+            "z": 0,
+            "visible": false
+            },
+          "text": "Z/E CRAFT  LEFT/RIGHT QTY  X BOOK  I CLOSE",
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabCraft",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
+          },
+        {
+          "id": "crafting.book.list",
+          "component": "repeater",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 8,
+            "offsetY": 38,
+            "z": 0,
+            "visible": false
+            },
+          "columns": 1,
+          "cellWidth": 250,
+          "cellHeight": 14,
+          "bindings": [
+            {
+              "property": "source",
+              "source": "crafting.recipes"
+              }
+            ],
+          "states": [
+            {
+              "id": "mode",
+              "condition": {
+                "source": "overlay.crafting.tabBook",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ],
+          "children": [
+            {
+              "id": "crafting.book.row",
+              "component": "group",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 0,
+                "offsetY": 0,
+                "width": 250,
+                "height": 13,
+                "z": 0
+                },
+              "states": [
+                {
+                  "id": "selected",
+                  "condition": {
+                    "source": "overlay.crafting.bookRowSelected",
+                    "operator": "equal",
+                    "value": 1
+                    },
+                  "visual": {
+                    "background": {
+                      "r": 96,
+                      "g": 62,
+                      "b": 54,
+                      "a": 255
+                      }
+                    }
+                  }
+                ],
+              "children": [
+                {
+                  "id": "crafting.book.line",
+                  "component": "text",
+                  "layout": {
+                    "anchor": "topLeft",
+                    "offsetX": 3,
+                    "offsetY": 1,
+                    "z": 0
+                    },
+                  "text": "",
+                  "bindings": [
+                    {
+                      "property": "text",
+                      "source": "context.book.line"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

@@ -510,7 +510,17 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         renderShopOverlay(renderer, frame);
         return;
     }
-    if (view.craftingOpen) { renderCraftingOverlay(renderer, frame); return; }    if (view.bankOpen) {
+    if (view.craftingOpen) {
+        if (frame.craftingScreen) {
+            const ui::UiPresenter presenter;
+            const GameViewModelBindings bindings{view};
+            const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+            presenter.render(*frame.craftingScreen, bindings, visuals, renderer);
+            return;
+        }
+        renderCraftingOverlay(renderer, frame);
+        return;
+    }    if (view.bankOpen) {
         if (frame.bankScreen) {
             const ui::UiPresenter presenter;
             const GameViewModelBindings bindings{view};

@@ -1001,6 +1001,195 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     shopPanel.children.push_back(std::move(shopHints));
     shopScreen.root = std::move(shopPanel);
     pack.uiScreens.push_back(std::move(shopScreen));
+
+    // Crafting overlay as authored UI content: the ITEMS/CRAFTING/BOOK tab
+    // strip with authored highlight panels, the craft list and the recipe
+    // book as repeaters with selection states, and the selected-recipe
+    // detail as string-bound text nodes (lines composed in the view model).
+    ui::ScreenDefinition craftingScreen;
+    craftingScreen.id = simulation::DefinitionId{"screen.crafting"};
+    craftingScreen.kind = ui::ScreenKind::overlay;
+    ui::NodeDefinition craftingPanel;
+    craftingPanel.id = "crafting.panel";
+    craftingPanel.component = ui::ComponentKind::panel;
+    craftingPanel.layout.offsetX = 6;
+    craftingPanel.layout.offsetY = 52;
+    craftingPanel.layout.width = 260;
+    craftingPanel.layout.height = 145;
+    craftingPanel.background = core::ColorRGBA8{8, 10, 16, 245};
+    const auto craftingChild = [&](ui::NodeDefinition node) {
+        craftingPanel.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition craftingTitle;
+    craftingTitle.id = "crafting.title";
+    craftingTitle.component = ui::ComponentKind::text;
+    craftingTitle.layout.offsetX = 10;
+    craftingTitle.layout.offsetY = 55;
+    craftingTitle.text = "INVENTORY";
+    craftingChild(std::move(craftingTitle));
+    ui::NodeDefinition tabsText;
+    tabsText.id = "crafting.tabs";
+    tabsText.component = ui::ComponentKind::text;
+    tabsText.layout.offsetX = 150;
+    tabsText.layout.offsetY = 55;
+    tabsText.text = "ITEMS  CRAFTING  BOOK";
+    craftingChild(std::move(tabsText));
+    ui::NodeDefinition craftTabHighlight;
+    craftTabHighlight.id = "crafting.tab.craft.highlight";
+    craftTabHighlight.component = ui::ComponentKind::panel;
+    craftTabHighlight.layout.offsetX = 158;
+    craftTabHighlight.layout.offsetY = 53;
+    craftTabHighlight.layout.width = 52;
+    craftTabHighlight.layout.height = 11;
+    craftTabHighlight.background = core::ColorRGBA8{96, 62, 54, 160};
+    ui::StateDefinition craftTabShow;
+    craftTabShow.id = "active";
+    craftTabShow.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabCraft,
+                                                ui::ConditionOperator::equal, 1};
+    craftTabShow.visual.visible = true;
+    craftTabHighlight.layout.visible = false;
+    craftTabHighlight.states.push_back(std::move(craftTabShow));
+    craftingChild(std::move(craftTabHighlight));
+    ui::NodeDefinition bookTabHighlight;
+    bookTabHighlight.id = "crafting.tab.book.highlight";
+    bookTabHighlight.component = ui::ComponentKind::panel;
+    bookTabHighlight.layout.offsetX = 214;
+    bookTabHighlight.layout.offsetY = 53;
+    bookTabHighlight.layout.width = 28;
+    bookTabHighlight.layout.height = 11;
+    bookTabHighlight.background = core::ColorRGBA8{96, 62, 54, 160};
+    ui::StateDefinition bookTabShow;
+    bookTabShow.id = "active";
+    bookTabShow.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabBook,
+                                               ui::ConditionOperator::equal, 1};
+    bookTabShow.visual.visible = true;
+    bookTabHighlight.layout.visible = false;
+    bookTabHighlight.states.push_back(std::move(bookTabShow));
+    craftingChild(std::move(bookTabHighlight));
+
+    // CRAFT tab: recipe list with the selection highlight.
+    ui::NodeDefinition craftList;
+    craftList.id = "crafting.craft.list";
+    craftList.component = ui::ComponentKind::repeater;
+    craftList.layout.offsetX = 8;
+    craftList.layout.offsetY = 38;
+    craftList.columns = 1;
+    craftList.cellWidth = 250;
+    craftList.cellHeight = 11;
+    craftList.bindings.push_back({"source", ui::BindingPath::craftingRecipesPath});
+    ui::NodeDefinition craftRow;
+    craftRow.id = "crafting.craft.row";
+    craftRow.component = ui::ComponentKind::group;
+    craftRow.layout.width = 250;
+    craftRow.layout.height = 10;
+    ui::StateDefinition craftRowSelected;
+    craftRowSelected.id = "selected";
+    craftRowSelected.condition = ui::StateCondition{
+        ui::BindingPath::overlayCraftingRowSelected, ui::ConditionOperator::equal, 1};
+    craftRowSelected.visual.background = core::ColorRGBA8{96, 62, 54, 255};
+    craftRow.states.push_back(std::move(craftRowSelected));
+    ui::NodeDefinition craftRowText;
+    craftRowText.id = "crafting.craft.line";
+    craftRowText.component = ui::ComponentKind::text;
+    craftRowText.layout.offsetX = 3;
+    craftRowText.layout.offsetY = 1;
+    craftRowText.bindings.push_back({"text", ui::BindingPath::contextCraftLine});
+    craftRow.children.push_back(std::move(craftRowText));
+    craftList.children.push_back(std::move(craftRow));
+    {
+        ui::StateDefinition craftMode;
+        craftMode.id = "mode";
+        craftMode.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabCraft,
+                                                 ui::ConditionOperator::equal, 1};
+        craftMode.visual.visible = true;
+        craftList.layout.visible = false;
+        craftList.states.push_back(std::move(craftMode));
+    }
+    craftingChild(std::move(craftList));
+
+    // Ingredients, output, quantity, feedback and hints (craft tab only).
+    const auto craftingDetail = [&](const char* id, ui::BindingPath source, int x, int y) {
+        ui::NodeDefinition node;
+        node.id = id;
+        node.component = ui::ComponentKind::text;
+        node.layout.offsetX = x;
+        node.layout.offsetY = y;
+        node.layout.visible = false;
+        node.bindings.push_back({"text", source});
+        ui::StateDefinition craftMode;
+        craftMode.id = "mode";
+        craftMode.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabCraft,
+                                                 ui::ConditionOperator::equal, 1};
+        craftMode.visual.visible = true;
+        node.states.push_back(std::move(craftMode));
+        craftingChild(std::move(node));
+    };
+    craftingDetail("crafting.ingredient0", ui::BindingPath::craftingIngredient0, 11, 133);
+    craftingDetail("crafting.ingredient1", ui::BindingPath::craftingIngredient1, 77, 133);
+    craftingDetail("crafting.ingredient2", ui::BindingPath::craftingIngredient2, 11, 142);
+    craftingDetail("crafting.ingredient3", ui::BindingPath::craftingIngredient3, 77, 142);
+    craftingDetail("crafting.output", ui::BindingPath::craftingOutputLine, 150, 133);
+    craftingDetail("crafting.qty", ui::BindingPath::craftingQtyLine, 150, 144);
+    craftingDetail("crafting.feedback", ui::BindingPath::craftingFeedbackLine, 8, 177);
+    ui::NodeDefinition craftingHints;
+    craftingHints.id = "crafting.hints";
+    craftingHints.component = ui::ComponentKind::text;
+    craftingHints.layout.offsetX = 8;
+    craftingHints.layout.offsetY = 188;
+    craftingHints.layout.visible = false;
+    craftingHints.text = "Z/E CRAFT  LEFT/RIGHT QTY  X BOOK  I CLOSE";
+    {
+        ui::StateDefinition craftMode;
+        craftMode.id = "mode";
+        craftMode.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabCraft,
+                                                 ui::ConditionOperator::equal, 1};
+        craftMode.visual.visible = true;
+        craftingHints.states.push_back(std::move(craftMode));
+    }
+    craftingChild(std::move(craftingHints));
+
+    // BOOK tab: every authored recipe with made/quest markers (the output
+    // icon/silhouette joins when slot components gain silhouette support).
+    ui::NodeDefinition bookList;
+    bookList.id = "crafting.book.list";
+    bookList.component = ui::ComponentKind::repeater;
+    bookList.layout.offsetX = 8;
+    bookList.layout.offsetY = 38;
+    bookList.columns = 1;
+    bookList.cellWidth = 250;
+    bookList.cellHeight = 14;
+    bookList.bindings.push_back({"source", ui::BindingPath::craftingRecipesPath});
+    ui::NodeDefinition bookRow;
+    bookRow.id = "crafting.book.row";
+    bookRow.component = ui::ComponentKind::group;
+    bookRow.layout.width = 250;
+    bookRow.layout.height = 13;
+    ui::StateDefinition bookRowSelected;
+    bookRowSelected.id = "selected";
+    bookRowSelected.condition = ui::StateCondition{
+        ui::BindingPath::overlayCraftingBookRowSelected, ui::ConditionOperator::equal, 1};
+    bookRowSelected.visual.background = core::ColorRGBA8{96, 62, 54, 255};
+    bookRow.states.push_back(std::move(bookRowSelected));
+    ui::NodeDefinition bookRowText;
+    bookRowText.id = "crafting.book.line";
+    bookRowText.component = ui::ComponentKind::text;
+    bookRowText.layout.offsetX = 3;
+    bookRowText.layout.offsetY = 1;
+    bookRowText.bindings.push_back({"text", ui::BindingPath::contextBookLine});
+    bookRow.children.push_back(std::move(bookRowText));
+    bookList.children.push_back(std::move(bookRow));
+    {
+        ui::StateDefinition bookMode;
+        bookMode.id = "mode";
+        bookMode.condition = ui::StateCondition{ui::BindingPath::overlayCraftingTabBook,
+                                                ui::ConditionOperator::equal, 1};
+        bookMode.visual.visible = true;
+        bookList.layout.visible = false;
+        bookList.states.push_back(std::move(bookMode));
+    }
+    craftingChild(std::move(bookList));
+    craftingScreen.root = std::move(craftingPanel);
+    pack.uiScreens.push_back(std::move(craftingScreen));
     return pack;
 }
 

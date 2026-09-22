@@ -16,8 +16,10 @@ struct UiCollectionContext final {
     std::optional<simulation::DefinitionId> icon;
     std::int64_t amount{};
     std::int64_t index{};
-    // Journal entries carry a text value and a completed flag per instance.
+    // Journal entries carry a text value and a completed flag per instance;
+    // crafting rows carry the craft-tab line and the book-tab line.
     std::string text{};
+    std::string text2{};
     bool flag{false};
 };
 
@@ -66,6 +68,12 @@ public:
     [[nodiscard]] std::optional<std::string> string(BindingPath path) const override {
         if (path == BindingPath::contextOfferLine && !context_.text.empty()) {
             return context_.text;
+        }
+        if (path == BindingPath::contextCraftLine && !context_.text.empty()) {
+            return context_.text;
+        }
+        if (path == BindingPath::contextBookLine && !context_.text2.empty()) {
+            return context_.text2;
         }
         if (path == BindingPath::contextQuestTitle && !context_.text.empty()) {
             return context_.text;

@@ -193,6 +193,14 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
         case ui::BindingPath::overlayShopFeedbackPresent:
             return view_->shopFeedback ? std::optional<std::int64_t>{1}
                                        : std::optional<std::int64_t>{0};
+        case ui::BindingPath::overlayCraftingTabCraft:
+            return view_->craftingTab == gameplay::CraftingTab::craft
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
+        case ui::BindingPath::overlayCraftingTabBook:
+            return view_->craftingTab == gameplay::CraftingTab::book
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
         case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
@@ -210,6 +218,25 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
         for (const auto& slot : view_->quickSlots) {
             entries.push_back({slot.itemId, slot.visualId,
                                static_cast<std::int64_t>(slot.quantity), index});
+            ++index;
+        }
+        return entries;
+    }
+    if (path == ui::BindingPath::craftingRecipesPath) {
+        std::vector<ui::UiCollectionContext> entries;
+        entries.reserve(view_->craftingRecipes.size());
+        std::int64_t index = 0;
+        for (const auto& recipe : view_->craftingRecipes) {
+            ui::UiCollectionContext entry;
+            entry.index = index;
+            auto name = std::string(recipe.recipeId.value());
+            if (name.size() > 20) { name = name.substr(0, 20); }
+            entry.text = name + (recipe.craftable ? " OK" : (recipe.known ? " --" : " ??"));
+            auto bookName = name;
+            if (bookName.size() > 18) { bookName = bookName.substr(0, 18); }
+            const char* marker = recipe.known ? (recipe.craftedCount > 0 ? "*" : "-") : "?";
+            entry.text2 = std::string(marker) + " " + bookName;
+            entries.push_back(std::move(entry));
             ++index;
         }
         return entries;
@@ -268,6 +295,52 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
     return entries;
 }
 
+void buildCraftingDetails(GameViewModel& view) {
+    view.craftingIngredient0Text.clear();
+    view.craftingIngredient1Text.clear();
+    view.craftingIngredient2Text.clear();
+    view.craftingIngredient3Text.clear();
+    view.craftingOutputText.clear();
+    view.craftingQtyText.clear();
+    view.craftingFeedbackText.clear();
+    if (view.craftingSelection >= view.craftingRecipes.size()) { return; }
+    const auto& recipe = view.craftingRecipes[view.craftingSelection];
+    const auto itemText = [](const simulation::DefinitionId& id) {
+        auto value = std::string(id.value());
+        return value.size() > 16 ? value.substr(0, 16) : value;
+    };
+    for (std::size_t index = 0; index < recipe.inputs.size() && index < 4; ++index) {
+        const auto& input = recipe.inputs[index];
+        std::string line = std::to_string(input.ownedQuantity) + "/" +
+                           std::to_string(input.requiredQuantity) + " " +
+                           itemText(input.itemId);
+        if (line.size() > 24) { line = line.substr(0, 24); }
+        switch (index) {
+        case 0: view.craftingIngredient0Text = line; break;
+        case 1: view.craftingIngredient1Text = line; break;
+        case 2: view.craftingIngredient2Text = line; break;
+        case 3: view.craftingIngredient3Text = line; break;
+        }
+    }
+    if (!recipe.outputs.empty()) {
+        const auto& output = recipe.outputs.front();
+        view.craftingOutputText = "x" + std::to_string(output.quantity) + " " +
+                                  itemText(output.itemId);
+    }
+    view.craftingQtyText = "QTY " + std::to_string(view.craftingQuantity) +
+                           " / MAX " + std::to_string(std::max(recipe.maxCraftable, 1U));
+    if (view.craftingFeedback) {
+        switch (*view.craftingFeedback) {
+        case gameplay::CraftingStatus::success: view.craftingFeedbackText = "CRAFTED"; break;
+        case gameplay::CraftingStatus::missingIngredients: view.craftingFeedbackText = "NEEDS MATERIALS"; break;
+        case gameplay::CraftingStatus::inventoryFull: view.craftingFeedbackText = "INVENTORY FULL"; break;
+        case gameplay::CraftingStatus::invalidRecipe: view.craftingFeedbackText = "INVALID RECIPE"; break;
+        case gameplay::CraftingStatus::recipeNotFound: view.craftingFeedbackText = "RECIPE MISSING"; break;
+        case gameplay::CraftingStatus::recipeLocked: view.craftingFeedbackText = "RECIPE LOCKED"; break;
+        }
+    }
+}
+
 std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
     ui::BindingPath path, std::int64_t contextIndex) const {
     if (path == ui::BindingPath::overlayShopBuySelected) {
@@ -300,6 +373,13 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
 }
 
 std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {
+    if (path == ui::BindingPath::craftingIngredient0) { return view_->craftingIngredient0Text; }
+    if (path == ui::BindingPath::craftingIngredient1) { return view_->craftingIngredient1Text; }
+    if (path == ui::BindingPath::craftingIngredient2) { return view_->craftingIngredient2Text; }
+    if (path == ui::BindingPath::craftingIngredient3) { return view_->craftingIngredient3Text; }
+    if (path == ui::BindingPath::craftingOutputLine) { return view_->craftingOutputText; }
+    if (path == ui::BindingPath::craftingQtyLine) { return view_->craftingQtyText; }
+    if (path == ui::BindingPath::craftingFeedbackLine) { return view_->craftingFeedbackText; }
     if (path == ui::BindingPath::overlayShopSellItemName) {
         const auto& selected = view_->inventory[view_->shopInventorySelection];
         if (selected.itemId) {

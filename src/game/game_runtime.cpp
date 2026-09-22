@@ -651,6 +651,7 @@ struct GameRuntime::State final {
             slotView.label = slotView.exists ? "SAVED" : "EMPTY";
         }
         buildQuestJournal(view, session.questState(), content.quests());
+        buildCraftingDetails(view);
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
         const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());
@@ -677,7 +678,8 @@ struct GameRuntime::State final {
             content.uiScreens().find(simulation::DefinitionId{"screen.journal"}),
             journalOpen,
             content.uiScreens().find(simulation::DefinitionId{"screen.bank"}),
-            content.uiScreens().find(simulation::DefinitionId{"screen.shop"})});
+            content.uiScreens().find(simulation::DefinitionId{"screen.shop"}),
+            content.uiScreens().find(simulation::DefinitionId{"screen.crafting"})});
     }
 
 

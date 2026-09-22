@@ -111,6 +111,14 @@ struct GameViewModel final {
     // Quest journal read model: started quests in store order, titles and
     // objective limits resolved from the immutable catalog.
     std::vector<QuestJournalView> journal;
+    // Selected-recipe detail for the crafting tab, composed at frame build.
+    std::string craftingIngredient0Text;
+    std::string craftingIngredient1Text;
+    std::string craftingIngredient2Text;
+    std::string craftingIngredient3Text;
+    std::string craftingOutputText;
+    std::string craftingQtyText;
+    std::string craftingFeedbackText;
     // Save slot readout for the saves screen: filled by the shell (file
     // existence), labels composed for the authored text bindings.
     struct SaveSlotView final {
@@ -144,6 +152,9 @@ struct GameViewModel final {
     const gameplay::CraftingCatalog& crafting,
     const gameplay::CraftingKnowledge& craftingKnowledge,
     const gameplay::CraftingHistory& craftedRecipes);
+
+// Composes the selected-recipe detail lines for the crafting tab.
+void buildCraftingDetails(GameViewModel& view);
 
 // Fills the journal read model from the quest state and catalog.
 void buildQuestJournal(GameViewModel& view,
