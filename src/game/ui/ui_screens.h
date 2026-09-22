@@ -81,6 +81,13 @@ enum class BindingPath {
     overlayBankInventorySelected,
     overlayBankStorageSelected,
     bankGoldStored,
+    shopOffers,
+    contextOfferLine,
+    overlayShopModeSell,
+    overlayShopBuySelected,
+    overlayShopSellSelected,
+    overlayShopSellItemName,
+    overlayShopFeedbackPresent,
     contextIndex,
     contextItemId,
     contextItemIcon,
@@ -93,7 +100,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 43> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 50> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -132,6 +139,13 @@ inline constexpr std::array<BindingPathEntry, 43> bindingPathTable{{
     {BindingPath::overlayBankInventorySelected, "overlay.bank.inventorySelected"},
     {BindingPath::overlayBankStorageSelected, "overlay.bank.storageSelected"},
     {BindingPath::bankGoldStored, "bank.goldStored"},
+    {BindingPath::shopOffers, "shop.offers"},
+    {BindingPath::contextOfferLine, "context.offer.line"},
+    {BindingPath::overlayShopModeSell, "overlay.shop.modeSell"},
+    {BindingPath::overlayShopBuySelected, "overlay.shop.buySelected"},
+    {BindingPath::overlayShopSellSelected, "overlay.shop.sellSelected"},
+    {BindingPath::overlayShopSellItemName, "overlay.shop.sellItemName"},
+    {BindingPath::overlayShopFeedbackPresent, "overlay.shop.feedbackPresent"},
     {BindingPath::contextIndex, "context.index"},
     {BindingPath::contextItemId, "context.item.id"},
     {BindingPath::contextItemIcon, "context.item.icon"},

@@ -829,6 +829,178 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     bankText("bank.hints", "Z TRANSFER  I CLOSE", 152, 208);
     bankScreen.root = std::move(bankPanel);
     pack.uiScreens.push_back(std::move(bankScreen));
+
+    // Shop overlay as authored UI content: BUY mode shows the priced offer
+    // list (repeater over shop.offers with a selection state); SELL mode
+    // shows the carried inventory grid with the sell-selection highlight.
+    // Nodes gate on authored visibility states over overlay.shop.modeSell.
+    ui::ScreenDefinition shopScreen;
+    shopScreen.id = simulation::DefinitionId{"screen.shop"};
+    shopScreen.kind = ui::ScreenKind::overlay;
+    ui::NodeDefinition shopPanel;
+    shopPanel.id = "shop.panel";
+    shopPanel.component = ui::ComponentKind::panel;
+    shopPanel.layout.offsetX = 4;
+    shopPanel.layout.offsetY = 24;
+    shopPanel.layout.width = 264;
+    shopPanel.layout.height = 169;
+    shopPanel.background = core::ColorRGBA8{8, 10, 16, 248};
+    const auto shopModeGated = [&](ui::NodeDefinition node, std::int64_t modeValue) {
+        node.layout.visible = false;
+        ui::StateDefinition mode;
+        mode.id = "mode";
+        mode.condition = ui::StateCondition{ui::BindingPath::overlayShopModeSell,
+                                            ui::ConditionOperator::equal, modeValue};
+        mode.visual.visible = true;
+        node.states.push_back(std::move(mode));
+        shopPanel.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition shopTitle;
+    shopTitle.id = "shop.title";
+    shopTitle.component = ui::ComponentKind::text;
+    shopTitle.layout.offsetX = 8;
+    shopTitle.layout.offsetY = 27;
+    shopTitle.text = "SHOP";
+    shopPanel.children.push_back(std::move(shopTitle));
+    ui::NodeDefinition buyLabel;
+    buyLabel.id = "shop.mode.buy";
+    buyLabel.component = ui::ComponentKind::text;
+    buyLabel.layout.offsetX = 43;
+    buyLabel.layout.offsetY = 27;
+    buyLabel.text = "BUY";
+    shopModeGated(std::move(buyLabel), 0);
+    ui::NodeDefinition sellLabel;
+    sellLabel.id = "shop.mode.sell";
+    sellLabel.component = ui::ComponentKind::text;
+    sellLabel.layout.offsetX = 43;
+    sellLabel.layout.offsetY = 27;
+    sellLabel.text = "SELL";
+    shopModeGated(std::move(sellLabel), 1);
+    ui::NodeDefinition carriedLabel;
+    carriedLabel.id = "shop.carried.label";
+    carriedLabel.component = ui::ComponentKind::text;
+    carriedLabel.layout.offsetX = 8;
+    carriedLabel.layout.offsetY = 39;
+    carriedLabel.text = "CARRIED GOLD";
+    shopPanel.children.push_back(std::move(carriedLabel));
+    ui::NodeDefinition shopCarriedGold;
+    shopCarriedGold.id = "shop.carried.gold";
+    shopCarriedGold.component = ui::ComponentKind::text;
+    shopCarriedGold.layout.offsetX = 99;
+    shopCarriedGold.layout.offsetY = 39;
+    shopCarriedGold.bindings.push_back({"text", ui::BindingPath::playerGold});
+    shopPanel.children.push_back(std::move(shopCarriedGold));
+
+    ui::NodeDefinition offerList;
+    offerList.id = "shop.offers";
+    offerList.component = ui::ComponentKind::repeater;
+    offerList.layout.offsetX = 8;
+    offerList.layout.offsetY = 49;
+    offerList.columns = 1;
+    offerList.cellWidth = 250;
+    offerList.cellHeight = 12;
+    offerList.bindings.push_back({"source", ui::BindingPath::shopOffers});
+    ui::NodeDefinition offerRow;
+    offerRow.id = "shop.offers.row";
+    offerRow.component = ui::ComponentKind::group;
+    offerRow.layout.width = 250;
+    offerRow.layout.height = 11;
+    offerRow.background = core::ColorRGBA8{54, 30, 38, 255};
+    ui::StateDefinition offerSelected;
+    offerSelected.id = "selected";
+    offerSelected.condition = ui::StateCondition{ui::BindingPath::overlayShopBuySelected,
+                                                 ui::ConditionOperator::equal, 1};
+    offerSelected.visual.background = core::ColorRGBA8{96, 62, 54, 255};
+    offerRow.states.push_back(std::move(offerSelected));
+    ui::NodeDefinition offerText;
+    offerText.id = "shop.offers.line";
+    offerText.component = ui::ComponentKind::text;
+    offerText.layout.offsetX = 3;
+    offerText.layout.offsetY = 1;
+    offerText.bindings.push_back({"text", ui::BindingPath::contextOfferLine});
+    offerRow.children.push_back(std::move(offerText));
+    offerList.children.push_back(std::move(offerRow));
+    shopModeGated(std::move(offerList), 0);
+
+    ui::NodeDefinition sellGrid;
+    sellGrid.id = "shop.sell.grid";
+    sellGrid.component = ui::ComponentKind::repeater;
+    sellGrid.layout.offsetX = 8;
+    sellGrid.layout.offsetY = 51;
+    sellGrid.columns = 10;
+    sellGrid.cellWidth = 25;
+    sellGrid.cellHeight = 20;
+    sellGrid.bindings.push_back({"source", ui::BindingPath::playerInventorySlots});
+    ui::NodeDefinition sellSlot;
+    sellSlot.id = "shop.sell.slot";
+    sellSlot.component = ui::ComponentKind::slot;
+    sellSlot.layout.width = 22;
+    sellSlot.layout.height = 18;
+    sellSlot.background = core::ColorRGBA8{54, 30, 38, 255};
+    sellSlot.iconOffset = core::PointI{3, 1};
+    sellSlot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
+    ui::StateDefinition sellSelected;
+    sellSelected.id = "selected";
+    sellSelected.condition = ui::StateCondition{ui::BindingPath::overlayShopSellSelected,
+                                                ui::ConditionOperator::equal, 1};
+    sellSelected.visual.background = core::ColorRGBA8{220, 180, 72, 255};
+    sellSlot.states.push_back(std::move(sellSelected));
+    sellGrid.children.push_back(std::move(sellSlot));
+    shopModeGated(std::move(sellGrid), 1);
+    ui::NodeDefinition sellName;
+    sellName.id = "shop.sell.name";
+    sellName.component = ui::ComponentKind::text;
+    sellName.layout.offsetX = 8;
+    sellName.layout.offsetY = 116;
+    sellName.layout.visible = false;
+    sellName.bindings.push_back({"text", ui::BindingPath::overlayShopSellItemName});
+    shopModeGated(std::move(sellName), 1);
+    ui::NodeDefinition sellHint;
+    sellHint.id = "shop.sell.hint";
+    sellHint.component = ui::ComponentKind::text;
+    sellHint.layout.offsetX = 8;
+    sellHint.layout.offsetY = 128;
+    sellHint.layout.visible = false;
+    sellHint.text = "SELL: see offer";
+    shopModeGated(std::move(sellHint), 1);
+
+    ui::NodeDefinition feedbackLabel;
+    feedbackLabel.id = "shop.feedback.label";
+    feedbackLabel.component = ui::ComponentKind::text;
+    feedbackLabel.layout.offsetX = 8;
+    feedbackLabel.layout.offsetY = 177;
+    feedbackLabel.layout.visible = false;
+    feedbackLabel.text = "STATUS";
+    ui::StateDefinition feedbackPresent;
+    feedbackPresent.id = "present";
+    feedbackPresent.condition = ui::StateCondition{ui::BindingPath::overlayShopFeedbackPresent,
+                                                   ui::ConditionOperator::equal, 1};
+    feedbackPresent.visual.visible = true;
+    feedbackLabel.states.push_back(std::move(feedbackPresent));
+    shopPanel.children.push_back(std::move(feedbackLabel));
+    ui::NodeDefinition feedbackValue;
+    feedbackValue.id = "shop.feedback.value";
+    feedbackValue.component = ui::ComponentKind::text;
+    feedbackValue.layout.offsetX = 57;
+    feedbackValue.layout.offsetY = 177;
+    feedbackValue.layout.visible = false;
+    feedbackValue.bindings.push_back({"text", ui::BindingPath::overlayShopFeedbackPresent});
+    ui::StateDefinition feedbackPresentValue;
+    feedbackPresentValue.id = "present";
+    feedbackPresentValue.condition = ui::StateCondition{
+        ui::BindingPath::overlayShopFeedbackPresent, ui::ConditionOperator::equal, 1};
+    feedbackPresentValue.visual.visible = true;
+    feedbackValue.states.push_back(std::move(feedbackPresentValue));
+    shopPanel.children.push_back(std::move(feedbackValue));
+    ui::NodeDefinition shopHints;
+    shopHints.id = "shop.hints";
+    shopHints.component = ui::ComponentKind::text;
+    shopHints.layout.offsetX = 8;
+    shopHints.layout.offsetY = 188;
+    shopHints.text = "PRIMARY TRADE  SECONDARY SWITCH  I CLOSE";
+    shopPanel.children.push_back(std::move(shopHints));
+    shopScreen.root = std::move(shopPanel);
+    pack.uiScreens.push_back(std::move(shopScreen));
     return pack;
 }
 

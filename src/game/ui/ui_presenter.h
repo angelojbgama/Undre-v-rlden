@@ -64,6 +64,9 @@ public:
         return base_->collection(path);
     }
     [[nodiscard]] std::optional<std::string> string(BindingPath path) const override {
+        if (path == BindingPath::contextOfferLine && !context_.text.empty()) {
+            return context_.text;
+        }
         if (path == BindingPath::contextQuestTitle && !context_.text.empty()) {
             return context_.text;
         }

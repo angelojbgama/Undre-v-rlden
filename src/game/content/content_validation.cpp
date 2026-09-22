@@ -257,7 +257,8 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
                            (binding.source == ui::BindingPath::playerInventorySlots ||
                             binding.source == ui::BindingPath::playerQuickSlotSlots ||
                             binding.source == ui::BindingPath::bankSlots ||
-                            binding.source == ui::BindingPath::questsJournal);
+                            binding.source == ui::BindingPath::questsJournal ||
+                            binding.source == ui::BindingPath::shopOffers);
                 });
             if (!hasSource)
                 error(report, ContentKind::uiScreen, screenId, "missing_binding",

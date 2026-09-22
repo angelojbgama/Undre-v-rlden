@@ -499,7 +499,17 @@ void GamePresentation::renderHud(render::Renderer2D& renderer,
         } else { render::drawText(renderer, frame.font, "E NEXT  X CLOSE", 14, 181); }
         return;
     }
-    if (view.shopOpen) { renderShopOverlay(renderer, frame); return; }
+    if (view.shopOpen) {
+        if (frame.shopScreen) {
+            const ui::UiPresenter presenter;
+            const GameViewModelBindings bindings{view};
+            const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
+            presenter.render(*frame.shopScreen, bindings, visuals, renderer);
+            return;
+        }
+        renderShopOverlay(renderer, frame);
+        return;
+    }
     if (view.craftingOpen) { renderCraftingOverlay(renderer, frame); return; }    if (view.bankOpen) {
         if (frame.bankScreen) {
             const ui::UiPresenter presenter;

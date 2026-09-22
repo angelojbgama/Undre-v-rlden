@@ -186,6 +186,13 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
             return static_cast<std::int64_t>(view_->playerAttackDamageBonus);
         case ui::BindingPath::bankGoldStored:
             return static_cast<std::int64_t>(view_->bankGold);
+        case ui::BindingPath::overlayShopModeSell:
+            return view_->shopMode == gameplay::ShopOverlayMode::sell
+                       ? std::optional<std::int64_t>{1}
+                       : std::optional<std::int64_t>{0};
+        case ui::BindingPath::overlayShopFeedbackPresent:
+            return view_->shopFeedback ? std::optional<std::int64_t>{1}
+                                       : std::optional<std::int64_t>{0};
         case ui::BindingPath::playerQuickSlot0Amount: return slotAmount(0);
         case ui::BindingPath::playerQuickSlot1Amount: return slotAmount(1);
         case ui::BindingPath::playerQuickSlot2Amount: return slotAmount(2);
@@ -203,6 +210,23 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
         for (const auto& slot : view_->quickSlots) {
             entries.push_back({slot.itemId, slot.visualId,
                                static_cast<std::int64_t>(slot.quantity), index});
+            ++index;
+        }
+        return entries;
+    }
+    if (path == ui::BindingPath::shopOffers) {
+        std::vector<ui::UiCollectionContext> entries;
+        std::int64_t index = 0;
+        for (const auto& offer : view_->shopOffers) {
+            if (!offer.playerBuyPrice) { continue; }
+            auto label = std::string(offer.itemId.value());
+            if (label.size() > 22) { label = label.substr(0, 22); }
+            label += " " + std::to_string(*offer.playerBuyPrice) + "G";
+            ui::UiCollectionContext entry;
+            entry.text = std::move(label);
+            entry.amount = *offer.playerBuyPrice;
+            entry.index = index;
+            entries.push_back(std::move(entry));
             ++index;
         }
         return entries;
@@ -246,6 +270,17 @@ std::vector<ui::UiCollectionContext> GameViewModelBindings::collection(
 
 std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
     ui::BindingPath path, std::int64_t contextIndex) const {
+    if (path == ui::BindingPath::overlayShopBuySelected) {
+        return contextIndex == static_cast<std::int64_t>(view_->shopBuySelection)
+                   ? std::optional<std::int64_t>{1}
+                   : std::optional<std::int64_t>{0};
+    }
+    if (path == ui::BindingPath::overlayShopSellSelected) {
+        return view_->shopMode == gameplay::ShopOverlayMode::sell &&
+                       contextIndex == static_cast<std::int64_t>(view_->shopInventorySelection)
+                   ? std::optional<std::int64_t>{1}
+                   : std::optional<std::int64_t>{0};
+    }
     if (path == ui::BindingPath::overlayInventorySlotSelected ||
         path == ui::BindingPath::overlayBankInventorySelected) {
         // Derived presentation flag: highlighted exactly when the inventory
@@ -265,6 +300,15 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
 }
 
 std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {
+    if (path == ui::BindingPath::overlayShopSellItemName) {
+        const auto& selected = view_->inventory[view_->shopInventorySelection];
+        if (selected.itemId) {
+            auto name = std::string(selected.itemId->value());
+            if (name.size() > 24) { name = name.substr(0, 24); }
+            return name;
+        }
+        return std::string{"EMPTY SLOT"};
+    }
     switch (path) {
         case ui::BindingPath::saveSlot1Label:
             return view_->saveSlots[0].label;
