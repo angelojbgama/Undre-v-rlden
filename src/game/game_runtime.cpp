@@ -168,6 +168,23 @@ struct GameRuntime::State final {
         tilesetVisuals.add(runtimeTilesets.requireRuntimeId(dungeonDefinition.id), tileset,
                           dungeonDefinition);
         savePath = this->executableDirectory / "savegame.sav";
+        ui.setSavesScreen(content.uiScreens().find(simulation::DefinitionId{"screen.saves"}));
+        ui.setActionSink([this](ui::ActionId action) {
+            if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
+            if (action == ui::ActionId::gameLoad) { uiLoadDispatched = true; }
+            const auto slotAction = [&](ui::ActionId id, int slot, bool save) {
+                if (action == id) {
+                    currentSlot = slot;
+                    if (save) { uiSaveDispatched = true; } else { uiLoadDispatched = true; }
+                }
+            };
+            slotAction(ui::ActionId::gameSaveSlot1, 0, true);
+            slotAction(ui::ActionId::gameSaveSlot2, 1, true);
+            slotAction(ui::ActionId::gameSaveSlot3, 2, true);
+            slotAction(ui::ActionId::gameLoadSlot1, 0, false);
+            slotAction(ui::ActionId::gameLoadSlot2, 1, false);
+            slotAction(ui::ActionId::gameLoadSlot3, 2, false);
+        });
         ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
         ui.setActionSink([this](ui::ActionId action) {
             if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
@@ -539,7 +556,7 @@ struct GameRuntime::State final {
     void saveGame() {
         const save::SaveData data = session.captureSaveData();
         std::string error;
-        if (save::writeSaveAtomic(savePath, data, error)) {
+        if (save::writeSaveAtomic(saveSlotPath(executableDirectory, currentSlot), data, error)) {
             lastEvent = "SAVED";
         } else {
             lastEvent = "SAVE ERROR";
@@ -547,7 +564,7 @@ struct GameRuntime::State final {
     }
 
     void loadGame() {
-        const auto loaded = save::readSave(savePath, saveCatalogs());
+        const auto loaded = save::readSave(saveSlotPath(executableDirectory, currentSlot), saveCatalogs());
         if (!loaded) {
             lastEvent = "LOAD ERROR";
             return;
@@ -628,6 +645,11 @@ struct GameRuntime::State final {
             session.derivedPlayerStats(), session.shopOverlay(), content.shops(),
             session.craftingTab(), content.craftingRecipes(),
             gameplay::CraftingKnowledge{session.questState()}, session.craftedRecipes());
+        for (int slot = 0; slot < 3; ++slot) {
+            auto& slotView = view.saveSlots[static_cast<std::size_t>(slot)];
+            slotView.exists = std::filesystem::exists(saveSlotPath(executableDirectory, slot));
+            slotView.label = slotView.exists ? "SAVED" : "EMPTY";
+        }
         buildQuestJournal(view, session.questState(), content.quests());
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
@@ -673,6 +695,7 @@ struct GameRuntime::State final {
     bool uiSaveDispatched{};
     bool uiLoadDispatched{};
     bool journalOpen{};
+    int currentSlot{0};
     presentation::RuntimeVisualContent runtimeVisualContent;
     presentation::PresentationEffectSystem presentationEffects{content.presentationEffects()};
     presentation::PresentationFeedbackController presentationFeedback;
@@ -783,6 +806,12 @@ std::filesystem::path findLicensedAssetRoot(const std::filesystem::path& executa
     throw std::runtime_error(
         "Licensed assets were not found. Keep the local 'assets' directory at the project "
         "root or pass --asset-root <directory>.");
+}
+
+
+std::filesystem::path saveSlotPath(const std::filesystem::path& base, int slot) {
+    if (slot <= 0) { return base; }
+    return base.parent_path() / ("savegame." + std::to_string(slot) + ".sav");
 }
 
 } // namespace underworld::game

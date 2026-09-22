@@ -68,6 +68,9 @@ enum class BindingPath {
     questsJournal,
     contextQuestTitle,
     contextQuestCompleted,
+    saveSlot1Label,
+    saveSlot2Label,
+    saveSlot3Label,
     contextIndex,
     contextItemId,
     contextItemIcon,
@@ -80,7 +83,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 30> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 33> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -106,6 +109,9 @@ inline constexpr std::array<BindingPathEntry, 30> bindingPathTable{{
     {BindingPath::questsJournal, "quests.journal"},
     {BindingPath::contextQuestTitle, "context.quest.title"},
     {BindingPath::contextQuestCompleted, "context.quest.completed"},
+    {BindingPath::saveSlot1Label, "saves.slot.1.label"},
+    {BindingPath::saveSlot2Label, "saves.slot.2.label"},
+    {BindingPath::saveSlot3Label, "saves.slot.3.label"},
     {BindingPath::contextIndex, "context.index"},
     {BindingPath::contextItemId, "context.item.id"},
     {BindingPath::contextItemIcon, "context.item.icon"},
@@ -130,6 +136,16 @@ enum class ActionId {
     quickSlot4,
     // Presentation-level action: the UI shell closes the active menu itself.
     screenClose,
+    // Presentation-level navigation: opens the authored saves screen.
+    screenOpenSaves,
+    // Slot-indexed save/load (the shell picks the slot, then replays the
+    // regular save/load intent for the tick).
+    gameSaveSlot1,
+    gameSaveSlot2,
+    gameSaveSlot3,
+    gameLoadSlot1,
+    gameLoadSlot2,
+    gameLoadSlot3,
 };
 
 struct ActionEntry final {
@@ -137,7 +153,7 @@ struct ActionEntry final {
     std::string_view name;
 };
 
-inline constexpr std::array<ActionEntry, 9> actionTable{{
+inline constexpr std::array<ActionEntry, 16> actionTable{{
     {ActionId::gameSave, "game.save"},
     {ActionId::gameLoad, "game.load"},
     {ActionId::inventoryToggle, "inventory.toggle"},
@@ -147,6 +163,13 @@ inline constexpr std::array<ActionEntry, 9> actionTable{{
     {ActionId::quickSlot3, "quickSlot.3"},
     {ActionId::quickSlot4, "quickSlot.4"},
     {ActionId::screenClose, "screen.close"},
+    {ActionId::screenOpenSaves, "screen.open.saves"},
+    {ActionId::gameSaveSlot1, "save.slot.1"},
+    {ActionId::gameSaveSlot2, "save.slot.2"},
+    {ActionId::gameSaveSlot3, "save.slot.3"},
+    {ActionId::gameLoadSlot1, "load.slot.1"},
+    {ActionId::gameLoadSlot2, "load.slot.2"},
+    {ActionId::gameLoadSlot3, "load.slot.3"},
 }};
 
 [[nodiscard]] std::optional<ActionId> findAction(std::string_view name);

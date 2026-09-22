@@ -111,6 +111,13 @@ struct GameViewModel final {
     // Quest journal read model: started quests in store order, titles and
     // objective limits resolved from the immutable catalog.
     std::vector<QuestJournalView> journal;
+    // Save slot readout for the saves screen: filled by the shell (file
+    // existence), labels composed for the authored text bindings.
+    struct SaveSlotView final {
+        bool exists{};
+        std::string label;
+    };
+    std::array<SaveSlotView, 3> saveSlots;
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(

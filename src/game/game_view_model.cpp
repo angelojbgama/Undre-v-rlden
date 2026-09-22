@@ -228,8 +228,17 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
                : std::optional<std::int64_t>{0};
 }
 
-std::optional<std::string> GameViewModelBindings::string(ui::BindingPath) const {
-    return std::nullopt;
+std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {
+    switch (path) {
+        case ui::BindingPath::saveSlot1Label:
+            return view_->saveSlots[0].label;
+        case ui::BindingPath::saveSlot2Label:
+            return view_->saveSlots[1].label;
+        case ui::BindingPath::saveSlot3Label:
+            return view_->saveSlots[2].label;
+        default:
+            return std::nullopt;
+    }
 }
 
 void buildQuestJournal(GameViewModel& view,

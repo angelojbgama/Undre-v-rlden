@@ -433,6 +433,7 @@ link.exe /nologo /SUBSYSTEM:CONSOLE /OUT:"build\bin\tests.exe" ^
     "build\obj\creature_engine.obj" "build\obj\enemy_visual.obj" ^
     "build\obj\training_puppet.obj" "build\obj\effect_system.obj" ^
     "build\obj\command_builder.obj" ^
+    "build\obj\game_runtime.obj" ^
     "build\obj\player.obj" "build\obj\player_visual.obj" ^
     "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
     "build\obj\tests.obj" ^

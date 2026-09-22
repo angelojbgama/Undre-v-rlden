@@ -17,6 +17,9 @@ public:
     using ActionSink = std::function<void(ActionId)>;
 
     void setMenuScreen(const ScreenDefinition* screen) noexcept;
+    // Navigation set: the menu plus screens it can open (saves). Opening is
+    // driven by authored screen.open.* actions; screen.close always closes.
+    void setSavesScreen(const ScreenDefinition* screen) noexcept;
     void setActionSink(ActionSink sink);
 
     [[nodiscard]] bool menuOpen() const noexcept { return open_; }
@@ -35,6 +38,8 @@ private:
     void activateFocused();
 
     const ScreenDefinition* menu_{};
+    const ScreenDefinition* saves_{};
+    const ScreenDefinition* active_{};
     bool open_{};
     std::size_t focusIndex_{};
     std::vector<const NodeDefinition*> focusables_;

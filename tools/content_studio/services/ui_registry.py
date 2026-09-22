@@ -64,6 +64,9 @@ BINDING_PATHS: tuple[str, ...] = (
     "quests.journal",
     "context.quest.title",
     "context.quest.completed",
+    "saves.slot.1.label",
+    "saves.slot.2.label",
+    "saves.slot.3.label",
     "context.index",
     "context.item.id",
     "context.item.icon",
@@ -82,6 +85,13 @@ ACTIONS: tuple[str, ...] = (
     "quickSlot.3",
     "quickSlot.4",
     "screen.close",
+    "screen.open.saves",
+    "save.slot.1",
+    "save.slot.2",
+    "save.slot.3",
+    "load.slot.1",
+    "load.slot.2",
+    "load.slot.3",
 )
 
 # UI action events supported by the runtime presenter.

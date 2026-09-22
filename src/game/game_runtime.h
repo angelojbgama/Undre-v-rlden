@@ -19,6 +19,12 @@ namespace underworld::render { class Framebuffer; }
 
 namespace underworld::game {
 
+// Save slot files: slot 0 keeps the historical savegame.sav name; slots 1/2
+// live beside it. The authored saves menu acts on these through the
+// slot-indexed actions.
+[[nodiscard]] std::filesystem::path saveSlotPath(const std::filesystem::path& base,
+                                                 int slot);
+
 class GameRuntime final {
 public:
     GameRuntime(platform::ImageDecoder& decoder, const std::filesystem::path& assetRoot,

@@ -29,8 +29,13 @@ void collectFocusables(const NodeDefinition& node,
 void UiRuntime::setMenuScreen(const ScreenDefinition* screen) noexcept {
     menu_ = screen;
     open_ = false;
+    active_ = nullptr;
     focusables_.clear();
     focusIndex_ = 0;
+}
+
+void UiRuntime::setSavesScreen(const ScreenDefinition* screen) noexcept {
+    saves_ = screen;
 }
 
 void UiRuntime::setActionSink(ActionSink sink) {
@@ -45,8 +50,9 @@ const NodeDefinition* UiRuntime::focusedNode() const noexcept {
 void UiRuntime::rebuildFocusables() {
     focusables_.clear();
     focusIndex_ = 0;
-    if (menu_ != nullptr) {
-        collectFocusables(menu_->root, focusables_);
+    const auto* screen = active_ != nullptr ? active_ : menu_;
+    if (screen != nullptr && open_) {
+        collectFocusables(screen->root, focusables_);
     }
 }
 
@@ -54,6 +60,7 @@ void UiRuntime::update(const platform::InputState& input, bool interactionAllowe
     const bool menuEdge = input.menuPressed && !previous_.menuPressed;
     if (interactionAllowed && menuEdge) {
         open_ = !open_ && menu_ != nullptr;
+        active_ = open_ ? menu_ : nullptr;
         rebuildFocusables();
         focusIndex_ = 0;
     }
@@ -82,6 +89,13 @@ void UiRuntime::activateFocused() {
     const ActionId action = node->actions.front().action;
     if (action == ActionId::screenClose) {
         open_ = false;
+        active_ = nullptr;
+        return;
+    }
+    if (action == ActionId::screenOpenSaves) {
+        active_ = saves_ != nullptr ? saves_ : menu_;
+        rebuildFocusables();
+        focusIndex_ = 0;
         return;
     }
     if (sink_) {
@@ -91,9 +105,11 @@ void UiRuntime::activateFocused() {
 
 void UiRuntime::render(const UiBindingResolver& resolver, const UiVisualContext& context,
                        render::Renderer2D& renderer) const {
-    if (!open_ || menu_ == nullptr) { return; }
+    if (!open_) { return; }
+    const auto* screen = active_ != nullptr ? active_ : menu_;
+    if (screen == nullptr) { return; }
     UiPresenter presenter;
-    presenter.render(*menu_, resolver, context, renderer);
+    presenter.render(*screen, resolver, context, renderer);
 }
 
 } // namespace underworld::game::ui

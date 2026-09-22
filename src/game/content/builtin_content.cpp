@@ -472,7 +472,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     menuPanel.layout.offsetX = 86;
     menuPanel.layout.offsetY = 60;
     menuPanel.layout.width = 100;
-    menuPanel.layout.height = 96;
+    menuPanel.layout.height = 108;
     menuPanel.background = core::ColorRGBA8{8, 10, 16, 245};
     ui::NodeDefinition menuTitle;
     menuTitle.id = "menu.title";
@@ -505,7 +505,9 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     menuPanel.children.push_back(makeButton("menu.save", "SAVE", 84, ui::ActionId::gameSave));
     menuPanel.children.push_back(makeButton("menu.load", "LOAD", 106, ui::ActionId::gameLoad));
     menuPanel.children.push_back(
-        makeButton("menu.resume", "RESUME", 128, ui::ActionId::screenClose));
+        makeButton("menu.saves", "SLOTS", 150, ui::ActionId::screenOpenSaves));
+    menuPanel.children.push_back(
+        makeButton("menu.resume", "RESUME", 172, ui::ActionId::screenClose));
     menuScreen.root = std::move(menuPanel);
     pack.uiScreens.push_back(std::move(menuScreen));
 
@@ -565,6 +567,104 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     journalPanel.children.push_back(std::move(questList));
     journalScreen.root = std::move(journalPanel);
     pack.uiScreens.push_back(std::move(journalScreen));
+
+    // Saves screen (opened from the pause menu): three authored slot rows.
+    // Labels are string bindings over the shell's slot readout; each row has
+    // explicit LOAD/SAVE buttons acting on that slot. BACK is screen.close.
+    ui::ScreenDefinition savesScreen;
+    savesScreen.id = simulation::DefinitionId{"screen.saves"};
+    savesScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition savesPanel;
+    savesPanel.id = "saves.panel";
+    savesPanel.component = ui::ComponentKind::panel;
+    savesPanel.layout.offsetX = 66;
+    savesPanel.layout.offsetY = 36;
+    savesPanel.layout.width = 140;
+    savesPanel.layout.height = 146;
+    savesPanel.background = core::ColorRGBA8{8, 10, 16, 245};
+    ui::NodeDefinition savesTitle;
+    savesTitle.id = "saves.title";
+    savesTitle.component = ui::ComponentKind::text;
+    savesTitle.layout.offsetX = 118;
+    savesTitle.layout.offsetY = 44;
+    savesTitle.text = "SAVES";
+    savesPanel.children.push_back(std::move(savesTitle));
+    const auto makeSaveRow = [&](int slotIndex) {
+        const int rowY = 62 + slotIndex * 30;
+        const std::string slotName = std::to_string(slotIndex + 1);
+        ui::NodeDefinition label;
+        label.id = "saves.slot" + slotName + ".label";
+        label.component = ui::ComponentKind::text;
+        label.layout.offsetX = 76;
+        label.layout.offsetY = rowY;
+        const ui::BindingPath labelPaths[] = {ui::BindingPath::saveSlot1Label,
+                                              ui::BindingPath::saveSlot2Label,
+                                              ui::BindingPath::saveSlot3Label};
+        label.bindings.push_back({"text", labelPaths[slotIndex]});
+        savesPanel.children.push_back(std::move(label));
+        ui::NodeDefinition loadButton;
+        loadButton.id = "saves.slot" + slotName + ".load";
+        loadButton.component = ui::ComponentKind::group;
+        loadButton.layout.offsetX = 76;
+        loadButton.layout.offsetY = rowY + 10;
+        loadButton.layout.width = 40;
+        loadButton.layout.height = 16;
+        loadButton.background = core::ColorRGBA8{54, 30, 38, 255};
+        const ui::ActionId loadActions[] = {ui::ActionId::gameLoadSlot1,
+                                            ui::ActionId::gameLoadSlot2,
+                                            ui::ActionId::gameLoadSlot3};
+        loadButton.actions.push_back({"activate", loadActions[slotIndex]});
+        ui::NodeDefinition loadText;
+        loadText.id = "saves.slot" + slotName + ".load.text";
+        loadText.component = ui::ComponentKind::text;
+        loadText.layout.offsetX = 82;
+        loadText.layout.offsetY = rowY + 13;
+        loadText.text = "LOAD";
+        loadButton.children.push_back(std::move(loadText));
+        savesPanel.children.push_back(std::move(loadButton));
+        ui::NodeDefinition saveButton;
+        saveButton.id = "saves.slot" + slotName + ".save";
+        saveButton.component = ui::ComponentKind::group;
+        saveButton.layout.offsetX = 122;
+        saveButton.layout.offsetY = rowY + 10;
+        saveButton.layout.width = 40;
+        saveButton.layout.height = 16;
+        saveButton.background = core::ColorRGBA8{54, 30, 38, 255};
+        const ui::ActionId saveActions[] = {ui::ActionId::gameSaveSlot1,
+                                            ui::ActionId::gameSaveSlot2,
+                                            ui::ActionId::gameSaveSlot3};
+        saveButton.actions.push_back({"activate", saveActions[slotIndex]});
+        ui::NodeDefinition saveText;
+        saveText.id = "saves.slot" + slotName + ".save.text";
+        saveText.component = ui::ComponentKind::text;
+        saveText.layout.offsetX = 128;
+        saveText.layout.offsetY = rowY + 13;
+        saveText.text = "SAVE";
+        saveButton.children.push_back(std::move(saveText));
+        savesPanel.children.push_back(std::move(saveButton));
+    };
+    makeSaveRow(0);
+    makeSaveRow(1);
+    makeSaveRow(2);
+    ui::NodeDefinition backButton;
+    backButton.id = "saves.back";
+    backButton.component = ui::ComponentKind::group;
+    backButton.layout.offsetX = 104;
+    backButton.layout.offsetY = 158;
+    backButton.layout.width = 64;
+    backButton.layout.height = 16;
+    backButton.background = core::ColorRGBA8{54, 30, 38, 255};
+    backButton.actions.push_back({"activate", ui::ActionId::screenClose});
+    ui::NodeDefinition backText;
+    backText.id = "saves.back.text";
+    backText.component = ui::ComponentKind::text;
+    backText.layout.offsetX = 113;
+    backText.layout.offsetY = 161;
+    backText.text = "BACK";
+    backButton.children.push_back(std::move(backText));
+    savesPanel.children.push_back(std::move(backButton));
+    savesScreen.root = std::move(savesPanel);
+    pack.uiScreens.push_back(std::move(savesScreen));
     return pack;
 }
 

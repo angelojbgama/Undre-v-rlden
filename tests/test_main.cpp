@@ -32,6 +32,7 @@
 #include "game/audit/audit_snapshot.h"
 #include "game/audit/bmp_writer.h"
 #include "game/game_content.h"
+#include "game/game_runtime.h"
 #include "game/ui/ui_runtime.h"
 #include "game/gameplay/rpg/rewards.h"
 #include "game/gameplay/rpg/reward_grants.h"
@@ -11434,7 +11435,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 4 &&
+    expect(builtin.uiScreens.size() == 5 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11444,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 4 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 5 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12343,6 +12344,110 @@ void testUiJournalScreen() {
     expect(true, "the journal screen renders through the repeater");
 }
 
+void testUiSavesScreenAndSlots() {
+    using namespace underworld;
+    namespace ui = game::ui;
+    namespace content = game::content;
+
+    // Slot paths: slot 0 keeps the historical name; the others sit beside it.
+    const auto base = std::filesystem::path{"C:/saves"} / "savegame.sav";
+    expect(game::saveSlotPath(base, 0) == base, "slot 0 keeps the legacy save path");
+    expect(game::saveSlotPath(base, 1) == base.parent_path() / "savegame.1.sav" &&
+               game::saveSlotPath(base, 2) == base.parent_path() / "savegame.2.sav",
+           "extra slots live beside the legacy save");
+
+    // The saves screen is authored with three slot rows and per-slot actions.
+    const auto builtin = game::content::makeBuiltinAuthoredContent();
+    const auto saves = std::find_if(
+        builtin.uiScreens.begin(), builtin.uiScreens.end(),
+        [](const content::AuthoredUiScreen& screen) {
+            return screen.id == simulation::DefinitionId{"screen.saves"};
+        });
+    expect(saves != builtin.uiScreens.end() && saves->root.children.size() == 11,
+           "the saves screen authors a title, three rows and a back button");
+    int loadButtons = 0;
+    int saveButtons = 0;
+    for (const auto& child : saves->root.children) {
+        if (child.actions.size() == 1) {
+            if (child.actions.front().action == ui::ActionId::gameLoadSlot1 ||
+                child.actions.front().action == ui::ActionId::gameLoadSlot2 ||
+                child.actions.front().action == ui::ActionId::gameLoadSlot3) {
+                ++loadButtons;
+            }
+            if (child.actions.front().action == ui::ActionId::gameSaveSlot1 ||
+                child.actions.front().action == ui::ActionId::gameSaveSlot2 ||
+                child.actions.front().action == ui::ActionId::gameSaveSlot3) {
+                ++saveButtons;
+            }
+        }
+    }
+    expect(loadButtons == 3 && saveButtons == 3,
+           "each slot row carries explicit load and save actions");
+    expect(std::any_of(saves->root.children.begin(), saves->root.children.end(),
+                       [](const ui::NodeDefinition& node) {
+                           for (const auto& binding : node.bindings) {
+                               if (binding.property == "text" &&
+                                   binding.source == ui::BindingPath::saveSlot1Label) {
+                                   return true;
+                               }
+                           }
+                           return false;
+                       }),
+           "slot labels bind to the shell slot readout");
+
+    // Navigation: menu -> SLOTS opens the saves screen; BACK closes.
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+    game::presentation::RuntimeStaticSpriteCatalog sprites;
+
+    ui::ScreenDefinition menu;
+    menu.id = {"screen.menu"};
+    menu.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition slotsButton;
+    slotsButton.id = "menu.saves";
+    slotsButton.component = ui::ComponentKind::group;
+    slotsButton.actions.push_back({"activate", ui::ActionId::screenOpenSaves});
+    menu.root = std::move(slotsButton);
+
+    ui::ScreenDefinition savesScreen;
+    savesScreen.id = {"screen.saves"};
+    savesScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition backButton;
+    backButton.id = "saves.back";
+    backButton.component = ui::ComponentKind::group;
+    backButton.actions.push_back({"activate", ui::ActionId::screenClose});
+    savesScreen.root = std::move(backButton);
+
+    ui::UiRuntime runtime;
+    runtime.setMenuScreen(&menu);
+    runtime.setSavesScreen(&savesScreen);
+
+    const auto tap = [&runtime](bool moveDown, bool activate, bool menuKey) {
+        platform::InputState input;
+        input.moveDown = moveDown;
+        input.interactPressed = activate;
+        input.menuPressed = menuKey;
+        runtime.update(input, true);
+        runtime.update(platform::InputState{}, true);
+    };
+
+    tap(false, false, true);
+    expect(runtime.menuOpen(), "the menu opens for the saves navigation test");
+    tap(true, false, false);
+    expect(runtime.menuOpen(), "focus moves to the SLOTS button");
+    tap(false, true, false);
+    expect(runtime.menuOpen(), "screen.open.saves keeps a screen open");
+    expect(runtime.focusedNode() != nullptr &&
+               runtime.focusedNode()->id == "saves.back",
+           "opening the saves screen focuses its first actionable node");
+    tap(false, true, false);
+    expect(!runtime.menuOpen(), "BACK closes the shell screen entirely");
+}
+
 void testCraftingKnowledgeAndHistory() {
     using namespace underworld;
     using namespace game::gameplay;
@@ -12852,6 +12957,7 @@ int main() {
         testUiInventoryGridMigration();
         testUiHudCompleteParity();
         testUiJournalScreen();
+        testUiSavesScreenAndSlots();
         testUiRuntimeMenuNavigation();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();
