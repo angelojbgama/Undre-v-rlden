@@ -11589,7 +11589,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 11 &&
+    expect(builtin.uiScreens.size() == 12 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11599,7 +11599,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 11 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 12 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12316,10 +12316,11 @@ void testUiTitleShell() {
     // dispatches game.retry through the sink (which owns the mode exit).
     const auto* gameoverScreen = compiled.registry->uiScreens().find({"screen.gameover"});
     expect(gameoverScreen != nullptr &&
-               gameoverScreen->root.children.size() == 3 &&
-               gameoverScreen->root.children[1].id == "gameover.retry" &&
-               gameoverScreen->root.children[1].actions.size() == 1 &&
-               gameoverScreen->root.children[1].actions.front().action ==
+               gameoverScreen->root.children.size() == 4 &&
+               gameoverScreen->root.children[0].id == "gameover.backdrop" &&
+               gameoverScreen->root.children[2].id == "gameover.retry" &&
+               gameoverScreen->root.children[2].actions.size() == 1 &&
+               gameoverScreen->root.children[2].actions.front().action ==
                    ui::ActionId::gameRetry,
            "the builtin content authors the game over screen with retry");
     shell.setGameOverScreen(gameoverScreen);
@@ -12344,6 +12345,43 @@ void testUiTitleShell() {
            "activating retry exits the game-over shell and dispatches game.retry");
     expect(!shell.titleMode(),
            "leaving the game-over shell does not resurrect the title shell");
+
+    // Help flow on a gameplay shell: the pause menu carries a HELP button
+    // that swaps to the authored help screen; BACK closes the shell.
+    {
+        ui::UiRuntime helpShell;
+        helpShell.setMenuScreen(compiled.registry->uiScreens().find({"screen.menu"}));
+        helpShell.setSavesScreen(compiled.registry->uiScreens().find({"screen.saves"}));
+        helpShell.setHelpScreen(compiled.registry->uiScreens().find({"screen.help"}));
+        platform::InputState escapeEdge;
+        escapeEdge.menuPressed = true;
+        helpShell.update(escapeEdge, true);
+        helpShell.update(platform::InputState{}, true);
+        expect(helpShell.menuOpen() && helpShell.focusedNode() != nullptr &&
+                   helpShell.focusedNode()->id == "menu.save",
+               "the pause menu opens focused on SAVE with HELP in its set");
+        const auto tapDown2 = [&helpShell]() {
+            platform::InputState down;
+            down.moveDown = true;
+            helpShell.update(down, true);
+            helpShell.update(platform::InputState{}, true);
+        };
+        tapDown2();  // LOAD -> HELP
+        tapDown2();
+        expect(helpShell.focusedNode() != nullptr &&
+                   helpShell.focusedNode()->id == "menu.help",
+               "the HELP button joins the pause menu focus order");
+        platform::InputState confirm2;
+        confirm2.interactPressed = true;
+        helpShell.update(confirm2, true);
+        helpShell.update(platform::InputState{}, true);
+        expect(helpShell.menuOpen() && helpShell.focusedNode() != nullptr &&
+                   helpShell.focusedNode()->id == "help.back",
+               "activating HELP swaps to the authored help screen on BACK");
+        helpShell.update(confirm2, true);
+        expect(!helpShell.menuOpen(),
+               "BACK on the help screen closes the shell");
+    }
 
     // A fresh shell ignores the title screen unless the runtime opts in.
     ui::UiRuntime gameplayShell;

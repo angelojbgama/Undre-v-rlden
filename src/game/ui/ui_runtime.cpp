@@ -38,6 +38,10 @@ void UiRuntime::setSavesScreen(const ScreenDefinition* screen) noexcept {
     saves_ = screen;
 }
 
+void UiRuntime::setHelpScreen(const ScreenDefinition* screen) noexcept {
+    help_ = screen;
+}
+
 void UiRuntime::setTitleScreen(const ScreenDefinition* screen) noexcept {
     title_ = screen;
     titleMode_ = screen != nullptr;
@@ -151,6 +155,12 @@ void UiRuntime::activateFocused() {
     }
     if (action == ActionId::screenOpenSaves) {
         active_ = saves_ != nullptr ? saves_ : menu_;
+        rebuildFocusables();
+        focusIndex_ = 0;
+        return;
+    }
+    if (action == ActionId::screenOpenHelp) {
+        active_ = help_ != nullptr ? help_ : menu_;
         rebuildFocusables();
         focusIndex_ = 0;
         return;

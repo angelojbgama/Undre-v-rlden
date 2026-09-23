@@ -264,6 +264,10 @@ não de código — é exatamente a prova de aceite da seção 10.
   esconde os botões SAVE; LOAD continua um slot salvo ou inicia novo jogo no
   slot vazio) e BACK volta ao título. Drivers headless/playtest bootam direto
   no gameplay (`GameLaunchOptions::titleScreen`; `--no-title` desliga).
+- Ajuda/Controles como tela authored: `screen.help` (12ª builtin) com a arte
+  `controls.png` do pack, aberta pelo botão HELP do menu de pausa
+  (`screen.open.help`); título/pausa/game over usam as artes do pack
+  (`Title.png`, `menu_background.png`) como image nodes full-screen.
 - Notificações transientes no HUD (P1 do inventário): eventos de domínio
   (`ExperienceGranted` com level-up, `QuestStarted`/`QuestCompleted`) viram
   uma notificação do shell — `hud.notification` (string) +

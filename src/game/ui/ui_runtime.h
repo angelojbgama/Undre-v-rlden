@@ -20,6 +20,8 @@ public:
     // Navigation set: the menu plus screens it can open (saves). Opening is
     // driven by authored screen.open.* actions; screen.close always closes.
     void setSavesScreen(const ScreenDefinition* screen) noexcept;
+    // Authored help screen, opened from the pause menu.
+    void setHelpScreen(const ScreenDefinition* screen) noexcept;
     // Title shell (boot state): the authored title screen is open from the
     // start and gameplay stays frozen until the shell leaves title mode. The
     // saves screen doubles as the start/new-game picker there, so BACK from
@@ -54,6 +56,7 @@ private:
     const ScreenDefinition* saves_{};
     const ScreenDefinition* title_{};
     const ScreenDefinition* gameover_{};
+    const ScreenDefinition* help_{};
     const ScreenDefinition* active_{};
     bool titleMode_{};
     bool gameOverMode_{};

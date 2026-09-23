@@ -2191,8 +2191,18 @@ o canvas do Composer pinta o 9-slice e o Inspector autora o par sprite+border
 (combo + spin, vazio limpa). O builtin permanece neutro em cores — produção
 adota autorando um staticSprite de moldura no workspace e aplicando nos nós.
 
-Próximos do inventário: ajuda/controles (barata) e mapa/minimapa (exige
-sistema de exploração; settings segue fora de escopo).
+Tela de Ajuda/Controles implementada (12ª tela builtin): `screen.help` com a
+arte real do pack (`controls.png` 115x69) sobre o fundo `menu_background.png`
+(272x224, a resolução lógica exata) + lista de teclas conferida no código
+(WASD/setas, Z espada, X arco, E interagir, I itens, K crafting, 1-4
+quickslots, J journal, ESC menu) e BACK. Abre pelo botão HELP do menu de
+pausa (nova ação `screen.open.help`, 18 no registry; UiRuntime navigation
+set). O pack também vestiu as telas: título ganhou o logo `Title.png`
+(99x35) no lugar do texto e o fundo; pausa e game over ganaram o fundo
+`menu_background.png` como primeiro filho (image nodes 272x224, ids
+`*.backdrop`). Ids de nó continuam únicos por tela (as linhas da ajuda
+carregam sufixo). Restam do inventário: mapa/minimapa (exige sistema de
+exploração; settings segue fora de escopo).
 
 # Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
 

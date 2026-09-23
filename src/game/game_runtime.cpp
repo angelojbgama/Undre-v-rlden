@@ -171,6 +171,7 @@ struct GameRuntime::State final {
         ui.setSavesScreen(content.uiScreens().find(simulation::DefinitionId{"screen.saves"}));
         ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
         ui.setGameOverScreen(content.uiScreens().find(simulation::DefinitionId{"screen.gameover"}));
+        ui.setHelpScreen(content.uiScreens().find(simulation::DefinitionId{"screen.help"}));
         ui.setActionSink([this](ui::ActionId action) {
             if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
             if (action == ui::ActionId::gameRetry && ui.gameOverMode()) {

@@ -241,6 +241,8 @@ enum class ActionId {
     // Death recovery: the shell rebuilds the current map at its start spawn
     // with the player healed (session progress survives).
     gameRetry,
+    // Presentation-level navigation: opens the authored help screen.
+    screenOpenHelp,
 };
 
 struct ActionEntry final {
@@ -248,7 +250,7 @@ struct ActionEntry final {
     std::string_view name;
 };
 
-inline constexpr std::array<ActionEntry, 17> actionTable{{
+inline constexpr std::array<ActionEntry, 18> actionTable{{
     {ActionId::gameSave, "game.save"},
     {ActionId::gameLoad, "game.load"},
     {ActionId::inventoryToggle, "inventory.toggle"},
@@ -266,6 +268,7 @@ inline constexpr std::array<ActionEntry, 17> actionTable{{
     {ActionId::gameLoadSlot2, "load.slot.2"},
     {ActionId::gameLoadSlot3, "load.slot.3"},
     {ActionId::gameRetry, "game.retry"},
+    {ActionId::screenOpenHelp, "screen.open.help"},
 }};
 
 [[nodiscard]] std::optional<ActionId> findAction(std::string_view name);

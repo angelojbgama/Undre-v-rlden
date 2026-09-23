@@ -280,6 +280,22 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"img.hud.money" }, presentation::VisualAssetRoot::gameAssets, "Icons/money.png"});
     pack.staticSprites.push_back(
         {{"spr.hud.money" }, { "img.hud.money" }, std::nullopt, core::PointI{0, 0}});
+    // Pack UI art: full-screen menu backdrop (272x224, the exact logical
+    // resolution), the title logo and the controls sheet.
+    pack.visualImages.push_back(
+        {{"img.menu.background"}, presentation::VisualAssetRoot::gameAssets,
+         "menu_background.png"});
+    pack.staticSprites.push_back(
+        {{"spr.menu.background"}, {"img.menu.background"}, std::nullopt,
+         core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.title.logo"}, presentation::VisualAssetRoot::gameAssets, "Title.png"});
+    pack.staticSprites.push_back(
+        {{"spr.title.logo"}, {"img.title.logo"}, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.controls"}, presentation::VisualAssetRoot::gameAssets, "controls.png"});
+    pack.staticSprites.push_back(
+        {{"spr.controls"}, {"img.controls"}, std::nullopt, core::PointI{0, 0}});
     ui::ScreenDefinition hudScreen;
     hudScreen.id = simulation::DefinitionId{"screen.hud"};
     hudScreen.kind = ui::ScreenKind::hud;
@@ -603,9 +619,20 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         button.children.push_back(std::move(buttonText));
         return button;
     };
+    ui::NodeDefinition menuBackdrop;
+    menuBackdrop.id = "menu.backdrop";
+    menuBackdrop.component = ui::ComponentKind::image;
+    menuBackdrop.spriteId = simulation::DefinitionId{"spr.menu.background"};
+    menuBackdrop.layout.offsetX = 0;
+    menuBackdrop.layout.offsetY = 0;
+    menuBackdrop.layout.width = 272;
+    menuBackdrop.layout.height = 224;
+    menuPanel.children.push_back(std::move(menuBackdrop));
     menuPanel.children.push_back(std::move(menuTitle));
     menuPanel.children.push_back(makeButton("menu.save", "SAVE", 84, ui::ActionId::gameSave));
     menuPanel.children.push_back(makeButton("menu.load", "LOAD", 106, ui::ActionId::gameLoad));
+    menuPanel.children.push_back(
+        makeButton("menu.help", "HELP", 128, ui::ActionId::screenOpenHelp));
     menuPanel.children.push_back(
         makeButton("menu.saves", "SLOTS", 150, ui::ActionId::screenOpenSaves));
     menuPanel.children.push_back(
@@ -795,13 +822,24 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     const auto titleChild = [&](ui::NodeDefinition node) {
         titlePanel.children.push_back(std::move(node));
     };
-    ui::NodeDefinition titleName;
-    titleName.id = "title.name";
-    titleName.component = ui::ComponentKind::text;
-    titleName.layout.offsetX = 87;
-    titleName.layout.offsetY = 62;
-    titleName.text = "UNDERWORLD";
-    titleChild(std::move(titleName));
+    ui::NodeDefinition titleBackdrop;
+    titleBackdrop.id = "title.backdrop";
+    titleBackdrop.component = ui::ComponentKind::image;
+    titleBackdrop.spriteId = simulation::DefinitionId{"spr.menu.background"};
+    titleBackdrop.layout.offsetX = 0;
+    titleBackdrop.layout.offsetY = 0;
+    titleBackdrop.layout.width = 272;
+    titleBackdrop.layout.height = 224;
+    titleChild(std::move(titleBackdrop));
+    ui::NodeDefinition titleLogo;
+    titleLogo.id = "title.logo";
+    titleLogo.component = ui::ComponentKind::image;
+    titleLogo.spriteId = simulation::DefinitionId{"spr.title.logo"};
+    titleLogo.layout.offsetX = 86;
+    titleLogo.layout.offsetY = 48;
+    titleLogo.layout.width = 99;
+    titleLogo.layout.height = 35;
+    titleChild(std::move(titleLogo));
     ui::NodeDefinition titleSubtitle;
     titleSubtitle.id = "title.subtitle";
     titleSubtitle.component = ui::ComponentKind::text;
@@ -850,6 +888,15 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     gameoverPanel.layout.width = 272;
     gameoverPanel.layout.height = 224;
     gameoverPanel.background = core::ColorRGBA8{8, 6, 10, 236};
+    ui::NodeDefinition gameoverBackdrop;
+    gameoverBackdrop.id = "gameover.backdrop";
+    gameoverBackdrop.component = ui::ComponentKind::image;
+    gameoverBackdrop.spriteId = simulation::DefinitionId{"spr.menu.background"};
+    gameoverBackdrop.layout.offsetX = 0;
+    gameoverBackdrop.layout.offsetY = 0;
+    gameoverBackdrop.layout.width = 272;
+    gameoverBackdrop.layout.height = 224;
+    gameoverPanel.children.push_back(std::move(gameoverBackdrop));
     ui::NodeDefinition gameoverTitle;
     gameoverTitle.id = "gameover.title";
     gameoverTitle.component = ui::ComponentKind::text;
@@ -883,6 +930,83 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     gameoverPanel.children.push_back(std::move(gameoverHints));
     gameoverScreen.root = std::move(gameoverPanel);
     pack.uiScreens.push_back(std::move(gameoverScreen));
+
+    // Help screen (opened from the pause menu): pack controls sheet plus the
+    // key list; BACK closes through the presentation-level screen.close.
+    ui::ScreenDefinition helpScreen;
+    helpScreen.id = simulation::DefinitionId{"screen.help"};
+    helpScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition helpPanel;
+    helpPanel.id = "help.panel";
+    helpPanel.component = ui::ComponentKind::panel;
+    helpPanel.layout.offsetX = 0;
+    helpPanel.layout.offsetY = 0;
+    helpPanel.layout.width = 272;
+    helpPanel.layout.height = 224;
+    helpPanel.background = core::ColorRGBA8{8, 10, 16, 246};
+    const auto helpChild = [&](ui::NodeDefinition node) {
+        helpPanel.children.push_back(std::move(node));
+    };
+    ui::NodeDefinition helpBackdrop;
+    helpBackdrop.id = "help.backdrop";
+    helpBackdrop.component = ui::ComponentKind::image;
+    helpBackdrop.spriteId = simulation::DefinitionId{"spr.menu.background"};
+    helpBackdrop.layout.offsetX = 0;
+    helpBackdrop.layout.offsetY = 0;
+    helpBackdrop.layout.width = 272;
+    helpBackdrop.layout.height = 224;
+    helpChild(std::move(helpBackdrop));
+    ui::NodeDefinition helpTitle;
+    helpTitle.id = "help.title";
+    helpTitle.component = ui::ComponentKind::text;
+    helpTitle.layout.offsetX = 118;
+    helpTitle.layout.offsetY = 10;
+    helpTitle.text = "CONTROLS";
+    helpChild(std::move(helpTitle));
+    ui::NodeDefinition helpSheet;
+    helpSheet.id = "help.sheet";
+    helpSheet.component = ui::ComponentKind::image;
+    helpSheet.spriteId = simulation::DefinitionId{"spr.controls"};
+    helpSheet.layout.offsetX = 78;
+    helpSheet.layout.offsetY = 26;
+    helpSheet.layout.width = 115;
+    helpSheet.layout.height = 69;
+    helpChild(std::move(helpSheet));
+    int helpLineIndex = 0;
+    const auto helpLine = [&](int y, const char* text) {
+        ui::NodeDefinition line;
+        line.id = "help.line" + std::to_string(helpLineIndex++);
+        line.component = ui::ComponentKind::text;
+        line.layout.offsetX = 58;
+        line.layout.offsetY = y;
+        line.text = text;
+        helpChild(std::move(line));
+    };
+    helpLine(100, "MOVE    WASD / ARROWS");
+    helpLine(110, "SWORD   Z      BOW  X");
+    helpLine(120, "TALK/USE    E");
+    helpLine(130, "ITEMS   I      CRAFTING  K");
+    helpLine(140, "QUICK SLOTS  1-4");
+    helpLine(150, "JOURNAL  J    MENU  ESC");
+    ui::NodeDefinition helpBack;
+    helpBack.id = "help.back";
+    helpBack.component = ui::ComponentKind::group;
+    helpBack.layout.offsetX = 104;
+    helpBack.layout.offsetY = 172;
+    helpBack.layout.width = 64;
+    helpBack.layout.height = 16;
+    helpBack.background = core::ColorRGBA8{54, 30, 38, 255};
+    helpBack.actions.push_back({"activate", ui::ActionId::screenClose});
+    ui::NodeDefinition helpBackText;
+    helpBackText.id = "help.back.label";
+    helpBackText.component = ui::ComponentKind::text;
+    helpBackText.layout.offsetX = 126;
+    helpBackText.layout.offsetY = 175;
+    helpBackText.text = "BACK";
+    helpBack.children.push_back(std::move(helpBackText));
+    helpChild(std::move(helpBack));
+    helpScreen.root = std::move(helpPanel);
+    pack.uiScreens.push_back(std::move(helpScreen));
 
     // Bank overlay as authored UI content: carried grid, storage grid (both
     // repeaters with selection-gated states) and the gold readout.

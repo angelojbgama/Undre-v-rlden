@@ -128,6 +128,21 @@
     "id": "img.hud.money",
     "root": "gameAssets",
     "relativePath": "Icons/money.png"
+    },
+  {
+    "id": "img.menu.background",
+    "root": "gameAssets",
+    "relativePath": "menu_background.png"
+    },
+  {
+    "id": "img.title.logo",
+    "root": "gameAssets",
+    "relativePath": "Title.png"
+    },
+  {
+    "id": "img.controls",
+    "root": "gameAssets",
+    "relativePath": "controls.png"
     }
   ],
 "staticSprites": [
@@ -182,6 +197,30 @@
   {
     "id": "spr.hud.money",
     "imageId": "img.hud.money",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.menu.background",
+    "imageId": "img.menu.background",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.title.logo",
+    "imageId": "img.title.logo",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.controls",
+    "imageId": "img.controls",
     "anchor": {
       "x": 0,
       "y": 0
@@ -2670,6 +2709,19 @@
         },
       "children": [
         {
+          "id": "menu.backdrop",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 0,
+            "offsetY": 0,
+            "width": 272,
+            "height": 224,
+            "z": 0
+            },
+          "sprite": "spr.menu.background"
+          },
+        {
           "id": "menu.title",
           "component": "text",
           "layout": {
@@ -2751,6 +2803,43 @@
                 "z": 0
                 },
               "text": "LOAD"
+              }
+            ]
+          },
+        {
+          "id": "menu.help",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 94,
+            "offsetY": 128,
+            "width": 84,
+            "height": 18,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "actions": [
+            {
+              "event": "activate",
+              "action": "screen.open.help"
+              }
+            ],
+          "children": [
+            {
+              "id": "menu.help.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 122,
+                "offsetY": 133,
+                "z": 0
+                },
+              "text": "HELP"
               }
             ]
           },
@@ -3350,15 +3439,30 @@
         },
       "children": [
         {
-          "id": "title.name",
-          "component": "text",
+          "id": "title.backdrop",
+          "component": "image",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 87,
-            "offsetY": 62,
+            "offsetX": 0,
+            "offsetY": 0,
+            "width": 272,
+            "height": 224,
             "z": 0
             },
-          "text": "UNDERWORLD"
+          "sprite": "spr.menu.background"
+          },
+        {
+          "id": "title.logo",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 86,
+            "offsetY": 48,
+            "width": 99,
+            "height": 35,
+            "z": 0
+            },
+          "sprite": "spr.title.logo"
           },
         {
           "id": "title.subtitle",
@@ -3444,6 +3548,19 @@
         },
       "children": [
         {
+          "id": "gameover.backdrop",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 0,
+            "offsetY": 0,
+            "width": 272,
+            "height": 224,
+            "z": 0
+            },
+          "sprite": "spr.menu.background"
+          },
+        {
           "id": "gameover.title",
           "component": "text",
           "layout": {
@@ -3501,6 +3618,170 @@
             "z": 0
             },
           "text": "E RETRY  PROGRESS IS KEPT"
+          }
+        ]
+      }
+    },
+  {
+    "id": "screen.help",
+    "kind": "screen",
+    "root": {
+      "id": "help.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 0,
+        "offsetY": 0,
+        "width": 272,
+        "height": 224,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 10,
+        "b": 16,
+        "a": 246
+        },
+      "children": [
+        {
+          "id": "help.backdrop",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 0,
+            "offsetY": 0,
+            "width": 272,
+            "height": 224,
+            "z": 0
+            },
+          "sprite": "spr.menu.background"
+          },
+        {
+          "id": "help.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 118,
+            "offsetY": 10,
+            "z": 0
+            },
+          "text": "CONTROLS"
+          },
+        {
+          "id": "help.sheet",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 78,
+            "offsetY": 26,
+            "width": 115,
+            "height": 69,
+            "z": 0
+            },
+          "sprite": "spr.controls"
+          },
+        {
+          "id": "help.line0",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 100,
+            "z": 0
+            },
+          "text": "MOVE    WASD / ARROWS"
+          },
+        {
+          "id": "help.line1",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 110,
+            "z": 0
+            },
+          "text": "SWORD   Z      BOW  X"
+          },
+        {
+          "id": "help.line2",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 120,
+            "z": 0
+            },
+          "text": "TALK/USE    E"
+          },
+        {
+          "id": "help.line3",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 130,
+            "z": 0
+            },
+          "text": "ITEMS   I      CRAFTING  K"
+          },
+        {
+          "id": "help.line4",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 140,
+            "z": 0
+            },
+          "text": "QUICK SLOTS  1-4"
+          },
+        {
+          "id": "help.line5",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 58,
+            "offsetY": 150,
+            "z": 0
+            },
+          "text": "JOURNAL  J    MENU  ESC"
+          },
+        {
+          "id": "help.back",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 104,
+            "offsetY": 172,
+            "width": 64,
+            "height": 16,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "actions": [
+            {
+              "event": "activate",
+              "action": "screen.close"
+              }
+            ],
+          "children": [
+            {
+              "id": "help.back.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 126,
+                "offsetY": 175,
+                "z": 0
+                },
+              "text": "BACK"
+              }
+            ]
           }
         ]
       }
