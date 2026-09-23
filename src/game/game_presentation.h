@@ -63,6 +63,9 @@ struct GamePresentationFrame final {
     // Title shell: the authored title/saves screens replace the HUD while
     // the shell waits for a start/new-game slot choice.
     bool shellTitle{};
+    // Game-over shell: the authored game over screen replaces the HUD while
+    // the shell waits for the retry action.
+    bool shellGameOver{};
     // Authored HUD screen (screen.hud) from the compiled content
     // registry; null when the workspace does not provide one.
     const ui::ScreenDefinition* hudScreen{};

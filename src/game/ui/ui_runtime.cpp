@@ -56,6 +56,29 @@ void UiRuntime::exitTitleMode() noexcept {
     focusIndex_ = 0;
 }
 
+void UiRuntime::setGameOverScreen(const ScreenDefinition* screen) noexcept {
+    gameover_ = screen;
+}
+
+void UiRuntime::enterGameOver() noexcept {
+    if (gameover_ == nullptr || gameOverMode_) { return; }
+    titleMode_ = false;  // death overrides a still-open title (defensive)
+    gameOverMode_ = true;
+    open_ = true;
+    active_ = gameover_;
+    focusables_.clear();
+    focusIndex_ = 0;
+    rebuildFocusables();
+}
+
+void UiRuntime::exitGameOver() noexcept {
+    gameOverMode_ = false;
+    open_ = false;
+    active_ = nullptr;
+    focusables_.clear();
+    focusIndex_ = 0;
+}
+
 void UiRuntime::setActionSink(ActionSink sink) {
     sink_ = std::move(sink);
 }
@@ -76,9 +99,9 @@ void UiRuntime::rebuildFocusables() {
 
 void UiRuntime::update(const platform::InputState& input, bool interactionAllowed) {
     const bool menuEdge = input.menuPressed && !previous_.menuPressed;
-    // The title shell has no gameplay to fall back to, so the menu toggle is
-    // inert there and only navigation/activation runs.
-    if (!titleMode_ && interactionAllowed && menuEdge) {
+    // The title/game-over shells have no gameplay to fall back to, so the
+    // menu toggle is inert there and only navigation/activation runs.
+    if (!titleMode_ && !gameOverMode_ && interactionAllowed && menuEdge) {
         open_ = !open_ && menu_ != nullptr;
         active_ = open_ ? menu_ : nullptr;
         rebuildFocusables();
@@ -108,6 +131,10 @@ void UiRuntime::activateFocused() {
     if (node == nullptr || node->actions.empty()) { return; }
     const ActionId action = node->actions.front().action;
     if (action == ActionId::screenClose) {
+        if (gameOverMode_) {
+            // The game-over shell offers retry only; close has no target.
+            return;
+        }
         if (titleMode_) {
             // BACK from the saves screen returns to the title; the title
             // itself has nothing to close into.

@@ -264,6 +264,13 @@ não de código — é exatamente a prova de aceite da seção 10.
   esconde os botões SAVE; LOAD continua um slot salvo ou inicia novo jogo no
   slot vazio) e BACK volta ao título. Drivers headless/playtest bootam direto
   no gameplay (`GameLaunchOptions::titleScreen`; `--no-title` desliga).
+- Game over como shell authored (P0 do inventário): a morte do player
+  (`EntityDefeated` com o handle do player) abre `screen.gameover` com o
+  gameplay congelado e a ação `game.retry`; o shell responde com
+  `GameSession::respawn` — fecha diálogo/overlays, cura, limpa
+  ataque/projéteis e reconstrói o mapa atual no spawn inicial. Progresso de
+  sessão sobrevive; deltas do mapa resetam. Voltar-ao-título pelo game over
+  fica para quando houver reset de sessão.
 
 ## 8. UI Composer no Studio
 

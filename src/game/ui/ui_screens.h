@@ -232,6 +232,9 @@ enum class ActionId {
     gameLoadSlot1,
     gameLoadSlot2,
     gameLoadSlot3,
+    // Death recovery: the shell rebuilds the current map at its start spawn
+    // with the player healed (session progress survives).
+    gameRetry,
 };
 
 struct ActionEntry final {
@@ -239,7 +242,7 @@ struct ActionEntry final {
     std::string_view name;
 };
 
-inline constexpr std::array<ActionEntry, 16> actionTable{{
+inline constexpr std::array<ActionEntry, 17> actionTable{{
     {ActionId::gameSave, "game.save"},
     {ActionId::gameLoad, "game.load"},
     {ActionId::inventoryToggle, "inventory.toggle"},
@@ -256,6 +259,7 @@ inline constexpr std::array<ActionEntry, 16> actionTable{{
     {ActionId::gameLoadSlot1, "load.slot.1"},
     {ActionId::gameLoadSlot2, "load.slot.2"},
     {ActionId::gameLoadSlot3, "load.slot.3"},
+    {ActionId::gameRetry, "game.retry"},
 }};
 
 [[nodiscard]] std::optional<ActionId> findAction(std::string_view name);

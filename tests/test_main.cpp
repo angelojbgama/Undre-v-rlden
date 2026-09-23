@@ -11435,7 +11435,7 @@ void testUiScreenBuiltinAndBindings() {
     namespace ui = game::ui;
 
     const auto builtin = content::makeBuiltinAuthoredContent();
-    expect(builtin.uiScreens.size() == 10 &&
+    expect(builtin.uiScreens.size() == 11 &&
                builtin.uiScreens.front().id == simulation::DefinitionId{"screen.hud"} &&
                builtin.uiScreens.front().root.id == "hud.root" &&
                builtin.uiScreens.front().root.children[1].id == "hud.health" &&
@@ -11445,7 +11445,7 @@ void testUiScreenBuiltinAndBindings() {
            "builtin content authors the complete HUD as an authored screen");
 
     const auto compiled = content::compileContent(builtin);
-    expect(compiled && compiled.registry->uiScreens().values().size() == 10 &&
+    expect(compiled && compiled.registry->uiScreens().values().size() == 11 &&
                compiled.registry->uiScreens().find({"screen.hud"}) != nullptr &&
                compiled.registry->uiScreens().require({"screen.hud"}).root.children[1]
                    .meter->spacing == 1,
@@ -12156,6 +12156,40 @@ void testUiTitleShell() {
     expect(!shell.titleMode() && !shell.menuOpen() && dispatched.size() == 1 &&
                dispatched.front() == ui::ActionId::gameLoadSlot1,
            "activating a slot exits the title shell and dispatches its action");
+
+    // Game-over shell: the builtin screen carries the retry action, the
+    // shell opens on it with the menu toggle inert, and activating it
+    // dispatches game.retry through the sink (which owns the mode exit).
+    const auto* gameoverScreen = compiled.registry->uiScreens().find({"screen.gameover"});
+    expect(gameoverScreen != nullptr &&
+               gameoverScreen->root.children.size() == 3 &&
+               gameoverScreen->root.children[1].id == "gameover.retry" &&
+               gameoverScreen->root.children[1].actions.size() == 1 &&
+               gameoverScreen->root.children[1].actions.front().action ==
+                   ui::ActionId::gameRetry,
+           "the builtin content authors the game over screen with retry");
+    shell.setGameOverScreen(gameoverScreen);
+    shell.enterGameOver();
+    expect(shell.gameOverMode() && shell.menuOpen() &&
+               shell.focusedNode() != nullptr &&
+               shell.focusedNode()->id == "gameover.retry",
+           "the game-over shell opens focused on the authored retry");
+    shell.update(escape, true);
+    expect(shell.gameOverMode() && shell.focusedNode()->id == "gameover.retry",
+           "the menu toggle does not disturb the game-over shell");
+    shell.update(platform::InputState{}, true);
+    std::vector<ui::ActionId> retryDispatched;
+    shell.setActionSink([&](ui::ActionId action) {
+        retryDispatched.push_back(action);
+        shell.exitGameOver();
+    });
+    confirm();
+    expect(!shell.gameOverMode() && !shell.menuOpen() &&
+               retryDispatched.size() == 1 &&
+               retryDispatched.front() == ui::ActionId::gameRetry,
+           "activating retry exits the game-over shell and dispatches game.retry");
+    expect(!shell.titleMode(),
+           "leaving the game-over shell does not resurrect the title shell");
 
     // A fresh shell ignores the title screen unless the runtime opts in.
     ui::UiRuntime gameplayShell;

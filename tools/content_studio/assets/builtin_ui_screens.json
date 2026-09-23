@@ -3392,6 +3392,89 @@
       }
     },
   {
+    "id": "screen.gameover",
+    "kind": "screen",
+    "root": {
+      "id": "gameover.panel",
+      "component": "panel",
+      "layout": {
+        "anchor": "topLeft",
+        "offsetX": 0,
+        "offsetY": 0,
+        "width": 272,
+        "height": 224,
+        "z": 0
+        },
+      "background": {
+        "r": 8,
+        "g": 6,
+        "b": 10,
+        "a": 236
+        },
+      "children": [
+        {
+          "id": "gameover.title",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 94,
+            "offsetY": 84,
+            "z": 0
+            },
+          "text": "GAME OVER"
+          },
+        {
+          "id": "gameover.retry",
+          "component": "group",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 94,
+            "offsetY": 132,
+            "width": 84,
+            "height": 18,
+            "z": 0
+            },
+          "background": {
+            "r": 54,
+            "g": 30,
+            "b": 38,
+            "a": 255
+            },
+          "actions": [
+            {
+              "event": "activate",
+              "action": "game.retry"
+              }
+            ],
+          "children": [
+            {
+              "id": "gameover.retry.label",
+              "component": "text",
+              "layout": {
+                "anchor": "topLeft",
+                "offsetX": 108,
+                "offsetY": 137,
+                "z": 0
+                },
+              "text": "PRESS E"
+              }
+            ]
+          },
+        {
+          "id": "gameover.hints",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 50,
+            "offsetY": 172,
+            "z": 0
+            },
+          "text": "E RETRY  PROGRESS IS KEPT"
+          }
+        ]
+      }
+    },
+  {
     "id": "screen.bank",
     "kind": "overlay",
     "root": {

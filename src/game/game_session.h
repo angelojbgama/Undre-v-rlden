@@ -53,6 +53,13 @@ public:
                                       const simulation::MapId& mapId,
                                       const simulation::SpawnId& spawnId,
                                       std::string& error);
+    // Death recovery: rebuilds the current map at its start spawn with the
+    // player healed and every modal surface closed. Session progress
+    // (items, XP, quests, bank) survives; the map's world deltas reset.
+    [[nodiscard]] bool respawn(const maps::MapCatalog& maps,
+                               const maps::MapValidationCatalogs& catalogs,
+                               const maps::RuntimeWorldBuilder& builder,
+                               std::string& error);
     void tick(const simulation::PlayerCommand& command);
     // Used by deterministic setup/teleport callers; normal gameplay movement
     // still enters through PlayerCommand and tick().

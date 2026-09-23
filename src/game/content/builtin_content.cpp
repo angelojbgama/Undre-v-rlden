@@ -819,6 +819,54 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     titleScreen.root = std::move(titlePanel);
     pack.uiScreens.push_back(std::move(titleScreen));
 
+    // Game over shell (death state): a dark dim over the frozen world with
+    // a single authored RETRY. The shell rebuilds the current map at its
+    // start spawn with the player healed; session progress survives.
+    ui::ScreenDefinition gameoverScreen;
+    gameoverScreen.id = simulation::DefinitionId{"screen.gameover"};
+    gameoverScreen.kind = ui::ScreenKind::screen;
+    ui::NodeDefinition gameoverPanel;
+    gameoverPanel.id = "gameover.panel";
+    gameoverPanel.component = ui::ComponentKind::panel;
+    gameoverPanel.layout.offsetX = 0;
+    gameoverPanel.layout.offsetY = 0;
+    gameoverPanel.layout.width = 272;
+    gameoverPanel.layout.height = 224;
+    gameoverPanel.background = core::ColorRGBA8{8, 6, 10, 236};
+    ui::NodeDefinition gameoverTitle;
+    gameoverTitle.id = "gameover.title";
+    gameoverTitle.component = ui::ComponentKind::text;
+    gameoverTitle.layout.offsetX = 94;
+    gameoverTitle.layout.offsetY = 84;
+    gameoverTitle.text = "GAME OVER";
+    gameoverPanel.children.push_back(std::move(gameoverTitle));
+    ui::NodeDefinition gameoverRetry;
+    gameoverRetry.id = "gameover.retry";
+    gameoverRetry.component = ui::ComponentKind::group;
+    gameoverRetry.layout.offsetX = 94;
+    gameoverRetry.layout.offsetY = 132;
+    gameoverRetry.layout.width = 84;
+    gameoverRetry.layout.height = 18;
+    gameoverRetry.background = core::ColorRGBA8{54, 30, 38, 255};
+    gameoverRetry.actions.push_back({"activate", ui::ActionId::gameRetry});
+    ui::NodeDefinition gameoverRetryText;
+    gameoverRetryText.id = "gameover.retry.label";
+    gameoverRetryText.component = ui::ComponentKind::text;
+    gameoverRetryText.layout.offsetX = 108;
+    gameoverRetryText.layout.offsetY = 137;
+    gameoverRetryText.text = "PRESS E";
+    gameoverRetry.children.push_back(std::move(gameoverRetryText));
+    gameoverPanel.children.push_back(std::move(gameoverRetry));
+    ui::NodeDefinition gameoverHints;
+    gameoverHints.id = "gameover.hints";
+    gameoverHints.component = ui::ComponentKind::text;
+    gameoverHints.layout.offsetX = 50;
+    gameoverHints.layout.offsetY = 172;
+    gameoverHints.text = "E RETRY  PROGRESS IS KEPT";
+    gameoverPanel.children.push_back(std::move(gameoverHints));
+    gameoverScreen.root = std::move(gameoverPanel);
+    pack.uiScreens.push_back(std::move(gameoverScreen));
+
     // Bank overlay as authored UI content: carried grid, storage grid (both
     // repeaters with selection-gated states) and the gold readout.
     ui::ScreenDefinition bankScreen;

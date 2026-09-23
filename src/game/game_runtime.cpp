@@ -170,8 +170,13 @@ struct GameRuntime::State final {
         savePath = this->executableDirectory / "savegame.sav";
         ui.setSavesScreen(content.uiScreens().find(simulation::DefinitionId{"screen.saves"}));
         ui.setMenuScreen(content.uiScreens().find(simulation::DefinitionId{"screen.menu"}));
+        ui.setGameOverScreen(content.uiScreens().find(simulation::DefinitionId{"screen.gameover"}));
         ui.setActionSink([this](ui::ActionId action) {
             if (action == ui::ActionId::gameSave) { uiSaveDispatched = true; }
+            if (action == ui::ActionId::gameRetry && ui.gameOverMode()) {
+                ui.exitGameOver();
+                uiRetryDispatched = true;
+            }
             if (action == ui::ActionId::gameLoad) { uiLoadDispatched = true; }
             const auto slotAction = [&](ui::ActionId id, int slot, bool save) {
                 if (action != id) { return; }
@@ -470,8 +475,16 @@ struct GameRuntime::State final {
                 std::ostringstream text;
                 text << "DAMAGE " << damaged->amount << " HP " << damaged->remainingHealth;
                 lastEvent = text.str();
-            } else if (std::holds_alternative<simulation::EntityDefeated>(event)) {
-                lastEvent = "ENTITY DEFEATED";
+            } else if (const auto* defeated =
+                           std::get_if<simulation::EntityDefeated>(&event)) {
+                if (defeated->target == player.entityHandle()) {
+                    // Player death: the authored game over shell takes over
+                    // (title mode aside, which has no live gameplay anyway).
+                    lastEvent = "PLAYER DEFEATED";
+                    if (!ui.titleMode()) { ui.enterGameOver(); }
+                } else {
+                    lastEvent = "ENTITY DEFEATED";
+                }
             } else if (const auto* impact = std::get_if<simulation::ProjectileImpact>(&event)) {
                 const auto* projectileDefinition = impact->projectileDefinitionId.empty()
                     ? nullptr
@@ -593,6 +606,35 @@ struct GameRuntime::State final {
 
     void update(simulation::Tick tick, const platform::InputState& input,
                 platform::DebugInputState debugInput) {
+        if (ui.gameOverMode()) {
+            // Death shell: navigation only. Gameplay stays frozen until the
+            // retry action leaves the mode; the tick that retries rebuilds
+            // the map at its start spawn with the player healed and runs
+            // one empty command so MapEntered flushes.
+            ui.update(input, true);
+            if (!ui.gameOverMode()) {
+                const bool retry = uiRetryDispatched;
+                uiRetryDispatched = false;
+                if (retry) {
+                    std::string error;
+                    if (!session.respawn(mapCatalog, validationCatalogs,
+                                         *runtimeBuilder, error)) {
+                        throw std::runtime_error("could not respawn: " + error);
+                    }
+                    clearMapTransients();
+                    rebuildWorldVisuals();
+                    followPlayer();
+                    lastEvent = "RETRY";
+                }
+                const simulation::PlayerCommand command =
+                    commandBuilder.build(tick, localPlayerId, {});
+                session.tick(command);
+                commitTransitionIfRequested();
+                lastTick = tick;
+                lastSequence = command.sequence;
+            }
+            return;
+        }
         if (ui.titleMode()) {
             // Title shell: navigation only. Gameplay stays frozen (no tick,
             // no effects) until a slot action leaves the title mode; the tick
@@ -707,7 +749,7 @@ struct GameRuntime::State final {
             runtimeVisualContent.staticSprites, runtimeVisualContent.animations, font, hudHeartImage, hudMoneyImage,
             session.dialogue(), view, combatDebug, session.activeSword(),
             session.scenePresentation(), lastEvent, collisionOverlay,
-            ui.titleMode(),
+            ui.titleMode(), ui.gameOverMode(),
             content.uiScreens().find(simulation::DefinitionId{"screen.hud"}),
             content.uiScreens().find(simulation::DefinitionId{"screen.inventory"}),
             &ui,
@@ -735,6 +777,7 @@ struct GameRuntime::State final {
     ui::UiRuntime ui;
     bool uiSaveDispatched{};
     bool uiLoadDispatched{};
+    bool uiRetryDispatched{};
     bool journalOpen{};
     int currentSlot{0};
     presentation::RuntimeVisualContent runtimeVisualContent;

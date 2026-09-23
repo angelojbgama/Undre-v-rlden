@@ -660,6 +660,49 @@ bool clearHostiles(ScenarioContext& context) {
     return context.snapshot().enemies.empty();
 }
 
+// Death for real, then the authored game-over shell: gameplay freezes on
+// defeat (movement input is swallowed), E retries, and the player revives
+// healed at the map spawn able to move again.
+bool runGameOver(ScenarioContext& context) {
+    if (!runBaseline(context)) { return false; }
+    const auto initial = context.snapshot();
+    if (!context.require(!initial.enemies.empty(),
+                         "game over scenario needs an authored hostile")) { return false; }
+    // Die unarmed: keep walking to the nearest hostile without engaging.
+    for (int round = 0; round < 40; ++round) {
+        if (context.snapshot().playerHealth == 0) { break; }
+        const auto& current = context.snapshot();
+        const auto& nearest = current.enemies.front();
+        static_cast<void>(moveTo(context, PointTarget{nearest.x, nearest.y}, 120, false));
+    }
+    // snapshot() returns a reference to the shared member: every captured
+    // state must be a copy or later steps rewrite it.
+    const auto dead = context.snapshot();
+    if (!context.require(dead.playerHealth == 0,
+                         "the unarmed player never died")) { return false; }
+    if (!context.checkpoint("player_defeated")) { return false; }
+    // Frozen: held movement must not move the player.
+    platform::InputState held;
+    held.moveRight = true;
+    for (int index = 0; index < 20; ++index) { if (!context.step(held)) { return false; } }
+    const auto frozen = context.snapshot();
+    if (!context.require(frozen.playerX == dead.playerX && frozen.playerY == dead.playerY,
+                         "the game-over shell did not freeze gameplay")) { return false; }
+    // Retry: the E edge dispatches game.retry and the player revives.
+    platform::InputState confirm;
+    confirm.interactPressed = true;
+    if (!context.step(confirm)) { return false; }
+    if (!context.step(platform::InputState{})) { return false; }
+    const auto revived = context.snapshot();
+    if (!context.require(revived.playerHealth == revived.playerMaximumHealth,
+                         "retry did not revive the player to full health")) { return false; }
+    if (!context.checkpoint("retry_revived")) { return false; }
+    for (int index = 0; index < 20; ++index) { if (!context.step(held)) { return false; } }
+    const auto moved = context.snapshot();
+    return context.require(moved.playerX != revived.playerX || moved.playerY != revived.playerY,
+                           "movement stays dead after retry");
+}
+
 PointTarget linkCenter(const world::AabbI& area) {
     return {area.x + area.width / 2, area.y + area.height / 2};
 }
@@ -1358,6 +1401,7 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
     }
     else if (name == "save_load") { passed = runSaveLoad(context); }
     else if (name == "title_start") { passed = runTitleStart(context); }
+    else if (name == "game_over") { passed = runGameOver(context); }
     else if (name == "map_01_to_02") { passed = runTransition(context, "map.dungeon.02"); }
     else if (name == "map_02_to_01") { passed = runTransition(context, "map.dungeon.01"); }
     else if (name == "map_02_to_03") { passed = runTransition(context, "map.dungeon.03"); }
@@ -1394,7 +1438,8 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
 // retired combat fixture world and need re-basing onto production content.
 const std::vector<std::string> allScenarios{
     "startup", "movement", "collision", "inventory", "quick_slot",
-    "inventory_navigation", "save_load", "title_start", "presentation_feedback",
+    "inventory_navigation", "save_load", "title_start", "game_over",
+    "presentation_feedback",
     "melee_combat", "ranged_combat", "chest", "crate",
     "pickup_money", "pickup_heart", "pickup_life_potion",
     "npc_dialogue", "rewards_loot"};

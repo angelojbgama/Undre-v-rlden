@@ -132,6 +132,7 @@ ACTIONS: tuple[str, ...] = (
     "load.slot.1",
     "load.slot.2",
     "load.slot.3",
+    "game.retry",
 )
 
 # UI action events supported by the runtime presenter.

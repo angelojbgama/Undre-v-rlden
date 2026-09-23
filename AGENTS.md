@@ -2151,6 +2151,28 @@ de traversal agora limpam os hostis lutando de verdade (`clearHostiles`/
 `fightToDeath`) antes da tarefa, com aproximação NPC lateral (a caixa de
 interação fica acima dos pés) e sidestep contra bloqueios.
 
+# Estado atual — game over shell (P0 do inventário de telas)
+
+Morte do player agora tem consequência (era a maior lacuna do inventário de
+telas): o `CombatSystem` já emitia `EntityDefeated` para o player quando o HP
+chega a 0; o `GameRuntime` consome o evento, entra no shell authored
+`screen.gameover` (11ª tela builtin: dim escuro, GAME OVER, PRESS E com a ação
+`game.retry`) e congela o gameplay (sem tick, movimento engolido, HUD/journal
+escondidos, menu ESC inerte — mesmas regras do shell de título). E no RETRY
+executa `GameSession::respawn`: fecha diálogo/overlays, limpa ataque e
+projéteis, cura para o máximo, reseta `defeatEmitted`/invulnerabilidade e
+reconstrói o mapa atual no spawn inicial (`initializeMap` no mesmo map+spawn).
+Progresso de sessão (XP, inventário, banco, quests) sobrevive; os deltas do
+mapa resetam. Voltar-ao-título a partir do game over fica para quando houver
+semântica de reset de sessão. Ação nova `game.retry` no Action Registry (17);
+playtest `game_over` no `--all` (19/19): morre desarmado de verdade, congela,
+retry revive com HP cheio no spawn e o movimento volta.
+
+Próximos do inventário (aprovados): P1 notificações de level-up/quest no HUD
+(`ExperienceGranted` já carrega previousLevel/newLevel) e background por
+imagem nas telas (9-slice) — depois P2 ajuda/controles e mapa/minimapa (este
+último exige sistema de exploração; settings segue fora de escopo).
+
 # Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
 
 Trilha Scene/Game-State: implementada a menor camada de shell necessária, sem

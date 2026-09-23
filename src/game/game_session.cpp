@@ -1273,6 +1273,30 @@ bool GameSession::initializeMap(const maps::MapCatalog& maps,
     return true;
 }
 
+bool GameSession::respawn(const maps::MapCatalog& maps,
+                          const maps::MapValidationCatalogs& catalogs,
+                          const maps::RuntimeWorldBuilder& builder,
+                          std::string& error) {
+    if (mapSession_ == nullptr || mapSession_->world() == nullptr) {
+        error = "respawn requires an active map";
+        return false;
+    }
+    dialogue_->close();
+    inventoryOverlay_.close();
+    bankOverlay_.close();
+    shopOverlay_.close();
+    craftingTab_.reset();
+    playerAttack_.reset();
+    projectiles_->clear(combat_);
+    auto& combatant = player_.combatant();
+    combatant.health.current = combatant.health.maximum;
+    combatant.invulnerabilityTicks = 0;
+    combatant.defeatEmitted = false;
+    const auto mapId = mapSession_->world()->id();
+    const auto spawnId = mapSession_->world()->spawn().id;
+    return initializeMap(maps, catalogs, builder, mapId, spawnId, error);
+}
+
 void GameSession::tick(const simulation::PlayerCommand& command) {
     events_.clear();
     worldLogicEventCursor_ = 0;
