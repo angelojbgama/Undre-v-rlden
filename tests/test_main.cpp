@@ -12174,6 +12174,33 @@ void testUiTitleShell() {
     view.savesStartMode = false;
     expect(bindings.number(ui::BindingPath::savesStartMode) == std::optional<std::int64_t>{0},
            "the start-mode readout clears once gameplay owns the saves screen");
+
+    // Both command-line parsers boot the interactive game into the title
+    // shell; --no-title opts out. The wide variant is the one the Win32
+    // entry point uses, so both must agree on the default.
+    {
+        std::string parseError;
+        const wchar_t* wideArguments[] = {L"game.exe"};
+        const auto wideDefaults = game::parseGameLaunchOptions(
+            1, wideArguments, parseError);
+        expect(wideDefaults && wideDefaults->titleScreen,
+               "the wide parser (Win32 entry point) boots into the title shell");
+        const wchar_t* wideNoTitle[] = {L"game.exe", L"--no-title"};
+        const auto wideOptOut = game::parseGameLaunchOptions(
+            2, wideNoTitle, parseError);
+        expect(wideOptOut && !wideOptOut->titleScreen,
+               "--no-title opts out of the title shell in the wide parser");
+        const char* narrowArguments[] = {"game.exe"};
+        const auto narrowDefaults = game::parseGameLaunchOptions(
+            1, narrowArguments, parseError);
+        expect(narrowDefaults && narrowDefaults->titleScreen,
+               "the narrow parser boots into the title shell");
+        const char* narrowNoTitle[] = {"game.exe", "--no-title"};
+        const auto narrowOptOut = game::parseGameLaunchOptions(
+            2, narrowNoTitle, parseError);
+        expect(narrowOptOut && !narrowOptOut->titleScreen,
+               "--no-title opts out of the title shell in the narrow parser");
+    }
 }
 
 void testUiHudCompleteParity() {

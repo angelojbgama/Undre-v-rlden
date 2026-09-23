@@ -23,6 +23,9 @@ std::optional<GameLaunchOptions> parseGameLaunchOptions(
     int argc, const wchar_t* const* argv, std::string& error) {
     error.clear();
     GameLaunchOptions options;
+    // The interactive game boots into the authored title shell by default
+    // (both parser variants; --no-title opts out).
+    options.titleScreen = true;
     for (int index = 1; index < argc; ++index) {
         const std::wstring argument(argv[index] == nullptr ? L"" : argv[index]);
         const auto consumeValue = [&](const wchar_t* name, const char* displayName,
