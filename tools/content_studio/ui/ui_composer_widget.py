@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -104,10 +104,34 @@ class UiCanvas(QWidget):
         # Real-art resolver over the workspace staticSprites; None keeps the
         # placeholder boxes (tests / missing asset root).
         self._visuals: StudioVisualResolver | None = None
+        # Game bitmap font (fonts_index.png, 26x3 grid of 7x9 cells) so text
+        # previews land exactly where the runtime draws it; None falls back
+        # to the Qt font.
+        self._font_image: QImage | None = None
+        self._font_path = None
+        self._selected_node: str | None = None
+        self._hover_node: str | None = None
+        self.setMouseTracking(True)
         self.setFixedSize(LOGICAL_WIDTH * self._zoom, LOGICAL_HEIGHT * self._zoom)
 
     def set_visuals(self, visuals: StudioVisualResolver | None) -> None:
         self._visuals = visuals
+        font_path = None
+        asset_root = getattr(visuals, "asset_root", None)
+        if visuals is not None and asset_root is not None:
+            font_path = Path(asset_root) / "fonts_index.png"
+        if font_path != self._font_path:
+            self._font_path = font_path
+            self._font_image = None
+            if font_path is not None and font_path.is_file():
+                image = QImage(str(font_path))
+                if (not image.isNull() and image.width() >= 182
+                        and image.height() >= 27):
+                    self._font_image = image
+        self.update()
+
+    def set_selected_node(self, node_id: str | None) -> None:
+        self._selected_node = node_id
         self.update()
 
     def set_screen_data(self, screen_data: dict | None) -> None:
@@ -148,6 +172,15 @@ class UiCanvas(QWidget):
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if self._drag_node_id is None or self._drag_start is None:
+            position = event.position() / self._zoom
+            hover = None
+            for rect, node_id in reversed(self._node_rects):
+                if rect.contains(position):
+                    hover = node_id
+                    break
+            if hover != self._hover_node:
+                self._hover_node = hover
+                self.update()
             super().mouseMoveEvent(event)
             return
         position = event.position() / self._zoom
@@ -184,6 +217,16 @@ class UiCanvas(QWidget):
         self._node_rects.clear()
         if self._screen_data:
             self._paint_node(painter, self._screen_data.get("root", {}), None)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        for rect, node_id in self._node_rects:
+            if node_id == self._selected_node:
+                painter.setPen(QPen(QColor(255, 170, 0, 230), 0))
+            elif node_id == self._hover_node:
+                painter.setPen(QPen(QColor(120, 210, 255, 160), 0))
+            else:
+                continue
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect.adjusted(-0.5, -0.5, 0.5, 0.5))
         painter.end()
 
     def _resolved_sprite(self, sprite_id: str) -> ResolvedStudioVisual | None:
@@ -193,6 +236,87 @@ class UiCanvas(QWidget):
             return self._visuals.resolve_static_sprite(sprite_id)
         except Exception:  # noqa: BLE001 - a broken asset must not break painting
             return None
+
+    def _node_visual(self, node: dict) -> tuple[bool, QColor | None, QColor | None]:
+        """Mirrors ui::resolveVisual: layout visibility is the base, authored
+        states evaluate in order over Preview Data and their deltas win."""
+        layout = node.get("layout", {})
+        visible = bool(layout.get("visible", True))
+        background = _node_color(node.get("background"))
+        tint: QColor | None = None
+        for state in node.get("states", []):
+            condition = state.get("condition") or {}
+            value = self._value(str(condition.get("source", "")), 0)
+            target = int(condition.get("value", 0))
+            operator = str(condition.get("operator", "equal"))
+            if operator == "lessOrEqual":
+                if value > target: continue
+            elif operator == "greaterOrEqual":
+                if value < target: continue
+            elif value != target:
+                continue
+            visual = state.get("visual") or {}
+            if "visible" in visual:
+                visible = bool(visual["visible"])
+            if visual.get("background") is not None:
+                background = _node_color(visual["background"]) or background
+            if visual.get("tint") is not None:
+                tint = _node_color(visual["tint"])
+        return visible, background, tint
+
+    @staticmethod
+    def _glyph_source(character: str) -> tuple[int, int] | None:
+        """Cell of the 26x3 7x9 atlas for one character (None = space)."""
+        if character == " ":
+            return None
+        if "A" <= character <= "Z":
+            return (ord(character) - ord("A")) * 7, 0
+        if "a" <= character <= "z":
+            return (ord(character) - ord("a")) * 7, 9
+        if "0" <= character <= "9":
+            return (ord(character) - ord("0")) * 7, 18
+        punctuation = {".": 10, ",": 11, "!": 12, "?": 13, "_": 14}
+        if character in punctuation:
+            return punctuation[character] * 7, 18
+        # Accent folding keeps authored pt-BR strings previewable.
+        folded = character.translate(str.maketrans(
+            "áàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ",
+            "aaaaeeiooouucAAAAEEIOOOUUC"))
+        if folded != character:
+            return UiCanvas._glyph_source(folded)
+        return 13 * 7, 18  # explicit '?' fallback, same as the runtime
+
+    def _draw_game_text(self, painter: QPainter, x: float, y: float,
+                        text: str) -> None:
+        """Game bitmap font at 7px advance / 9px line height; Qt fallback."""
+        if self._font_image is None:
+            painter.setPen(QColor(230, 230, 240))
+            painter.drawText(QPointF(x, y + 8), text)
+            return
+        for index, character in enumerate(str(text)):
+            if character == "\n":
+                continue
+            source = self._glyph_source(character)
+            if source is None:
+                continue
+            painter.drawImage(QRectF(x + index * 7, y, 7, 9), self._font_image,
+                              QRectF(source[0], source[1], 7, 9))
+
+    @staticmethod
+    def _tinted_image(image: QImage, tint: QColor | None) -> QImage:
+        """Multiplicative per-channel tint, mirroring the runtime's
+        drawImageRegionTinted (alpha preserved)."""
+        if tint is None:
+            return image
+        tinted = QImage(image)
+        overlay = QImage(image.size(), QImage.Format.Format_ARGB32)
+        overlay.fill(QColor(tint.red(), tint.green(), tint.blue(), 255))
+        painter = QPainter(tinted)
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_Multiply)
+        painter.drawImage(0, 0, overlay)
+        painter.end()
+        return tinted
 
     def _paint_node(self, painter: QPainter, node: dict, parent: dict | None,
                     shift: tuple[int, int] = (0, 0),
@@ -214,13 +338,18 @@ class UiCanvas(QWidget):
         zoom = self._zoom
         node_id = str(node.get("id", ""))
         component = str(node.get("component", "group"))
+        visible, state_background, tint = self._node_visual(node)
+        if not visible:
+            # Authored-hidden nodes (layout or state gate) draw nothing,
+            # exactly like the runtime presenter.
+            return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         if component in ("group", "panel"):
             width = int(layout.get("width", LOGICAL_WIDTH))
             height = int(layout.get("height", LOGICAL_HEIGHT))
             rect = QRectF(x, y, width, height)
-            background = _node_color(node.get("background"))
+            background = state_background
             if background is not None:
                 # Authored background: paint it exactly like the runtime.
                 painter.fillRect(rect, background)
@@ -232,8 +361,11 @@ class UiCanvas(QWidget):
                 painter.setBrush(QColor(40, 48, 80, 60))
                 painter.drawRect(rect)
             self._node_rects.append((rect, node_id))
-            painter.setPen(QColor(150, 160, 200))
-            painter.drawText(QPointF(x + 2, y + 9), node_id)
+            # Container IDs are editor chrome: show them only while the node
+            # is hovered or selected so authored content stays readable.
+            if node_id in (self._selected_node, self._hover_node):
+                painter.setPen(QColor(150, 160, 200))
+                painter.drawText(QPointF(x + 2, y + 9), node_id)
             for child in node.get("children", []):
                 self._paint_node(painter, child, node, total, origin)
             return
@@ -271,8 +403,10 @@ class UiCanvas(QWidget):
             # (11x10 segments / 24x12 fill). The C++ runtime stays the
             # pixel authority either way.
             resolved_full = self._resolved_sprite(str(full_id)) if full_id else None
+            segment_image = None
             if resolved_full is not None and resolved_full.image.width() > 0:
                 box_w, box_h = resolved_full.image.width(), resolved_full.image.height()
+                segment_image = self._tinted_image(resolved_full.image, tint)
             else:
                 resolved_full = None
                 box_w, box_h = (11, 10) if meter.get("mode") == "segmented" else (24, 12)
@@ -287,8 +421,8 @@ class UiCanvas(QWidget):
                 for index in range(max(0, int(maximum))):
                     ex = x + index * stride
                     if index < value:
-                        if resolved_full is not None:
-                            painter.drawImage(QPointF(ex, y), resolved_full.image)
+                        if segment_image is not None:
+                            painter.drawImage(QPointF(ex, y), segment_image)
                         else:
                             painter.fillRect(QRectF(ex, y, box_w, box_h), QColor("#d84868"))
                     elif empty:
@@ -308,8 +442,8 @@ class UiCanvas(QWidget):
                 x, y = resolve_position(layout, (box_w, box_h))
                 if meter.get("mode") == "fillHorizontal":
                     fill_w = round(box_w * fraction)
-                    if resolved_full is not None and fill_w > 0:
-                        painter.drawImage(QPointF(x, y), resolved_full.image.copy(
+                    if segment_image is not None and fill_w > 0:
+                        painter.drawImage(QPointF(x, y), segment_image.copy(
                             0, 0, fill_w, box_h))
                     else:
                         painter.setPen(QPen(QColor(90, 100, 140), 0))
@@ -318,9 +452,9 @@ class UiCanvas(QWidget):
                     rect = QRectF(x, y, box_w, box_h)
                 else:
                     fill_h = round(box_h * fraction)
-                    if resolved_full is not None and fill_h > 0:
+                    if segment_image is not None and fill_h > 0:
                         painter.drawImage(QPointF(x, y + box_h - fill_h),
-                                          resolved_full.image.copy(0, box_h - fill_h, box_w, fill_h))
+                                          segment_image.copy(0, box_h - fill_h, box_w, fill_h))
                     else:
                         painter.setPen(QPen(QColor(90, 100, 140), 0))
                         painter.drawRect(QRectF(x, y, box_w, box_h))
@@ -328,8 +462,9 @@ class UiCanvas(QWidget):
                                          QColor("#58c0d8"))
                     rect = QRectF(x, y, box_w, box_h)
             self._node_rects.append((rect, node_id))
-            painter.setPen(QColor(150, 160, 200))
-            painter.drawText(QPointF(x, y - 2), f"{node_id} ({full_id or '?'})")
+            if node_id in (self._selected_node, self._hover_node):
+                painter.setPen(QColor(150, 160, 200))
+                painter.drawText(QPointF(x, y - 2), f"{node_id} ({full_id or '?'})")
             return
 
         if component == "text":
@@ -340,11 +475,10 @@ class UiCanvas(QWidget):
                     bound = self._value(str(binding.get("source")))
             label = str(bound) if bound is not None else literal
             x, y = resolve_position(layout, (0, 0))
-            painter.setPen(QColor(230, 230, 240))
-            painter.drawText(QPointF(x, y + 8), label)
-            metrics = painter.fontMetrics()
-            self._node_rects.append((QRectF(x, y, max(8, metrics.horizontalAdvance(label)), 9),
-                                     node_id))
+            # Game bitmap font: 7px cells at the resolved position, exactly
+            # where the runtime drawText lands.
+            self._draw_game_text(painter, x, y, label)
+            self._node_rects.append((QRectF(x, y, max(8, len(label) * 7), 9), node_id))
             return
 
         if component == "image":
@@ -352,13 +486,15 @@ class UiCanvas(QWidget):
             if resolved is not None and resolved.image.width() > 0:
                 # Same placement contract as the C++ presenter: the node
                 # position is the top-left box; the art hangs off the
-                # authored anchor (position - anchor + drawOffset).
-                art_w = resolved.image.width()
-                art_h = resolved.image.height()
+                # authored anchor (position - anchor + drawOffset), with the
+                # state tint applied like drawImageRegionTinted.
+                art = self._tinted_image(resolved.image, tint)
+                art_w = art.width()
+                art_h = art.height()
                 x, y = resolve_position(layout, (art_w, art_h))
                 draw_x = x - resolved.anchor_x + resolved.draw_offset_x
                 draw_y = y - resolved.anchor_y + resolved.draw_offset_y
-                painter.drawImage(QPointF(draw_x, draw_y), resolved.image)
+                painter.drawImage(QPointF(draw_x, draw_y), art)
                 self._node_rects.append((QRectF(draw_x, draw_y, art_w, art_h), node_id))
                 return
         elif component == "slot":
@@ -366,9 +502,8 @@ class UiCanvas(QWidget):
             height = int(layout.get("height", 16))
             x, y = resolve_position(layout, (width, height))
             rect = QRectF(x, y, width, height)
-            background = _node_color(node.get("background"))
-            if background is not None:
-                painter.fillRect(rect, background)
+            if state_background is not None:
+                painter.fillRect(rect, state_background)
             else:
                 painter.setBrush(QColor(56, 60, 90, 120))
                 painter.setPen(QPen(QColor(120, 130, 170), 0))
@@ -384,9 +519,10 @@ class UiCanvas(QWidget):
             count = self._bound_value(node, "count", 0)
             if count and (node.get("countAlways") or count > 1):
                 count_offset = node.get("countOffset", {})
-                painter.setPen(QColor(230, 230, 240))
-                painter.drawText(
-                    QPointF(x + int(count_offset.get("x", 0)), y + int(count_offset.get("y", 0)) + 8),
+                self._draw_game_text(
+                    painter,
+                    x + int(count_offset.get("x", 0)),
+                    y + int(count_offset.get("y", 0)),
                     str(count))
             self._node_rects.append((rect, node_id))
             return
@@ -442,6 +578,15 @@ class UiComposerWidget(QWidget):
             "crafting.recipes": 5,
             "dialogue.pageLines": 2,
             "dialogue.choices": 3,
+            # State gates of the builtin screens, so the preview starts in
+            # the same mode the game does (HUD ammo visible, crafting on the
+            # craft tab, shop buying, dialogue on a text page).
+            "player.ammo.present": 1,
+            "overlay.crafting.tabCraft": 1,
+            "overlay.crafting.tabBook": 0,
+            "overlay.shop.modeSell": 0,
+            "dialogue.choices.visible": 0,
+            "saves.startMode": 0,
         }
         self._build_ui()
         self.refresh()
@@ -692,6 +837,7 @@ class UiComposerWidget(QWidget):
 
     def _select_node(self, node_id: str) -> None:
         self._selected_node = node_id
+        self.canvas.set_selected_node(node_id)
         matches = self.hierarchy.findItems(node_id, Qt.MatchFlag.MatchRecursive | Qt.MatchFlag.MatchExactly, 0)
         if matches:
             self.hierarchy.setCurrentItem(matches[0])

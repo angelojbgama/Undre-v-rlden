@@ -307,6 +307,19 @@ documentos vivos por documento, dirty state e save canônico atômico.
   da arte); trocar a arte é escolher outro item — o commit passa pelo
   `set_sprite` existente e o canvas repinta. O C++ permanece a autoridade de
   pixel.
+- **Fidelidade de exibição do canvas** (refinamento): `layout.visible` e os
+  states authored são avaliados contra o Preview Data na mesma ordem/semântica
+  do `resolveVisual` do presenter (deltas de visible/background/tint; tint é
+  multiplicativo por canal como `drawImageRegionTinted`); nós gated aparecem e
+  somem ao alternar o spin do binding. Textos (literal, bound, contagem de
+  slot) são desenhados com o **font bitmap do jogo** (`fonts_index.png`,
+  glifos 7×9, advance 7, dobra de acentos pt-BR, fallback '?') no ponto
+  exato do runtime; sem asset root a fonte Qt continua de fallback. IDs de
+  containers são chrome do editor: aparecem só em hover/seleção (extensão de
+  repeater continua rotulada), com outline laranja para o nó selecionado e
+  azul claro para o hovered. O Preview Data nasce com defaults que espelham o
+  boot do jogo (ammo presente, aba craft, loja comprando, diálogo em página
+  de texto, saves em modo play), todos editáveis como spins.
 - Fora do primeiro Composer: play interativo, timeline de animação, editor de
   themes — incrementos futuros com caso real.
 

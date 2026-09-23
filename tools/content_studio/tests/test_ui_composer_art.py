@@ -265,5 +265,136 @@ class UiComposerSwapArtTests(unittest.TestCase):
             self.assertFalse(widget._sprite_preview.pixmap().isNull())
 
 
+class UiCanvasFidelityTests(unittest.TestCase):
+    """State/visibility evaluation, tint, bitmap font and selection."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.application = QApplication.instance() or QApplication([])
+
+    def _canvas(self) -> UiCanvas:
+        canvas = UiCanvas()
+        self.addCleanup(canvas.deleteLater)
+        return canvas
+
+    def test_hidden_nodes_and_state_gates_evaluate(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = self._canvas()
+        canvas.set_preview_values({"player.ammo.present": 0})
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "group",
+                     "layout": {"offsetX": 0, "offsetY": 0},
+                     "children": [
+                         # Authored-hidden from the start (layout gate).
+                         {"id": "ghost", "component": "panel",
+                          "layout": {"offsetX": 10, "offsetY": 10, "width": 40,
+                                     "height": 20, "visible": False},
+                          "background": {"r": 200, "g": 120, "b": 40, "a": 255}},
+                         # State-gated: hidden until the preview flips to 1.
+                         {"id": "ammo", "component": "panel",
+                          "layout": {"offsetX": 60, "offsetY": 10, "width": 40,
+                                     "height": 20, "visible": False},
+                          "background": {"r": 90, "g": 200, "b": 90, "a": 255},
+                          "states": [{
+                              "id": "present", "condition": {
+                                  "source": "player.ammo.present",
+                                  "operator": "equal", "value": 1},
+                              "visual": {"visible": True}}]}]},
+        })
+        image = canvas.grab().toImage()
+        # Both gated panels stay hidden with the gate at 0.
+        self.assertNotEqual(QColor(200, 120, 40).name(), image.pixelColor(40, 40).name())
+        self.assertNotEqual(QColor(90, 200, 90).name(), image.pixelColor(160, 40).name())
+
+        canvas.set_preview_values({"player.ammo.present": 1})
+        image = canvas.grab().toImage()
+        # The state gate reveals the ammo panel; the layout gate stays off.
+        self.assertEqual(QColor(90, 200, 90).name(), image.pixelColor(160, 40).name())
+        self.assertNotEqual(QColor(200, 120, 40).name(), image.pixelColor(40, 40).name())
+
+    def test_state_tint_multiplies_art_like_the_runtime(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = self._canvas()
+        canvas.set_visuals(FakeResolver(QColor(255, 0, 0)))
+        canvas.set_preview_values({"player.hurt": 1})
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "group",
+                     "layout": {"offsetX": 0, "offsetY": 0},
+                     "children": [
+                         {"id": "hero", "component": "image", "sprite": "spr.hero",
+                          "layout": {"offsetX": 10, "offsetY": 10},
+                          "states": [{
+                              "id": "hurt", "condition": {
+                                  "source": "player.hurt",
+                                  "operator": "equal", "value": 1},
+                              "visual": {"tint": {"r": 0, "g": 255, "b": 0,
+                                                  "a": 255}}}]}]},
+        })
+        image = canvas.grab().toImage()
+        # Red art under a green tint multiplies to black, like
+        # drawImageRegionTinted.
+        self.assertEqual("#000000", image.pixelColor(28, 28).name())
+
+    def test_bitmap_font_draws_atlas_glyphs(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = self._canvas()
+        # 26x3 atlas of 7x9 cells: black sheet, white 'A' cell (0,0) and
+        # white '3' cell (digits row y=18, x=3*7).
+        font = QImage(182, 27, QImage.Format.Format_ARGB32)
+        font.fill(QColor(0, 0, 0, 255))
+        from PySide6.QtGui import QPainter as GuiPainter
+        painter = GuiPainter(font)
+        painter.fillRect(0, 0, 7, 9, QColor(255, 255, 255))
+        painter.fillRect(3 * 7, 18, 7, 9, QColor(255, 255, 255))
+        painter.end()
+        canvas._font_image = font
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "group",
+                     "layout": {"offsetX": 0, "offsetY": 0},
+                     "children": [
+                         {"id": "label", "component": "text", "text": "A 3",
+                          "layout": {"offsetX": 8, "offsetY": 8}}]},
+        })
+        image = canvas.grab().toImage()
+        # Glyph A at logical (8..14, 8..16), space advances 7, glyph 3 at
+        # logical (22..28); zoom 2 -> widget pixels. Glyph centers are white
+        # from the atlas; the space column between them stays background.
+        self.assertEqual("#ffffff", image.pixelColor(2 * 11, 2 * 12).name())
+        self.assertEqual("#ffffff", image.pixelColor(2 * 25, 2 * 12).name())
+        self.assertNotEqual("#ffffff", image.pixelColor(2 * 18, 2 * 12).name())
+
+    def test_selected_node_draws_its_outline(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = self._canvas()
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "hud",
+            "root": {"id": "root", "component": "group",
+                     "layout": {"offsetX": 0, "offsetY": 0},
+                     "children": [
+                         {"id": "hero", "component": "image", "sprite": "spr.hero",
+                          "layout": {"offsetX": 10, "offsetY": 10,
+                                     "width": 8, "height": 8}}]},
+        })
+        plain = canvas.grab().toImage()
+        canvas.set_selected_node("hero")
+        selected = canvas.grab().toImage()
+        # The selection outline paints orange around the node box (the box
+        # starts at logical (10,10) -> device (20,20), outline one device
+        # pixel outside it).
+        outline = selected.pixelColor(19, 19)
+        self.assertGreater(outline.red(), 200)
+        self.assertGreater(outline.green(), 120)
+        self.assertLess(outline.blue(), 60)
+        self.assertEqual(255, outline.alpha())
+        self.assertNotEqual(plain.pixelColor(19, 19).name(), outline.name())
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
