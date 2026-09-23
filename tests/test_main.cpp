@@ -11194,6 +11194,160 @@ void testCraftingContentPipeline() {
            "merged workspaces compile recipes into the runtime crafting catalog");
 }
 
+void testUiBackgroundFrames() {
+    using namespace underworld;
+    namespace content = game::content;
+    namespace ui = game::ui;
+    namespace presentation = game::presentation;
+
+    // 12x12 frame sprite with border 4: red corners, green edges, blue center.
+    core::ImageData frameData;
+    frameData.width = 12;
+    frameData.height = 12;
+    frameData.strideBytes = 12 * 4;
+    frameData.pixels.assign(12 * 12 * 4, 255);
+    const auto paint = [&](int x0, int y0, int w, int h, std::uint8_t r,
+                           std::uint8_t g, std::uint8_t b) {
+        for (int y = y0; y < y0 + h; ++y) {
+            for (int x = x0; x < x0 + w; ++x) {
+                const auto base = (static_cast<std::size_t>(y) * 12 + x) * 4;
+                frameData.pixels[base] = r;
+                frameData.pixels[base + 1] = g;
+                frameData.pixels[base + 2] = b;
+                frameData.pixels[base + 3] = 255;
+            }
+        }
+    };
+    paint(0, 0, 12, 12, 200, 40, 40);       // base = corners (red)
+    paint(4, 4, 4, 4, 40, 80, 200);         // center (blue)
+    paint(4, 0, 4, 4, 40, 200, 80);         // top edge (green)
+    paint(4, 8, 4, 4, 40, 200, 80);         // bottom edge (green)
+    paint(0, 4, 4, 4, 40, 200, 80);         // left edge (green)
+    paint(8, 4, 4, 4, 40, 200, 80);         // right edge (green)
+    const auto frameImage = std::make_shared<const render::Image>(std::move(frameData));
+
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({{"spr.frame"}, std::make_shared<render::SpriteSheet>(frameImage),
+                 render::SpriteFrame{{0, 0, 12, 12}, {0, 0}, {0, 0}, false}});
+
+    const auto makeFrameScreen = [&](const char* spriteId, int border) {
+        ui::ScreenDefinition screen;
+        screen.id = {"screen.frames"};
+        screen.kind = ui::ScreenKind::screen;
+        ui::NodeDefinition panel;
+        panel.id = "panel";
+        panel.component = ui::ComponentKind::panel;
+        panel.layout.offsetX = 10;
+        panel.layout.offsetY = 10;
+        panel.layout.width = 20;
+        panel.layout.height = 16;
+        panel.background = core::ColorRGBA8{90, 90, 90, 255};
+        panel.backgroundImage = ui::BackgroundImageDefinition{
+            simulation::DefinitionId{spriteId}, border};
+        screen.root = std::move(panel);
+        return screen;
+    };
+
+    struct EmptyResolver final : ui::UiBindingResolver {
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    };
+    const EmptyResolver resolver;
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<const render::Image>(std::move(fontData))};
+
+    // Panel 20x16 with border 4: corners 1:1, edges/center stretched.
+    const auto screen = makeFrameScreen("spr.frame", 4);
+    render::Framebuffer framebuffer(272, 224);
+    framebuffer.clear({0, 0, 0, 255});
+    render::Renderer2D renderer(framebuffer);
+    const ui::UiPresenter presenter;
+    const ui::UiVisualContext visuals{sprites, font};
+    presenter.render(screen, resolver, visuals, renderer);
+    const auto pixel = [&](int x, int y) {
+        const auto& color = framebuffer.pixels()[static_cast<std::size_t>(y) * 272 + x];
+        return std::to_string(color.r) + "," + std::to_string(color.g) + "," +
+               std::to_string(color.b);
+    };
+    expect(pixel(11, 11) == "200,40,40" && pixel(28, 24) == "200,40,40",
+           "nine-slice corners render 1:1 at both extremes");
+    expect(pixel(18, 11) == "40,200,80",
+           "the top edge stretches along the horizontal axis");
+    expect(pixel(18, 18) == "40,80,200",
+           "the center fills the remaining box");
+    expect(pixel(11, 18) == "40,200,80",
+           "the left edge stretches along the vertical axis");
+
+    // Missing sprite keeps the flat color fallback.
+    const auto missing = makeFrameScreen("spr.missing", 4);
+    render::Framebuffer fallback(272, 224);
+    fallback.clear({0, 0, 0, 255});
+    render::Renderer2D fallbackRenderer(fallback);
+    presenter.render(missing, resolver, visuals, fallbackRenderer);
+    expect(fallback.pixels()[static_cast<std::size_t>(12) * 272 + 12].r == 90,
+           "an unresolved frame sprite falls back to the authored color");
+
+    // Degenerate box (border*2 >= a dimension) stretches the whole sprite.
+    const auto degenerate = makeFrameScreen("spr.frame", 8);
+    render::Framebuffer stretched(272, 224);
+    stretched.clear({0, 0, 0, 255});
+    render::Renderer2D stretchedRenderer(stretched);
+    presenter.render(degenerate, resolver, visuals, stretchedRenderer);
+    expect(stretched.pixels()[static_cast<std::size_t>(12) * 272 + 12].r == 200,
+           "a degenerate frame box stretches the whole sprite instead of vanishing");
+
+    // Pipeline: decode -> encode round trip of the authored frame, and the
+    // validator rejects unknown sprites.
+    const auto decoded = content::decodeAuthoredContentJson(R"({
+        "format":"dungeon-underworld-content","version":7,
+        "visualImages":[{"id":"img.ui","root":"gameAssets","relativePath":"ui/ui.png"}],
+        "staticSprites":[{"id":"spr.frame","imageId":"img.ui","anchor":{"x":0,"y":0}}],
+        "uiScreens":[{"id":"screen.frames","kind":"screen",
+            "root":{"id":"panel","component":"panel",
+                "layout":{"anchor":"topLeft","offsetX":10,"offsetY":10,"width":20,"height":16,"z":0},
+                "background":{"r":90,"g":90,"b":90,"a":255},
+                "backgroundImage":{"sprite":"spr.frame","border":4}}}]
+    })");
+    expect(decoded && decoded.content->uiScreens.size() == 1 &&
+               decoded.content->uiScreens[0].root.backgroundImage &&
+               decoded.content->uiScreens[0].root.backgroundImage->sprite.value() == "spr.frame" &&
+               decoded.content->uiScreens[0].root.backgroundImage->border == 4,
+           "backgroundImage decodes from content JSON v7");
+    const auto encoded = content::encodeAuthoredContentJson(*decoded.content);
+    const auto roundtrip = content::decodeAuthoredContentJson(encoded);
+    expect(roundtrip && roundtrip.content->uiScreens[0].root.backgroundImage &&
+               roundtrip.content->uiScreens[0].root.backgroundImage->border == 4,
+           "backgroundImage survives a decode/encode round trip");
+
+    const auto compiled = content::compileContent(*decoded.content);
+    expect(compiled && compiled.registry->uiScreens().values().size() == 1,
+           "a valid authored frame compiles into the screen catalog");
+    const auto badSprite = content::decodeAuthoredContentJson(R"({
+        "format":"dungeon-underworld-content","version":7,
+        "visualImages":[{"id":"img.ui","root":"gameAssets","relativePath":"ui/ui.png"}],
+        "staticSprites":[{"id":"spr.frame","imageId":"img.ui","anchor":{"x":0,"y":0}}],
+        "uiScreens":[{"id":"screen.frames","kind":"screen",
+            "root":{"id":"panel","component":"panel",
+                "layout":{"anchor":"topLeft","offsetX":0,"offsetY":0,"width":20,"height":16,"z":0},
+                "backgroundImage":{"sprite":"spr.absent","border":4}}}]
+    })");
+    const auto rejected = content::compileContent(*badSprite.content);
+    expect(!rejected || std::any_of(rejected.report.diagnostics.begin(),
+                                    rejected.report.diagnostics.end(),
+                                    [](const auto& diagnostic) {
+                                        return diagnostic.code == "unknown_reference";
+                                    }),
+           "the validator rejects a backgroundImage sprite that does not exist");
+}
+
 void testUiScreenContentPipeline() {
     using namespace underworld;
     namespace content = game::content;
@@ -13358,6 +13512,7 @@ int main() {
         testPhase12E3ShopInterface();
         testCraftingEngine();
         testCraftingContentPipeline();
+        testUiBackgroundFrames();
         testUiScreenContentPipeline();
         testUiPresenterHudHeartParity();
         testUiScreenBuiltinAndBindings();

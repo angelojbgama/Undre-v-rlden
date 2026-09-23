@@ -319,6 +319,16 @@ documentos vivos por documento, dirty state e save canônico atômico.
   da arte); trocar a arte é escolher outro item — o commit passa pelo
   `set_sprite` existente e o canvas repinta. O C++ permanece a autoridade de
   pixel.
+- **Molduras 9-slice (P2 do inventário)**: nós group/panel/slot aceitam
+  `backgroundImage: {sprite, border}` — o sprite é um staticSprite cujo
+  inset de borda renderiza 1:1 nos quatro cantos, estica em um eixo nas
+  bordas e preenche o centro (`drawNineSlice` sobre o
+  `drawImageRegionNearest` existente; caixas degeneradas esticam o sprite
+  inteiro em vez de sumir). A moldura substitui o fundo de cor; sprite
+  ausente mantém o fallback de cor. A validação rejeita sprite inexistente,
+  border não positivo e componentes que não sejam group/panel/slot; o
+  Composer pinta o 9-slice no canvas e o Inspector autora o par
+  sprite/borda com limpar-para-voltar-à-cor.
 - **Fidelidade de exibição do canvas** (refinamento): `layout.visible` e os
   states authored são avaliados contra o Preview Data na mesma ordem/semântica
   do `resolveVisual` do presenter (deltas de visible/background/tint; tint é

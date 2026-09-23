@@ -200,6 +200,23 @@ class UiAuthoringService:
         node["component"] = component
         workspace_replace(self.workspace, definition, data)
 
+    def set_background_image(self, screen_id: str, node_id: str,
+                              sprite_id: str | None, border: int = 4) -> None:
+        """Author the 9-slice frame of a group/panel/slot node; None clears."""
+        workspace = self._require_workspace()
+        data, definition = self._editable_screen(screen_id)
+        node = self._require_node(data, node_id)
+        if node["component"] not in ("group", "panel", "slot"):
+            raise ValueError("backgroundImage belongs to group/panel/slot nodes")
+        if sprite_id is None:
+            node.pop("backgroundImage", None)
+        else:
+            self._require_definition(workspace, "staticSprites", sprite_id)
+            if not isinstance(border, int) or border <= 0:
+                raise ValueError("backgroundImage border must be positive")
+            node["backgroundImage"] = {"sprite": sprite_id, "border": border}
+        workspace_replace(self.workspace, definition, data)
+
     def set_sprite(self, screen_id: str, node_id: str, sprite_id: str | None) -> None:
         workspace = self._require_workspace()
         data, definition = self._editable_screen(screen_id)

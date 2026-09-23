@@ -318,6 +318,54 @@ class UiCanvas(QWidget):
         painter.end()
         return tinted
 
+    def _paint_frame(self, painter: QPainter, node: dict, x: float, y: float,
+                     width: int, height: int) -> bool:
+        """Authored 9-slice background image; returns False when absent or
+        unresolved so callers keep their flat-color fallback."""
+        image_spec = node.get("backgroundImage")
+        if not isinstance(image_spec, dict):
+            return False
+        resolved = self._resolved_sprite(str(image_spec.get("sprite", "")))
+        border = int(image_spec.get("border", 0))
+        if resolved is None or border <= 0:
+            return False
+        image = resolved.image
+        source = QRectF(0, 0, image.width(), image.height())
+        if image.width() < border * 2 or image.height() < border * 2:
+            painter.drawImage(QRectF(x, y, width, height), image, source)
+            return True
+        inner_w = image.width() - border * 2
+        inner_h = image.height() - border * 2
+        fill_w = width - border * 2
+        fill_h = height - border * 2
+        if fill_w <= 0 or fill_h <= 0:
+            painter.drawImage(QRectF(x, y, width, height), image, source)
+            return True
+        right_sx = border + inner_w
+        bottom_sy = border + inner_h
+        right_dx = x + border + fill_w
+        bottom_dy = y + border + fill_h
+        corners = (
+            (QRectF(0, 0, border, border), QRectF(x, y, border, border)),
+            (QRectF(right_sx, 0, border, border), QRectF(right_dx, y, border, border)),
+            (QRectF(0, bottom_sy, border, border), QRectF(x, bottom_dy, border, border)),
+            (QRectF(right_sx, bottom_sy, border, border),
+             QRectF(right_dx, bottom_dy, border, border)),
+        )
+        edges = (
+            (QRectF(border, 0, inner_w, border), QRectF(x + border, y, fill_w, border)),
+            (QRectF(border, bottom_sy, inner_w, border),
+             QRectF(x + border, bottom_dy, fill_w, border)),
+            (QRectF(0, border, border, inner_h), QRectF(x, y + border, border, fill_h)),
+            (QRectF(right_sx, border, border, inner_h),
+             QRectF(right_dx, y + border, border, fill_h)),
+        )
+        center = (QRectF(border, border, inner_w, inner_h),
+                  QRectF(x + border, y + border, fill_w, fill_h))
+        for source_rect, target in corners + edges + (center,):
+            painter.drawImage(target, image, source_rect)
+        return True
+
     def _paint_node(self, painter: QPainter, node: dict, parent: dict | None,
                     shift: tuple[int, int] = (0, 0),
                     origin: tuple[int, int] | None = None) -> None:
@@ -349,8 +397,11 @@ class UiCanvas(QWidget):
             width = int(layout.get("width", LOGICAL_WIDTH))
             height = int(layout.get("height", LOGICAL_HEIGHT))
             rect = QRectF(x, y, width, height)
+            frame = self._paint_frame(painter, node, x, y, width, height)
             background = state_background
-            if background is not None:
+            if frame:
+                pass  # the authored 9-slice frame replaced the flat fill
+            elif background is not None:
                 # Authored background: paint it exactly like the runtime.
                 painter.fillRect(rect, background)
                 painter.setPen(QPen(QColor(90, 100, 140, 200), 0))
@@ -502,12 +553,13 @@ class UiCanvas(QWidget):
             height = int(layout.get("height", 16))
             x, y = resolve_position(layout, (width, height))
             rect = QRectF(x, y, width, height)
-            if state_background is not None:
-                painter.fillRect(rect, state_background)
-            else:
-                painter.setBrush(QColor(56, 60, 90, 120))
-                painter.setPen(QPen(QColor(120, 130, 170), 0))
-                painter.drawRect(rect)
+            if not self._paint_frame(painter, node, x, y, width, height):
+                if state_background is not None:
+                    painter.fillRect(rect, state_background)
+                else:
+                    painter.setBrush(QColor(56, 60, 90, 120))
+                    painter.setPen(QPen(QColor(120, 130, 170), 0))
+                    painter.drawRect(rect)
             # Slot icons come from repeater context bindings, which preview
             # data (numbers only) cannot resolve; the cell previews an inner
             # placeholder where the icon art would land.
@@ -951,6 +1003,27 @@ class UiComposerWidget(QWidget):
         self._inspector_layout.addRow(self.translator("ui_composer_size"), size_row)
 
         component = str(node.get("component"))
+        if component in ("group", "panel", "slot"):
+            # 9-slice frame picker: any workspace staticSprite plus its
+            # border inset; empty clears back to the flat color.
+            self._frame_combo = QComboBox()
+            frame_ids = sorted(
+                str(definition.definition_id)
+                for definition in self.workspace.definitions("staticSprites"))
+            self._frame_combo.addItem("")
+            self._frame_combo.addItems(frame_ids)
+            frame = node.get("backgroundImage") or {}
+            self._frame_combo.setCurrentText(str(frame.get("sprite", "")))
+            self._frame_combo.currentTextChanged.connect(self._commit_background_image)
+            self._frame_border = QSpinBox()
+            self._frame_border.setRange(1, 64)
+            self._frame_border.setValue(int(frame.get("border", 4)))
+            self._frame_border.valueChanged.connect(self._commit_background_image)
+            frame_row = QHBoxLayout()
+            frame_row.addWidget(self._frame_combo, 1)
+            frame_row.addWidget(self._frame_border)
+            self._inspector_layout.addRow(
+                self.translator("ui_composer_frame"), frame_row)
         if component == "image":
             # Sprite picker over the workspace staticSprites with a live art
             # preview: swapping the art is choosing another entry; the canvas
@@ -1104,6 +1177,15 @@ class UiComposerWidget(QWidget):
             32, 32,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.FastTransformation))
+
+    def _commit_background_image(self) -> None:
+        if self._reloading or not self._selected_node:
+            return
+        sprite = self._frame_combo.currentText().strip()
+        self._try(lambda: self.service.set_background_image(
+            self._selected_screen, self._selected_node,
+            sprite or None, self._frame_border.value()))
+        self.canvas.update()
 
     def _commit_sprite(self) -> None:
         if self._reloading or not self._selected_node:

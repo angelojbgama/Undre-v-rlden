@@ -290,6 +290,26 @@ void validateUiNode(const ui::NodeDefinition& node, const simulation::Definition
             break;
         }
     }
+    // Authored 9-slice frames: only containers and slots paint backgrounds,
+    // the sprite must exist and the border must be a positive inset.
+    if (node.backgroundImage) {
+        const bool backgroundComponent = node.component == ui::ComponentKind::group ||
+                                         node.component == ui::ComponentKind::panel ||
+                                         node.component == ui::ComponentKind::slot;
+        if (!backgroundComponent) {
+            error(report, ContentKind::uiScreen, screenId, "invalid_property",
+                  "backgroundImage is only valid on group/panel/slot nodes",
+                  "backgroundImage");
+        }
+        if (node.backgroundImage->border <= 0) {
+            error(report, ContentKind::uiScreen, screenId, "invalid_meter",
+                  "backgroundImage border must be positive", "backgroundImage.border");
+        }
+        if (!contains(staticSprites, node.backgroundImage->sprite)) {
+            error(report, ContentKind::uiScreen, screenId, "unknown_reference",
+                  "backgroundImage sprite does not exist", "backgroundImage.sprite");
+        }
+    }
     std::unordered_set<std::string> boundProperties;
     for (const auto& binding : node.bindings) {
         if (!ui::componentAcceptsProperty(node.component, binding.property))

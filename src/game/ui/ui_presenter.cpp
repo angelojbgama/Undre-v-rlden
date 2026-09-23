@@ -72,6 +72,52 @@ NodeVisual resolveVisual(const NodeDefinition& node, const UiBindingResolver& re
     return visual;
 }
 
+// Authored 9-slice frame: corners render 1:1, edges stretch along one axis,
+// the center fills the rest. Degenerate boxes fall back to a plain scaled
+// stretch of the whole source so authored frames never vanish.
+void drawNineSlice(render::Renderer2D& renderer, const render::Image& image,
+                   core::RectI source, core::PointI position, int width, int height,
+                   int border) {
+    const core::RectI destination{position.x, position.y, width, height};
+    const bool wideEnough = border > 0 && source.width >= border * 2 &&
+                            source.height >= border * 2 &&
+                            width >= border * 2 && height >= border * 2;
+    if (!wideEnough) {
+        renderer.drawImageRegionNearest(image, source, destination, false);
+        return;
+    }
+    const int innerW = source.width - border * 2;
+    const int innerH = source.height - border * 2;
+    const int fillW = width - border * 2;
+    const int fillH = height - border * 2;
+    const int sourceRightX = source.x + border + innerW;
+    const int sourceBottomY = source.y + border + innerH;
+    const int destRightX = position.x + border + fillW;
+    const int destBottomY = position.y + border + fillH;
+    // corners
+    renderer.drawImageRegionNearest(image, {source.x, source.y, border, border},
+                                    {position.x, position.y, border, border}, false);
+    renderer.drawImageRegionNearest(image, {sourceRightX, source.y, border, border},
+                                    {destRightX, position.y, border, border}, false);
+    renderer.drawImageRegionNearest(image, {source.x, sourceBottomY, border, border},
+                                    {position.x, destBottomY, border, border}, false);
+    renderer.drawImageRegionNearest(image, {sourceRightX, sourceBottomY, border, border},
+                                    {destRightX, destBottomY, border, border}, false);
+    // edges
+    renderer.drawImageRegionNearest(image, {source.x + border, source.y, innerW, border},
+                                    {position.x + border, position.y, fillW, border}, false);
+    renderer.drawImageRegionNearest(image, {source.x + border, sourceBottomY, innerW, border},
+                                    {position.x + border, destBottomY, fillW, border}, false);
+    renderer.drawImageRegionNearest(image, {source.x, source.y + border, border, innerH},
+                                    {position.x, position.y + border, border, fillH}, false);
+    renderer.drawImageRegionNearest(image, {sourceRightX, source.y + border, border, innerH},
+                                    {destRightX, position.y + border, border, fillH}, false);
+    // center
+    renderer.drawImageRegionNearest(image, {source.x + border, source.y + border, innerW, innerH},
+                                    {position.x + border, position.y + border, fillW, fillH},
+                                    false);
+}
+
 void drawSpriteRegion(render::Renderer2D& renderer,
                       const presentation::RuntimeStaticSprite& sprite,
                       core::RectI region, int drawX, int drawY,
@@ -303,7 +349,16 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
             const auto position = addOffset(resolveNodePosition(node.layout, {width, height}), offset);
             auto background = node.background;
             if (visual.background) background = visual.background;
-            if (background) {
+            if (node.backgroundImage) {
+                if (const auto* frame = context.staticSprites.find(
+                        node.backgroundImage->sprite)) {
+                    drawNineSlice(renderer, frame->sheet->image(),
+                                  frame->frame.source, position,
+                                  width, height, node.backgroundImage->border);
+                } else if (background) {
+                    renderer.fillRect({position.x, position.y, width, height}, *background);
+                }
+            } else if (background) {
                 renderer.fillRect({position.x, position.y, width, height}, *background);
             }
             const auto iconId = boundId(node, "icon", resolver);
@@ -343,12 +398,27 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
         case ComponentKind::group:
         case ComponentKind::panel: {
             const auto background = visual.background ? visual.background : node.background;
-            if (background && node.layout.width && node.layout.height) {
+            if (node.layout.width && node.layout.height) {
                 const auto size =
                     core::PointI{*node.layout.width, *node.layout.height};
                 const auto position =
                     addOffset(resolveNodePosition(node.layout, size), offset);
-                renderer.fillRect({position.x, position.y, size.x, size.y}, *background);
+                // The authored 9-slice frame wins over the flat color; a
+                // missing sprite keeps the color fallback.
+                if (node.backgroundImage) {
+                    if (const auto* frame = context.staticSprites.find(
+                            node.backgroundImage->sprite)) {
+                        drawNineSlice(renderer, frame->sheet->image(),
+                                      frame->frame.source, position,
+                                      size.x, size.y, node.backgroundImage->border);
+                    } else if (background) {
+                        renderer.fillRect({position.x, position.y, size.x, size.y},
+                                          *background);
+                    }
+                } else if (background) {
+                    renderer.fillRect({position.x, position.y, size.x, size.y},
+                                      *background);
+                }
             }
             for (const auto& child : node.children) {
                 renderNode(child, resolver, context, renderer, offset);

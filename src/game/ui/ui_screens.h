@@ -337,6 +337,13 @@ struct ActionDefinition final {
     ActionId action{};
 };
 
+// Authored 9-slice frame: the border inset renders 1:1 in the four corners,
+// stretches along one axis on the edges and fills the remaining center.
+struct BackgroundImageDefinition final {
+    simulation::DefinitionId sprite{};
+    int border{};
+};
+
 struct NodeDefinition final {
     std::string id;
     ComponentKind component{ComponentKind::group};
@@ -353,6 +360,8 @@ struct NodeDefinition final {
     // the authored cell-local placement. Optional panel/group background
     // fills the container box (the overlay panel rectangles).
     std::optional<core::ColorRGBA8> background;
+    // backgroundImage replaces the flat color with a 9-slice frame sprite.
+    std::optional<BackgroundImageDefinition> backgroundImage;
     core::PointI iconOffset{0, 0};
     core::PointI countOffset{0, 0};
     // Repeater grid: instances are placed at origin + (i % columns) *

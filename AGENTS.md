@@ -2181,9 +2181,18 @@ barra. O `QuestSystem` ganhou overloads no-op para os eventos de lifecycle
 para TODOS os alternativos do variant — guard de runtime não compila; overloads
 no-op são a correção.
 
-Próximos do inventário (aprovados): P2 background por imagem nas telas
-(9-slice) — depois ajuda/controles e mapa/minimapa (este último exige sistema
-de exploração; settings segue fora de escopo).
+P2 molduras 9-slice implementado: `backgroundImage {sprite, border}` em nós
+group/panel/slot (Content JSON v7, campo opcional retrocompatível). O
+presenter desenha o 9-slice por cima do `drawImageRegionNearest` existente
+(sem renderer novo); moldura substitui a cor, sprite ausente cai na cor;
+caixa degenerada estica o sprite inteiro. Validação C++ e o serviço do Studio
+(`set_background_image`) rejeitam sprite inexistente/border inválido;
+o canvas do Composer pinta o 9-slice e o Inspector autora o par sprite+border
+(combo + spin, vazio limpa). O builtin permanece neutro em cores — produção
+adota autorando um staticSprite de moldura no workspace e aplicando nos nós.
+
+Próximos do inventário: ajuda/controles (barata) e mapa/minimapa (exige
+sistema de exploração; settings segue fora de escopo).
 
 # Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
 

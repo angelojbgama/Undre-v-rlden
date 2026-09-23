@@ -396,5 +396,87 @@ class UiCanvasFidelityTests(unittest.TestCase):
         self.assertNotEqual(plain.pixelColor(19, 19).name(), outline.name())
 
 
+class UiFrameNineSliceTests(unittest.TestCase):
+    """Authored 9-slice frames in the canvas and the authoring service."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.application = QApplication.instance() or QApplication([])
+
+    @staticmethod
+    def _frame_image() -> QImage:
+        from PySide6.QtGui import QPainter as Paint
+        image = QImage(12, 12, QImage.Format.Format_ARGB32)
+        image.fill(QColor(200, 40, 40))
+        painter = Paint(image)
+        painter.fillRect(4, 4, 4, 4, QColor(40, 80, 200))
+        painter.fillRect(4, 0, 4, 4, QColor(40, 200, 80))
+        painter.fillRect(4, 8, 4, 4, QColor(40, 200, 80))
+        painter.fillRect(0, 4, 4, 4, QColor(40, 200, 80))
+        painter.fillRect(8, 4, 4, 4, QColor(40, 200, 80))
+        painter.end()
+        return image
+
+    def test_canvas_paints_nine_slice_frame(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        canvas = UiCanvas()
+        self.addCleanup(canvas.deleteLater)
+
+        class FrameResolver:
+            def __init__(self) -> None:
+                self.image = self._make()
+                self.asset_root = None
+
+            @staticmethod
+            def _make() -> QImage:
+                return UiFrameNineSliceTests._frame_image()
+
+            def resolve_static_sprite(self, sprite_id: str) -> ResolvedStudioVisual:
+                return ResolvedStudioVisual(
+                    image=self.image, anchor_x=0, anchor_y=0,
+                    draw_offset_x=0, draw_offset_y=0,
+                    animation_id=sprite_id, frame_index=0)
+
+        canvas.set_visuals(FrameResolver())
+        canvas.set_screen_data({
+            "id": "screen.x", "kind": "screen",
+            "root": {"id": "panel", "component": "panel",
+                     "layout": {"offsetX": 10, "offsetY": 10,
+                                "width": 20, "height": 16},
+                     "backgroundImage": {"sprite": "spr.frame", "border": 4}},
+        })
+        image = canvas.grab().toImage()
+        # Corners 1:1 at both extremes; edges/center stretched (zoom 2).
+        self.assertEqual(QColor(200, 40, 40).name(), image.pixelColor(22, 22).name())
+        self.assertEqual(QColor(200, 40, 40).name(), image.pixelColor(56, 48).name())
+        self.assertEqual(QColor(40, 200, 80).name(), image.pixelColor(36, 22).name())
+        self.assertEqual(QColor(40, 80, 200).name(), image.pixelColor(36, 36).name())
+
+    def test_service_authors_and_clears_frames(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+        with tempfile.TemporaryDirectory() as directory:
+            from tools.content_studio.services.ui_authoring_service import (
+                UiAuthoringService,
+            )
+            root = Path(directory)
+            workspace = _make_workspace(root)
+            service = UiAuthoringService(workspace)
+            service.create_screen("screen.frames")
+            service.add_node("screen.frames", "panel", "panel", offset=(10, 10))
+            service.set_layout("screen.frames", "panel", width=20, height=16)
+            service.set_background_image("screen.frames", "panel", "spr.art", 4)
+            screen = workspace.find("uiScreens", "screen.frames")
+            assert screen is not None
+            self.assertEqual({"sprite": "spr.art", "border": 4},
+                             screen.data["root"]["children"][0]["backgroundImage"])
+            with self.assertRaises(ValueError):
+                service.set_background_image("screen.frames", "panel", "spr.absent", 4)
+            service.set_background_image("screen.frames", "panel", None)
+            self.assertNotIn("backgroundImage",
+                             screen.data["root"]["children"][0])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
