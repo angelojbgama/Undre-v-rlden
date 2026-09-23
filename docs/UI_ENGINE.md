@@ -264,6 +264,11 @@ não de código — é exatamente a prova de aceite da seção 10.
   esconde os botões SAVE; LOAD continua um slot salvo ou inicia novo jogo no
   slot vazio) e BACK volta ao título. Drivers headless/playtest bootam direto
   no gameplay (`GameLaunchOptions::titleScreen`; `--no-title` desliga).
+- Notificações transientes no HUD (P1 do inventário): eventos de domínio
+  (`ExperienceGranted` com level-up, `QuestStarted`/`QuestCompleted`) viram
+  uma notificação do shell — `hud.notification` (string) +
+  `hud.notification.present` — que a screen.hud builtin renderiza como nó
+  gated centrado sob a barra (150 ticks).
 - Game over como shell authored (P0 do inventário): a morte do player
   (`EntityDefeated` com o handle do player) abre `screen.gameover` com o
   gameplay congelado e a ação `game.retry`; o shell responde com

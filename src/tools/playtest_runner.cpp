@@ -1332,13 +1332,20 @@ bool runRewards(ScenarioContext& context) {
     if (!runBaseline(context)) { return false; }
     const auto initialExperience = context.snapshot().playerExperience;
     if (!runContentAction(context, "enemy.evil_soldier")) { return false; }
-    const auto& after = context.snapshot();
+    const auto after = context.snapshot();
     // The room's other hostiles may join the fight in self-defense; the
     // scenario asserts the soldier's own 60 XP is included in the total.
     const bool rewarded = context.require(after.playerExperience >= initialExperience + 60,
                                           "soldier defeat did not grant its reward XP");
-    if (rewarded) { static_cast<void>(context.checkpoint("reward_loot", "reward_resolved")); }
-    return rewarded;
+    if (!rewarded) { return false; }
+    static_cast<void>(context.checkpoint("reward_loot", "reward_resolved"));
+    // The skull's 40 XP completes the 100 XP threshold: the level-up fires
+    // the HUD notification (LEVEL n) from the ExperienceGranted event.
+    static_cast<void>(fightToDeath(context, "enemy.skull"));
+    const auto& leveled = context.snapshot();
+    return context.require(leveled.playerLevel >= 2 &&
+                               leveled.lastNotification.rfind("LEVEL ", 0) == 0,
+                           "reaching level 2 fired the HUD level-up notification");
 }
 
 // Title shell end to end: gameplay stays frozen behind the authored title,

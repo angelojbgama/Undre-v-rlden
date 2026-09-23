@@ -101,6 +101,7 @@ struct GameAuditSnapshot final {
     std::vector<std::string> dialogueFlags;
     std::size_t activeProjectileCount{};
     std::string lastEvent;
+    std::string lastNotification;
 };
 
 [[nodiscard]] std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot);

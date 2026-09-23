@@ -12209,6 +12209,31 @@ void testUiTitleShell() {
     expect(bindings.number(ui::BindingPath::savesStartMode) == std::optional<std::int64_t>{0},
            "the start-mode readout clears once gameplay owns the saves screen");
 
+    // HUD notification readout: the shell composes the text from domain
+    // events and the countdown owns visibility; the builtin HUD carries the
+    // gated node.
+    view.hudNotificationText = "LEVEL 2";
+    view.hudNotificationPresent = true;
+    expect(bindings.string(ui::BindingPath::hudNotification) ==
+                   std::optional<std::string>{"LEVEL 2"} &&
+               bindings.number(ui::BindingPath::hudNotificationPresent) ==
+                   std::optional<std::int64_t>{1},
+           "the notification text and presence resolve for the HUD node");
+    view.hudNotificationPresent = false;
+    expect(!bindings.string(ui::BindingPath::hudNotification).has_value() &&
+               bindings.number(ui::BindingPath::hudNotificationPresent) ==
+                   std::optional<std::int64_t>{0},
+           "the notification hides with the countdown while keeping the text");
+    const auto* hudWithNotice = compiled.registry->uiScreens().find({"screen.hud"});
+    expect(hudWithNotice != nullptr &&
+               std::any_of(hudWithNotice->root.children.begin(),
+                           hudWithNotice->root.children.end(),
+                           [](const ui::NodeDefinition& node) {
+                               return node.id == "hud.notification" &&
+                                      !node.layout.visible && node.states.size() == 1;
+                           }),
+           "the builtin HUD authors the gated notification node");
+
     // Both command-line parsers boot the interactive game into the title
     // shell; --no-title opts out. The wide variant is the one the Win32
     // entry point uses, so both must agree on the default.

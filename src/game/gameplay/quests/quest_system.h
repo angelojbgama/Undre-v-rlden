@@ -34,6 +34,10 @@ private:
     void consume(const simulation::ItemDelivered& event);
     void consume(const simulation::ItemConsumed&) noexcept {}
     void consume(const simulation::ExperienceGranted&) noexcept {}
+    // Lifecycle events are emitted by the session after the transition was
+    // already applied; consuming them again would double-advance.
+    void consume(const simulation::QuestStarted&) noexcept {}
+    void consume(const simulation::QuestCompleted&) noexcept {}
     void consume(const simulation::PresentationEffectRequested&) noexcept {}
     void consume(const simulation::EffectPlayback&) noexcept {}
     void consume(const simulation::SceneStarted&) noexcept {}

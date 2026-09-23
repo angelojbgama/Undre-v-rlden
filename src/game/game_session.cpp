@@ -1054,7 +1054,29 @@ void GameSession::applyDialogueActions() {
 }
 
 void GameSession::consumeQuestEvents() {
-    if (questSystem_) { questSystem_->consume(events_); }
+    if (!questSystem_) { return; }
+    // Quest status transitions become domain events so observers (HUD
+    // notifications, audit) react without polling the store. Started quests
+    // enter the snapshot as active; completion flips an active entry.
+    const auto before = questState_.snapshot();
+    const auto previousStatus = [&](const simulation::DefinitionId& questId) {
+        for (const auto& progress : before) {
+            if (progress.questId == questId) { return progress.status; }
+        }
+        return gameplay::quests::QuestStatus::inactive;
+    };
+    questSystem_->consume(events_);
+    for (const auto& progress : questState_.snapshot()) {
+        const auto previous = previousStatus(progress.questId);
+        if (previous == gameplay::quests::QuestStatus::inactive &&
+            progress.status != gameplay::quests::QuestStatus::inactive) {
+            events_.emit(simulation::QuestStarted{progress.questId});
+        }
+        if (previous != gameplay::quests::QuestStatus::completed &&
+            progress.status == gameplay::quests::QuestStatus::completed) {
+            events_.emit(simulation::QuestCompleted{progress.questId});
+        }
+    }
 }
 
 void GameSession::consumeWorldLogic() {

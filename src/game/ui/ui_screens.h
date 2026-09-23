@@ -122,6 +122,10 @@ enum class BindingPath {
     // Shell readout for the saves screen: 1 while the title shell uses the
     // screen as the start/new-game picker (SAVE buttons stay hidden there).
     savesStartMode,
+    // Transient HUD notification (level up, quest started/completed) fed by
+    // the shell from domain events; text plus its presence gate.
+    hudNotification,
+    hudNotificationPresent,
 };
 
 struct BindingPathEntry final {
@@ -129,7 +133,7 @@ struct BindingPathEntry final {
     std::string_view path;
 };
 
-inline constexpr std::array<BindingPathEntry, 73> bindingPathTable{{
+inline constexpr std::array<BindingPathEntry, 75> bindingPathTable{{
     {BindingPath::playerHealthCurrent, "player.health.current"},
     {BindingPath::playerHealthMax, "player.health.max"},
     {BindingPath::playerHealthPercentage, "player.health.percentage"},
@@ -203,6 +207,8 @@ inline constexpr std::array<BindingPathEntry, 73> bindingPathTable{{
     {BindingPath::overlayDialogueChoiceSelected, "overlay.dialogue.choiceSelected"},
     {BindingPath::dialogueChoicesVisible, "dialogue.choices.visible"},
     {BindingPath::savesStartMode, "saves.startMode"},
+    {BindingPath::hudNotification, "hud.notification"},
+    {BindingPath::hudNotificationPresent, "hud.notification.present"},
 }};
 
 [[nodiscard]] std::optional<BindingPath> findBindingPath(std::string_view path);

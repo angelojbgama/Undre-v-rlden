@@ -17,6 +17,8 @@ void QuestSystem::consume(const simulation::EventBuffer& events) {
 
 void QuestSystem::consume(std::span<const simulation::SimulationEvent> events) {
     for (const auto& event : events) {
+        // Quest lifecycle events hit the no-op consume overloads: they are
+        // emitted by the session after the transition was applied.
         std::visit([this](const auto& value) { consume(value); }, event);
     }
 }

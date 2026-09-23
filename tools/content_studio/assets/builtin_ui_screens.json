@@ -2295,6 +2295,37 @@
             "z": 0
             },
           "text": "I ITEMS  E OPEN"
+          },
+        {
+          "id": "hud.notification",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 68,
+            "offsetY": 18,
+            "z": 0,
+            "visible": false
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "hud.notification"
+              }
+            ],
+          "states": [
+            {
+              "id": "present",
+              "condition": {
+                "source": "hud.notification.present",
+                "operator": "equal",
+                "value": 1
+                },
+              "visual": {
+                "visible": true
+                }
+              }
+            ]
           }
         ]
       }

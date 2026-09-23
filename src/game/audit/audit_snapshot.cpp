@@ -116,7 +116,9 @@ std::string serializeAuditSnapshot(const GameAuditSnapshot& snapshot) {
         out << '"' << escapeJsonString(snapshot.dialogueFlags[index]) << '"';
     }
     out << "],\"activeProjectiles\":" << snapshot.activeProjectileCount
-        << ",\"lastEvent\":\"" << escapeJsonString(snapshot.lastEvent) << "\"}";
+        << ",\"lastEvent\":\"" << escapeJsonString(snapshot.lastEvent)
+        << "\",\"lastNotification\":\"" << escapeJsonString(snapshot.lastNotification)
+        << "\"}";
     return out.str();
 }
 

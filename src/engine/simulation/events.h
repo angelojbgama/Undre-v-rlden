@@ -126,11 +126,22 @@ struct ExperienceGranted final {
     std::uint32_t newLevel{};
 };
 
+// Quest lifecycle transitions (observers like HUD notifications react to
+// these instead of polling the quest store).
+struct QuestStarted final {
+    DefinitionId questId{};
+};
+
+struct QuestCompleted final {
+    DefinitionId questId{};
+};
+
 using SimulationEvent = std::variant<EntityDamaged, EntityDefeated, ProjectileImpact,
                                      PickupCollected, NpcTalked, MapEntered, RegionEntered,
                                      RegionExited, EncounterStarted, EncounterCompleted, ObjectOpened,
                                      ObjectActivationChanged,
                                      ItemDelivered, ItemConsumed, ExperienceGranted,
+                                     QuestStarted, QuestCompleted,
                                      PresentationEffectRequested,
                                      EffectPlayback,
                                      SceneStarted, SceneCompleted, SceneAborted>;

@@ -404,6 +404,23 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     hint.layout.offsetY = 203;
     hint.text = "I ITEMS  E OPEN";
     hudChild(std::move(hint));
+    // Transient notification (level up, quest started/completed): composed
+    // by the shell from domain events, centered under the HUD bar and
+    // gated by the notification presence binding.
+    ui::NodeDefinition notification;
+    notification.id = "hud.notification";
+    notification.component = ui::ComponentKind::text;
+    notification.layout.offsetX = 68;
+    notification.layout.offsetY = 18;
+    notification.layout.visible = false;
+    notification.bindings.push_back({"text", ui::BindingPath::hudNotification});
+    ui::StateDefinition notificationVisible;
+    notificationVisible.id = "present";
+    notificationVisible.condition = ui::StateCondition{
+        ui::BindingPath::hudNotificationPresent, ui::ConditionOperator::equal, 1};
+    notificationVisible.visual.visible = true;
+    notification.states.push_back(std::move(notificationVisible));
+    hudChild(std::move(notification));
     hudScreen.root = std::move(hudRoot);
     pack.uiScreens.push_back(std::move(hudScreen));
 

@@ -424,6 +424,7 @@ struct GameRuntime::State final {
         }
         snapshot.activeProjectileCount = session.projectiles().projectiles().size();
         snapshot.lastEvent = lastEvent;
+        snapshot.lastNotification = hudNotification;
         return snapshot;
     }
 
@@ -475,6 +476,24 @@ struct GameRuntime::State final {
                 std::ostringstream text;
                 text << "DAMAGE " << damaged->amount << " HP " << damaged->remainingHealth;
                 lastEvent = text.str();
+            } else if (const auto* granted =
+                           std::get_if<simulation::ExperienceGranted>(&event)) {
+                if (granted->newLevel > granted->previousLevel) {
+                    hudNotification = "LEVEL " + std::to_string(granted->newLevel);
+                    hudNotificationTicks = 150;
+                }
+            } else if (const auto* started =
+                           std::get_if<simulation::QuestStarted>(&event)) {
+                const auto* quest = content.quests().find(started->questId);
+                hudNotification = "NEW QUEST: " +
+                    (quest != nullptr ? quest->title : std::string(started->questId.value()));
+                hudNotificationTicks = 150;
+            } else if (const auto* completed =
+                           std::get_if<simulation::QuestCompleted>(&event)) {
+                const auto* quest = content.quests().find(completed->questId);
+                hudNotification = "QUEST DONE: " +
+                    (quest != nullptr ? quest->title : std::string(completed->questId.value()));
+                hudNotificationTicks = 150;
             } else if (const auto* defeated =
                            std::get_if<simulation::EntityDefeated>(&event)) {
                 if (defeated->target == player.entityHandle()) {
@@ -678,6 +697,7 @@ struct GameRuntime::State final {
         }
         uiSaveDispatched = false;
         uiLoadDispatched = false;
+        if (hudNotificationTicks > 0) { --hudNotificationTicks; }
         const simulation::PlayerCommand command = commandBuilder.build(tick, localPlayerId, effective);
         if (!session.dialogue().isOpen() && !session.sceneActive()) {
             if (command.actions.saveGamePressed) { saveGame(); }
@@ -729,6 +749,8 @@ struct GameRuntime::State final {
         buildQuestJournal(view, session.questState(), content.quests());
         buildCraftingDetails(view);
         buildDialogueDetails(view, session.dialogue());
+        view.hudNotificationText = hudNotification;
+        view.hudNotificationPresent = hudNotificationTicks > 0;
         // Ammo readout derives from the authored attack requirement and the
         // live inventory; attacks without ammo leave the HUD slot empty.
         const auto* bowAttack = attackCatalog.find(gameplay::playerBowAttackId());
@@ -778,6 +800,10 @@ struct GameRuntime::State final {
     bool uiSaveDispatched{};
     bool uiLoadDispatched{};
     bool uiRetryDispatched{};
+    // Transient HUD notification: the latest text (sticky, like lastEvent)
+    // plus the visibility countdown owned by the shell.
+    std::string hudNotification;
+    int hudNotificationTicks{};
     bool journalOpen{};
     int currentSlot{0};
     presentation::RuntimeVisualContent runtimeVisualContent;

@@ -2168,10 +2168,22 @@ semântica de reset de sessão. Ação nova `game.retry` no Action Registry (17)
 playtest `game_over` no `--all` (19/19): morre desarmado de verdade, congela,
 retry revive com HP cheio no spawn e o movimento volta.
 
-Próximos do inventário (aprovados): P1 notificações de level-up/quest no HUD
-(`ExperienceGranted` já carrega previousLevel/newLevel) e background por
-imagem nas telas (9-slice) — depois P2 ajuda/controles e mapa/minimapa (este
-último exige sistema de exploração; settings segue fora de escopo).
+P1 notificações implementado: eventos de domínio `QuestStarted`/`QuestCompleted`
+(emitidos pela `GameSession::consumeQuestEvents` via diff de status do
+`QuestStateStore` — sem polling) e o `ExperienceGranted` com level-up
+alimentam uma notificação transiente do shell (texto sticky + countdown de
+150 ticks) exposta por `hud.notification` (string) e
+`hud.notification.present` (número); a screen.hud builtin carrega o nó gated
+"NEW QUEST: <título>" / "QUEST DONE: <título>" / "LEVEL n" centrado sob a
+barra. O `QuestSystem` ganhou overloads no-op para os eventos de lifecycle
+(não pode reconsumir a própria transição); o snapshot de auditoria ganhou
+`lastNotification`. Nota técnica da rodada: `std::visit` instancia o lambda
+para TODOS os alternativos do variant — guard de runtime não compila; overloads
+no-op são a correção.
+
+Próximos do inventário (aprovados): P2 background por imagem nas telas
+(9-slice) — depois ajuda/controles e mapa/minimapa (este último exige sistema
+de exploração; settings segue fora de escopo).
 
 # Estado atual — title shell (Scene/Game-State mínimo) e arte real no Composer
 

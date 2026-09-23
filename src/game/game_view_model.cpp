@@ -213,6 +213,9 @@ std::optional<std::int64_t> GameViewModelBindings::number(ui::BindingPath path) 
         case ui::BindingPath::savesStartMode:
             return view_->savesStartMode ? std::optional<std::int64_t>{1}
                                          : std::optional<std::int64_t>{0};
+        case ui::BindingPath::hudNotificationPresent:
+            return view_->hudNotificationPresent ? std::optional<std::int64_t>{1}
+                                                 : std::optional<std::int64_t>{0};
         default: return std::nullopt;
     }
 }
@@ -406,6 +409,11 @@ std::optional<std::int64_t> GameViewModelBindings::contextualNumber(
 }
 
 std::optional<std::string> GameViewModelBindings::string(ui::BindingPath path) const {
+    if (path == ui::BindingPath::hudNotification) {
+        return view_->hudNotificationPresent
+                   ? std::optional<std::string>{view_->hudNotificationText}
+                   : std::nullopt;
+    }
     if (path == ui::BindingPath::dialogueSpeaker) {
         return view_->dialogueOpen ? std::optional<std::string>{view_->dialogueSpeaker}
                                    : std::nullopt;

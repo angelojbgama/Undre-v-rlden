@@ -141,6 +141,11 @@ struct GameViewModel final {
     // Shell mode readout for the saves screen: 1 while the title shell uses
     // it as the start/new-game picker.
     bool savesStartMode{};
+    // Transient HUD notification composed by the shell from domain events
+    // (level up, quest started/completed); the tick countdown owns the
+    // visibility, the text is the latest notification.
+    std::string hudNotificationText;
+    bool hudNotificationPresent{};
 };
 
 [[nodiscard]] GameViewModel buildGameViewModel(
