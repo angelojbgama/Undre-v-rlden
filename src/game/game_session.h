@@ -102,6 +102,10 @@ public:
     [[nodiscard]] const simulation::EventBuffer& events() const noexcept { return events_; }
     [[nodiscard]] const maps::RuntimeWorld& world() const noexcept;
     [[nodiscard]] const maps::MapData& mapData() const;
+    // Diagnostics for a failed map transition; empty while transitions work.
+    [[nodiscard]] const std::string& transitionError() const noexcept {
+        return mapSession_ ? mapSession_->transitionError() : emptyString_;
+    }
     [[nodiscard]] const save::SessionWorldState& worldState() const noexcept { return worldState_; }
     [[nodiscard]] const gameplay::ProjectileSystem& projectiles() const noexcept {
         return *projectiles_;
@@ -241,6 +245,7 @@ private:
     // zero keeps the swap immediate (no transition cues authored).
     std::uint32_t transitionFadeTicks_{};
     gameplay::dialogue::DialogueFlagSet dialogueFlags_;
+    static const std::string emptyString_;
     std::unique_ptr<gameplay::dialogue::DialogueSession> dialogue_;
     gameplay::quests::QuestStateStore questState_;
     std::unique_ptr<gameplay::quests::QuestSystem> questSystem_;

@@ -85,7 +85,6 @@ private:
     simulation::MapId mapId_{};
     SceneDefinition scene_{};
     SceneRuntimeHooks hooks_{};
-    simulation::EventBuffer* events_{};
     std::unordered_map<std::string, SceneActorSnapshot> initialActors_;
     std::unordered_map<ClipKey, bool, ClipKeyHash> fired_;
     ScenePresentationState presentation_;

@@ -51,6 +51,9 @@ public:
     [[nodiscard]] TransitionResult restore(const simulation::MapId& mapId,
                                            const save::SessionWorldState& state);
     void beginTick() noexcept { if (transitionLatch_ > 0) --transitionLatch_; }
+    // Non-empty while the last commit attempt failed; the pending transition
+    // is kept and retried after a fixed delay instead of being dropped.
+    [[nodiscard]] const std::string& transitionError() const noexcept { return transitionError_; }
     [[nodiscard]] RuntimeWorld* world() noexcept { return world_.get(); }
     [[nodiscard]] const RuntimeWorld* world() const noexcept { return world_.get(); }
     [[nodiscard]] const MapData* data() const noexcept { return data_ ? &*data_ : nullptr; }
@@ -69,6 +72,8 @@ private:
     std::unique_ptr<RuntimeWorld> world_;
     std::optional<PendingMapTransition> pending_;
     unsigned transitionLatch_{};
+    unsigned transitionRetryTicks_{};
+    std::string transitionError_;
 };
 
 } // namespace underworld::game::maps

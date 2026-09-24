@@ -190,7 +190,7 @@ struct GameRuntime::State final {
                     if (save) {
                         uiSaveDispatched = true;
                     } else if (std::filesystem::exists(
-                                   saveSlotPath(this->executableDirectory, slot))) {
+                                   saveSlotPath(this->savePath, slot))) {
                         uiLoadDispatched = true;
                     }
                     return;
@@ -600,7 +600,7 @@ struct GameRuntime::State final {
     void saveGame() {
         const save::SaveData data = session.captureSaveData();
         std::string error;
-        if (save::writeSaveAtomic(saveSlotPath(executableDirectory, currentSlot), data, error)) {
+        if (save::writeSaveAtomic(saveSlotPath(savePath, currentSlot), data, error)) {
             lastEvent = "SAVED";
         } else {
             lastEvent = "SAVE ERROR";
@@ -608,7 +608,7 @@ struct GameRuntime::State final {
     }
 
     void loadGame() {
-        const auto loaded = save::readSave(saveSlotPath(executableDirectory, currentSlot), saveCatalogs());
+        const auto loaded = save::readSave(saveSlotPath(savePath, currentSlot), saveCatalogs());
         if (!loaded) {
             lastEvent = "LOAD ERROR";
             return;
@@ -686,7 +686,14 @@ struct GameRuntime::State final {
             !session.sceneActive()) {
             journalOpen = !journalOpen;
         }
-        ui.update(input, !session.dialogue().isOpen() && !session.sceneActive());
+        // The pause menu is a runtime modal: it may not stack on top of a
+        // session-owned modal surface (dialogue, scene, inventory/bank/shop,
+        // journal). Those consume ESC/I through the session tick instead.
+        const bool sessionModalOpen = session.dialogue().isOpen() || session.sceneActive() ||
+                                      session.inventoryOverlay().open() ||
+                                      session.bankOverlay().open() ||
+                                      session.shopOverlay().open() || journalOpen;
+        ui.update(input, !sessionModalOpen);
         platform::InputState effective = input;
         if (ui.menuOpen()) {
             // Modal menu: gameplay input is suppressed; the only edges that
@@ -704,7 +711,15 @@ struct GameRuntime::State final {
             if (command.actions.saveGamePressed) { saveGame(); }
             if (command.actions.loadGamePressed) { loadGame(); }
         }
-        session.tick(command);
+        if (!ui.menuOpen()) {
+            // Modal pause menu freezes the world (no tick) like the title,
+            // game-over and dialogue shells; its save/load actions already
+            // dispatched above without needing a world step.
+            session.tick(command);
+            // Failed map swaps keep their pending request and retry inside the
+            // session; surface the diagnostics instead of failing silently.
+            if (!session.transitionError().empty()) { lastEvent = "MAP ERROR"; }
+        }
         // The Session owns map transitions. Rebuild presentation immediately so
         // the remaining systems in this transitional Runtime do not observe a
         // world whose visual instances belong to the previous map.
@@ -743,7 +758,7 @@ struct GameRuntime::State final {
             gameplay::CraftingKnowledge{session.questState()}, session.craftedRecipes());
         for (int slot = 0; slot < 3; ++slot) {
             auto& slotView = view.saveSlots[static_cast<std::size_t>(slot)];
-            slotView.exists = std::filesystem::exists(saveSlotPath(executableDirectory, slot));
+            slotView.exists = std::filesystem::exists(saveSlotPath(savePath, slot));
             slotView.label = slotView.exists ? "SAVED" : "EMPTY";
         }
         view.savesStartMode = ui.titleMode();

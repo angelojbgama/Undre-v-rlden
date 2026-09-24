@@ -168,7 +168,6 @@ bool SceneController::start(const simulation::MapId& mapId, const SceneDefinitio
     scene_ = scene;
     mapId_ = mapId;
     hooks_ = std::move(hooks);
-    events_ = &events;
     initialActors_.clear();
     fired_.clear();
     for (const auto& binding : scene_.actors) {

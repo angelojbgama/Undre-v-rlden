@@ -10,6 +10,9 @@
 #include <utility>
 
 namespace underworld::game {
+
+const std::string GameSession::emptyString_{};
+
 namespace {
 
 // Deterministic per-impact drop roll: no RNG state, so replays and save/load
@@ -111,6 +114,9 @@ save::SaveData GameSession::captureSaveData() const {
     auto world = worldState_;
     if (mapSession_ && mapSession_->world() && mapSession_->data()) {
         save::captureWorldState(*mapSession_->data(), *mapSession_->world(), world);
+    }
+    if (mapSession_ == nullptr || mapSession_->world() == nullptr) {
+        throw std::runtime_error("cannot save without an active map");
     }
     save::SaveData saved{save::capturePlayer(player_, *playerItems_, mapSession_->world()->id()),
                          {progression_.definition().id, progression_.totalExperience()}, std::move(world),
@@ -687,10 +693,12 @@ void GameSession::resolveEnemyContacts() {
             knockbackX, knockbackY, true};
         const auto resolution = combat_.resolve(contact, player_.combatTarget(), events_);
         combat_.finishAttack(contact.attack);
-        player_.applyDamageKnockback(knockbackX, knockbackY, map.collision(), map.tileSize());
-        enemy.applyKnockback(-knockbackX, -knockbackY, map.collision(), map.tileSize(), movementCollisions);
-        playerBody = player_.collisionBody();
+        // Rejected hits (invulnerability window) must not shove either side;
+        // knockback only accompanies damage, like applyResolution does.
         if (resolution.damaged) {
+            player_.applyDamageKnockback(knockbackX, knockbackY, map.collision(), map.tileSize());
+            enemy.applyKnockback(-knockbackX, -knockbackY, map.collision(), map.tileSize(), movementCollisions);
+            playerBody = player_.collisionBody();
             player_.beginHurt();
             player_.combatant().invulnerabilityTicks = std::max<std::uint32_t>(
                 player_.combatant().invulnerabilityTicks, 30U);
@@ -1312,10 +1320,22 @@ bool GameSession::respawn(const maps::MapCatalog& maps,
     projectiles_->clear(combat_);
     auto& combatant = player_.combatant();
     combatant.health.current = combatant.health.maximum;
-    combatant.invulnerabilityTicks = 0;
+    // Short grace window so an enemy authored at the start spawn cannot hit
+    // the revived player on the very first tick.
+    combatant.invulnerabilityTicks = 60;
     combatant.defeatEmitted = false;
     const auto mapId = mapSession_->world()->id();
     const auto spawnId = mapSession_->world()->spawn().id;
+    // Documented death contract: the map's world deltas reset (chests,
+    // doors, destructibles, encounters, rule one-shots, dropped pickups
+    // return to their authored state); session progress survives.
+    const auto isCurrentMapKey = [&mapId](const auto& entry) { return entry.key.mapId == mapId; };
+    const auto isCurrentMap = [&mapId](const auto& entry) { return entry.mapId == mapId; };
+    std::erase_if(worldState_.objects, isCurrentMapKey);
+    std::erase_if(worldState_.pickups, isCurrentMapKey);
+    std::erase_if(worldState_.spawnedPickups, isCurrentMap);
+    std::erase_if(worldState_.worldRules, isCurrentMap);
+    std::erase_if(worldState_.encounters, isCurrentMap);
     return initializeMap(maps, catalogs, builder, mapId, spawnId, error);
 }
 

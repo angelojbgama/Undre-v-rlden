@@ -20,8 +20,10 @@ namespace underworld::render { class Framebuffer; }
 namespace underworld::game {
 
 // Save slot files: slot 0 keeps the historical savegame.sav name; slots 1/2
-// live beside it. The authored saves menu acts on these through the
-// slot-indexed actions.
+// live beside it. `base` is the savegame.sav file path (GameRuntime passes
+// its savePath member), never a directory — writeSaveAtomic renames `base`
+// to the .bak backup, so a directory base would rename a whole directory.
+// The authored saves menu acts on these through the slot-indexed actions.
 [[nodiscard]] std::filesystem::path saveSlotPath(const std::filesystem::path& base,
                                                  int slot);
 

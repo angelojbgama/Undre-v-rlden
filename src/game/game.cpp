@@ -331,13 +331,26 @@ int run(platform::Platform& platform, const GameLaunchOptions& options) {
         previous = current;
 
         bool manualCaptureRequested = false;
+        std::string fatalTickError;
         const core::FixedStepResult step = accumulator.advance(frameDelta, [&] {
             ++tickCount;
             const auto debugInput = platform.consumeDebugInput();
             manualCaptureRequested = manualCaptureRequested ||
                                       debugInput.captureAuditSnapshotPressed;
-            runtime.fixedTick(tickCount, platform.consumeInputState(), debugInput);
+            try {
+                runtime.fixedTick(tickCount, platform.consumeInputState(), debugInput);
+            } catch (const std::exception& error) {
+                // A shell/simulation failure must not escape main and abort
+                // without diagnostics; log it and shut down through the
+                // regular loop exit (audit sessions close properly).
+                fatalTickError = error.what();
+            }
         });
+        if (!fatalTickError.empty()) {
+            platform.log(platform::LogLevel::error,
+                         "fatal tick error: " + fatalTickError);
+            break;
+        }
 
         if (step.frameDeltaClamped || step.catchUpLimited) {
             std::ostringstream message;
