@@ -193,10 +193,15 @@ def add_definitions(workspace: ContentWorkspace) -> None:
     upsert(workspace, "animations", anim(
         "anim.enemy.slime.death", "image.enemy.slime.death",
         [frame(32 * i, 0, 32, 32, 16, 31, 14) for i in range(2)], False))
+    # Hurt pose: the first death frame held briefly, authored per facing.
+    upsert(workspace, "animations", anim(
+        "anim.enemy.slime.hurt", "image.enemy.slime.death",
+        [frame(0, 0, 32, 32, 16, 31, 12)], False))
     bite_clips = directional("anim.enemy.slime.idle")
     upsert(workspace, "enemyVisuals", {
         "id": "visual.enemy.slime",
         "idle": directional("anim.enemy.slime.idle"),
+        "hurt": directional("anim.enemy.slime.hurt"),
         "death": directional("anim.enemy.slime.death"),
         "actions": [{"visualActionId": "visual.action.slime.bite", "clips": bite_clips}],
     })
@@ -338,6 +343,24 @@ def add_definitions(workspace: ContentWorkspace) -> None:
         "payload": {"kind": "item", "itemId": "item.tnt", "quantity": 1},
     })
 
+    # --- hurt poses for the builtin-visual enemies ----------------------------
+    # The soldier/skull death sheets are row-per-facing 32x32; the hurt pose
+    # holds the first death frame of each row for the feedback window.
+    upsert(workspace, "animations", anim(
+        "anim.enemy.soldier.hurt", "image.enemy.soldier.death",
+        [frame(0, 32 * row, 32, 32, 16, 31, 12) for row in range(3)], False))
+    upsert(workspace, "animations", anim(
+        "anim.enemy.skull.hurt", "image.enemy.skull.death",
+        [frame(0, 32 * row, 32, 32, 16, 31, 12) for row in range(3)], False))
+    for visual_set_id, hurt_anim in (("visual.enemy.evil_soldier", "anim.enemy.soldier.hurt"),
+                                     ("visual.enemy.skull", "anim.enemy.skull.hurt")):
+        visual_set = workspace.find("enemyVisuals", visual_set_id)
+        if visual_set is not None and "hurt" not in visual_set.data:
+            wired = copy.deepcopy(visual_set.data)
+            wired["hurt"] = directional(hurt_anim)
+            workspace.replace_definition(visual_set, wired)
+            print(f"  ~ enemyVisuals:{visual_set_id} hurt wired")
+
     # --- behaviors / attacks / enemies ---------------------------------------
     # Authored balance: the copied soldier ran at 256 subpixels/tick — nearly
     # the player's 384 — making every encounter an inescapable gang-beating
@@ -385,6 +408,7 @@ def add_definitions(workspace: ContentWorkspace) -> None:
     upsert(workspace, "enemyVisuals", {
         "id": "visual.enemy.slime.champion",
         "idle": directional("anim.enemy.slime.idle"),
+        "hurt": directional("anim.enemy.slime.hurt"),
         "death": directional("anim.enemy.slime.death"),
         "actions": [],
     })

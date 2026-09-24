@@ -112,8 +112,17 @@ public:
 
     void move(int intentX, int intentY, const world::CollisionGrid& collision, int tileSize,
               std::span<const world::AabbI> staticObstacles = {});
-    void applyKnockback(int deltaX, int deltaY, const world::CollisionGrid& collision,
+    // Damaged knockback mirrors the player: the request only carries the
+    // push direction; the magnitude is a fixed 32 px spread over 8 ticks so
+    // the shove reads as a smooth slide instead of a one-frame teleport.
+    static constexpr int damageKnockbackPixels = 32;
+    static constexpr int damageKnockbackDurationTicks = 8;
+    void applyKnockback(int requestedX, int requestedY,
+                        const world::CollisionGrid& collision,
                         int tileSize, std::span<const world::AabbI> staticObstacles = {});
+    // Applies one step of the pending knockback; called once per world tick.
+    void tickKnockback(const world::CollisionGrid& collision,
+                       int tileSize, std::span<const world::AabbI> staticObstacles = {});
     void sceneRelocate(core::WorldPointI feet) noexcept;
     void sceneSetFacing(FacingDirection facing) noexcept { facing_ = facing; }
 
@@ -129,6 +138,9 @@ private:
     CombatantState combatant_{};
     std::int64_t positionX_{};
     std::int64_t positionY_{};
+    int knockbackRemainingX_{};
+    int knockbackRemainingY_{};
+    int knockbackTicks_{};
     FacingDirection facing_{FacingDirection::down};
     BehaviorState state_{BehaviorState::idle};
     simulation::EntityHandle target_{};

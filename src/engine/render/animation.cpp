@@ -126,6 +126,13 @@ void drawAnimator(Renderer2D& renderer, const Animator& animator,
                logicalPosition, additionalFlipX);
 }
 
+void drawAnimatorTinted(Renderer2D& renderer, const Animator& animator,
+                        core::PointI logicalPosition, core::ColorRGBA8 tint,
+                        bool additionalFlipX) {
+    drawSpriteTinted(renderer, animator.clip().sheet(), animator.currentFrame().sprite,
+                     logicalPosition, tint, additionalFlipX);
+}
+
 void drawAnimatorMasked(Renderer2D& renderer, const Animator& animator,
                         core::PointI logicalPosition, PixelMaskView mask,
                         bool drawMaskedPixels, bool additionalFlipX) {

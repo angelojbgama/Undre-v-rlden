@@ -6,6 +6,11 @@
 namespace underworld::game {
 namespace {
 
+// Hit-feedback window in ticks; shorter than the 30-tick invulnerability
+// so back-to-back hits retrigger it cleanly.
+constexpr std::uint32_t kHurtVisualTicks = 12;
+constexpr std::uint32_t kFlashBlinkPeriod = 4;
+
 std::size_t directionIndex(gameplay::FacingDirection facing) noexcept {
     switch (facing) {
     case gameplay::FacingDirection::down: return 0;
@@ -80,10 +85,32 @@ void EnemyVisualInstance::update(const gameplay::creatures::EnemyInstance& enemy
     }
     const auto state = enemy.state();
     const auto facing = enemy.facing();
+    // Rising edge of the invulnerability window = this enemy just took a
+    // hit. The feedback window is shorter than the invulnerability itself
+    // so the flash ends before the next hit can land.
+    const bool invulnerable = enemy.combatant().invulnerabilityTicks > 0;
+    if (invulnerable && !invulnerable_) {
+        // Rising edge: this enemy just took a hit (combat sets the
+        // invulnerability window on damage). One flash per hit; further
+        // ticks inside the same window cannot retrigger it.
+        hurtTicks_ = kHurtVisualTicks;
+        flashTicks_ = kHurtVisualTicks;
+    } else if (!invulnerable && hurtTicks_ > 0) {
+        hurtTicks_ = 1;
+    }
+    invulnerable_ = invulnerable;
+    if (hurtTicks_ > 0 && --hurtTicks_ == 0) {
+        // Hurt window over: resume the state clip on the next compare.
+        initialized_ = false;
+    }
+    if (flashTicks_ > 0) { --flashTicks_; }
+
     simulation::DefinitionId actionId;
     const DirectionalAnimationClips* clips = nullptr;
     if (state == gameplay::creatures::BehaviorState::dead) {
         clips = visualSet_->dead ? &*visualSet_->dead : &visualSet_->death;
+    } else if (hurtTicks_ > 0 && visualSet_->hurt) {
+        clips = &*visualSet_->hurt;
     } else if (state == gameplay::creatures::BehaviorState::attack) {
         if (enemy.activeAttack()) {
             actionId = enemy.activeAttack()->definition->visualActionId;

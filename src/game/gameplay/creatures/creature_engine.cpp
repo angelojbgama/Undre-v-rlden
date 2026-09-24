@@ -191,14 +191,47 @@ void EnemyInstance::move(int intentX, int intentY,
     positionY_ = movement.blockedY ? subpixelCoordinate(resolved.y) : targetY;
 }
 
-void EnemyInstance::applyKnockback(int deltaX, int deltaY,
+void EnemyInstance::applyKnockback(int requestedX, int requestedY,
                                    const world::CollisionGrid& collision, int tileSize,
                                    std::span<const world::AabbI> staticObstacles) {
+    static_cast<void>(collision);
+    static_cast<void>(tileSize);
+    static_cast<void>(staticObstacles);
+    // Same contract as the player: only the push direction matters here.
+    knockbackRemainingX_ = requestedX == 0
+        ? 0 : (requestedX > 0 ? damageKnockbackPixels : -damageKnockbackPixels);
+    knockbackRemainingY_ = requestedY == 0
+        ? 0 : (requestedY > 0 ? damageKnockbackPixels : -damageKnockbackPixels);
+    knockbackTicks_ = damageKnockbackDurationTicks;
+}
+
+void EnemyInstance::tickKnockback(const world::CollisionGrid& collision,
+                                  int tileSize,
+                                  std::span<const world::AabbI> staticObstacles) {
+    if (knockbackTicks_ == 0 ||
+        (knockbackRemainingX_ == 0 && knockbackRemainingY_ == 0)) {
+        knockbackTicks_ = 0;
+        return;
+    }
+    const auto step = [](int remaining) noexcept {
+        if (remaining == 0) { return 0; }
+        const int direction = remaining > 0 ? 1 : -1;
+        constexpr int stepPixels = damageKnockbackPixels / damageKnockbackDurationTicks;
+        return direction * std::min(stepPixels, std::abs(remaining));
+    };
+    const int stepX = step(knockbackRemainingX_);
+    const int stepY = step(knockbackRemainingY_);
     world::AabbI body = collisionBody();
     [[maybe_unused]] const world::MovementResult movement = world::moveAgainstSolidWorld(
-        collision, body, deltaX, deltaY, tileSize, staticObstacles);
+        collision, body, stepX, stepY, tileSize, staticObstacles);
     positionX_ = subpixelCoordinate(body.x - definition_->collisionBody.offsetX);
     positionY_ = subpixelCoordinate(body.y - definition_->collisionBody.offsetY);
+    knockbackRemainingX_ -= stepX;
+    knockbackRemainingY_ -= stepY;
+    if (--knockbackTicks_ == 0) {
+        knockbackRemainingX_ = 0;
+        knockbackRemainingY_ = 0;
+    }
 }
 
 void EnemyInstance::sceneRelocate(core::WorldPointI feet) noexcept {

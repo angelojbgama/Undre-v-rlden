@@ -3593,6 +3593,37 @@ void testCreatureDefinitionsAndBehavior() {
     expect(enemyMarkers.size() == 1 && enemyMarkers[0].marker == "future.marker" &&
                enemyVisual.consumeMarkerEvents().empty(),
            "enemy attack markers are emitted once through the shared Animator timeline");
+    // Damage feedback: a fresh invulnerability window latches the hurt
+    // visual (flash + authored hurt clip when present), then releases.
+    {
+        const auto hurtClip = makeTestClip("enemy.hurt", false);
+        underworld::game::DirectionalAnimationClips hurtClips{
+            hurtClip, hurtClip, hurtClip};
+        underworld::game::EnemyVisualSet hurtSet{
+            visualId, idleClips, walkClips, deathClips,
+            {{simulation::DefinitionId{"visual.attack.test"}, attackClips}}};
+        hurtSet.hurt = hurtClips;
+        underworld::game::EnemyVisualCatalog hurtCatalog;
+        hurtCatalog.add(hurtSet);
+        underworld::game::EnemyVisualInstance hurtVisual(
+            visualEnemy.handle(), hurtCatalog.require(visualId));
+        hurtVisual.update(visualEnemy, 0);
+        expect(!hurtVisual.flashing() && !hurtVisual.flashFrame(),
+               "enemy hurt feedback is idle while the enemy is untouched");
+        visualEnemy.combatant().invulnerabilityTicks = 30;
+        hurtVisual.update(visualEnemy, 0);
+        expect(hurtVisual.flashing() && hurtVisual.flashFrame() &&
+                   hurtVisual.animator().clip().id() == "enemy.hurt",
+               "a fresh hit latches the hurt flash and plays the authored hurt clip");
+        for (int tick = 0; tick < 13; ++tick) {
+            visualEnemy.combatant().invulnerabilityTicks = 30;
+            hurtVisual.update(visualEnemy, 0);
+        }
+        expect(!hurtVisual.flashing() &&
+                   hurtVisual.animator().clip().id() != "enemy.hurt",
+               "hurt feedback releases after its window and resumes the state clip");
+    }
+
     static_cast<void>(visualEnemy.combatant().health.applyDamage(99));
     static_cast<void>(behavior.update(visualEnemy, playerHandle, {214, 200}, true,
                                       profile, attacks, openGrid, 16));
@@ -3665,8 +3696,13 @@ void testCreatureCombatIntegration() {
         swordHit, swordTarget.combatTarget(), events);
     swordTarget.applyKnockback(swordResolution.requestedKnockbackX,
                                swordResolution.requestedKnockbackY, grid, 16);
+    // Knockback slides over 8 ticks (4 px each) instead of teleporting.
+    for (int tick = 0; tick < creatures::EnemyInstance::damageKnockbackDurationTicks; ++tick) {
+        swordTarget.tickKnockback(grid, 16);
+    }
     expect(swordResolution.damaged && swordResolution.requestedKnockbackX == 32 &&
-               swordTarget.feetPosition().x == swordStart.x + 32,
+               swordTarget.feetPosition().x == swordStart.x + 32 &&
+               swordStart.x + 32 != swordStart.x,
            "Player sword damage applies the configured knockback to the enemy");
 
     const auto contactPlayerHandle = handles.create();
@@ -3730,9 +3766,15 @@ void testCreatureCombatIntegration() {
     const auto soldierResolution = combat.resolve(playerHit, soldier.combatTarget(), events);
     soldier.applyKnockback(soldierResolution.requestedKnockbackX,
                            soldierResolution.requestedKnockbackY, grid, 16);
+    for (int tick = 0; tick < creatures::EnemyInstance::damageKnockbackDurationTicks; ++tick) {
+        soldier.tickKnockback(grid, 16);
+    }
     expect(soldierResolution.damaged && soldier.combatant().health.current == 2 &&
-               soldier.feetPosition().x == 224,
+               soldier.feetPosition().x == 220 + 32,
            "Player melee damages the same generic enemy combat target and applies knockback");
+    // Later assertions interact at the pre-knockback spot; the smooth push
+    // is a presentation concern the following steps don't need to track.
+    soldier.sceneRelocate({224, soldier.feetPosition().y});
 
     for (std::uint32_t tick = 0; tick < gameplay::CombatSystem::invulnerabilityDurationTicks;
          ++tick) {

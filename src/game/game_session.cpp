@@ -730,6 +730,7 @@ void GameSession::updateEnemies() {
             enemy, player_.entityHandle(), player_.feetPosition(),
             !player_.health().depleted(), profile, *attackCatalog_,
             map.collision(), map.tileSize(), movementCollisions));
+        enemy.tickKnockback(map.collision(), map.tileSize(), movementCollisions);
         if (previousAttack && !enemy.activeAttack()) { combat_.finishAttack(*previousAttack); }
         if (!enemy.activeAttack()) { continue; }
         auto& active = *enemy.activeAttack();

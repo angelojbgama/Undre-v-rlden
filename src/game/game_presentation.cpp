@@ -187,9 +187,18 @@ void GamePresentation::renderActors(render::Renderer2D& renderer,
                 gameplay::scenes::SceneActorKind::enemy,
                 world.enemies()[actor.index].persistentId);
             const auto logical = toLogical(enemy.feetPosition(), cameraPosition);
-            render::drawAnimator(renderer, frame.enemyVisuals[actor.index].animator(),
-                                 {logical.x, logical.y + (scene ? scene->offsetY : 0)},
-                                 frame.enemyVisuals[actor.index].flipX());
+            const auto& enemyVisual = frame.enemyVisuals[actor.index];
+            if (enemyVisual.flashFrame()) {
+                // Subtle damage blink: a warm tint on alternating ticks,
+                // mirroring the player's hurt feedback language.
+                render::drawAnimatorTinted(renderer, enemyVisual.animator(),
+                                           {logical.x, logical.y + (scene ? scene->offsetY : 0)},
+                                           {255, 120, 120, 255}, enemyVisual.flipX());
+            } else {
+                render::drawAnimator(renderer, enemyVisual.animator(),
+                                     {logical.x, logical.y + (scene ? scene->offsetY : 0)},
+                                     enemyVisual.flipX());
+            }
             if (scene && scene->emote)
                 render::drawText(renderer, frame.font, emoteText(*scene->emote),
                                  logical.x - 2, logical.y - 34 + scene->offsetY);

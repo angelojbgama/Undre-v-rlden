@@ -46,6 +46,7 @@ from .tilesets.tileset_library_widget import TilesetLibraryWidget
 from .spritesheet_library_widget import SpritesheetLibraryWidget
 from .object_library_widget import ObjectLibraryWidget
 from .door_library_widget import DoorLibraryWidget
+from .enemy_library_widget import EnemyLibraryWidget
 from .animated_collision_editor import AnimatedCollisionEditorDialog
 from .door_instance_editor import DoorInstanceEditor
 from .object_transition_editor import ObjectTransitionEditor
@@ -269,6 +270,10 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root, self.translator)
         self.player_library.changed.connect(self._content_changed)
         self.player_library.status_changed.connect(self.set_status)
+        self.enemy_library = EnemyLibraryWidget(
+            self.workspace, self.translator)
+        self.enemy_library.changed.connect(self._content_changed)
+        self.enemy_library.status_changed.connect(self.set_status)
         self.attack_library = AttackLibraryWidget(
             self.workspace, self.translator)
         self.attack_library.changed.connect(self._content_changed)
@@ -362,6 +367,7 @@ class MainWindow(QMainWindow):
         self._map_panels.addWidget(self.object_library)
         self._map_panels.addWidget(self.door_library)
         self._map_panels.addWidget(self.player_library)
+        self._map_panels.addWidget(self.enemy_library)
         self._map_panels.addWidget(self.item_library)
         self._map_panels.addWidget(self.crafting_library)
         self._map_panels.addWidget(self.presentation_library)
@@ -468,7 +474,7 @@ class MainWindow(QMainWindow):
 
     _SECTION_KEYS = {
         0: ("maps", "layers", "tiles", "spritesheets_animations", "objects_tab",
-            "doors_tab", "players_tab", "items_tab", "crafting_tab",
+            "doors_tab", "players_tab", "enemies_tab", "items_tab", "crafting_tab",
             "presentation_effects", "smart_terrain",
             "semantic_editor", "semantics_stamps", "map_elements", "entities", "scenes",
             "rules_links"),
@@ -478,7 +484,8 @@ class MainWindow(QMainWindow):
     _SECTION_ICONS = {
         "maps": "map", "layers": "layers", "tiles": "tiles",
         "spritesheets_animations": "spritesheet", "objects_tab": "object",
-        "doors_tab": "door", "players_tab": "player", "items_tab": "items",
+        "doors_tab": "door", "players_tab": "player", "enemies_tab": "entities",
+        "items_tab": "items",
         "crafting_tab": "crafting",
         "presentation_effects": "presentation",
         "smart_terrain": "terrain", "semantic_editor": "tag",
@@ -563,6 +570,7 @@ class MainWindow(QMainWindow):
         self.door_instance_editor.retranslate(self.translator)
         self.object_transition_editor.retranslate(self.translator)
         self.player_library.retranslate(self.translator)
+        self.enemy_library.retranslate(self.translator)
         self.attack_library.retranslate(self.translator)
         self.item_library.retranslate(self.translator)
         self.crafting_library.retranslate(self.translator)
@@ -608,6 +616,7 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root,
             self.project.active_map.tile_size)
         self.player_library.set_context(self.workspace, self.asset_root)
+        self.enemy_library.set_context(self.workspace)
         self.attack_library.set_context(self.workspace, self.asset_root)
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)

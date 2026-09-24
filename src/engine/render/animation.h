@@ -67,6 +67,11 @@ private:
 
 void drawAnimator(Renderer2D& renderer, const Animator& animator,
                   core::PointI logicalPosition, bool additionalFlipX = false);
+// Draws the animator's current frame with a multiplicative tint (used for
+// presentation-only damage feedback on creatures).
+void drawAnimatorTinted(Renderer2D& renderer, const Animator& animator,
+                        core::PointI logicalPosition, core::ColorRGBA8 tint,
+                        bool additionalFlipX = false);
 void drawAnimatorMasked(Renderer2D& renderer, const Animator& animator,
                         core::PointI logicalPosition, PixelMaskView mask,
                         bool drawMaskedPixels, bool additionalFlipX = false);

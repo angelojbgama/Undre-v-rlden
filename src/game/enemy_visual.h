@@ -51,6 +51,8 @@ private:
                        simulation::DefinitionIdHash> sets_;
 };
 
+constexpr std::uint32_t kFlashBlinkPeriod = 4;
+
 class EnemyVisualInstance final {
 public:
     EnemyVisualInstance(simulation::EntityHandle handle, const EnemyVisualSet& visualSet);
@@ -63,6 +65,16 @@ public:
     }
     [[nodiscard]] const render::Animator& animator() const noexcept { return animator_; }
     [[nodiscard]] bool flipX() const noexcept { return flipX_; }
+    // Presentation-only damage feedback, derived from the combatant's
+    // invulnerability window: latched on a fresh hit and gone when the
+    // window closes. Never persists and never reaches saves.
+    [[nodiscard]] bool flashing() const noexcept { return flashTicks_ > 0; }
+    // Alternates while latched so the flash reads as a blink, not a light
+    // (elapsed-frame based: the first two ticks of the window are lit).
+    [[nodiscard]] bool flashFrame() const noexcept {
+        const std::uint32_t elapsed = flashTicks_ % kFlashBlinkPeriod;
+        return flashing() && (kFlashBlinkPeriod - elapsed) % kFlashBlinkPeriod < 2;
+    }
     [[nodiscard]] std::vector<render::AnimationMarkerEvent> consumeMarkerEvents();
 
 private:
@@ -73,6 +85,9 @@ private:
     gameplay::FacingDirection facing_{gameplay::FacingDirection::down};
     simulation::DefinitionId actionId_{};
     std::vector<render::AnimationMarkerEvent> markerEvents_;
+    std::uint32_t hurtTicks_{};   // while > 0 the authored hurt clip holds
+    std::uint32_t flashTicks_{};  // while > 0 the tint blink is on
+    bool invulnerable_{};         // previous-tick invulnerability for edge detect
     bool flipX_{};
     bool initialized_{};
 };

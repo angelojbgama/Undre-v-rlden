@@ -158926,6 +158926,167 @@
           "masks": []
         }
       ]
+    },
+    {
+      "id": "anim.enemy.slime.hurt",
+      "imageId": "image.enemy.slime.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.soldier.hurt",
+      "imageId": "image.enemy.soldier.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.skull.hurt",
+      "imageId": "image.enemy.skull.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 32,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 0,
+            "y": 64,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 12,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
     }
   ],
   "enemyVisuals": [
@@ -158959,7 +159120,13 @@
             "right": "anim.enemy.soldier.attack.right"
           }
         }
-      ]
+      ],
+      "hurt": {
+        "down": "anim.enemy.soldier.hurt",
+        "up": "anim.enemy.soldier.hurt",
+        "left": "anim.enemy.soldier.hurt",
+        "right": "anim.enemy.soldier.hurt"
+      }
     },
     {
       "id": "visual.enemy.skull",
@@ -158991,7 +159158,13 @@
             "right": "anim.enemy.skull.attack.right"
           }
         }
-      ]
+      ],
+      "hurt": {
+        "down": "anim.enemy.skull.hurt",
+        "up": "anim.enemy.skull.hurt",
+        "left": "anim.enemy.skull.hurt",
+        "right": "anim.enemy.skull.hurt"
+      }
     },
     {
       "id": "visual.enemy.slime",
@@ -159000,6 +159173,12 @@
         "up": "anim.enemy.slime.idle",
         "left": "anim.enemy.slime.idle",
         "right": "anim.enemy.slime.idle"
+      },
+      "hurt": {
+        "down": "anim.enemy.slime.hurt",
+        "up": "anim.enemy.slime.hurt",
+        "left": "anim.enemy.slime.hurt",
+        "right": "anim.enemy.slime.hurt"
       },
       "death": {
         "down": "anim.enemy.slime.death",
@@ -159026,6 +159205,12 @@
         "up": "anim.enemy.slime.idle",
         "left": "anim.enemy.slime.idle",
         "right": "anim.enemy.slime.idle"
+      },
+      "hurt": {
+        "down": "anim.enemy.slime.hurt",
+        "up": "anim.enemy.slime.hurt",
+        "left": "anim.enemy.slime.hurt",
+        "right": "anim.enemy.slime.hurt"
       },
       "death": {
         "down": "anim.enemy.slime.death",
