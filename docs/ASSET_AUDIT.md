@@ -173,3 +173,25 @@ A grade 7×9 é exata. O desenho ocupa normalmente 5×7 pixels, com exceções d
 - registrar licença/proveniência fora de manifests públicos sem reproduzir os arquivos.
 
 Isto é uma leitura operacional do texto fornecido, não aconselhamento jurídico.
+
+## Status de integração (atualizado 2026-09-23)
+
+Atualização da rodada de auditoria/campanha sobre a tabela acima:
+
+- **Slime** — integrado como criatura authored (`enemy.slime` + `enemy.slime.champion`,
+  idle/death não-direcionais, reward profiles). Faz parte das salas 2 e 5.
+- **Training Puppet** — integrado como objeto destrutível de treino
+  (`object.training_puppet`, 5 HP, sem recompensas), não como criatura.
+- **TNT + Explosion** — integrados de ponta a ponta: item arremessável
+  (`ItemUseKind::throwProjectile`) + projétil com explosão em área
+  (`ProjectileDefinition.explosion`) + VFX `Explosion/explosion.png`.
+- **Key / doors** — chave como item/pickup (`item.key`/`pickup.key`) consumida pelo
+  gate trancado do hub; portas suportam `requiredItemId`/`consumeItem` autorados.
+- **Spikes / arrow-wall trap** — armadilhas placeable via capability `hazard`
+  (contato periódico / emissão periódica de projétil); dano atribuído ao ambiente
+  (sem recompensas).
+- **Meat / big_money** — consumível de cura e moeda de valor alto (pickups + loja).
+- **Ainda não integrados (semântica UNVERIFIED)**: `gold_block`, `extra_heart`
+  (exigiria upgrade de HP máximo por pickup, hoje inexistente), `bow` como item
+  (o arco já é uma habilidade do player), `shop_block`, `statue`, `sign`,
+  `iron_door` como entidade. Não inventar mecânica só para usar o PNG.

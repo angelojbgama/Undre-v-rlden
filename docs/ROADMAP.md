@@ -1666,7 +1666,14 @@ optional `SCNE` chunk. `WorldLogic` starts them only through the existing
 readable with no scenes and persistent object placements by default; DSAV 1.8 does
 not persist an active scene timeline.
 
-### UI Engine & UI Composer — decisão registrada, não iniciada
+### UI Engine & UI Composer — CONCLUÍDA (UI-1a a UI-5 + migração dos overlays)
+
+A trilha registrada abaixo foi executada por completo; o estado detalhado por bloco,
+provas de aceite e incrementos futuros está em `docs/UI_ENGINE.md` (seções 9–10) e no
+estado atual do `AGENTS.md`. Resta apenas o backlog deferido listado lá (stack completa
+de telas, themes, timeline de animação etc.).
+
+### Histórico da decisão (2026-09-20)
 
 Decisão aprovada pelo dono do projeto (2026-09-20): a interface do jogo (HUD,
 inventário, overlays e futuros menus) passa a ser conteúdo authored modelável no
@@ -1675,7 +1682,7 @@ O desenho completo — princípios, modelo de dados mínimo, Content JSON v7,
 arquitetura runtime, desenho painel a painel do UI Composer e provas de aceite —
 está em `docs/UI_ENGINE.md`.
 
-Ordem de blocos acordada (nenhum iniciado):
+Ordem de blocos acordada (todos concluídos e provados):
 
 ```text
 UI-1  núcleo C++ + HUD de corações como definição      (prova 1a)
@@ -1688,7 +1695,34 @@ UI-5  screen/navigation com o primeiro menu real
 Limites já fechados na decisão: resolução lógica fixa 272×224 (sem responsive
 layout/multi-resolução), keyboard-first (sem mouse/hover/gamepad), sem áudio, sem
 linguagem de expressão nem scripting, Binding/Action Registry expondo somente o
-que o `GameViewModel`/`GameSession` já fornecem, ativação de telas permanece em
-C++ até o UI-5, e nada de UI é persistido no DSAV. Não iniciar UI-1 sem seguir os
-critérios de incremento do `AGENTS.md`; as provas da seção 10 de `docs/UI_ENGINE.md`
-são os gates de aceite de cada bloco.
+que o `GameViewModel`/`GameSession` já fornecem, e nada de UI é persistido no DSAV.
+As provas da seção 10 de `docs/UI_ENGINE.md` foram os gates de aceite de cada bloco.
+
+### Auditoria + campanha authored — estado atual (2026-09-23)
+
+Rodada de auditoria completa (runtime + Studio + docs + conteúdo) e integração da
+campanha curta authored:
+
+- Runtime: save slots apontando para o arquivo correto (slot-0 salvava renomeando
+  o diretório do executável), falhas de transição de mapa propagadas com retry e
+  validação de alvos OTRN, leak de handles de NPC no swap de mapa, menu de pausa
+  congelando o mundo sem sobrepor modais de sessão, respawn restaurando o contrato
+  documentado (deltas do mapa resetam + janela de graça), knockback de contato
+  respeitando invulnerabilidade, loop principal capturando exceções com
+  diagnóstico em vez de abortar.
+- Studio: guarda de delete por referências (incluindo placements de mapa), rename
+  reescrevendo placements, ciclo de vida do playtest (sem processo órfão, temp dirs
+  só após wait, watcher de crash), recovery de autosave na abertura, timeout do
+  content_check, título com marcador de dirty, remove_map limpando links/transições.
+- Mecânicas novas data-driven: `ProjectileDefinition.explosion` (TNT — dano em área
+  autoral no fim do projétil), `ItemUseKind::throwProjectile` (consumível
+  arremessável via quickslot) e `WorldObjectDefinition.hazard` (spikes por contato
+  e arrow wall emissora de projétil, dano atribuído ao ambiente sem recompensas).
+- Conteúdo: campanha de 6 salas autorada pelo script `tools/author_campaign.py`
+  usando as APIs do Studio (sem JSON manual); slime, slime champion, armadilhas,
+  TNT, chave/porta trancada, boneco de treino como objeto destrutível, quest de
+  fuga concluída na região do santuário; balance do evil soldier (256 → 128
+  subpixels/tick).
+- Playtests: 19/19 no `--all` (os 7 cenários quebrados desde 17e154c foram
+  corrigidos: cenários de mecânica bootam no santuário, combate com recuo de
+  gang-up); suíte portátil 1322 checks; content_check PASS (475 definições).

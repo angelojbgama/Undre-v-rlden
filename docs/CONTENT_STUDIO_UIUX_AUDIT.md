@@ -206,3 +206,28 @@ Fase 3 — **Telas específicas** (uma por vez, no formato plano por tela):
 > Cada item acima deve virar uma tarefa com: tela, escopo exato, critérios de
 > aceite e smoke visual — seguindo o fluxo usual (implementar → testes →
 > screenshots offscreen → commit).
+
+## Rodada 2026-09-23 — auditoria funcional e correções
+
+Nova varredura funcional (serviços + workflows end-to-end, simulados offscreen).
+Itens corrigidos nesta rodada:
+
+- **Delete guard global (era G6 parcial / risco crítico)** — o Content Browser bloqueia
+  agora a exclusão de qualquer definição referenciada por outras definições ou por
+  placements de mapa, listando os usos.
+- **Rename propaga para mapas (novo)** — renomear uma definição reescreve os
+  `definitionId` dos placements no projeto aberto; antes deixava ids órfãos que só
+  quebravam no export/playtest.
+- **Playtest lifecycle (novo)** — start duplo não órfão-processo, stop espera o
+  processo antes de limpar temp dirs, watcher reporta crash do jogo com exit code,
+  content_check com timeout.
+- **Autosave recovery (novo)** — abrir um projeto com autosave mais recente que o
+  arquivo salvo oferece restauração.
+- **S4 (dirty indicator)** — o título acompanha edições de mapa e saves (era só
+  conteúdo); Map Browser por mapa continua em aberto.
+- **remove_map** — links/transições de entrada apontando para o mapa removido são
+  limpos.
+
+Continuam abertos (sem mudança): G3, G9, C3, C4, T1, O2, D1, PL1, ME1, CO1, IN3,
+CT1–CT3, DL7, SC2/SC3 e os itens menores de tradução pontual (diálogos de
+duplicate/import etc.).

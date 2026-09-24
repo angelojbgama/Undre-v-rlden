@@ -1215,11 +1215,20 @@ Se a LLM precisa “adivinhar” a função de uma imagem para terminar o mapa, 
 The official playable map resources use only semantic references resolved through the
 Dungeon authoring registry. `Tileset/tileset.png` coverage is limited to its 72
 catalogued visible cells; transparent cells and uncatalogued PNG regions are never
-used as filler. The remaining individual assets in `Tileset/` (doors, gates, traps
-and spikes) are not placeable gameplay content until they have a corresponding
-runtime definition and behavior. The breakable prop family is now the explicit
-exception: crate, vase, stone block variants and fire block are authored
-`WorldObject` definitions with data-driven destructible/activation capabilities.
-Their destroyed/breaking artwork is still a visual state of that entity, never an
-independent map placement. The presence of any other asset in the folder alone does
-not grant a map mechanic.
+used as filler. The breakable prop family is an explicit exception: crate, vase,
+stone block variants and fire block are authored `WorldObject` definitions with
+data-driven destructible/activation capabilities. Their destroyed/breaking artwork
+is still a visual state of that entity, never an independent map placement.
+
+Doors and gates graduated from this boundary to placeable gameplay: `DoorState`
+(locked/closed/open), key requirements (`requiredItemId`/`consumeItem`), attack and
+encounter open conditions and object transitions are authored door capability data
+with full Studio authoring. Spike traps and the arrow-wall trap are placeable as of
+the hazard capability (`WorldObjectDefinition.hazard`): periodic contact damage
+(spikes, art `tile_spickes`) and periodic projectile emission (arrow wall, art
+`Walls_trap_arrows.png` with the trap firing the authored arrow projectile). TNT
+(`Objects/tnt.png` + `Explosion/explosion.png`) is playable through the throwable
+item use + projectile explosion chain. The remaining unplaced assets (statue, sign,
+gold block, shop block, iron door as an entity) still require a runtime definition
+before becoming map content; their semantics remain UNVERIFIED. The presence of any
+asset in the folder alone does not grant a map mechanic.
