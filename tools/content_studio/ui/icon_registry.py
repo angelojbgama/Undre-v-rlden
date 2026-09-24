@@ -68,6 +68,7 @@ TABLER_ICONS: dict[str, str] = {
     "tag": "tag.svg",
     "stamp": "bookmark.svg",
     "entities": "users.svg",
+    "npc": "npc.svg",
     "scenes": "video.svg",
     "links": "link.svg",
     "definitions": "list.svg",
