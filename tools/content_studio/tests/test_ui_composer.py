@@ -85,9 +85,11 @@ class UiComposerWidgetTests(unittest.TestCase):
             widget.hierarchy.setCurrentItem(widget.hierarchy.topLevelItem(0))
             # A canvas drag commits the subtree delta through the service.
             widget._commit_node_move("hud.health", 5, 4)
-            node = widget.service.find("screen.hud").data["root"]["children"][1]
-            self.assertEqual(8, node["layout"]["offsetX"])
-            self.assertEqual(6, node["layout"]["offsetY"])
+            node = next(child for child in
+                        widget.service.find("screen.hud").data["root"]["children"]
+                        if child["id"] == "hud.health")
+            self.assertEqual(206, node["layout"]["offsetX"])
+            self.assertEqual(7, node["layout"]["offsetY"])
 
     def test_builtin_only_screen_previews_on_canvas(self) -> None:
         app = QApplication.instance() or QApplication([])
@@ -112,7 +114,7 @@ class UiComposerWidgetTests(unittest.TestCase):
                                               "player.health.max": 5})
             widget.canvas.repaint()
             image = widget.canvas.grab().toImage()
-            heart = image.pixelColor(4 * 2 + 1, 3 * 2 + 1)
+            heart = image.pixelColor(202 * 2 + 1, 4 * 2 + 1)
             self.assertEqual("#d84868", heart.name())
 
     def test_canvas_geometry_is_the_logical_screen(self) -> None:

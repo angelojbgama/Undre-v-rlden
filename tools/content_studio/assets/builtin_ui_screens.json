@@ -158,6 +158,21 @@
     "id": "img.menu.cursor",
     "root": "gameAssets",
     "relativePath": "Sword_arrow_for_menu_options.png"
+    },
+  {
+    "id": "img.hud.sword",
+    "root": "gameAssets",
+    "relativePath": "Icons/sword.png"
+    },
+  {
+    "id": "img.hud.shield",
+    "root": "gameAssets",
+    "relativePath": "Icons/shield.png"
+    },
+  {
+    "id": "img.hud.bow",
+    "root": "gameAssets",
+    "relativePath": "Icons/bow.png"
     }
   ],
 "staticSprites": [
@@ -260,6 +275,30 @@
   {
     "id": "spr.menu.cursor",
     "imageId": "img.menu.cursor",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.hud.sword",
+    "imageId": "img.hud.sword",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.hud.shield",
+    "imageId": "img.hud.shield",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.hud.bow",
+    "imageId": "img.hud.bow",
     "anchor": {
       "x": 0,
       "y": 0
@@ -2072,30 +2111,40 @@
         },
       "children": [
         {
-          "id": "hud.topBar",
-          "component": "panel",
+          "id": "hud.gold.icon",
+          "component": "image",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 0,
-            "offsetY": 0,
-            "width": 272,
-            "height": 14,
+            "offsetX": 3,
+            "offsetY": 3,
             "z": 0
             },
-          "background": {
-            "r": 8,
-            "g": 10,
-            "b": 16,
-            "a": 220
-            }
+          "sprite": "spr.hud.money"
+          },
+        {
+          "id": "hud.gold.text",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 14,
+            "offsetY": 3,
+            "z": 0
+            },
+          "text": "",
+          "bindings": [
+            {
+              "property": "text",
+              "source": "player.gold"
+              }
+            ]
           },
         {
           "id": "hud.health",
           "component": "meter",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 3,
-            "offsetY": 2,
+            "offsetX": 201,
+            "offsetY": 3,
             "z": 0
             },
           "meter": {
@@ -2130,39 +2179,11 @@
             ]
           },
         {
-          "id": "hud.gold.icon",
-          "component": "image",
-          "layout": {
-            "anchor": "topLeft",
-            "offsetX": 68,
-            "offsetY": 2,
-            "z": 0
-            },
-          "sprite": "spr.hud.money"
-          },
-        {
-          "id": "hud.gold.text",
-          "component": "text",
-          "layout": {
-            "anchor": "topLeft",
-            "offsetX": 79,
-            "offsetY": 2,
-            "z": 0
-            },
-          "text": "",
-          "bindings": [
-            {
-              "property": "text",
-              "source": "player.gold"
-              }
-            ]
-          },
-        {
           "id": "hud.ammo.icon",
           "component": "image",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 246,
+            "offsetX": 248,
             "offsetY": 199,
             "z": 0,
             "visible": false
@@ -2192,8 +2213,8 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 226,
-            "offsetY": 209,
+            "offsetX": 229,
+            "offsetY": 210,
             "z": 0,
             "visible": false
             },
@@ -2217,8 +2238,8 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 233,
-            "offsetY": 209,
+            "offsetX": 236,
+            "offsetY": 210,
             "z": 0,
             "visible": false
             },
@@ -2244,35 +2265,17 @@
             ]
           },
         {
-          "id": "hud.bottomBar",
-          "component": "panel",
-          "layout": {
-            "anchor": "topLeft",
-            "offsetX": 0,
-            "offsetY": 194,
-            "width": 272,
-            "height": 30,
-            "z": 0
-            },
-          "background": {
-            "r": 8,
-            "g": 10,
-            "b": 16,
-            "a": 220
-            }
-          },
-        {
           "id": "hud.quickSlots",
           "component": "repeater",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 4,
-            "offsetY": 197,
+            "offsetX": 3,
+            "offsetY": 201,
             "z": 0
             },
           "columns": 4,
-          "cellWidth": 40,
-          "cellHeight": 23,
+          "cellWidth": 21,
+          "cellHeight": 20,
           "bindings": [
             {
               "property": "source",
@@ -2287,8 +2290,8 @@
                 "anchor": "topLeft",
                 "offsetX": 0,
                 "offsetY": 0,
-                "width": 34,
-                "height": 23,
+                "width": 20,
+                "height": 20,
                 "z": 0
                 },
               "background": {
@@ -2298,14 +2301,13 @@
                 "a": 255
                 },
               "iconOffset": {
-                "x": 10,
+                "x": 2,
                 "y": 2
                 },
               "countOffset": {
-                "x": 22,
-                "y": 12
+                "x": 11,
+                "y": 11
                 },
-              "countAlways": true,
               "bindings": [
                 {
                   "property": "icon",
@@ -2324,8 +2326,8 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 6,
-            "offsetY": 199,
+            "offsetX": 4,
+            "offsetY": 203,
             "z": 0
             },
           "text": "1"
@@ -2335,8 +2337,8 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 46,
-            "offsetY": 199,
+            "offsetX": 25,
+            "offsetY": 203,
             "z": 0
             },
           "text": "2"
@@ -2346,8 +2348,8 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 86,
-            "offsetY": 199,
+            "offsetX": 46,
+            "offsetY": 203,
             "z": 0
             },
           "text": "3"
@@ -2357,22 +2359,66 @@
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 126,
-            "offsetY": 199,
+            "offsetX": 67,
+            "offsetY": 203,
             "z": 0
             },
           "text": "4"
           },
         {
-          "id": "hud.hint",
+          "id": "hud.gear.sword",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 158,
+            "offsetY": 198,
+            "z": 0
+            },
+          "sprite": "spr.hud.sword"
+          },
+        {
+          "id": "hud.gear.swordKey",
           "component": "text",
           "layout": {
             "anchor": "topLeft",
-            "offsetX": 169,
-            "offsetY": 203,
+            "offsetX": 177,
+            "offsetY": 206,
             "z": 0
             },
-          "text": "I ITEMS  E OPEN"
+          "text": "Z"
+          },
+        {
+          "id": "hud.gear.shield",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 186,
+            "offsetY": 198,
+            "z": 0
+            },
+          "sprite": "spr.hud.shield"
+          },
+        {
+          "id": "hud.gear.bow",
+          "component": "image",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 212,
+            "offsetY": 198,
+            "z": 0
+            },
+          "sprite": "spr.hud.bow"
+          },
+        {
+          "id": "hud.gear.bowKey",
+          "component": "text",
+          "layout": {
+            "anchor": "topLeft",
+            "offsetX": 234,
+            "offsetY": 206,
+            "z": 0
+            },
+          "text": "X"
           },
         {
           "id": "hud.notification",

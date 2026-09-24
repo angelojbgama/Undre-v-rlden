@@ -17,6 +17,14 @@ int main(int argc, char** argv) {
         auto builtin = underworld::game::content::makeBuiltinAuthoredContent();
         const auto compiled = underworld::game::content::compileContent(builtin);
         if (!compiled) {
+            for (const auto& diagnostic : compiled.report.diagnostics) {
+                if (diagnostic.severity != underworld::game::content::ContentDiagnosticSeverity::error) {
+                    continue;
+                }
+                std::cerr << "[" << diagnostic.code << "] " << diagnostic.message
+                          << " (id=" << diagnostic.definitionId.value()
+                          << " field=" << diagnostic.field << ")\n";
+            }
             std::cerr << "builtin ui screens failed to compile\n";
             return 1;
         }

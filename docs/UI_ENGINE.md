@@ -405,6 +405,23 @@ Não iniciar o bloco seguinte com a prova do bloco atual reprovada.
 Se qualquer prova falhar, a arquitetura não está desacoplada: parar e corrigir
 antes de avançar, sem "consertar" a prova com branch por conteúdo.
 
+## 10.0 HUD compacto (sem barras)
+
+A `screen.hud` builtin evoluiu da reprodução pixel-a-pixel da barra legacy
+para um design flutuante sem barras full-width:
+
+- moeda + ouro no topo esquerda; corações no topo direita;
+- quickslots 1–4 compactos (20×20, número dentro do slot) no rodapé esquerda;
+- faixa de equipamento no rodapé direita: espada `Z`, escudo (armadura
+  passiva, sem tecla) e arco `X`, com a munição gated ao lado (`x N`);
+- `MAP`/último evento seguem runtime-drawn (estado de mundo) como pills
+  compactas no centro do rodapé (`GamePresentation::renderHud`).
+
+O desenho hardcoded (barras, ouro, ammo, slots, hint) foi aposentado do
+`renderHud`; workspaces sobrepõem a tela pelo mesmo id. A paridade
+pixel-a-pixel com o loop legacy (prova 1a) foi o mecanismo de migração e não é
+mais o contrato do HUD.
+
 ## 10.1 Visuais de identidade authored (fonte, fundo, cursor)
 
 Ids convencionais de sprite static (`presentation_effects.h`), definidos no

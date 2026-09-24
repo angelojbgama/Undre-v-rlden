@@ -416,43 +416,25 @@ void GamePresentation::renderDebug(render::Renderer2D& renderer,
 void GamePresentation::renderHud(render::Renderer2D& renderer,
                                  const GamePresentationFrame& frame) const {
     const auto& view = frame.view;
-    renderer.fillRect({0, 0, core::GameMetrics::logicalWidth, 14}, {8, 10, 16, 220});
-    // Health hearts are authored UI content (screen.hud, docs/UI_ENGINE.md
-    // proof 1a): the definition-driven render reproduces the legacy HUD bar
-    // pixel-for-pixel. The definition always exists because builtin content
-    // provides it and workspaces only overlay it.
+    // The HUD is authored UI content (screen.hud): floating hearts/gold,
+    // quickslots and the gear strip render through the presenter. MAP and
+    // the last-event label stay runtime-drawn (world state, not player
+    // state) as compact pills between the quickslots and the gear strip.
     if (frame.hudScreen) {
         const ui::UiPresenter presenter;
         const GameViewModelBindings bindings{view};
         const ui::UiVisualContext visuals{frame.staticSprites, frame.font};
         presenter.render(*frame.hudScreen, bindings, visuals, renderer);
     }
-    renderer.drawImage(*frame.hudMoneyImage, 68, 2);
-    render::drawText(renderer, frame.font, std::to_string(view.gold), 79, 2);
-    if (view.ammo.itemId) {
-        if (const auto* sprite = frame.staticSprites.find(*view.ammo.visualId)) {
-            render::drawSprite(renderer, *sprite->sheet, sprite->frame,
-                               {246 + sprite->frame.anchor.x, 199 + sprite->frame.anchor.y});
-        }
-        render::drawText(renderer, frame.font,
-                         "x" + std::to_string(view.ammo.quantity), 226, 209);
+    const auto drawWorldPill = [&renderer, &frame](const std::string& text, int y) {
+        renderer.fillRect({90, y - 1, static_cast<int>(text.size()) * 7 + 4, 11},
+                          {8, 10, 16, 190});
+        render::drawText(renderer, frame.font, text, 92, y);
+    };
+    drawWorldPill(std::string(frame.world.id().value()), 197);
+    if (!frame.lastEvent.empty()) {
+        drawWorldPill(std::string(frame.lastEvent), 210);
     }
-    render::drawText(renderer, frame.font, "MAP: " + std::string(frame.world.id().value()), 116, 2);
-    if (!frame.lastEvent.empty()) { render::drawText(renderer, frame.font, std::string(frame.lastEvent), 190, 2); }
-    renderer.fillRect({0, 194, core::GameMetrics::logicalWidth, 30}, {8, 10, 16, 220});
-    for (std::size_t index = 0; index < view.quickSlots.size(); ++index) {
-        const int x = 4 + static_cast<int>(index) * 40;
-        renderer.fillRect({x, 197, 34, 23}, {54, 30, 38, 255});
-        render::drawText(renderer, frame.font, std::to_string(index + 1), x + 2, 199);
-        if (view.quickSlots[index].visualId) {
-            if (const auto* sprite = frame.staticSprites.find(*view.quickSlots[index].visualId)) {
-                render::drawSprite(renderer, *sprite->sheet, sprite->frame,
-                                   {x + 10 + sprite->frame.anchor.x, 199 + sprite->frame.anchor.y});
-            }
-            render::drawText(renderer, frame.font, std::to_string(view.quickSlots[index].quantity), x + 22, 209);
-        }
-    }
-    render::drawText(renderer, frame.font, "I ITEMS  E OPEN", 169, 203);
     if (frame.dialogue.isOpen()) {
         // Dialogue box is authored UI content (screen.dialogue,
         // docs/UI_ENGINE.md): the definition-driven render reproduces the

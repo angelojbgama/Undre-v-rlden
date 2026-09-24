@@ -268,10 +268,12 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     addBuiltinDungeonSemantics(pack);
     addBuiltinVisualContent(pack);
 
-    // HUD as authored UI content (docs/UI_ENGINE.md proof 1a, extended): the
-    // full legacy HUD bar — hearts, gold, ammo, quickslots — reproduces the
-    // hardcoded draw pixel-for-pixel and becomes Studio-editable. "MAP:" and
-    // the last-event label stay runtime-drawn (world state, not player state).
+    // HUD as authored UI content (docs/UI_ENGINE.md): compact floating
+    // clusters instead of full-width bars — gold top-left, hearts top-right,
+    // quickslots bottom-left and a gear strip bottom-right where the sword,
+    // shield and bow icons mark what each button activates (Z sword, X bow,
+    // shield = passive armor). MAP and the last-event label stay
+    // runtime-drawn (world state, not player state).
     pack.visualImages.push_back(
         {{"img.hud.heart" }, presentation::VisualAssetRoot::gameAssets, "Icons/heart_complete.png"});
     pack.staticSprites.push_back(
@@ -314,6 +316,18 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
          "Sword_arrow_for_menu_options.png"});
     pack.staticSprites.push_back(
         {{"spr.menu.cursor"}, {"img.menu.cursor"}, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.hud.sword"}, presentation::VisualAssetRoot::gameAssets, "Icons/sword.png"});
+    pack.staticSprites.push_back(
+        {{"spr.hud.sword"}, {"img.hud.sword"}, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.hud.shield"}, presentation::VisualAssetRoot::gameAssets, "Icons/shield.png"});
+    pack.staticSprites.push_back(
+        {{"spr.hud.shield"}, {"img.hud.shield"}, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.hud.bow"}, presentation::VisualAssetRoot::gameAssets, "Icons/bow.png"});
+    pack.staticSprites.push_back(
+        {{"spr.hud.bow"}, {"img.hud.bow"}, std::nullopt, core::PointI{0, 0}});
     ui::ScreenDefinition hudScreen;
     hudScreen.id = simulation::DefinitionId{"screen.hud"};
     hudScreen.kind = ui::ScreenKind::hud;
@@ -323,18 +337,25 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     const auto hudChild = [&hudRoot](ui::NodeDefinition node) {
         hudRoot.children.push_back(std::move(node));
     };
-    ui::NodeDefinition topBar;
-    topBar.id = "hud.topBar";
-    topBar.component = ui::ComponentKind::panel;
-    topBar.layout.width = 272;
-    topBar.layout.height = 14;
-    topBar.background = core::ColorRGBA8{8, 10, 16, 220};
-    hudChild(std::move(topBar));
+    ui::NodeDefinition moneyIcon;
+    moneyIcon.id = "hud.gold.icon";
+    moneyIcon.component = ui::ComponentKind::image;
+    moneyIcon.spriteId = simulation::DefinitionId{"spr.hud.money"};
+    moneyIcon.layout.offsetX = 3;
+    moneyIcon.layout.offsetY = 3;
+    hudChild(std::move(moneyIcon));
+    ui::NodeDefinition goldText;
+    goldText.id = "hud.gold.text";
+    goldText.component = ui::ComponentKind::text;
+    goldText.layout.offsetX = 14;
+    goldText.layout.offsetY = 3;
+    goldText.bindings.push_back({"text", ui::BindingPath::playerGold});
+    hudChild(std::move(goldText));
     ui::NodeDefinition hearts;
     hearts.id = "hud.health";
     hearts.component = ui::ComponentKind::meter;
-    hearts.layout.offsetX = 3;
-    hearts.layout.offsetY = 2;
+    hearts.layout.offsetX = 201;
+    hearts.layout.offsetY = 3;
     ui::MeterDefinition healthMeter;
     healthMeter.mode = ui::MeterMode::segmented;
     healthMeter.segmentValue = 1;
@@ -345,21 +366,7 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     hearts.bindings.push_back({"value", ui::BindingPath::playerHealthCurrent});
     hearts.bindings.push_back({"maximum", ui::BindingPath::playerHealthMax});
     hudChild(std::move(hearts));
-    ui::NodeDefinition moneyIcon;
-    moneyIcon.id = "hud.gold.icon";
-    moneyIcon.component = ui::ComponentKind::image;
-    moneyIcon.spriteId = simulation::DefinitionId{"spr.hud.money"};
-    moneyIcon.layout.offsetX = 68;
-    moneyIcon.layout.offsetY = 2;
-    hudChild(std::move(moneyIcon));
-    ui::NodeDefinition goldText;
-    goldText.id = "hud.gold.text";
-    goldText.component = ui::ComponentKind::text;
-    goldText.layout.offsetX = 79;
-    goldText.layout.offsetY = 2;
-    goldText.bindings.push_back({"text", ui::BindingPath::playerGold});
-    hudChild(std::move(goldText));
-    // Ammo (bottom right): hidden unless the player carries the authored
+    // Ammo (bottom-right): hidden unless the player carries the authored
     // attack ammo; the icon is bound to the carried item's visual.
     const auto gated = [](ui::NodeDefinition node) {
         node.layout.visible = false;
@@ -374,50 +381,41 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
     ui::NodeDefinition ammoIcon = gated(ui::NodeDefinition{});
     ammoIcon.id = "hud.ammo.icon";
     ammoIcon.component = ui::ComponentKind::image;
-    ammoIcon.layout.offsetX = 246;
+    ammoIcon.layout.offsetX = 248;
     ammoIcon.layout.offsetY = 199;
     ammoIcon.bindings.push_back({"icon", ui::BindingPath::playerAmmoIcon});
     hudChild(std::move(ammoIcon));
     ui::NodeDefinition ammoPrefix = gated(ui::NodeDefinition{});
     ammoPrefix.id = "hud.ammo.prefix";
     ammoPrefix.component = ui::ComponentKind::text;
-    ammoPrefix.layout.offsetX = 226;
-    ammoPrefix.layout.offsetY = 209;
+    ammoPrefix.layout.offsetX = 229;
+    ammoPrefix.layout.offsetY = 210;
     ammoPrefix.text = "x";
     hudChild(std::move(ammoPrefix));
     ui::NodeDefinition ammoCount = gated(ui::NodeDefinition{});
     ammoCount.id = "hud.ammo.count";
     ammoCount.component = ui::ComponentKind::text;
-    ammoCount.layout.offsetX = 233;
-    ammoCount.layout.offsetY = 209;
+    ammoCount.layout.offsetX = 236;
+    ammoCount.layout.offsetY = 210;
     ammoCount.bindings.push_back({"text", ui::BindingPath::playerAmmoAmount});
     hudChild(std::move(ammoCount));
-    ui::NodeDefinition bottomBar;
-    bottomBar.id = "hud.bottomBar";
-    bottomBar.component = ui::ComponentKind::panel;
-    bottomBar.layout.offsetY = 194;
-    bottomBar.layout.width = 272;
-    bottomBar.layout.height = 30;
-    bottomBar.background = core::ColorRGBA8{8, 10, 16, 220};
-    hudChild(std::move(bottomBar));
     ui::NodeDefinition quickSlots;
     quickSlots.id = "hud.quickSlots";
     quickSlots.component = ui::ComponentKind::repeater;
-    quickSlots.layout.offsetX = 4;
-    quickSlots.layout.offsetY = 197;
+    quickSlots.layout.offsetX = 3;
+    quickSlots.layout.offsetY = 201;
     quickSlots.columns = 4;
-    quickSlots.cellWidth = 40;
-    quickSlots.cellHeight = 23;
+    quickSlots.cellWidth = 21;
+    quickSlots.cellHeight = 20;
     quickSlots.bindings.push_back({"source", ui::BindingPath::playerQuickSlotSlots});
     ui::NodeDefinition quickSlot;
     quickSlot.id = "hud.quickSlot";
     quickSlot.component = ui::ComponentKind::slot;
-    quickSlot.layout.width = 34;
-    quickSlot.layout.height = 23;
+    quickSlot.layout.width = 20;
+    quickSlot.layout.height = 20;
     quickSlot.background = core::ColorRGBA8{54, 30, 38, 255};
-    quickSlot.iconOffset = core::PointI{10, 2};
-    quickSlot.countOffset = core::PointI{22, 12};
-    quickSlot.countAlways = true;
+    quickSlot.iconOffset = core::PointI{2, 2};
+    quickSlot.countOffset = core::PointI{11, 11};
     quickSlot.bindings.push_back({"icon", ui::BindingPath::contextItemIcon});
     quickSlot.bindings.push_back({"count", ui::BindingPath::contextItemAmount});
     quickSlots.children.push_back(std::move(quickSlot));
@@ -426,21 +424,51 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         ui::NodeDefinition number;
         number.id = "hud.quickSlot.number" + std::to_string(index + 1);
         number.component = ui::ComponentKind::text;
-        number.layout.offsetX = 4 + index * 40 + 2;
-        number.layout.offsetY = 199;
+        number.layout.offsetX = 3 + index * 21 + 1;
+        number.layout.offsetY = 203;
         number.text = std::to_string(index + 1);
         hudChild(std::move(number));
     }
-    ui::NodeDefinition hint;
-    hint.id = "hud.hint";
-    hint.component = ui::ComponentKind::text;
-    hint.layout.offsetX = 169;
-    hint.layout.offsetY = 203;
-    hint.text = "I ITEMS  E OPEN";
-    hudChild(std::move(hint));
+    // Gear strip (bottom-right): the icons mark which button activates what.
+    // The shield is the passive armor mark and has no key.
+    ui::NodeDefinition gearSword;
+    gearSword.id = "hud.gear.sword";
+    gearSword.component = ui::ComponentKind::image;
+    gearSword.spriteId = simulation::DefinitionId{"spr.hud.sword"};
+    gearSword.layout.offsetX = 158;
+    gearSword.layout.offsetY = 198;
+    hudChild(std::move(gearSword));
+    ui::NodeDefinition gearSwordKey;
+    gearSwordKey.id = "hud.gear.swordKey";
+    gearSwordKey.component = ui::ComponentKind::text;
+    gearSwordKey.layout.offsetX = 177;
+    gearSwordKey.layout.offsetY = 206;
+    gearSwordKey.text = "Z";
+    hudChild(std::move(gearSwordKey));
+    ui::NodeDefinition gearShield;
+    gearShield.id = "hud.gear.shield";
+    gearShield.component = ui::ComponentKind::image;
+    gearShield.spriteId = simulation::DefinitionId{"spr.hud.shield"};
+    gearShield.layout.offsetX = 186;
+    gearShield.layout.offsetY = 198;
+    hudChild(std::move(gearShield));
+    ui::NodeDefinition gearBow;
+    gearBow.id = "hud.gear.bow";
+    gearBow.component = ui::ComponentKind::image;
+    gearBow.spriteId = simulation::DefinitionId{"spr.hud.bow"};
+    gearBow.layout.offsetX = 212;
+    gearBow.layout.offsetY = 198;
+    hudChild(std::move(gearBow));
+    ui::NodeDefinition gearBowKey;
+    gearBowKey.id = "hud.gear.bowKey";
+    gearBowKey.component = ui::ComponentKind::text;
+    gearBowKey.layout.offsetX = 234;
+    gearBowKey.layout.offsetY = 206;
+    gearBowKey.text = "X";
+    hudChild(std::move(gearBowKey));
     // Transient notification (level up, quest started/completed): composed
-    // by the shell from domain events, centered under the HUD bar and
-    // gated by the notification presence binding.
+    // by the shell from domain events, centered under the top HUD cluster
+    // and gated by the notification presence binding.
     ui::NodeDefinition notification;
     notification.id = "hud.notification";
     notification.component = ui::ComponentKind::text;
