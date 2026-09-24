@@ -34,6 +34,7 @@ from ..services.npc_authoring_service import (
     NpcVisualRequest,
 )
 from ..services.player_authoring_service import FrameSequenceSpec
+from .dialogue_library_widget import DialogueLibraryWidget
 from .icon_registry import icon
 from .studio_visual_resolver import StudioVisualResolver
 from .widgets import PayloadListWidget
@@ -222,6 +223,30 @@ class NpcVisualDialog(QDialog):
         self.accept()
 
 
+class DialogueLibraryDialog(QDialog):
+    """Modal wrapper hosting the dialogue library over the NPC editor."""
+
+    changed = Signal()
+
+    def __init__(
+        self,
+        workspace: ContentWorkspace,
+        translator: Translator,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.translate = translator
+        self.setWindowTitle(self.translate("dialogue_library_title"))
+        self.resize(900, 560)
+        layout = QVBoxLayout(self)
+        self.library = DialogueLibraryWidget(workspace, translator, self)
+        self.library.changed.connect(self.changed)
+        layout.addWidget(self.library, 1)
+        close_button = QPushButton(self.translate("dialogue_close"), self)
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+
+
 class NpcEditorDialog(QDialog):
     """Create or edit one authored NPC definition."""
 
@@ -351,15 +376,18 @@ class NpcEditorDialog(QDialog):
                     break
 
     def _open_dialogue_library(self) -> None:
-        from .dialogue_library_widget import DialogueLibraryWidget
+        # The NPC editor runs in a modal exec loop, so the library must be a
+        # nested modal dialog: a modeless window opened over an active exec
+        # is input-blocked by the platform and flashes open/closed.
+        from .dialogue_library_widget import (
+            DialogueLibraryDialog,
+            DialogueLibraryWidget,
+        )
 
-        self._dialogue_window = DialogueLibraryWidget(
-            self.workspace, self.translate)
-        self._dialogue_window.setWindowModality(Qt.WindowModality.NonModal)
-        self._dialogue_window.setWindowFlag(Qt.WindowType.Window, True)
-        self._dialogue_window.resize(900, 560)
-        self._dialogue_window.changed.connect(self._reload_dialogues)
-        self._dialogue_window.show()
+        dialog = DialogueLibraryDialog(self.workspace, self.translate, parent=self)
+        dialog.changed.connect(self._reload_dialogues)
+        dialog.exec()
+        self._reload_dialogues()
 
     def _reload_dialogues(self) -> None:
         current = self.dialogue.currentData()
