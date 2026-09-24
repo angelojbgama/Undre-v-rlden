@@ -180,6 +180,12 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.open_settings)
         view_menu.addAction(settings_action)
         self._settings_action = settings_action
+        tools_menu = self.menuBar().addMenu(self.translator("tools"))
+        self._menus["tools"] = tools_menu
+        app_icon_action = QAction(self.translator("app_icon"), self)
+        app_icon_action.triggered.connect(self.generate_app_icon)
+        tools_menu.addAction(app_icon_action)
+        self.actions["app_icon"] = app_icon_action
 
     def _build_ui(self) -> None:
         toolbar = QToolBar(self.translator("tools"), self)
@@ -1817,6 +1823,32 @@ class MainWindow(QMainWindow):
             self.asset_root = new_asset_root
             self._refresh_all()
         self.set_status(self.translator("settings_saved"))
+
+    def generate_app_icon(self) -> None:
+        """Ferramentas > ícone do jogo: deriva o .ico de um PNG fonte.
+
+        The icon belongs to the game project (not the opened workspace), so
+        paths resolve from the repository layout and the licensed source PNG
+        stays out of Git; only build artifacts are written.
+        """
+        from tools.content_studio.services.app_icon_service import generate_app_icon_files
+        repo_root = Path(__file__).resolve().parents[3]
+        default_png = repo_root / "assets" / "icon.png"
+        source, _ = QFileDialog.getOpenFileName(
+            self, self.translator("app_icon"), str(default_png), "PNG (*.png)")
+        if not source:
+            return
+        try:
+            result = generate_app_icon_files(
+                Path(source), repo_root / "build" / "game_icon.ico",
+                repo_root / "src" / "win32" / "game.rc")
+        except Exception as error:  # surfaced to the user, never crashes the Studio
+            QMessageBox.warning(self, self.translator("app_icon"),
+                                self.translator("app_icon_failed") + f"\n{error}")
+            return
+        QMessageBox.information(self, self.translator("app_icon"),
+                                self.translator("app_icon_done").format(
+                                    ico=result.ico_path))
 
     def set_theme_mode(self, mode: str) -> None:
         if mode not in theme.THEME_MODES or mode == self._theme_mode:

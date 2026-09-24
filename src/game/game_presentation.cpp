@@ -751,6 +751,12 @@ void GamePresentation::render(render::Framebuffer& framebuffer,
                               const GamePresentationFrame& frame) const {
     framebuffer.clear({28, 13, 22, 255});
     render::Renderer2D renderer(framebuffer);
+    // Authored map backdrop (spr.game.background): drawn in screen space
+    // behind every tile layer, so packs with partial tile coverage show art
+    // instead of the solid fallback color.
+    if (const auto* background = frame.staticSprites.find(presentation::gameBackgroundSpriteId())) {
+        render::drawSprite(renderer, *background->sheet, background->frame, {0, 0});
+    }
     const auto& map = frame.world.map();
     const auto baseCameraPosition = camera_.position();
     const core::WorldPointI cameraPosition{

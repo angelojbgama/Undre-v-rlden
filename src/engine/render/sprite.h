@@ -16,6 +16,9 @@ class SpriteSheet final {
 public:
     explicit SpriteSheet(std::shared_ptr<const Image> image);
     [[nodiscard]] const Image& image() const noexcept { return *image_; }
+    // Ownership accessor: consumers that wrap the sheet image in another
+    // resource (BitmapFont) need the shared_ptr, not only the reference.
+    [[nodiscard]] const std::shared_ptr<const Image>& imagePtr() const noexcept { return image_; }
 
 private:
     std::shared_ptr<const Image> image_;

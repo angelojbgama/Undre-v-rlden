@@ -11605,6 +11605,35 @@ void testUiScreenBuiltinAndBindings() {
                    .meter->spacing == 1,
            "builtin ui screens compile into the runtime screen catalog");
 
+    // Conventional runtime visuals (see presentation_effects.h): the bitmap
+    // font sheet, the full-screen map backdrop and the menu selection cursor
+    // are authored pack content so workspaces can swap the art.
+    const auto authoredImagePath = [&](const char* id) {
+        for (const auto& image : builtin.visualImages) {
+            if (image.id == simulation::DefinitionId{id}) { return image.relativePath; }
+        }
+        return std::string{};
+    };
+    const auto hasAuthoredSprite = [&](const char* id) {
+        for (const auto& sprite : builtin.staticSprites) {
+            if (sprite.id == simulation::DefinitionId{id}) { return true; }
+        }
+        return false;
+    };
+    expect(authoredImagePath("img.font.main") == "fonts_index.png" &&
+               hasAuthoredSprite("spr.font.main") &&
+               authoredImagePath("img.game.background") == "game_background.png" &&
+               hasAuthoredSprite("spr.game.background") &&
+               authoredImagePath("img.menu.cursor") == "Sword_arrow_for_menu_options.png" &&
+               hasAuthoredSprite("spr.menu.cursor"),
+           "builtin pack authors the conventional font, backdrop and cursor sprites");
+    expect(game::presentation::mainFontSpriteId() == simulation::DefinitionId{"spr.font.main"} &&
+               game::presentation::gameBackgroundSpriteId() ==
+                   simulation::DefinitionId{"spr.game.background"} &&
+               game::presentation::menuCursorSpriteId() ==
+                   simulation::DefinitionId{"spr.menu.cursor"},
+           "conventional sprite ids match the authored builtin definitions");
+
     game::GameViewModel view;
     view.playerHealth = 3;
     view.playerMaximumHealth = 5;
@@ -12232,6 +12261,90 @@ void testUiRuntimeMenuNavigation() {
         if (pixel.r == 240 && pixel.g == 240 && pixel.b == 240) { outlineFound = true; break; }
     }
     expect(outlineFound, "the focused node draws its focus outline");
+}
+
+void testUiMenuCursorSprite() {
+    using namespace underworld;
+    namespace ui = game::ui;
+    namespace presentation = game::presentation;
+
+    core::ImageData fontData;
+    fontData.width = 182;
+    fontData.height = 27;
+    fontData.strideBytes = static_cast<std::size_t>(182) * 4;
+    fontData.pixels.assign(static_cast<std::size_t>(182) * 27 * 4, 0);
+    const render::BitmapFont font{std::make_shared<render::Image>(std::move(fontData))};
+
+    struct EmptyResolver final : ui::UiBindingResolver {
+        [[nodiscard]] std::optional<std::int64_t> number(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+        [[nodiscard]] std::optional<simulation::DefinitionId> id(ui::BindingPath) const override {
+            return std::nullopt;
+        }
+    };
+
+    ui::NodeDefinition button;
+    button.id = "menu.wrap";
+    button.component = ui::ComponentKind::group;
+    button.layout.offsetX = 94;
+    button.layout.offsetY = 84;
+    button.layout.width = 84;
+    button.layout.height = 18;
+    button.actions.push_back({"activate", ui::ActionId::gameSave});
+
+    ui::ScreenDefinition menu;
+    menu.id = {"screen.menu"};
+    menu.kind = ui::ScreenKind::screen;
+    menu.root = button;
+
+    ui::UiRuntime runtime;
+    runtime.setMenuScreen(&menu);
+    runtime.setActionSink([](ui::ActionId) {});
+    platform::InputState open;
+    open.menuPressed = true;
+    runtime.update(open, true);
+    runtime.update(platform::InputState{}, true);
+    expect(runtime.menuOpen() && runtime.focusedNode() != nullptr,
+           "the menu opens with focus for the cursor test");
+
+    // A fully opaque 32x16 cursor in a color no built-in fallback uses, so
+    // the authored cursor and the outline fallback are distinguishable.
+    core::ImageData cursorData;
+    cursorData.width = 32;
+    cursorData.height = 16;
+    cursorData.strideBytes = static_cast<std::size_t>(32) * 4;
+    cursorData.pixels.assign(static_cast<std::size_t>(32) * 16 * 4, 0);
+    for (std::size_t index = 0; index < cursorData.pixels.size(); index += 4) {
+        cursorData.pixels[index] = 255;
+        cursorData.pixels[index + 1] = 0;
+        cursorData.pixels[index + 2] = 0;
+        cursorData.pixels[index + 3] = 255;
+    }
+    presentation::RuntimeStaticSpriteCatalog sprites;
+    sprites.add({simulation::DefinitionId{"spr.menu.cursor"},
+                 std::make_shared<const render::SpriteSheet>(
+                     std::make_shared<const render::Image>(std::move(cursorData))),
+                 render::SpriteFrame{{0, 0, 32, 16}, core::PointI{0, 0},
+                                     core::PointI{0, 0}, false}});
+
+    const ui::UiVisualContext visuals{sprites, font, runtime.focusedNode()};
+    render::Framebuffer framebuffer(272, 224);
+    framebuffer.clear({0, 0, 0, 255});
+    render::Renderer2D renderer(framebuffer);
+    EmptyResolver resolver;
+    runtime.render(resolver, visuals, renderer);
+
+    // Placement: left of the box (94 - 32 - 2 = 60), vertically centered
+    // (84 + (18 - 16) / 2 = 85).
+    const auto cursorPixel = framebufferPixel(framebuffer, 60, 85);
+    expect(cursorPixel.r == 255 && cursorPixel.g == 0 && cursorPixel.b == 0,
+           "the authored cursor draws to the left of the focused box");
+    bool outlineFound = false;
+    for (const auto& pixel : framebuffer.pixels()) {
+        if (pixel.r == 240 && pixel.g == 240 && pixel.b == 240) { outlineFound = true; break; }
+    }
+    expect(!outlineFound, "the authored cursor replaces the focus outline");
 }
 
 void testUiTitleShell() {
@@ -13562,6 +13675,7 @@ int main() {
         testUiSavesScreenAndSlots();
         testUiEquipmentBindings();
         testUiRuntimeMenuNavigation();
+        testUiMenuCursorSprite();
         testUiTitleShell();
         testCraftingKnowledgeAndHistory();
         testCraftingInterface();

@@ -405,6 +405,24 @@ Não iniciar o bloco seguinte com a prova do bloco atual reprovada.
 Se qualquer prova falhar, a arquitetura não está desacoplada: parar e corrigir
 antes de avançar, sem "consertar" a prova com branch por conteúdo.
 
+## 10.1 Visuais de identidade authored (fonte, fundo, cursor)
+
+Ids convencionais de sprite static (`presentation_effects.h`), definidos no
+pack builtin com arte licenciada local e substituíveis por workspace apenas
+redefinindo o mesmo id:
+
+| Id | Arte builtin | Consumo no runtime |
+|---|---|---|
+| `spr.font.main` | `fonts_index.png` | `BitmapFont` do jogo (validação 26×3 preservada; fallback: arquivo do asset root) |
+| `spr.game.background` | `game_background.png` | desenhado em screen space atrás das tile layers (fallback: cor sólida) |
+| `spr.menu.cursor` | `Sword_arrow_for_menu_options.png` | ornamento à esquerda do nó focado em telas com navegação (fallback: outline branco builtin) |
+
+O espelho `builtin_ui_screens.json` é regenerado por `ui_manifest --screens`
+após qualquer mudança nos visuais builtin. O ícone do `game.exe` é derivado
+em tooling (`python -m tools.content_studio.app_icon` ou menu Ferramentas do
+Studio): gera `build/game_icon.ico` + `src/win32/game.rc`, e `build.bat`
+compila o recurso com `rc.exe` quando o `.ico` existe.
+
 ## 11. Fora de escopo (explícito)
 
 ```text

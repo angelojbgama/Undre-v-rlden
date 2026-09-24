@@ -2231,3 +2231,32 @@ números. O Inspector trocou o campo de sprite por um picker (combo com os
 staticSprites do workspace + preview da arte); trocar a arte é escolher outro
 item, o commit passa pelo `set_sprite` existente e o canvas repinta. O
 C++/runtime permanece a autoridade de pixel; nada disso muda o Content JSON.
+
+# Estado atual — identidade visual authored (fonte, fundo, cursor, ícone)
+
+Visuais de identidade do jogo passaram a ser conteúdo authored por ids
+convencionais (`presentation::mainFontSpriteId()` = `spr.font.main`,
+`gameBackgroundSpriteId()` = `spr.game.background`,
+`menuCursorSpriteId()` = `spr.menu.cursor`), todos definidos no pack builtin
+com arte licenciada local e substituíveis por workspace sem tocar C++:
+
+- **Fonte** (`fonts_index.png`): o `GameRuntime` monta o `BitmapFont` a partir
+  do sprite `spr.font.main` do pack quando presente (validação 26×3 de 7×9
+  preservada); ausente, cai para o arquivo `assets/fonts_index.png`. Trocar a
+  fonte do jogo é redefinir o id no content.json (o Studio faz round-trip).
+- **Fundo do mapa** (`game_background.png`, 272×224): desenhado em screen
+  space atrás de todas as tile layers em `GamePresentation::render`; mapas com
+  cobertura parcial mostram arte em vez da cor sólida de fallback.
+- **Cursor de seleção** (`Sword_arrow_for_menu_options.png`, 32×16): quando o
+  pack define `spr.menu.cursor`, o `UiPresenter` desenha o ornamento à
+  esquerda do nó focado (lado direito quando não há espaço) em todas as telas
+  com navegação (título, pausa, saves, game over, ajuda) e substitui o
+  outline branco builtin; sem o id, o outline continua como fallback.
+- **Ícone do executável** (`assets/icon.png`): derivado em tooling —
+  `python -m tools.content_studio.app_icon` (ou o menu Ferramentas do Studio)
+  gera `build/game_icon.ico` (16–256, padding quadrado, nearest-neighbor,
+  container ICO montado à mão sobre PySide6, sem Pillow) e o `game.rc`;
+  `build.bat` compila o `.res` com `rc.exe` e linka no `game.exe` quando o
+  `.ico` existe (exe sem ícone enquanto o artefato não for gerado; o `.ico`
+  derivado de arte licenciada nunca entra no Git). O espelho
+  `builtin_ui_screens.json` é regenerado por `ui_manifest --screens`.

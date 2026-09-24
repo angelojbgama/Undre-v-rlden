@@ -296,6 +296,24 @@ AuthoredContentPack makeBuiltinAuthoredContent() {
         {{"img.controls"}, presentation::VisualAssetRoot::gameAssets, "controls.png"});
     pack.staticSprites.push_back(
         {{"spr.controls"}, {"img.controls"}, std::nullopt, core::PointI{0, 0}});
+    // Conventional ids consumed by the runtime (see presentation_effects.h):
+    // the bitmap font sheet, the full-screen map backdrop drawn behind tile
+    // layers and the menu selection cursor drawn beside the focused node.
+    pack.visualImages.push_back(
+        {{"img.font.main"}, presentation::VisualAssetRoot::gameAssets, "fonts_index.png"});
+    pack.staticSprites.push_back(
+        {{"spr.font.main"}, {"img.font.main"}, std::nullopt, core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.game.background"}, presentation::VisualAssetRoot::gameAssets,
+         "game_background.png"});
+    pack.staticSprites.push_back(
+        {{"spr.game.background"}, {"img.game.background"}, std::nullopt,
+         core::PointI{0, 0}});
+    pack.visualImages.push_back(
+        {{"img.menu.cursor"}, presentation::VisualAssetRoot::gameAssets,
+         "Sword_arrow_for_menu_options.png"});
+    pack.staticSprites.push_back(
+        {{"spr.menu.cursor"}, {"img.menu.cursor"}, std::nullopt, core::PointI{0, 0}});
     ui::ScreenDefinition hudScreen;
     hudScreen.id = simulation::DefinitionId{"screen.hud"};
     hudScreen.kind = ui::ScreenKind::hud;

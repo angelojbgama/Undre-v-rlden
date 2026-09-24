@@ -143,6 +143,21 @@
     "id": "img.controls",
     "root": "gameAssets",
     "relativePath": "controls.png"
+    },
+  {
+    "id": "img.font.main",
+    "root": "gameAssets",
+    "relativePath": "fonts_index.png"
+    },
+  {
+    "id": "img.game.background",
+    "root": "gameAssets",
+    "relativePath": "game_background.png"
+    },
+  {
+    "id": "img.menu.cursor",
+    "root": "gameAssets",
+    "relativePath": "Sword_arrow_for_menu_options.png"
     }
   ],
 "staticSprites": [
@@ -221,6 +236,30 @@
   {
     "id": "spr.controls",
     "imageId": "img.controls",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.font.main",
+    "imageId": "img.font.main",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.game.background",
+    "imageId": "img.game.background",
+    "anchor": {
+      "x": 0,
+      "y": 0
+      }
+    },
+  {
+    "id": "spr.menu.cursor",
+    "imageId": "img.menu.cursor",
     "anchor": {
       "x": 0,
       "y": 0

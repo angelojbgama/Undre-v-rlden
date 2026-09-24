@@ -2,6 +2,7 @@
 
 #include "engine/core/game_metrics.h"
 #include "engine/render/sprite.h"
+#include "game/presentation/presentation_effects.h"
 
 #include <algorithm>
 #include <string>
@@ -227,10 +228,26 @@ void UiPresenter::renderNode(const NodeDefinition& node, const UiBindingResolver
         const int boxWidth = node.layout.width.value_or(24);
         const int boxHeight = node.layout.height.value_or(16);
         const auto box = addOffset(resolveNodePosition(node.layout, {boxWidth, boxHeight}), offset);
-        renderer.fillRect({box.x - 1, box.y - 1, boxWidth + 2, 1}, {240, 240, 240, 255});
-        renderer.fillRect({box.x - 1, box.y + boxHeight, boxWidth + 2, 1}, {240, 240, 240, 255});
-        renderer.fillRect({box.x - 1, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
-        renderer.fillRect({box.x + boxWidth, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
+        // Authored menu cursor (spr.menu.cursor): drawn to the left of the
+        // focused box (right side when there is no room), vertically centered.
+        // Replaces the built-in outline fallback while the pack provides it.
+        if (const auto* cursor = context.staticSprites.find(
+                presentation::menuCursorSpriteId())) {
+            const int cursorWidth = cursor->frame.source.width;
+            const int cursorHeight = cursor->frame.source.height;
+            const int cursorX = box.x - cursorWidth - 2 >= 0
+                ? box.x - cursorWidth - 2
+                : box.x + boxWidth + 2;
+            const int cursorY = box.y + (boxHeight - cursorHeight) / 2;
+            render::drawSprite(renderer, *cursor->sheet, cursor->frame,
+                               {cursorX + cursor->frame.anchor.x,
+                                cursorY + cursor->frame.anchor.y});
+        } else {
+            renderer.fillRect({box.x - 1, box.y - 1, boxWidth + 2, 1}, {240, 240, 240, 255});
+            renderer.fillRect({box.x - 1, box.y + boxHeight, boxWidth + 2, 1}, {240, 240, 240, 255});
+            renderer.fillRect({box.x - 1, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
+            renderer.fillRect({box.x + boxWidth, box.y - 1, 1, boxHeight + 2}, {240, 240, 240, 255});
+        }
     }
     switch (node.component) {
         case ComponentKind::image: {

@@ -81,6 +81,15 @@ private:
 [[nodiscard]] const simulation::DefinitionId& mapTransitionOutEffectId() noexcept;
 [[nodiscard]] const simulation::DefinitionId& mapTransitionInEffectId() noexcept;
 
+// Well-known optional static sprites. The builtin pack authors them from the
+// licensed art (font sheet, full-screen map backdrop, menu cursor); workspaces
+// may redefine the same ids to swap the art without touching C++. Absent ids
+// keep the built-in fallbacks (fonts_index.png file, solid clear color, focus
+// outline).
+[[nodiscard]] const simulation::DefinitionId& mainFontSpriteId() noexcept;
+[[nodiscard]] const simulation::DefinitionId& gameBackgroundSpriteId() noexcept;
+[[nodiscard]] const simulation::DefinitionId& menuCursorSpriteId() noexcept;
+
 struct PresentationEffectSourceKey final {
     PresentationEffectSourceKind kind{PresentationEffectSourceKind::region};
     simulation::MapId mapId{};

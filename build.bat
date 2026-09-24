@@ -376,6 +376,22 @@ echo [36/40] Compiling Win32 platform...
 cl.exe %COMMON_FLAGS% /Fo"build\obj\win32_platform.obj" "src\engine\platform\win32\win32_platform.cpp"
 if errorlevel 1 goto :build_failed
 
+rem App icon (optional): the Content Studio app icon service generates
+rem build\game_icon.ico plus src\win32\game.rc; while the .ico is absent the
+rem executable is linked without the icon resource.
+set "GAME_RES="
+if exist "src\win32\game.rc" if exist "build\game_icon.ico" (
+    where rc.exe >nul 2>nul
+    if errorlevel 1 (
+        echo WARNING: rc.exe not found; linking game.exe without the app icon.
+    ) else (
+        echo Compiling app icon resource...
+        rc.exe /nologo /fo "build\obj\game.res" "src\win32\game.rc"
+        if errorlevel 1 goto :build_failed
+        set "GAME_RES="build\obj\game.res""
+    )
+)
+
 echo [37/40] Linking game.exe...
 link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\framebuffer.obj" "build\obj\image.obj" ^
@@ -402,7 +418,7 @@ link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"build\bin\game.exe" ^
     "build\obj\player.obj" "build\obj\player_visual.obj" ^
     "build\obj\win32_clock.obj" "build\obj\win32_image_decoder.obj" ^
     "build\obj\game_runtime.obj" "build\obj\game.obj" ^
-    "build\obj\win32_platform.obj" ^
+    "build\obj\win32_platform.obj" %GAME_RES%^
     user32.lib gdi32.lib ole32.lib windowscodecs.lib shell32.lib
 if errorlevel 1 goto :build_failed
 

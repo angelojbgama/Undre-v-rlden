@@ -265,4 +265,19 @@ const simulation::DefinitionId& mapTransitionInEffectId() noexcept {
     return value;
 }
 
+const simulation::DefinitionId& mainFontSpriteId() noexcept {
+    static const simulation::DefinitionId value{"spr.font.main"};
+    return value;
+}
+
+const simulation::DefinitionId& gameBackgroundSpriteId() noexcept {
+    static const simulation::DefinitionId value{"spr.game.background"};
+    return value;
+}
+
+const simulation::DefinitionId& menuCursorSpriteId() noexcept {
+    static const simulation::DefinitionId value{"spr.menu.cursor"};
+    return value;
+}
+
 } // namespace underworld::game::presentation

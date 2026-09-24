@@ -855,7 +855,6 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
     const auto dungeonTilesetId = dungeonDefinition.id;
     const auto tileset = assets_.loadImage("tileset.dungeon",
         assetRoot / dungeonDefinition.relativeAssetPath, decoder);
-    const auto font = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
     const auto impact = assets_.loadImage("effect.arrow_impact", assetRoot / "Explosion/arrow_hits_dust.png", decoder);
     const auto hudHeart = assets_.loadImage(
         "hud.heart", assetRoot / "Icons/heart_complete.png", decoder);
@@ -871,8 +870,18 @@ GameRuntime::GameRuntime(platform::ImageDecoder& decoder,
         }
         throw std::runtime_error(message);
     }
+    // The bitmap font is authored content: a pack may ship spr.font.main
+    // (conventional id) to swap the sheet; absent ids fall back to the
+    // shipped fonts_index.png. BitmapFont still validates the 26x3 grid.
+    std::shared_ptr<const render::Image> fontImage;
+    if (const auto* fontSprite =
+            visualContent.content->staticSprites.find(presentation::mainFontSpriteId())) {
+        fontImage = fontSprite->sheet->imagePtr();
+    } else {
+        fontImage = assets_.loadImage("font.main", assetRoot / "fonts_index.png", decoder);
+    }
     state_ = std::make_unique<State>(
-        tileset, font, impact, std::move(*visualContent.content),
+        tileset, std::move(fontImage), impact, std::move(*visualContent.content),
         hudHeart, hudMoney, std::move(contentDefinitions), executableDirectory, launchOptions);
     for (const auto& definition : state_->content.tilesets().definitions()) {
         if (definition.id == dungeonTilesetId) continue;

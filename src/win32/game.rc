@@ -1,0 +1,4 @@
+// Generated once by the Content Studio app icon service (tools menu). The
+// .ico stays inside the build directory because it is derived from licensed
+// art; build.bat skips this resource while the .ico is absent.
+1 ICON "../../build/game_icon.ico"
