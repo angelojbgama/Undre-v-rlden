@@ -3282,6 +3282,68 @@
           "y": -10
         }
       }
+    },
+    {
+      "id": "projectile.tnt",
+      "visualId": "visual.item.tnt",
+      "canonicalFacing": "right",
+      "speedPixelsPerTick": 2,
+      "lifetimeTicks": 60,
+      "hitboxWidth": 8,
+      "hitboxHeight": 8,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 10
+        },
+        "up": {
+          "x": 0,
+          "y": -14
+        },
+        "left": {
+          "x": -12,
+          "y": -6
+        },
+        "right": {
+          "x": 12,
+          "y": -6
+        }
+      },
+      "maximumDistancePixels": 64,
+      "impactAnimationId": "anim.explosion.blast",
+      "explosion": {
+        "damageAmount": 2,
+        "knockbackPixels": 16,
+        "radiusPixels": 28
+      }
+    },
+    {
+      "id": "projectile.arrow.trap",
+      "visualId": "visual.arrow",
+      "canonicalFacing": "right",
+      "speedPixelsPerTick": 2,
+      "lifetimeTicks": 90,
+      "hitboxWidth": 6,
+      "hitboxHeight": 6,
+      "spawnOffsets": {
+        "down": {
+          "x": 0,
+          "y": 6
+        },
+        "up": {
+          "x": 0,
+          "y": -6
+        },
+        "left": {
+          "x": -6,
+          "y": 0
+        },
+        "right": {
+          "x": 6,
+          "y": 0
+        }
+      },
+      "maximumDistancePixels": 180
     }
   ],
   "attacks": [
@@ -3423,6 +3485,104 @@
           "kind": "spawnProjectile"
         }
       ]
+    },
+    {
+      "id": "attack.slime.contact",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 1,
+        "knockbackPixels": 16
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 50,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 12,
+      "visualActionId": "visual.action.slime.bite",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -7,
+          "offsetY": -2,
+          "width": 14,
+          "height": 10
+        },
+        "up": {
+          "offsetX": -7,
+          "offsetY": -16,
+          "width": 14,
+          "height": 10
+        },
+        "left": {
+          "offsetX": -14,
+          "offsetY": -9,
+          "width": 12,
+          "height": 12
+        },
+        "right": {
+          "offsetX": 2,
+          "offsetY": -9,
+          "width": 12,
+          "height": 12
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 16,
+          "kind": "deactivateHitbox"
+        }
+      ]
+    },
+    {
+      "id": "attack.slime.champion.contact",
+      "kind": "meleeHitbox",
+      "damage": {
+        "amount": 2,
+        "knockbackPixels": 24
+      },
+      "totalTicks": 24,
+      "cooldownTicks": 50,
+      "minimumRangePixels": 0,
+      "maximumRangePixels": 14,
+      "visualActionId": "visual.action.slime.bite",
+      "meleeHitboxes": {
+        "down": {
+          "offsetX": -8,
+          "offsetY": -2,
+          "width": 16,
+          "height": 10
+        },
+        "up": {
+          "offsetX": -8,
+          "offsetY": -17,
+          "width": 16,
+          "height": 10
+        },
+        "left": {
+          "offsetX": -15,
+          "offsetY": -10,
+          "width": 13,
+          "height": 13
+        },
+        "right": {
+          "offsetX": 2,
+          "offsetY": -10,
+          "width": 13,
+          "height": 13
+        }
+      },
+      "timeline": [
+        {
+          "tick": 6,
+          "kind": "activateHitbox"
+        },
+        {
+          "tick": 16,
+          "kind": "deactivateHitbox"
+        }
+      ]
     }
   ],
   "behaviors": [
@@ -3439,6 +3599,13 @@
       "disengageRangePixels": 96,
       "idleDurationTicks": 1200,
       "wanderDurationTicks": 45
+    },
+    {
+      "id": "behavior.slime.basic",
+      "detectionRangePixels": 56,
+      "disengageRangePixels": 88,
+      "idleDurationTicks": 900,
+      "wanderDurationTicks": 60
     }
   ],
   "enemies": [
@@ -3448,7 +3615,7 @@
       "behaviorProfileId": "behavior.soldier.melee",
       "faction": "enemy",
       "maximumHealth": 3,
-      "movementSpeedSubpixelsPerTick": 256,
+      "movementSpeedSubpixelsPerTick": 128,
       "collisionBody": {
         "offsetX": -5,
         "offsetY": -8,
@@ -3489,6 +3656,54 @@
         "attack.skull.arrow"
       ],
       "rewardProfileId": "reward.enemy.skull"
+    },
+    {
+      "id": "enemy.slime",
+      "visualSetId": "visual.enemy.slime",
+      "behaviorProfileId": "behavior.slime.basic",
+      "faction": "enemy",
+      "maximumHealth": 2,
+      "movementSpeedSubpixelsPerTick": 56,
+      "collisionBody": {
+        "offsetX": -5,
+        "offsetY": -6,
+        "width": 10,
+        "height": 6
+      },
+      "hurtbox": {
+        "offsetX": -7,
+        "offsetY": -14,
+        "width": 14,
+        "height": 14
+      },
+      "attackIds": [
+        "attack.slime.contact"
+      ],
+      "rewardProfileId": "reward.enemy.slime"
+    },
+    {
+      "id": "enemy.slime.champion",
+      "visualSetId": "visual.enemy.slime.champion",
+      "behaviorProfileId": "behavior.slime.basic",
+      "faction": "enemy",
+      "maximumHealth": 8,
+      "movementSpeedSubpixelsPerTick": 64,
+      "collisionBody": {
+        "offsetX": -6,
+        "offsetY": -6,
+        "width": 12,
+        "height": 6
+      },
+      "hurtbox": {
+        "offsetX": -8,
+        "offsetY": -15,
+        "width": 16,
+        "height": 15
+      },
+      "attackIds": [
+        "attack.slime.champion.contact"
+      ],
+      "rewardProfileId": "reward.enemy.slime.champion"
     }
   ],
   "items": [
@@ -3550,6 +3765,39 @@
           "playerAttackDamageBonus": 1
         }
       }
+    },
+    {
+      "id": "item.key",
+      "visualId": "visual.item.key",
+      "category": "key",
+      "stackLimit": 1
+    },
+    {
+      "id": "item.tnt",
+      "visualId": "visual.item.tnt",
+      "category": "consumable",
+      "stackLimit": 9,
+      "use": {
+        "kind": "throwProjectile",
+        "amount": 2,
+        "projectileId": "projectile.tnt"
+      }
+    },
+    {
+      "id": "item.meat",
+      "visualId": "visual.item.meat",
+      "category": "consumable",
+      "stackLimit": 9,
+      "use": {
+        "kind": "restoreHealth",
+        "amount": 1
+      }
+    },
+    {
+      "id": "item.arrow",
+      "visualId": "visual.item.arrow",
+      "category": "misc",
+      "stackLimit": 30
     }
   ],
   "objects": [
@@ -10113,6 +10361,90 @@
         "height": 22
       },
       "bankAccess": {}
+    },
+    {
+      "id": "object.spike_trap",
+      "visualSetId": "visual.object.spike_trap",
+      "hazard": {
+        "damageAmount": 1,
+        "knockbackPixels": 12,
+        "periodTicks": 150,
+        "activeTicks": 40,
+        "hitbox": {
+          "x": -6,
+          "y": -6,
+          "width": 12,
+          "height": 12
+        }
+      },
+      "depthAnchor": {
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": "object.arrow_trap",
+      "visualSetId": "visual.object.arrow_trap",
+      "hazard": {
+        "damageAmount": 1,
+        "knockbackPixels": 8,
+        "periodTicks": 180,
+        "activeTicks": 60,
+        "hitbox": {
+          "x": 0,
+          "y": 0,
+          "width": 2,
+          "height": 2
+        },
+        "projectileId": "projectile.arrow.trap",
+        "facing": "down"
+      },
+      "depthAnchor": {
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": "object.arrow_trap.up",
+      "visualSetId": "visual.object.arrow_trap",
+      "hazard": {
+        "damageAmount": 1,
+        "knockbackPixels": 8,
+        "periodTicks": 180,
+        "activeTicks": 60,
+        "hitbox": {
+          "x": 0,
+          "y": 0,
+          "width": 2,
+          "height": 2
+        },
+        "projectileId": "projectile.arrow.trap",
+        "facing": "up"
+      },
+      "depthAnchor": {
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": "object.training_puppet",
+      "visualSetId": "visual.object.training_puppet",
+      "destructible": {
+        "maximumHealth": 5,
+        "hurtbox": {
+          "x": -16,
+          "y": -32,
+          "width": 32,
+          "height": 32
+        },
+        "destructionDurationTicks": 28,
+        "damageDurationTicks": 8,
+        "leaveDestroyedResidue": false
+      },
+      "depthAnchor": {
+        "x": 0,
+        "y": 28
+      }
     }
   ],
   "pickups": [
@@ -10158,6 +10490,80 @@
         "itemId": "item.life_potion",
         "quantity": 1
       }
+    },
+    {
+      "id": "pickup.key",
+      "visualId": "visual.item.key",
+      "collectionBounds": {
+        "x": -5,
+        "y": -5,
+        "width": 10,
+        "height": 10
+      },
+      "payload": {
+        "kind": "item",
+        "itemId": "item.key",
+        "quantity": 1
+      }
+    },
+    {
+      "id": "pickup.arrow",
+      "visualId": "visual.item.arrow",
+      "collectionBounds": {
+        "x": -5,
+        "y": -5,
+        "width": 10,
+        "height": 10
+      },
+      "payload": {
+        "kind": "item",
+        "itemId": "item.arrow",
+        "quantity": 3
+      }
+    },
+    {
+      "id": "pickup.meat",
+      "visualId": "visual.item.meat",
+      "collectionBounds": {
+        "x": -5,
+        "y": -5,
+        "width": 10,
+        "height": 10
+      },
+      "payload": {
+        "kind": "item",
+        "itemId": "item.meat",
+        "quantity": 1
+      }
+    },
+    {
+      "id": "pickup.big_money",
+      "visualId": "visual.pickup.big_money",
+      "collectionBounds": {
+        "x": -5,
+        "y": -5,
+        "width": 10,
+        "height": 10
+      },
+      "payload": {
+        "kind": "currency",
+        "amount": 25
+      }
+    },
+    {
+      "id": "pickup.tnt",
+      "visualId": "visual.item.tnt",
+      "collectionBounds": {
+        "x": -5,
+        "y": -5,
+        "width": 10,
+        "height": 10
+      },
+      "payload": {
+        "kind": "item",
+        "itemId": "item.tnt",
+        "quantity": 1
+      }
     }
   ],
   "npcVisuals": [],
@@ -10193,6 +10599,22 @@
         "npc",
         "merchant",
         "shop"
+      ]
+    },
+    {
+      "id": "npc.elder",
+      "visualSetId": "visual.npc.scholar",
+      "interaction": {
+        "x": -14,
+        "y": -28,
+        "width": 28,
+        "height": 22
+      },
+      "interactionEnabled": true,
+      "defaultDialogueId": "dialogue.elder.talk",
+      "tags": [
+        "npc",
+        "story"
       ]
     }
   ],
@@ -10313,6 +10735,22 @@
           "choices": []
         }
       ]
+    },
+    {
+      "id": "dialogue.elder.talk",
+      "entryNodeId": "elder.entry",
+      "nodes": [
+        {
+          "id": "elder.entry",
+          "speaker": "Elder",
+          "pages": [
+            "You crossed the arena few return from. The dark keeps its gate open for you now.",
+            "Rest, trade with the keeper, or simply breathe. The underworld is yours to walk."
+          ],
+          "nextNodeId": "",
+          "choices": []
+        }
+      ]
     }
   ],
   "quests": [
@@ -10340,6 +10778,24 @@
         "underworld"
       ],
       "rewardGrantId": "reward.quest.underworld.awakening"
+    },
+    {
+      "id": "quest.underworld.escape",
+      "title": "Escape the Underworld",
+      "objectives": [
+        {
+          "id": "quest.escape.enter",
+          "kind": "enter",
+          "targetId": "region.escape",
+          "requiredCount": 1,
+          "description": "Reach the sanctuary beyond the arena."
+        }
+      ],
+      "tags": [
+        "story",
+        "underworld"
+      ],
+      "rewardGrantId": "reward.quest.underworld.escape"
     }
   ],
   "playerProgressions": [],
@@ -10379,6 +10835,30 @@
           "maximumCount": 1
         }
       ]
+    },
+    {
+      "id": "reward.enemy.slime",
+      "experience": 15,
+      "loot": [
+        {
+          "pickupDefinitionId": "pickup.money",
+          "chanceBasisPoints": 4000,
+          "minimumCount": 1,
+          "maximumCount": 1
+        }
+      ]
+    },
+    {
+      "id": "reward.enemy.slime.champion",
+      "experience": 40,
+      "loot": [
+        {
+          "pickupDefinitionId": "pickup.big_money",
+          "chanceBasisPoints": 10000,
+          "minimumCount": 1,
+          "maximumCount": 1
+        }
+      ]
     }
   ],
   "rewardGrants": [
@@ -10386,6 +10866,17 @@
       "id": "reward.quest.underworld.awakening",
       "experience": 25,
       "gold": 40,
+      "items": [
+        {
+          "itemId": "item.elixir",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "id": "reward.quest.underworld.escape",
+      "experience": 60,
+      "gold": 100,
       "items": [
         {
           "itemId": "item.elixir",
@@ -10417,6 +10908,21 @@
           "itemId": "item.elixir",
           "playerBuyPrice": 80,
           "playerSellPrice": 35
+        },
+        {
+          "itemId": "item.arrow",
+          "playerBuyPrice": 5,
+          "playerSellPrice": 2
+        },
+        {
+          "itemId": "item.tnt",
+          "playerBuyPrice": 60,
+          "playerSellPrice": 25
+        },
+        {
+          "itemId": "item.meat",
+          "playerBuyPrice": 12,
+          "playerSellPrice": 5
         }
       ]
     }
@@ -10919,6 +11425,51 @@
       "id": "image.item.potion",
       "root": "gameAssets",
       "relativePath": "Objects/life_potion.png"
+    },
+    {
+      "id": "image.enemy.slime.idle",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Slime/slime_idle.png"
+    },
+    {
+      "id": "image.enemy.slime.death",
+      "root": "gameAssets",
+      "relativePath": "Characters/Enemies/Slime/slime_death.png"
+    },
+    {
+      "id": "image.object.training_puppet",
+      "root": "gameAssets",
+      "relativePath": "Training_puppet/training_puppet.png"
+    },
+    {
+      "id": "image.object.training_puppet.damage",
+      "root": "gameAssets",
+      "relativePath": "Training_puppet/training_puppet_death and demange.png"
+    },
+    {
+      "id": "image.object.arrow_trap",
+      "root": "gameAssets",
+      "relativePath": "Tileset/Walls_trap_arrows.png"
+    },
+    {
+      "id": "image.object.tnt",
+      "root": "gameAssets",
+      "relativePath": "Objects/tnt.png"
+    },
+    {
+      "id": "image.item.key",
+      "root": "gameAssets",
+      "relativePath": "Objects/key.png"
+    },
+    {
+      "id": "image.pickup.meat",
+      "root": "gameAssets",
+      "relativePath": "Objects/meat.png"
+    },
+    {
+      "id": "image.pickup.big_money",
+      "root": "gameAssets",
+      "relativePath": "Objects/big_money.png"
     }
   ],
   "staticSprites": [
@@ -11000,6 +11551,44 @@
       "anchor": {
         "x": 8,
         "y": 8
+      }
+    },
+    {
+      "id": "visual.item.key",
+      "imageId": "image.item.key",
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": "visual.item.meat",
+      "imageId": "image.pickup.meat",
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": "visual.pickup.big_money",
+      "imageId": "image.pickup.big_money",
+      "anchor": {
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": "visual.item.tnt",
+      "imageId": "image.object.tnt",
+      "anchor": {
+        "x": 8,
+        "y": 8
+      },
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
       }
     }
   ],
@@ -157781,6 +158370,562 @@
           }
         }
       ]
+    },
+    {
+      "id": "anim.enemy.slime.idle",
+      "imageId": "image.enemy.slime.idle",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 16
+          },
+          "anchor": {
+            "x": 16,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 16
+          },
+          "anchor": {
+            "x": 16,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 64,
+            "y": 0,
+            "width": 32,
+            "height": 16
+          },
+          "anchor": {
+            "x": 16,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 32,
+            "height": 16
+          },
+          "anchor": {
+            "x": 16,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.enemy.slime.death",
+      "imageId": "image.enemy.slime.death",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 14,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 14,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.object.training_puppet.idle",
+      "imageId": "image.object.training_puppet",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 20,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.object.training_puppet.damage",
+      "imageId": "image.object.training_puppet.damage",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 10,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 32,
+            "height": 32
+          },
+          "anchor": {
+            "x": 16,
+            "y": 31
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 10,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.object.spike_trap.idle",
+      "imageId": "image.tile_spickes",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 14,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 14,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 32,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 14,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.object.arrow_trap.idle",
+      "imageId": "image.object.arrow_trap",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 11
+          },
+          "anchor": {
+            "x": 6,
+            "y": 10
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 20,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.object.tnt.idle",
+      "imageId": "image.object.tnt",
+      "loop": true,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 16,
+            "y": 0,
+            "width": 16,
+            "height": 16
+          },
+          "anchor": {
+            "x": 8,
+            "y": 15
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 16,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
+    },
+    {
+      "id": "anim.explosion.blast",
+      "imageId": "image.explosion",
+      "loop": false,
+      "frames": [
+        {
+          "source": {
+            "x": 0,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 48,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 96,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 144,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 192,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 240,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 288,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 336,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 384,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        },
+        {
+          "source": {
+            "x": 432,
+            "y": 0,
+            "width": 48,
+            "height": 48
+          },
+          "anchor": {
+            "x": 24,
+            "y": 40
+          },
+          "drawOffset": {
+            "x": 0,
+            "y": 0
+          },
+          "durationTicks": 5,
+          "markers": [],
+          "flipX": false,
+          "masks": []
+        }
+      ]
     }
   ],
   "enemyVisuals": [
@@ -157847,6 +158992,64 @@
           }
         }
       ]
+    },
+    {
+      "id": "visual.enemy.slime",
+      "idle": {
+        "down": "anim.enemy.slime.idle",
+        "up": "anim.enemy.slime.idle",
+        "left": "anim.enemy.slime.idle",
+        "right": "anim.enemy.slime.idle"
+      },
+      "death": {
+        "down": "anim.enemy.slime.death",
+        "up": "anim.enemy.slime.death",
+        "left": "anim.enemy.slime.death",
+        "right": "anim.enemy.slime.death"
+      },
+      "actions": [
+        {
+          "visualActionId": "visual.action.slime.bite",
+          "clips": {
+            "down": "anim.enemy.slime.idle",
+            "up": "anim.enemy.slime.idle",
+            "left": "anim.enemy.slime.idle",
+            "right": "anim.enemy.slime.idle"
+          }
+        }
+      ]
+    },
+    {
+      "id": "visual.enemy.slime.champion",
+      "idle": {
+        "down": "anim.enemy.slime.idle",
+        "up": "anim.enemy.slime.idle",
+        "left": "anim.enemy.slime.idle",
+        "right": "anim.enemy.slime.idle"
+      },
+      "death": {
+        "down": "anim.enemy.slime.death",
+        "up": "anim.enemy.slime.death",
+        "left": "anim.enemy.slime.death",
+        "right": "anim.enemy.slime.death"
+      },
+      "actions": []
+    },
+    {
+      "id": "visual.enemy.training_puppet",
+      "idle": {
+        "down": "anim.object.training_puppet.idle",
+        "up": "anim.object.training_puppet.idle",
+        "left": "anim.object.training_puppet.idle",
+        "right": "anim.object.training_puppet.idle"
+      },
+      "death": {
+        "down": "anim.object.training_puppet.damage",
+        "up": "anim.object.training_puppet.damage",
+        "left": "anim.object.training_puppet.damage",
+        "right": "anim.object.training_puppet.damage"
+      },
+      "actions": []
     }
   ],
   "objectVisuals": [
@@ -157876,6 +159079,23 @@
     {
       "id": "visual.object.gate",
       "idleAnimationId": "animation.gate"
+    },
+    {
+      "id": "visual.object.training_puppet",
+      "idleAnimationId": "anim.object.training_puppet.idle",
+      "damagedAnimationId": "anim.object.training_puppet.damage"
+    },
+    {
+      "id": "visual.object.spike_trap",
+      "idleAnimationId": "anim.object.spike_trap.idle"
+    },
+    {
+      "id": "visual.object.arrow_trap",
+      "idleAnimationId": "anim.object.arrow_trap.idle"
+    },
+    {
+      "id": "visual.object.tnt",
+      "idleAnimationId": "anim.object.tnt.idle"
     }
   ],
   "playerVisuals": [
