@@ -185,6 +185,10 @@ private:
     // Authored projectile drops: spawns collectible pickups where projectiles
     // finished (distance/lifetime limit or collision), per definition.
     void resolveProjectileDrops();
+    void resolveProjectileExplosions();
+    void updateObjectHazard(maps::PersistentObject& persistent);
+    void detonateProjectileExplosion(const gameplay::ProjectileExplosion& explosion,
+                                     core::WorldPointI center);
     void resolveEncounterDoors();
     void emitDoorOpened(simulation::PersistentInstanceId id);
     [[nodiscard]] bool requestScene(const simulation::DefinitionId& sceneId);

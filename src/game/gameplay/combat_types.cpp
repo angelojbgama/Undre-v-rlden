@@ -30,10 +30,12 @@ int Health::restore(int amount) {
 
 bool factionsCanDamage(Faction attacker, Faction target) noexcept {
     if (attacker == Faction::neutral || target == Faction::neutral ||
-        attacker == target || attacker == Faction::environment) {
+        attacker == target) {
         return false;
     }
     if (target == Faction::environment) { return attacker == Faction::player; }
+    // Environment hazards (spikes, arrow walls) hurt the player and enemies;
+    // kills attributed to the environment grant no rewards.
     return true;
 }
 

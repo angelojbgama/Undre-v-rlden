@@ -2630,6 +2630,98 @@ void testProjectileAmmoAndDrops() {
         expect(!content::compileContent(invalid).registry,
                "content validation rejects a zero-percent drop chance");
     }
+    // Authored projectile explosion (generic TNT-style consumable): compiles,
+    // validates and roundtrips through Content JSON.
+    {
+        auto pack = content::makeCombatAuthoredContent();
+        auto* tnt = findProjectile(pack.projectiles, simulation::DefinitionId{"projectile.player.arrow"});
+        tnt->explosion = content::AuthoredProjectileExplosion{
+            2, 12, 24, simulation::DefinitionId{}};
+        const auto compiled = content::compileContent(pack);
+        std::string diagnostics;
+        for (const auto& diagnostic : compiled.report.diagnostics) {
+            diagnostics += diagnostic.message + "; ";
+        }
+        expect(compiled.registry &&
+                   compiled.registry->projectiles()
+                           .require(simulation::DefinitionId{"projectile.player.arrow"})
+                           .explosion->radiusPixels == 24,
+               ("authored projectile explosion compiles into the runtime catalog: " +
+                diagnostics)
+                   .c_str());
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        auto* tnt = findProjectile(invalid.projectiles, simulation::DefinitionId{"projectile.player.arrow"});
+        tnt->explosion = content::AuthoredProjectileExplosion{0, 12, 24, simulation::DefinitionId{}};
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects a non-positive explosion damage");
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        auto* tnt = findProjectile(invalid.projectiles, simulation::DefinitionId{"projectile.player.arrow"});
+        tnt->explosion = content::AuthoredProjectileExplosion{2, 12, 0, simulation::DefinitionId{}};
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects a non-positive explosion radius");
+    }
+    {
+        auto pack = content::makeCombatAuthoredContent();
+        auto* tnt = findProjectile(pack.projectiles, simulation::DefinitionId{"projectile.player.arrow"});
+        tnt->explosion = content::AuthoredProjectileExplosion{2, 12, 24, simulation::DefinitionId{}};
+        const auto json = content::encodeAuthoredContentJson(pack);
+        const auto decoded = content::decodeAuthoredContentJson(json);
+        const auto* decodedTnt = decoded.content
+            ? findProjectile(decoded.content->projectiles,
+                             simulation::DefinitionId{"projectile.player.arrow"}) : nullptr;
+        expect(decodedTnt && decodedTnt->explosion &&
+                   decodedTnt->explosion->radiusPixels == 24 &&
+                   decodedTnt->explosion->damageAmount == 2,
+               "content JSON roundtrips the projectile explosion");
+    }
+    // Authored object hazard capability: compiles, validates and rejects bad timing.
+    {
+        auto pack = content::makeCombatAuthoredContent();
+        content::AuthoredWorldObject spikes{};
+        spikes.id = simulation::DefinitionId{"object.hazard.test"};
+        spikes.visualSetId = simulation::DefinitionId{"visual.object.chest"};
+        spikes.hazard = gameplay::ObjectHazardDefinition{
+            1, 8, 120, 30, underworld::world::AabbI{-8, -8, 16, 16},
+            simulation::DefinitionId{}, gameplay::FacingDirection::down,
+            simulation::DefinitionId{}};
+        pack.objects.push_back(spikes);
+        const auto compiled = content::compileContent(pack);
+        expect(compiled.registry &&
+                   compiled.registry->objects()
+                           .require(simulation::DefinitionId{"object.hazard.test"})
+                           .hazard.has_value(),
+               "authored object hazard compiles into the runtime catalog");
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        content::AuthoredWorldObject spikes{};
+        spikes.id = simulation::DefinitionId{"object.hazard.test"};
+        spikes.visualSetId = simulation::DefinitionId{"visual.object.chest"};
+        spikes.hazard = gameplay::ObjectHazardDefinition{
+            1, 8, 30, 120, underworld::world::AabbI{-8, -8, 16, 16},
+            simulation::DefinitionId{}, gameplay::FacingDirection::down,
+            simulation::DefinitionId{}};
+        invalid.objects.push_back(spikes);
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects hazard activeTicks above periodTicks");
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        content::AuthoredWorldObject spikes{};
+        spikes.id = simulation::DefinitionId{"object.hazard.test"};
+        spikes.visualSetId = simulation::DefinitionId{"visual.object.chest"};
+        spikes.hazard = gameplay::ObjectHazardDefinition{
+            1, 8, 120, 30, underworld::world::AabbI{-8, -8, 16, 16},
+            simulation::DefinitionId{"projectile.missing"}, gameplay::FacingDirection::down,
+            simulation::DefinitionId{}};
+        invalid.objects.push_back(spikes);
+        expect(!content::compileContent(invalid).registry,
+               "content validation rejects a hazard projectile that does not exist");
+    }
 
     {
         const auto json = content::encodeAuthoredContentJson(content::makeCombatAuthoredContent());
@@ -3957,6 +4049,10 @@ void testViewModelAndWorldObjects() {
                !factionsCanDamage(Faction::player, Faction::player) &&
                !factionsCanDamage(Faction::enemy, Faction::enemy),
            "environment damage policy allows only Player attacks and preserves friendly fire rules");
+    expect(factionsCanDamage(Faction::environment, Faction::player) &&
+               factionsCanDamage(Faction::environment, Faction::enemy) &&
+               !factionsCanDamage(Faction::environment, Faction::environment),
+           "environment hazards hurt the player and enemies without friendly fire");
     CombatSystem combat;
     simulation::EventBuffer events;
     Hitbox hit{{42, 26, 16, 24}, {player.entityHandle(), 1}, Faction::player,
@@ -9990,7 +10086,7 @@ underworld::game::content::AuthoredContentPack makePhase16Content() {
     plate.visualSetId = {"visual.object.crate"};
     plate.activation = gameplay::ObjectActivationDefinition{
         gameplay::ObjectActivationMode::playerPressure, false,
-        world::AabbI{-8, -8, 16, 16}};
+        underworld::world::AabbI{-8, -8, 16, 16}};
     authored.objects.push_back(plate);
 
     content::AuthoredWorldObject door;

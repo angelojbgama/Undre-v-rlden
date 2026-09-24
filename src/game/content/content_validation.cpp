@@ -795,6 +795,23 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
                 error(report, ContentKind::projectile, value.id, "invalid_value",
                       "projectile drop chance must be between 1 and 100", field);
         }
+        if (value.explosion) {
+            if (value.explosion->damageAmount <= 0)
+                error(report, ContentKind::projectile, value.id, "invalid_value",
+                      "projectile explosion damage must be positive", "explosion.damageAmount");
+            if (value.explosion->knockbackPixels < 0)
+                error(report, ContentKind::projectile, value.id, "invalid_value",
+                      "projectile explosion knockback cannot be negative", "explosion.knockbackPixels");
+            if (value.explosion->radiusPixels <= 0 || value.explosion->radiusPixels > 256)
+                error(report, ContentKind::projectile, value.id, "invalid_value",
+                      "projectile explosion radius must be between 1 and 256", "explosion.radiusPixels");
+            if (value.explosion->presentationEffectId &&
+                !value.explosion->presentationEffectId->empty() &&
+                !contains(presentationEffects, *value.explosion->presentationEffectId))
+                error(report, ContentKind::projectile, value.id, "unknown_reference",
+                      "projectile explosion presentation effect does not exist",
+                      "explosion.presentationEffectId");
+        }
     }
     std::unordered_set<std::string> ammoAttacks;
     for (const auto& value : pack.attacks) {
@@ -921,6 +938,28 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         // same map/runtime path as interactive objects.
         if (value.id.empty() || value.visualSetId.empty())
             error(report, ContentKind::object, value.id, "invalid_value", "object must have a valid id and visual", "definition");
+        if (value.hazard) {
+            if (value.hazard->damageAmount <= 0)
+                error(report, ContentKind::object, value.id, "invalid_value",
+                      "hazard damage must be positive", "hazard.damageAmount");
+            if (value.hazard->knockbackPixels < 0)
+                error(report, ContentKind::object, value.id, "invalid_value",
+                      "hazard knockback cannot be negative", "hazard.knockbackPixels");
+            if (value.hazard->periodTicks == 0 || value.hazard->activeTicks == 0 ||
+                value.hazard->activeTicks > value.hazard->periodTicks)
+                error(report, ContentKind::object, value.id, "invalid_value",
+                      "hazard timing requires 0 < activeTicks <= periodTicks", "hazard.activeTicks");
+            if (value.hazard->hitbox.width <= 0 || value.hazard->hitbox.height <= 0)
+                error(report, ContentKind::object, value.id, "invalid_value",
+                      "hazard hitbox must have a positive area", "hazard.hitbox");
+            if (value.hazard->emitsProjectile() && !contains(projectiles, value.hazard->projectileId))
+                error(report, ContentKind::object, value.id, "unknown_reference",
+                      "hazard projectile does not exist", "hazard.projectileId");
+            if (!value.hazard->presentationEffectId.empty() &&
+                !contains(presentationEffects, value.hazard->presentationEffectId))
+                error(report, ContentKind::object, value.id, "unknown_reference",
+                      "hazard presentation effect does not exist", "hazard.presentationEffectId");
+        }
         if (value.collision) {
             const auto expectedCells = value.collision->width > 0 &&
                 value.collision->height <= std::numeric_limits<std::size_t>::max() / value.collision->width

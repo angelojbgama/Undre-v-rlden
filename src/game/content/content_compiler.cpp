@@ -52,7 +52,8 @@ TilesetDefinition compileTileset(const AuthoredTileset& value) {
 
     return result;
 }
-gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.impactAnimationId, v.expireAnimationId, v.impactAnimationFacing, v.expireAnimationFacing, v.expireAnimations, v.impactAnimations, v.impactAnimationFacings, v.expireAnimationFacings, v.flipX, v.impactFlipX, v.expireFlipX, v.expireDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.expireDrop->pickupId, v.expireDrop->chancePercent}} : std::nullopt, v.impactDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.impactDrop->pickupId, v.impactDrop->chancePercent}} : std::nullopt}; }
+gameplay::ProjectileDefinition compileProjectile(const AuthoredProjectile& v) { return {v.id, v.visualId, v.canonicalFacing, v.speedPixelsPerTick, v.lifetimeTicks, v.hitboxWidth, v.hitboxHeight, v.spawnOffsets, v.renderLayer, v.renderLayers, v.animationId, v.maximumDistancePixels, v.impactAnimationId, v.expireAnimationId, v.impactAnimationFacing, v.expireAnimationFacing, v.expireAnimations, v.impactAnimations, v.impactAnimationFacings, v.expireAnimationFacings, v.flipX, v.impactFlipX, v.expireFlipX, v.expireDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.expireDrop->pickupId, v.expireDrop->chancePercent}} : std::nullopt, v.impactDrop ? std::optional<gameplay::ProjectileDrop>{gameplay::ProjectileDrop{v.impactDrop->pickupId, v.impactDrop->chancePercent}} : std::nullopt,
+    v.explosion ? std::optional<gameplay::ProjectileExplosion>{gameplay::ProjectileExplosion{v.explosion->damageAmount, v.explosion->knockbackPixels, v.explosion->radiusPixels, v.explosion->presentationEffectId.value_or(simulation::DefinitionId{})}} : std::nullopt}; }
 const AuthoredAnimation* findAnimation(
     const AuthoredContentPack& pack,
     const simulation::DefinitionId& id) {
@@ -351,7 +352,7 @@ gameplay::WorldObjectDefinition compileObject(const AuthoredWorldObject& v) {
     }
     return {v.id, v.visualSetId, v.interactable, v.container, v.destructible,
             v.bankAccess ? std::optional<gameplay::ObjectBankAccessDefinition>{gameplay::ObjectBankAccessDefinition{}}
-                         : std::nullopt, v.door, v.activation, std::move(collision),
+                         : std::nullopt, v.door, v.activation, v.hazard, std::move(collision),
             v.depthAnchor, v.occlusion};
 }
 gameplay::npcs::NpcVisualSet compileNpcVisual(const AuthoredNpcVisualSet& v) { return {v.id, v.markerColor, v.idle}; }

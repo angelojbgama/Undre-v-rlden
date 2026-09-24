@@ -6,6 +6,7 @@
 #include "engine/simulation/entity_handle.h"
 #include "engine/world/collision.h"
 #include "game/gameplay/combat_types.h"
+#include "game/gameplay/facing_direction.h"
 #include "game/gameplay/items.h"
 
 #include <cstddef>
@@ -56,6 +57,26 @@ struct ObjectActivationDefinition final {
     [[nodiscard]] bool operator==(const ObjectActivationDefinition&) const noexcept = default;
 };
 
+// Authored reusable hazard: a periodic floor/wall trap. When the emitted
+// projectile id is empty the hazard damages by contact inside its hitbox
+// while active (spikes); otherwise it fires that projectile once per period
+// (arrow wall). Damage is attributed to the environment, so it hurts the
+// player and enemies without granting rewards.
+struct ObjectHazardDefinition final {
+    int damageAmount{};
+    int knockbackPixels{};
+    std::uint32_t periodTicks{};
+    std::uint32_t activeTicks{};
+    world::AabbI hitbox{};
+    simulation::DefinitionId projectileId{};
+    gameplay::FacingDirection facing{gameplay::FacingDirection::down};
+    simulation::DefinitionId presentationEffectId{};
+    [[nodiscard]] bool emitsProjectile() const noexcept {
+        return !projectileId.empty();
+    }
+    [[nodiscard]] bool operator==(const ObjectHazardDefinition&) const noexcept = default;
+};
+
 struct WorldObjectDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualSetId{};
@@ -65,6 +86,7 @@ struct WorldObjectDefinition final {
     std::optional<ObjectBankAccessDefinition> bankAccess{};
     std::optional<ObjectDoorDefinition> door{};
     std::optional<ObjectActivationDefinition> activation{};
+    std::optional<ObjectHazardDefinition> hazard{};
     std::optional<ObjectCollisionDefinition> collision{};
     // Presentation metadata kept separate from collision. The anchor is relative
     // to the object's world position; only Y participates in depth sorting.
@@ -120,6 +142,13 @@ public:
     [[nodiscard]] Hurtbox hurtbox() const noexcept;
     [[nodiscard]] CombatTargetRef combatTarget();
     [[nodiscard]] bool open() noexcept;
+    // Hazard phase state (authored traps): a monotonic tick counter used to
+    // derive the active window and fire edges. Derived state, never saved.
+    [[nodiscard]] std::uint64_t hazardTicks() const noexcept { return hazardTicks_; }
+    void advanceHazardTick() noexcept { ++hazardTicks_; }
+    [[nodiscard]] bool hazardActive(const ObjectHazardDefinition& hazard) const noexcept {
+        return hazardTicks_ % hazard.periodTicks < hazard.activeTicks;
+    }
     [[nodiscard]] bool syncDamageState() noexcept;
     void advanceDamageTick() noexcept;
     [[nodiscard]] bool syncDestructionState() noexcept;
@@ -140,6 +169,7 @@ private:
     WorldObjectState state_{WorldObjectState::idle};
     std::optional<ItemContainer> contents_{};
     std::optional<CombatantState> combatant_{};
+    std::uint64_t hazardTicks_{};
     int observedHealth_{};
     std::uint32_t damageTicksRemaining_{};
     std::uint32_t destructionTicksRemaining_{};

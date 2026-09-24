@@ -88,6 +88,19 @@ struct ProjectileDrop final {
     std::uint32_t chancePercent{100};
 };
 
+// Authored area detonation when a projectile ends (impact or expiry): a
+// generic consumable-offensive primitive (TNT throw, fire bomb, ...) that
+// damages every combatant inside the radius. Damage attribution follows
+// the thrower, so kills still resolve loot and XP through the normal
+// defeat pipeline.
+struct ProjectileExplosion final {
+    int damageAmount{};
+    int knockbackPixels{};
+    int radiusPixels{};
+    // Optional presentation effect requested at the detonation point.
+    simulation::DefinitionId presentationEffectId{};
+};
+
 struct ProjectileDefinition final {
     simulation::DefinitionId id{};
     simulation::DefinitionId visualId{};
@@ -135,6 +148,9 @@ struct ProjectileDefinition final {
     // collectible (e.g. a retrievable arrow) at the same time.
     std::optional<ProjectileDrop> expireDrop{};
     std::optional<ProjectileDrop> impactDrop{};
+    // Area detonation when the projectile ends. Orthogonal to drops: an
+    // exploding barrel may still leave a collectible behind.
+    std::optional<ProjectileExplosion> explosion{};
     [[nodiscard]] bool flipXForFacing(FacingDirection facing) const noexcept;
     [[nodiscard]] bool impactFlipXForFacing(FacingDirection facing) const noexcept;
     [[nodiscard]] bool expireFlipXForFacing(FacingDirection facing) const noexcept;

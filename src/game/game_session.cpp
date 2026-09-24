@@ -15,6 +15,17 @@ const std::string GameSession::emptyString_{};
 
 namespace {
 
+gameplay::FacingDirection oppositeFacing(gameplay::FacingDirection facing) noexcept {
+    switch (facing) {
+    case gameplay::FacingDirection::left: return gameplay::FacingDirection::right;
+    case gameplay::FacingDirection::right: return gameplay::FacingDirection::left;
+    case gameplay::FacingDirection::up: return gameplay::FacingDirection::down;
+    case gameplay::FacingDirection::down: break;
+    }
+    return gameplay::FacingDirection::up;
+}
+
+
 // Deterministic per-impact drop roll: no RNG state, so replays and save/load
 // stay consistent while still allowing authored chances below 100%.
 bool dropChanceRoll(std::uint32_t chancePercent,
@@ -817,11 +828,76 @@ void GameSession::resolveObjectDestructionReward(const maps::PersistentObject& p
     }
 }
 
+void GameSession::updateObjectHazard(maps::PersistentObject& persistent) {
+    auto& object = persistent.instance;
+    if (!object.definition().hazard || !mapSession_ || !mapSession_->world()) { return; }
+    const auto& hazard = *object.definition().hazard;
+    if (hazard.periodTicks == 0) { return; }
+    const std::uint64_t tick = object.hazardTicks();
+    object.advanceHazardTick();
+    auto& world = *mapSession_->world();
+    const bool active = object.hazardActive(hazard);
+    if (!hazard.presentationEffectId.empty() &&
+        (active ? tick % hazard.periodTicks == 0
+                : tick % hazard.periodTicks == hazard.activeTicks)) {
+        events_.emit(simulation::PresentationEffectRequested{world.id(), hazard.presentationEffectId});
+    }
+    if (!active) { return; }
+    // Emitter mode (arrow wall): fire one projectile at the window start.
+    if (hazard.emitsProjectile()) {
+        if (tick % hazard.periodTicks != 0 || projectileCatalog_ == nullptr) { return; }
+        const auto& definition = projectileCatalog_->find(hazard.projectileId);
+        if (definition == nullptr) { return; }
+        static_cast<void>(projectiles_->spawn(
+            gameplay::AttackKey{}, gameplay::Faction::environment, definition->id,
+            core::WorldPointI{object.position().x + hazard.hitbox.x,
+                              object.position().y + hazard.hitbox.y},
+            hazard.facing, {hazard.damageAmount, hazard.knockbackPixels}, {}));
+        return;
+    }
+    // Contact mode (spikes): the hazard hurts the player and enemies inside
+    // its hitbox while active; victim invulnerability paces the damage.
+    const world::AabbI hitbox{hazard.hitbox.x + object.position().x,
+                              hazard.hitbox.y + object.position().y,
+                              hazard.hitbox.width, hazard.hitbox.height};
+    const auto strike = [&](gameplay::CombatTargetRef target, gameplay::FacingDirection facing) {
+        const auto direction = gameplay::directionVector(facing);
+        const gameplay::Hitbox hit{hitbox,
+            {simulation::EntityHandle{}, nextContactAttackInstance_++},
+            gameplay::Faction::environment, {hazard.damageAmount, hazard.knockbackPixels},
+            direction.x * hazard.knockbackPixels, direction.y * hazard.knockbackPixels, true};
+        return combat_.resolve(hit, target, events_);
+    };
+    {
+        const auto resolution = strike(player_.combatTarget(), player_.facing());
+        if (resolution.damaged) {
+            const auto direction = gameplay::directionVector(oppositeFacing(player_.facing()));
+            player_.beginHurt();
+            player_.applyDamageKnockback(direction.x * hazard.knockbackPixels,
+                                         direction.y * hazard.knockbackPixels,
+                                         world.map().collision(), world.map().tileSize());
+        }
+    }
+    for (auto& enemyPersistent : world.enemies()) {
+        auto& enemy = enemyPersistent.instance;
+        if (enemy.state() == gameplay::creatures::BehaviorState::dead) { continue; }
+        const auto resolution = strike(enemy.combatTarget(), enemy.facing());
+        if (resolution.damaged) {
+            const auto direction = gameplay::directionVector(oppositeFacing(enemy.facing()));
+            enemy.applyKnockback(direction.x * hazard.knockbackPixels,
+                                 direction.y * hazard.knockbackPixels,
+                                 world.map().collision(), world.map().tileSize(),
+                                 world.movementCollisionBounds());
+        }
+    }
+}
+
 void GameSession::updateObjects() {
     auto& objects = mapSession_->world()->objects();
     bool changed = false;
     for (std::size_t index = 0; index < objects.size();) {
         auto& object = objects[index].instance;
+        updateObjectHazard(objects[index]);
         object.advanceDamageTick();
         static_cast<void>(object.syncDamageState());
         const bool beganDestruction = object.syncDestructionState();
@@ -1217,6 +1293,81 @@ void GameSession::resolveProjectileDrops() {
     if (spawned) { captureWorldState(); }
 }
 
+void GameSession::resolveProjectileExplosions() {
+    if (!mapSession_ || !mapSession_->world() || projectileCatalog_ == nullptr) {
+        return;
+    }
+    bool detonated = false;
+    const auto eventSnapshot = events_.events();
+    for (const auto& event : eventSnapshot) {
+        const auto* impact = std::get_if<simulation::ProjectileImpact>(&event);
+        if (!impact || impact->projectileDefinitionId.empty()) { continue; }
+        const auto* definition = projectileCatalog_->find(impact->projectileDefinitionId);
+        if (definition == nullptr || !definition->explosion) { continue; }
+        detonateProjectileExplosion(*definition->explosion, impact->position);
+        detonated = true;
+    }
+    if (detonated) { captureWorldState(); }
+}
+
+void GameSession::detonateProjectileExplosion(
+    const gameplay::ProjectileExplosion& explosion, core::WorldPointI center) {
+    if (!mapSession_ || !mapSession_->world()) { return; }
+    auto& world = *mapSession_->world();
+    // Blast area centered on the impact point.
+    const world::AabbI blast{center.x - explosion.radiusPixels,
+                             center.y - explosion.radiusPixels,
+                             explosion.radiusPixels * 2, explosion.radiusPixels * 2};
+    const auto radial = [&center, &explosion](core::WorldPointI feet) {
+        const int deltaX = feet.x - center.x;
+        const int deltaY = feet.y - center.y;
+        if (deltaX == 0 && deltaY == 0) { return std::pair{0, 0}; }
+        if (std::abs(deltaX) >= std::abs(deltaY)) {
+            return std::pair{deltaX > 0 ? explosion.knockbackPixels : -explosion.knockbackPixels, 0};
+        }
+        return std::pair{0, deltaY > 0 ? explosion.knockbackPixels : -explosion.knockbackPixels};
+    };
+    if (!explosion.presentationEffectId.empty()) {
+        events_.emit(simulation::PresentationEffectRequested{
+            world.id(), explosion.presentationEffectId});
+    }
+    // Enemies and destructible objects: a player-faction blast attributed to
+    // the thrower keeps loot/XP flowing through the normal defeat pipeline.
+    for (auto& persistentEnemy : world.enemies()) {
+        auto& enemy = persistentEnemy.instance;
+        if (enemy.state() == gameplay::creatures::BehaviorState::dead) { continue; }
+        if (!gameplay::overlaps(blast, enemy.hurtbox().bounds)) { continue; }
+        const auto [kbX, kbY] = radial(enemy.feetPosition());
+        const gameplay::Hitbox blastHit{blast,
+            {player_.entityHandle(), nextContactAttackInstance_++},
+            gameplay::Faction::player, {explosion.damageAmount, explosion.knockbackPixels},
+            kbX, kbY, true};
+        applyResolution(combat_.resolve(blastHit, enemy.combatTarget(), events_), nullptr);
+    }
+    for (auto& persistentObject : world.objects()) {
+        auto& object = persistentObject.instance;
+        if (!object.combatant()) { continue; }
+        const auto hurt = object.hurtbox();
+        if (!gameplay::overlaps(blast, hurt.bounds)) { continue; }
+        const gameplay::Hitbox blastHit{blast,
+            {player_.entityHandle(), nextContactAttackInstance_++},
+            gameplay::Faction::player, {explosion.damageAmount, explosion.knockbackPixels},
+            0, 0, true};
+        static_cast<void>(combat_.resolve(blastHit, object.combatTarget(), events_));
+    }
+    // The thrower is not shielded from their own blast: a second, enemy-
+    // faction pass damages the player (owner handle stays unclaimed so the
+    // self-check in combat resolution does not reject it).
+    {
+        const auto [kbX, kbY] = radial(player_.feetPosition());
+        const gameplay::Hitbox blastHit{blast,
+            {simulation::EntityHandle{}, nextContactAttackInstance_++},
+            gameplay::Faction::enemy, {explosion.damageAmount, explosion.knockbackPixels},
+            kbX, kbY, true};
+        applyResolution(combat_.resolve(blastHit, player_.combatTarget(), events_), nullptr);
+    }
+}
+
 void GameSession::resolveEncounterDoors() {
     if (!mapSession_ || !mapSession_->world()) return;
     const auto eventSnapshot = events_.events();
@@ -1456,6 +1607,7 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         }
         resolveDoorProjectileImpacts();
         resolveProjectileDrops();
+        resolveProjectileExplosions();
         resolveDefeatRewards();
         removeDefeatedEnemies();
     }
