@@ -1589,9 +1589,11 @@ void GameSession::tick(const simulation::PlayerCommand& command) {
         }
     }
     if (playerItems_ && command.actions.quickSlotPressed >= 0) {
-        static_cast<void>(playerItems_->useQuickSlot(
-            static_cast<std::size_t>(command.actions.quickSlotPressed), *itemCatalog_,
-            player_.health()));
+        const auto slot = static_cast<std::size_t>(command.actions.quickSlotPressed);
+        if (!useQuickSlotItem(slot)) {
+            static_cast<void>(playerItems_->useQuickSlot(slot, *itemCatalog_,
+                                                          player_.health()));
+        }
     }
     if (mapSession_->world()->advanceDoorTransitions()) {
         captureWorldState();

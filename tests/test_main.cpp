@@ -2753,6 +2753,101 @@ void testProjectileAmmoAndDrops() {
         }
     }
 
+    // Full TNT loop through the real GameSession: quickslot use spawns the
+    // authored projectile, consumes one unit, and the area detonation hurts
+    // a nearby enemy.
+    {
+        auto pack = content::makeCombatAuthoredContent();
+        auto* tntProjectile = findProjectile(pack.projectiles,
+                                             simulation::DefinitionId{"projectile.player.arrow"});
+        tntProjectile->explosion = content::AuthoredProjectileExplosion{
+            2, 8, 24, simulation::DefinitionId{}};
+        auto tntItem = std::find_if(pack.items.begin(), pack.items.end(),
+            [&](const auto& value) { return value.id == simulation::DefinitionId{"item.arrow"}; });
+        if (tntItem == pack.items.end()) {
+            expect(false, "fixture item.arrow is unavailable for the throwable test");
+            return;
+        }
+        tntItem->use = gameplay::ItemUseDefinition{gameplay::ItemUseKind::throwProjectile, 2,
+                                                   simulation::DefinitionId{"projectile.player.arrow"}};
+        const auto compiled = content::compileContent(pack);
+        expect(compiled.registry.has_value(), "throwable fixture compiles");
+
+        maps::MapData map;
+        map.id = simulation::MapId{"map.tnt.range"};
+        map.width = 12;
+        map.height = 8;
+        map.tileSize = 16;
+        map.tileReferences.push_back(
+            {simulation::DefinitionId{"tileset.dungeon"}, 10, underworld::world::TileFlags::none});
+        maps::MapTileLayer ground{"ground", true, std::vector<std::optional<std::uint32_t>>(96)};
+        map.layers.push_back(std::move(ground));
+        map.collision.assign(96, 0);
+        map.playerSpawns.push_back({simulation::SpawnId{"entry.start"}, {48, 56},
+                                    gameplay::FacingDirection::right});
+        // One soldier standing 28 px to the right of the spawn: inside the
+        // blast radius of an arrow thrown from the spawn point.
+        map.enemies.push_back({{1}, simulation::DefinitionId{"enemy.evil_soldier"},
+                               {76, 56}, gameplay::FacingDirection::left});
+
+        const auto validation = game::mapValidationCatalogs(*compiled.registry);
+        simulation::EntityHandlePool handles;
+        const std::array visuals{gameplay::creatures::soldierVisualId(),
+                                 gameplay::creatures::skullVisualId()};
+        gameplay::creatures::EnemyFactory enemies(handles, compiled.registry->enemies(),
+                                                  compiled.registry->behaviors(),
+                                                  compiled.registry->attacks(),
+                                                  compiled.registry->projectiles(), visuals);
+        gameplay::WorldObjectFactory objects(handles, compiled.registry->objects(),
+                                             compiled.registry->items());
+        game::RuntimeTilesetCatalog runtimeTilesets(compiled.registry->tilesets());
+        maps::RuntimeWorldBuilder builder(validation, enemies, objects, handles, runtimeTilesets);
+        const auto dmapPath = std::filesystem::temp_directory_path() / "underworld_tnt_throw.dmap";
+        std::error_code fsError;
+        std::filesystem::remove(dmapPath, fsError);
+        std::string ioError;
+        const bool dmapWritten = maps::writeDmap(dmapPath, map, ioError);
+        maps::MapCatalog catalog;
+        if (dmapWritten) catalog.add(map.id, dmapPath);
+        game::GameSession session({0}, testProgression());
+        session.configureCombat(compiled.registry->attacks(), compiled.registry->projectiles(),
+                                compiled.registry->behaviors(),
+                                compiled.registry->attacks().require(gameplay::playerSwordAttackId()),
+                                compiled.registry->attacks().require(gameplay::playerBowAttackId()));
+        session.configureItems(compiled.registry->items());
+        session.configureRewards(compiled.registry->rewardProfiles(), compiled.registry->pickups());
+        std::string sessionError;
+        const bool initialized = dmapWritten && session.initializeMap(
+            catalog, validation, builder, map.id, simulation::SpawnId{"entry.start"}, sessionError);
+        expect(initialized, "throwable session fixture initializes");
+        if (initialized) {
+            auto& items = const_cast<gameplay::PlayerItems&>(session.playerItems());
+            items.quickSlots().bind(0, simulation::DefinitionId{"item.arrow"});
+            static_cast<void>(items.inventory().items().add(
+                simulation::DefinitionId{"item.arrow"}, 2));
+
+            const auto initialEnemyHealth = session.world().enemies().front().instance.combatant().health.current;
+            // Press quickslot 1: one TNT unit becomes one flying projectile.
+            underworld::simulation::PlayerCommand press{1, {0}, 1, {1, 0}};
+            press.actions.quickSlotPressed = 0;
+            session.tick(press);
+            expect(session.projectiles().projectiles().size() == 1 &&
+                       items.inventory().items().count(
+                           simulation::DefinitionId{"item.arrow"}) == 1,
+                   "throwable quickslot use spawns the projectile and spends one unit");
+
+            // Let it fly and detonate on the soldier.
+            bool damaged = false;
+            for (std::uint64_t tick = 2; tick <= 120 && !damaged; ++tick) {
+                session.tick(movementCommand(tick, 0, 0));
+                const auto& live = session.world().enemies().front().instance;
+                damaged = live.combatant().health.current < initialEnemyHealth ||
+                          live.state() == gameplay::creatures::BehaviorState::dead;
+            }
+            expect(damaged, "thrown explosion damages the enemy in the blast radius");
+        }
+    }
+
     {
         const auto json = content::encodeAuthoredContentJson(content::makeCombatAuthoredContent());
         const auto decoded = content::decodeAuthoredContentJson(json);

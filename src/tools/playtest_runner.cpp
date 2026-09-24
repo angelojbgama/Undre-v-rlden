@@ -215,6 +215,18 @@ struct WorldLogicFixture final {
     game::maps::MapData map;
 };
 
+// Combat scenarios exercise the authored hostile rooms; mechanic scenarios
+// (containers, pickups, dialogue) run in the safe sanctuary room so their
+// assertions never depend on winning a fight first.
+std::string_view scenarioStartupMap(std::string_view scenario) {
+    if (scenario == "chest" || scenario == "crate" || scenario == "pickup_money" ||
+        scenario == "pickup_heart" || scenario == "pickup_life_potion" ||
+        scenario == "npc_dialogue") {
+        return "map.6";
+    }
+    return "map.1";
+}
+
 WorldLogicFixture makeWorldLogicFixture(const std::filesystem::path& root);
 WorldLogicFixture makeInteractiveWorldFixture(const std::filesystem::path& root);
 
@@ -232,7 +244,8 @@ public:
         std::filesystem::create_directories(executableDirectory_, error);
         if (error) { throw std::runtime_error("could not create playtest save directory"); }
         game::GameLaunchOptions launch;
-        launch.mapPath = mapPath(root_, mapId_);
+        launch.mapPath = mapPath(root_, scenarioStartupMap(scenario_));
+        static_cast<void>(mapId_);
         // The title shell boots in front of gameplay only for its scenario.
         launch.titleScreen = scenario_ == "title_start";
         // Production scenarios play the authored map with the authored
@@ -402,6 +415,11 @@ private:
     std::uint64_t assertionsFailed_{};
 };
 
+struct PointTarget final { int x{}; int y{}; };
+
+bool clearHostiles(ScenarioContext& context);
+bool moveToPickup(ScenarioContext& context, PointTarget target, bool engageEnemies);
+
 bool runBaseline(ScenarioContext& context) {
     const auto& snapshot = context.snapshot();
     return context.require(!snapshot.currentMap.empty() && snapshot.playerMaximumHealth > 0 &&
@@ -430,8 +448,6 @@ bool runCollision(ScenarioContext& context) {
                                snapshot.playerY >= 0 && snapshot.playerY <= 288,
                            "scripted collision movement left the authored map bounds");
 }
-
-struct PointTarget final { int x{}; int y{}; };
 
 template<class Actor>
 bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500,
@@ -595,15 +611,42 @@ bool fightToDeath(ScenarioContext& context, std::string_view definition,
                 current.enemies.begin(), current.enemies.end(),
                 [&](const auto& actor) { return actor.definitionId == definition; });
             if (victim == current.enemies.end()) { return true; }
+            const int distanceX = victim->x - current.playerX;
+            const int distanceY = victim->y - current.playerY;
+            // Split gang-ups: when two or more hostiles crowd the player,
+            // retreat from the nearest one until the authored disengage
+            // range splits the fight back into 1v1 exchanges.
+            int crowd = 0;
+            int nearestX = 0;
+            int nearestY = 0;
+            int nearestSquared = std::numeric_limits<int>::max();
+            for (const auto& actor : current.enemies) {
+                const int deltaX = actor.x - current.playerX;
+                const int deltaY = actor.y - current.playerY;
+                const int squared = deltaX * deltaX + deltaY * deltaY;
+                if (squared <= 48 * 48) { ++crowd; }
+                if (squared < nearestSquared) {
+                    nearestSquared = squared;
+                    nearestX = actor.x;
+                    nearestY = actor.y;
+                }
+            }
             platform::InputState input;
-            input.moveRight = victim->x > current.playerX;
-            input.moveLeft = victim->x < current.playerX;
-            input.moveDown = victim->y > current.playerY;
-            input.moveUp = victim->y < current.playerY;
+            if (crowd >= 2) {
+                input.moveRight = nearestX < current.playerX;
+                input.moveLeft = nearestX > current.playerX;
+                input.moveDown = nearestY < current.playerY;
+                input.moveUp = nearestY > current.playerY;
+            } else {
+                input.moveRight = distanceX > 0;
+                input.moveLeft = distanceX < 0;
+                input.moveDown = distanceY > 0;
+                input.moveUp = distanceY < 0;
+            }
             // Slash once inside the authored sword reach; shoot the bow while
             // a retreating ranged enemy keeps its distance.
-            const bool inSwordReach = std::abs(victim->x - current.playerX) <= 26 &&
-                                      std::abs(victim->y - current.playerY) <= 26;
+            const bool inSwordReach = std::abs(distanceX) <= 26 &&
+                                      std::abs(distanceY) <= 26;
             input.primaryAttackPressed = inSwordReach && index % 24 == 0;
             input.secondaryAttackPressed = !inSwordReach && index % 24 == 0;
             if (!context.step(input)) { return false; }
