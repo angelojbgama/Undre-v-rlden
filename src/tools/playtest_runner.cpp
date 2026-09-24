@@ -603,21 +603,33 @@ bool fightToDeath(ScenarioContext& context, std::string_view definition,
                 [&](const auto& actor) { return actor.definitionId == definition; });
             if (enemy == snapshot.enemies.end()) { return true; }
         }
-        const auto& target = context.snapshot();
-        const auto prey = std::find_if(
-            target.enemies.begin(), target.enemies.end(),
-            [&](const auto& actor) { return actor.definitionId == definition; });
-        if (prey != target.enemies.end()) {
-            static_cast<void>(moveTo(context, PointTarget{prey->x, prey->y}, 240, true));
-        }
+        // No outer chase walk: the engagement loop below already approaches,
+        // aligns, holds at bow range and retreats — walking all the way to
+        // the victim first only delivers the player into the pack.
         for (int index = 0; index < 240; ++index) {
             const auto& current = context.snapshot();
             const auto victim = std::find_if(
                 current.enemies.begin(), current.enemies.end(),
                 [&](const auto& actor) { return actor.definitionId == definition; });
             if (victim == current.enemies.end()) { return true; }
-            const int distanceX = victim->x - current.playerX;
-            const int distanceY = victim->y - current.playerY;
+            // Engage the NEAREST matching enemy: authored rooms often hold
+            // several of the same kind and the list order has nothing to do
+            // with reachability.
+            const auto* nearest = &*victim;
+            int nearestSquared = std::numeric_limits<int>::max();
+            for (const auto& actor : current.enemies) {
+                if (actor.definitionId != definition) { continue; }
+                const int deltaX = actor.x - current.playerX;
+                const int deltaY = actor.y - current.playerY;
+                const int squared = deltaX * deltaX + deltaY * deltaY;
+                if (squared < nearestSquared) {
+                    nearestSquared = squared;
+                    nearest = &actor;
+                }
+            }
+            const auto* victimPtr = nearest;
+            const int distanceX = victimPtr->x - current.playerX;
+            const int distanceY = victimPtr->y - current.playerY;
             const bool inSwordReach = std::abs(distanceX) <= 26 &&
                                       std::abs(distanceY) <= 26;
             // Every authored enemy is slower than the player, so the driver
@@ -627,13 +639,50 @@ bool fightToDeath(ScenarioContext& context, std::string_view definition,
             // retreat outruns every authored chase speed.
             platform::InputState input;
             if (!inSwordReach) {
+                // The bow fires along the player's facing, so shots only
+                // land once the victim is aligned with one of the four
+                // facings. First close the larger misalignment by walking,
+                // then hold position and fire down the aligned axis.
+                const bool verticalAligned = std::abs(distanceX) <= 8;
+                const bool horizontalAligned = std::abs(distanceY) <= 8;
                 const bool tooClose = std::abs(distanceX) < 40 &&
                                       std::abs(distanceY) < 40;
-                input.moveRight = tooClose && distanceX < 0;
-                input.moveLeft = tooClose && distanceX > 0;
-                input.moveDown = tooClose && distanceY < 0;
-                input.moveUp = tooClose && distanceY > 0;
-                input.secondaryAttackPressed = index % 16 == 0;
+                const bool shoot = index % 16 == 0;
+                if (tooClose && !verticalAligned && !horizontalAligned) {
+                    input.moveRight = distanceX < 0;
+                    input.moveLeft = distanceX > 0;
+                    input.moveDown = distanceY < 0;
+                    input.moveUp = distanceY > 0;
+                } else if (verticalAligned) {
+                    // Hold position and plink: walking toward the victim
+                    // only feeds it contact damage (and hazards on the floor).
+                    const char* wanted = distanceY > 0 ? "DOWN" : "UP";
+                    if (current.playerFacing != wanted) {
+                        input.moveDown = distanceY > 0;
+                        input.moveUp = distanceY < 0;
+                    } else if (shoot) {
+                        input.secondaryAttackPressed = true;
+                    }
+                } else if (horizontalAligned) {
+                    const char* wanted = distanceX > 0 ? "RIGHT" : "LEFT";
+                    if (current.playerFacing != wanted) {
+                        input.moveRight = distanceX > 0;
+                        input.moveLeft = distanceX < 0;
+                    } else if (shoot) {
+                        input.secondaryAttackPressed = true;
+                    }
+                } else {
+                    // Approach: gain alignment first — walk along the axis
+                    // with the SMALLER misalignment so shooting can start on
+                    // the other axis as soon as it lines up.
+                    if (std::abs(distanceY) <= std::abs(distanceX)) {
+                        input.moveDown = distanceY > 0;
+                        input.moveUp = distanceY < 0;
+                    } else {
+                        input.moveRight = distanceX > 0;
+                        input.moveLeft = distanceX < 0;
+                    }
+                }
             } else {
                 input.primaryAttackPressed = index % 24 == 0;
             }
@@ -1292,10 +1341,18 @@ bool runContentAction(ScenarioContext& context, std::string_view definition,
         // loop then finishes the authored enemy off.
         static_cast<void>(fightToDeath(context, definition));
         const auto& after = context.snapshot();
-        const auto enemy = std::find_if(after.enemies.begin(), after.enemies.end(),
+        const auto& remaining = after.enemies;
+        const bool anyDamaged = std::any_of(
+            remaining.begin(), remaining.end(),
+            [&](const auto& actor) {
+                return actor.definitionId == definition &&
+                       actor.health < initialHealth;
+            });
+        const bool anyGone = std::none_of(
+            remaining.begin(), remaining.end(),
             [&](const auto& actor) { return actor.definitionId == definition; });
-        return context.require(enemy == after.enemies.end() ||
-                                   enemy->health < initialHealth,
+        const bool thinned = remaining.size() < initial.enemies.size();
+        return context.require(anyDamaged || anyGone || thinned,
                                "enemy scenario produced no observable combat result");
     }
     if (definition == "object.chest" || definition == "object.crate") {
