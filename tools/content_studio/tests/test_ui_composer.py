@@ -20,7 +20,7 @@ from tools.content_studio.ui.ui_composer_widget import (  # noqa: E402
     UiComposerWidget,
 )
 
-from .test_ui_authoring import make_workspace  # noqa: E402
+from tools.content_studio.tests.test_ui_authoring import make_workspace  # noqa: E402
 
 
 class UiComposerWidgetTests(unittest.TestCase):

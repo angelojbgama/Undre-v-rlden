@@ -7,15 +7,6 @@
 namespace underworld::game::ui {
 namespace {
 
-constexpr core::ColorRGBA8 focusOutlineColor{240, 240, 240, 255};
-
-void drawFocusOutline(render::Renderer2D& renderer, core::RectI box) {
-    renderer.fillRect({box.x - 1, box.y - 1, box.width + 2, 1}, focusOutlineColor);
-    renderer.fillRect({box.x - 1, box.y + box.height, box.width + 2, 1}, focusOutlineColor);
-    renderer.fillRect({box.x - 1, box.y - 1, 1, box.height + 2}, focusOutlineColor);
-    renderer.fillRect({box.x + box.width, box.y - 1, 1, box.height + 2}, focusOutlineColor);
-}
-
 void collectFocusables(const NodeDefinition& node,
                        std::vector<const NodeDefinition*>& out) {
     if (!node.actions.empty()) { out.push_back(&node); }

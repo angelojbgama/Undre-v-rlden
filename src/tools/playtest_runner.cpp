@@ -506,41 +506,6 @@ bool moveTo(ScenarioContext& context, const Actor& actor, int maximumTicks = 500
     return false;
 }
 
-bool moveToContent(ScenarioContext& context, PointTarget target) {
-    for (int index = 0; index < 500; ++index) {
-        const auto& current = context.snapshot();
-        PointTarget waypoint = target;
-        // Map 03 has an authored chest on the direct horizontal approach to
-        // the potion.  Use the open row below it, then approach the pickup.
-        if (current.currentMap == "map.dungeon.03" && target.y == 184 &&
-            std::abs(current.playerY - 216) > 8) {
-            waypoint.y = 216;
-        }
-        if (std::abs(target.x - current.playerX) <= 4 &&
-            std::abs(target.y - current.playerY) <= 4) { return true; }
-        platform::InputState input;
-        input.moveRight = waypoint.x > current.playerX;
-        input.moveLeft = waypoint.x < current.playerX;
-        input.moveDown = waypoint.y > current.playerY;
-        input.moveUp = waypoint.y < current.playerY;
-        for (const auto& enemy : current.enemies) {
-            const int distanceX = enemy.x - current.playerX;
-            const int distanceY = enemy.y - current.playerY;
-            const int engageDistance = enemy.definitionId == "enemy.skull" ? 72 : 40;
-            if (std::abs(distanceX) <= engageDistance &&
-                std::abs(distanceY) <= engageDistance) {
-                input.primaryAttackPressed = enemy.definitionId == "enemy.evil_soldier" &&
-                                             index % 12 == 0;
-                input.secondaryAttackPressed = enemy.definitionId == "enemy.skull" &&
-                                               index % 12 == 0;
-                break;
-            }
-        }
-        if (!context.step(input)) { return false; }
-    }
-    return false;
-}
-
 std::optional<game::maps::MapData> loadMap(const ScenarioContext& context,
                                            std::string_view mapId) {
     auto loaded = game::maps::readDmap(mapPath(context.root(), mapId));
@@ -1086,7 +1051,7 @@ bool runVisualContent(ScenarioContext& context) {
     content::AuthoredAnimation animation;
     animation.id = {"anim.playtest.external.idle"};
     animation.imageId = {"image.playtest.external"};
-    animation.frames.push_back({{0, 0, 16, 16}, {8, 15}, {}, 2, {}});
+    animation.frames.push_back({{0, 0, 16, 16}, {8, 15}, {}, 2, {}, false, {}});
     animation.loop = true;
     authored.animations.push_back(animation);
     presentation::DirectionalAnimationRef idle;
