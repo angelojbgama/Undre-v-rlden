@@ -191,6 +191,9 @@ Atualização da rodada de auditoria/campanha sobre a tabela acima:
   (contato periódico / emissão periódica de projétil); dano atribuído ao ambiente
   (sem recompensas).
 - **Meat / big_money** — consumível de cura e moeda de valor alto (pickups + loja).
+- **Clips de hurt** — soldier, skull, slime e slime champion trazem pose
+  de dano autorada; o runtime toca o clip e pisca com tint durante a
+  janela curta pós-hit (2026-09-24).
 - **Ainda não integrados (semântica UNVERIFIED)**: `gold_block`, `extra_heart`
   (exigiria upgrade de HP máximo por pickup, hoje inexistente), `bow` como item
   (o arco já é uma habilidade do player), `shop_block`, `statue`, `sign`,

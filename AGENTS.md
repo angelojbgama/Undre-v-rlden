@@ -2260,3 +2260,30 @@ com arte licenciada local e substituíveis por workspace sem tocar C++:
   `.ico` existe (exe sem ícone enquanto o artefato não for gerado; o `.ico`
   derivado de arte licenciada nunca entra no Git). O espelho
   `builtin_ui_screens.json` é regenerado por `ui_manifest --screens`.
+
+
+# Estado atual — feedback de dano em inimigos + Enemy Library no Studio
+
+Rodada de polimento (2026-09-24) sobre a campanha authored:
+
+- **Knockback de inimigo em paridade com o player**: o pedido de knockback
+  carrega somente a direção; a magnitude é fixa (32 px espalhados em 8
+  ticks via `EnemyInstance::tickKnockback`, chamado pela `GameSession`
+  depois do update de comportamento). O empurrão agora lê como deslize
+  suave, não como teleporte de um frame.
+- **Feedback visual de dano derivado de estado de combate**:
+  `EnemyVisualInstance` detecta a borda de subida da janela de
+  invulnerabilidade (uma pulsação por hit; ticks restantes da mesma
+  janela não re-disparam), segura por 12 ticks um clip `hurt` autorado
+  quando o `EnemyVisualSet` o traz, e expõe `flashing()`/`flashFrame()`
+  para a apresentação piscar o sprite com tint multiplicativo quente
+  (`drawAnimatorTinted`). Nada disso é autoridade de gameplay nem
+  persiste; soldier, skull, slime e slime champion trazem clips hurt
+  autorados (primeiro frame da sheet de morte, por facing).
+- **Enemy Library no Content Studio** (modo MAP, seção "Inimigos"):
+  `EnemyAuthoringService` + `EnemyLibraryWidget` com validação espelhando
+  o `ContentValidator` (referências a enemyVisuals/behaviors/attacks/
+  rewardProfiles, stats e footprints positivos, lista de ataques não
+  vazia), normalização do namespace `enemy.` e delete guard ciente de
+  placements de mapa. Isso fecha o gaps histórico de inimigos só
+  acessíveis pelo inspector genérico.
