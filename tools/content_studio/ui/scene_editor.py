@@ -15,6 +15,7 @@ from ..model.scene_timeline import (
 )
 from ..model.types import JsonValue
 from ..services.localization import Translator
+from .icon_registry import icon
 from .widgets import StructuredInspector, set_path
 
 
@@ -162,6 +163,7 @@ class SceneEditorWidget(QWidget):
         self.translate = translator or Translator()
         self.scenes = QListWidget(); self.scenes.currentRowChanged.connect(self._scene_changed)
         self.new_button = QPushButton(self.translate("new_scene")); self.duplicate_button = QPushButton(self.translate("duplicate")); self.delete_button = QPushButton(self.translate("delete"))
+        self.new_button.setIcon(icon("add")); self.duplicate_button.setIcon(icon("duplicate")); self.delete_button.setIcon(icon("delete"))
         self.new_button.clicked.connect(self._new_scene); self.duplicate_button.clicked.connect(self._duplicate_scene); self.delete_button.clicked.connect(self._delete_scene)
         scene_buttons = QGridLayout()
         for index, button in enumerate((self.new_button, self.duplicate_button, self.delete_button)):
@@ -177,21 +179,25 @@ class SceneEditorWidget(QWidget):
         self.playhead = QSlider(Qt.Orientation.Horizontal); self.playhead.setRange(0, 1); self.playhead.valueChanged.connect(self._playhead_changed)
         self.preview = ScenePreviewWidget(); self.preview.translate = self.translate; self.status = QLabel(self.translate("no_scene_selected"))
         self.play_button = QPushButton(self.translate("play")); self.restart_button = QPushButton(self.translate("restart")); self.play_button.clicked.connect(self._toggle_play); self.restart_button.clicked.connect(self._restart)
+        self.play_button.setIcon(icon("play")); self.restart_button.setIcon(icon("refresh"))
         self.play_timer = QTimer(self); self.play_timer.setInterval(33); self.play_timer.timeout.connect(self._advance_playhead)
         self.track_selector = QComboBox(); self.track_selector.currentIndexChanged.connect(self._track_changed)
         self.clip_kind = QComboBox()
         self.add_clip_button = QPushButton(self.translate("add_clip")); self.duplicate_clip_button = QPushButton(self.translate("duplicate_clip")); self.remove_clip_button = QPushButton(self.translate("remove_clip")); self.add_track_button = QPushButton(self.translate("add_track"))
+        self.add_clip_button.setIcon(icon("add")); self.duplicate_clip_button.setIcon(icon("duplicate")); self.remove_clip_button.setIcon(icon("delete")); self.add_track_button.setIcon(icon("add"))
         self.add_clip_button.clicked.connect(self._add_clip); self.duplicate_clip_button.clicked.connect(self._duplicate_clip); self.remove_clip_button.clicked.connect(self._remove_clip); self.add_track_button.clicked.connect(self._add_track)
         controls = QGridLayout()
         for index, widget in enumerate((self.track_selector, self.clip_kind, self.add_clip_button, self.duplicate_clip_button, self.remove_clip_button, self.add_track_button)):
             controls.addWidget(widget, index // 3, index % 3)
         self.add_marker_button = QPushButton(self.translate("add_marker")); self.rename_marker_button = QPushButton(self.translate("rename_marker")); self.remove_marker_button = QPushButton(self.translate("remove_marker")); self.fit_button = QPushButton(self.translate("fit_duration")); self.activation_button = QPushButton(self.translate("add_activation"))
+        self.add_marker_button.setIcon(icon("add")); self.rename_marker_button.setIcon(icon("rename")); self.remove_marker_button.setIcon(icon("delete")); self.fit_button.setIcon(icon("frame_map")); self.activation_button.setIcon(icon("add"))
         self.add_marker_button.clicked.connect(self._add_marker); self.rename_marker_button.clicked.connect(self._rename_marker); self.remove_marker_button.clicked.connect(self._remove_marker); self.fit_button.clicked.connect(self._fit_duration); self.activation_button.clicked.connect(self._add_activation)
         marker_controls = QGridLayout()
         for index, widget in enumerate((self.add_marker_button, self.rename_marker_button, self.remove_marker_button, self.fit_button, self.activation_button)):
             marker_controls.addWidget(widget, index // 3, index % 3)
         self.markers = QListWidget(); self.markers.currentRowChanged.connect(self._marker_selected)
         self.actors = QListWidget(); self.add_actor_button = QPushButton(self.translate("add_actor")); self.remove_actor_button = QPushButton(self.translate("remove_actor")); self.add_actor_button.clicked.connect(self._add_actor); self.remove_actor_button.clicked.connect(self._remove_actor)
+        self.add_actor_button.setIcon(icon("add")); self.remove_actor_button.setIcon(icon("delete"))
         actor_controls = QHBoxLayout(); actor_controls.addWidget(self.add_actor_button); actor_controls.addWidget(self.remove_actor_button)
         self.timeline_zoom_label = QLabel(self.translate("timeline_zoom")); self.playhead_label = QLabel(self.translate("playhead"))
         self.actors_label = QLabel(self.translate("actors")); self.timeline_label = QLabel(self.translate("timeline")); self.markers_label = QLabel(self.translate("markers"))
@@ -452,9 +458,9 @@ class SceneEditorWidget(QWidget):
 
     def _playhead_changed(self, value: int) -> None: self.preview.set_state(self._current(), value)
     def _toggle_play(self) -> None:
-        if self.play_timer.isActive(): self.play_timer.stop(); self.play_button.setText(self.translate("play"))
-        else: self.play_timer.start(); self.play_button.setText(self.translate("pause"))
-    def _restart(self) -> None: self.playhead.setValue(0); self.play_timer.stop(); self.play_button.setText(self.translate("play"))
+        if self.play_timer.isActive(): self.play_timer.stop(); self.play_button.setText(self.translate("play")); self.play_button.setIcon(icon("play"))
+        else: self.play_timer.start(); self.play_button.setText(self.translate("pause")); self.play_button.setIcon(icon("pause"))
+    def _restart(self) -> None: self.playhead.setValue(0); self.play_timer.stop(); self.play_button.setText(self.translate("play")); self.play_button.setIcon(icon("play"))
     def _advance_playhead(self) -> None:
         if self.playhead.value() >= self.playhead.maximum(): self._restart()
         else: self.playhead.setValue(self.playhead.value() + 1)

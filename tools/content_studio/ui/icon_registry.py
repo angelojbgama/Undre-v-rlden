@@ -57,6 +57,8 @@ TABLER_ICONS: dict[str, str] = {
     "map": "map.svg",
     "layers": "stack-2.svg",
     "tiles": "layout-grid.svg",
+    "crafting": "hammer.svg",
+    "presentation": "sparkles.svg",
     "spritesheet": "movie.svg",
     "object": "box.svg",
     "door": "door.svg",
@@ -104,6 +106,7 @@ TABLER_ICONS: dict[str, str] = {
     "visibility": "eye.svg",
     "new_map": "map-plus.svg",
     "close": "x.svg",
+    "unbind": "link-off.svg",
 }
 
 

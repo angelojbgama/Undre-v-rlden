@@ -147,8 +147,10 @@ class CraftingRecipeDialog(QDialog):
         self.outputs_host = QVBoxLayout()
 
         self.add_input_button = QPushButton(self.translate("recipe_add_input"), self)
+        self.add_input_button.setIcon(icon("add"))
         self.add_input_button.clicked.connect(lambda: self._add_row(self._input_rows, self.inputs_host))
         self.add_output_button = QPushButton(self.translate("recipe_add_output"), self)
+        self.add_output_button.setIcon(icon("add"))
         self.add_output_button.clicked.connect(lambda: self._add_row(self._output_rows, self.outputs_host))
 
         self.preview = QLabel(self)

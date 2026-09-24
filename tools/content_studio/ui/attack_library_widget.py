@@ -1944,6 +1944,8 @@ class ProjectileSpawnEditorDialog(QDialog):
 
             button.setCheckable(True)
 
+            button.setIcon(icon("chevron_" + direction))
+
             button.clicked.connect(
                 lambda _checked=False,
                 target=direction: (
@@ -3325,6 +3327,8 @@ class AttackDefinitionDialog(QDialog):
             self.translate("projectile_edit_positions")
         )
 
+        self.projectile_edit.setIcon(icon("place"))
+
         projectile_editor = QWidget(self)
 
         projectile_layout = QHBoxLayout(projectile_editor)
@@ -3500,17 +3504,25 @@ class AttackDefinitionDialog(QDialog):
             self.translate("attack_event_add")
         )
 
+        self.event_add.setIcon(icon("add"))
+
         self.event_remove = QPushButton(
             self.translate("attack_event_remove")
         )
+
+        self.event_remove.setIcon(icon("delete"))
 
         self.play_button = QPushButton(
             self.translate("attack_timeline_play")
         )
 
+        self.play_button.setIcon(icon("play"))
+
         self.edit_frames_button = QPushButton(
             self.translate("edit_animation_frames")
         )
+
+        self.edit_frames_button.setIcon(icon("edit"))
 
         self.edit_frames_button.setEnabled(False)
 
@@ -3574,6 +3586,8 @@ class AttackDefinitionDialog(QDialog):
             self.translate("attack_save")
         )
 
+        self.ok_button.setIcon(icon("apply"))
+
         self.ok_button.setDefault(
             True
         )
@@ -3581,6 +3595,8 @@ class AttackDefinitionDialog(QDialog):
         self.cancel_button = QPushButton(
             self.translate("attack_cancel")
         )
+
+        self.cancel_button.setIcon(icon("close"))
 
         buttons.addStretch(
             1
@@ -4362,6 +4378,8 @@ class AttackDefinitionDialog(QDialog):
                 self.translate("attack_timeline_play")
             )
 
+            self.play_button.setIcon(icon("play"))
+
             return
 
         self.play_timer.start()
@@ -4369,6 +4387,8 @@ class AttackDefinitionDialog(QDialog):
         self.play_button.setText(
             self.translate("attack_timeline_pause")
         )
+
+        self.play_button.setIcon(icon("pause"))
 
         self._advance_playback()
 
@@ -5077,6 +5097,8 @@ class AttackManagerDialog(QDialog):
         self.close_button = QPushButton(
             self.translate("attack_cancel")
         )
+
+        self.close_button.setIcon(icon("close"))
 
         self.close_button.clicked.connect(
             self.reject
