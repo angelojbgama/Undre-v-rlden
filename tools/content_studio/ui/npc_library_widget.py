@@ -379,11 +379,8 @@ class NpcEditorDialog(QDialog):
         # The NPC editor runs in a modal exec loop, so the library must be a
         # nested modal dialog: a modeless window opened over an active exec
         # is input-blocked by the platform and flashes open/closed.
-        from .dialogue_library_widget import (
-            DialogueLibraryDialog,
-            DialogueLibraryWidget,
-        )
-
+        # DialogueLibraryDialog lives in this module (it wraps the widget
+        # imported at the top) — no lazy import needed.
         dialog = DialogueLibraryDialog(self.workspace, self.translate, parent=self)
         dialog.changed.connect(self._reload_dialogues)
         dialog.exec()
