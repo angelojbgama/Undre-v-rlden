@@ -1024,7 +1024,17 @@ void GameSession::interactWithWorld() {
         return;
     }
     if (object.isDoor()) {
-        if (!mapSession_->world()->interactDoor(
+        const auto doorState =
+            mapSession_->world()->doorState(selected->persistentId);
+        // An already-open door (opened by a completed encounter, an attack
+        // or an earlier interaction) still honors its authored transition:
+        // pressing E on it travels. Closed/locked doors go through
+        // interactDoor, which refuses locked doors without their key and
+        // open-condition doors on purpose.
+        const bool alreadyOpen =
+            doorState == gameplay::DoorState::open;
+        if (!alreadyOpen &&
+            !mapSession_->world()->interactDoor(
                 selected->persistentId,
                 playerItems_->inventory().items())) {
             return;
