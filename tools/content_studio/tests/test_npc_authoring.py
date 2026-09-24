@@ -184,6 +184,65 @@ class NpcAuthoringServiceTests(unittest.TestCase):
             self.service.delete("npc.test.placed")
 
 
+class NpcVisualPipelineTests(unittest.TestCase):
+    """The developed-standard spritesheet pipeline for NPC visuals."""
+
+    def test_save_visual_materializes_image_animations_and_set(self) -> None:
+        from tools.content_studio.services.npc_authoring_service import (
+            NpcAuthoringService,
+            NpcVisualRequest,
+        )
+        from tools.content_studio.services.player_authoring_service import (
+            FrameSequenceSpec,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"
+            assets.mkdir()
+            _write_synthetic_png(assets / "grub.png", width=128, height=16)
+            workspace = make_workspace(root)
+            workspace.create_definition("visualImages", "image.test.sheet")
+            image = workspace.find("visualImages", "image.test.sheet")
+            assert image is not None
+            workspace.replace_definition(image, {
+                "id": "image.test.sheet", "root": "gameAssets",
+                "relativePath": "grub.png"})
+            service = NpcAuthoringService(workspace)
+
+            spec = FrameSequenceSpec(
+                image_id="image.test.sheet", frame_width=32, frame_height=16,
+                spacing=0, origin_x=0, origin_y=0, duration_ticks=12,
+                loop=True, flip_x=False, frame_indices=(0, 1, 2, 3), columns=4)
+            request = NpcVisualRequest(
+                visual_id="visual.test.imported",
+                marker_color={"r": 10, "g": 120, "b": 200, "a": 255},
+                sequences={"default": spec, "down": spec})
+            saved = service.save_visual(workspace, request)
+            self.assertEqual(saved.definition_id, "visual.test.imported")
+            idle = saved.data.get("idle", {})
+            self.assertEqual(idle.get("defaultAnimation"),
+                             "anim.npc.visual-test-imported.default")
+            self.assertEqual(idle.get("down"),
+                             "anim.npc.visual-test-imported.down")
+            # The materialized animations are real workspace definitions.
+            for animation_id in idle.values():
+                self.assertIsNotNone(workspace.find("animations", animation_id))
+
+            # Editing round-trip rebuilds the frame sequences.
+            marker, sequences = service.visual_request_for(
+                workspace, "visual.test.imported", assets)
+            self.assertEqual(sequences["default"].frame_indices, (0, 1, 2, 3))
+            self.assertEqual(marker.get("r"), 10)
+
+            # Saving without sequences is rejected.
+            with self.assertRaisesRegex(ValueError, "pelo menos uma sequência"):
+                service.save_visual(workspace, NpcVisualRequest(
+                    visual_id="visual.test.imported",
+                    marker_color={"r": 0, "g": 0, "b": 0, "a": 255},
+                    sequences={}), editing=True)
+
+
 class NpcLibraryWidgetTests(unittest.TestCase):
     def test_widget_lists_creates_and_previews(self) -> None:
         from PySide6.QtWidgets import QApplication

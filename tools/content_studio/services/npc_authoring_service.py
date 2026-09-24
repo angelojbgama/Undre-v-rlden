@@ -20,10 +20,15 @@ from __future__ import annotations
 import copy
 import re
 import struct
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..model.content_workspace import ContentWorkspace
-from ..model.types import ContentDefinition
+from ..model.types import ContentDefinition, JsonValue
+from .player_authoring_service import (
+    FrameSequenceSpec,
+    PlayerAuthoringService,
+)
 
 _NPC_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.]+$")
 
@@ -36,6 +41,21 @@ BUILTIN_NPC_VISUALS: tuple[dict[str, object], ...] = (
 )
 
 _FACINGS = ("down", "up", "left", "right")
+_SEQUENCE_KEYS = ("default", *_FACINGS)
+
+
+@dataclass(slots=True)
+class NpcVisualRequest:
+    """Authored NPC visual: marker color plus frame sequences.
+
+    Mirrors the player pipeline (FrameSequenceSpec built in the frame
+    editor). ``default`` is the fallback binding; the four facings
+    override it per direction at runtime.
+    """
+
+    visual_id: str
+    marker_color: dict[str, int]
+    sequences: dict[str, FrameSequenceSpec] = field(default_factory=dict)
 
 
 def _png_size(path: Path) -> tuple[int, int] | None:
@@ -188,6 +208,102 @@ class NpcAuthoringService:
             if workspace.find("animations", str(animation_id)) is None:
                 raise ValueError(f"animation does not exist: {animation_id}")
         return copy.deepcopy(data)
+
+    # -- developed-standard visual authoring (spritesheet pipeline) ----------
+
+    @staticmethod
+    def _slug(value: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug or "npc"
+
+    def save_visual(
+        self, workspace: ContentWorkspace, request: NpcVisualRequest,
+        editing: bool = False,
+    ) -> ContentDefinition:
+        """Materialize visualImage/animation/npcVisual definitions from
+        frame sequences built in the frame editor — the same pipeline the
+        player library uses. Editing reuses the same animation ids."""
+        visual_id = request.visual_id.strip()
+        existing = workspace.find("npcVisuals", visual_id)
+        if editing and existing is None:
+            raise ValueError("O visual selecionado não existe mais.")
+        if not editing and existing is not None:
+            raise ValueError(f"Visual de NPC já existe: {visual_id}")
+
+        sequences = {key: spec for key, spec in request.sequences.items()
+                     if spec is not None}
+        if not sequences:
+            raise ValueError(
+                "Monte pelo menos uma sequência de frames antes de salvar.")
+
+        slug = self._slug(visual_id)
+        animation_entries: list[tuple[str, str, dict[str, JsonValue]]] = []
+        refs: dict[str, str] = {}
+        for key in _SEQUENCE_KEYS:
+            spec = sequences.get(key)
+            if spec is None:
+                continue
+            if workspace.find("visualImages", spec.image_id) is None:
+                raise ValueError(f"Imagem importada não existe: {spec.image_id}")
+            animation_id = f"anim.npc.{slug}.{key}"
+            animation_entries.append((
+                "animations", animation_id, {
+                    "id": animation_id,
+                    "imageId": spec.image_id,
+                    "loop": spec.loop,
+                    "frames": PlayerAuthoringService._materialize(spec),
+                }))
+            refs[key] = animation_id
+
+        idle: dict[str, str] = {}
+        if "default" in refs:
+            idle["defaultAnimation"] = refs["default"]
+        for facing in _FACINGS:
+            if facing in refs:
+                idle[facing] = refs[facing]
+
+        entries = animation_entries + [
+            ("npcVisuals", visual_id, {
+                "id": visual_id,
+                "markerColor": dict(request.marker_color),
+                "idle": idle,
+            }),
+        ]
+        bundle = ("Configure NPC Visual" if editing else "Create NPC Visual")
+        workspace.upsert_definition_bundle(bundle, entries) if editing else             workspace.create_definition_bundle(bundle, entries)
+        result = workspace.find("npcVisuals", visual_id)
+        if result is None:
+            raise RuntimeError("created NPC visual could not be indexed")
+        return result
+
+    def visual_request_for(
+        self, workspace: ContentWorkspace, visual_id: str,
+        asset_root: Path | None,
+    ) -> tuple[dict[str, object], dict[str, FrameSequenceSpec]]:
+        """Editing round-trip: rebuild frame sequences from the authored
+        animations so the frame editor opens pre-filled."""
+        definition = workspace.find("npcVisuals", visual_id)
+        if definition is None:
+            raise ValueError(f"unknown NPC visual set: {visual_id}")
+        marker = definition.data.get("markerColor")
+        marker = dict(marker) if isinstance(marker, dict) else {
+            "r": 255, "g": 255, "b": 255, "a": 255}
+        idle = definition.data.get("idle")
+        idle = idle if isinstance(idle, dict) else {}
+        sequences: dict[str, FrameSequenceSpec] = {}
+        animation_ids: list[tuple[str, str]] = []
+        if isinstance(idle.get("defaultAnimation"), str) and idle["defaultAnimation"]:
+            animation_ids.append(("default", str(idle["defaultAnimation"])))
+        for facing in _FACINGS:
+            if isinstance(idle.get(facing), str) and idle[facing]:
+                animation_ids.append((facing, str(idle[facing])))
+        for key, animation_id in animation_ids:
+            animation = workspace.find("animations", animation_id)
+            if animation is None:
+                continue
+            sequences[key] = PlayerAuthoringService._sequence_from_animation(
+                workspace, animation, asset_root)
+        return marker, sequences
 
     # -- verification --------------------------------------------------------
 

@@ -28,7 +28,11 @@ from PySide6.QtWidgets import (
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.localization import Translator
-from ..services.npc_authoring_service import NpcAuthoringService
+from ..services.npc_authoring_service import (
+    NpcAuthoringService,
+    NpcVisualRequest,
+)
+from ..services.player_authoring_service import FrameSequenceSpec
 from .icon_registry import icon
 from .studio_visual_resolver import StudioVisualResolver
 from .widgets import PayloadListWidget
@@ -72,18 +76,31 @@ class ColorRow(QWidget):
 
 
 class NpcVisualDialog(QDialog):
-    """Create or edit one NPC visual set (marker color + idle bindings)."""
+    """Author an NPC visual in the developed spritesheet pipeline.
+
+    Import a sheet, build one frame sequence per direction (default plus
+    the four facings) with the same frame editor the player library uses,
+    and save through ``NpcAuthoringService.save_visual`` which
+    materializes the image, animations and npcVisual definitions.
+    """
+
+    _ROWS = (("default", "Padrão (fallback de todas as direções)"),
+             ("down", "Down / baixo"),
+             ("up", "Up / cima"),
+             ("left", "Left / esquerda"),
+             ("right", "Right / direita"))
 
     def __init__(
         self,
         workspace: ContentWorkspace,
+        asset_root: Path | None,
         translator: Translator,
         visual_id: str | None = None,
-        data: dict[str, object] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.workspace = workspace
+        self.asset_root = asset_root
         self.translate = translator
         self.existing_id = visual_id
         self.service = NpcAuthoringService(workspace)
@@ -92,28 +109,44 @@ class NpcVisualDialog(QDialog):
         self.visual_id.setPlaceholderText("visual.npc.new_npc")
 
         self.marker_color = ColorRow(self)
+        self.marker_color.load({"r": 200, "g": 80, "b": 80, "a": 255})
 
-        self.default_animation = QLineEdit(self)
-        self.default_animation.setPlaceholderText("anim.npc... (opcional)")
-        self.facings: dict[str, QLineEdit] = {}
-        for facing in ("down", "up", "left", "right"):
-            edit = QLineEdit(self)
-            edit.setPlaceholderText(f"anim... {facing} (opcional)")
-            self.facings[facing] = edit
+        self.sequences: dict[str, FrameSequenceSpec] = {}
+        self.summaries: dict[str, QLabel] = {}
+        self.edit_buttons: dict[str, QPushButton] = {}
+        self.clear_buttons: dict[str, QPushButton] = {}
 
         form = QFormLayout()
         form.addRow(self.translate("npc_visual_field_id"), self.visual_id)
         form.addRow(self.translate("npc_visual_field_marker"), self.marker_color)
-        form.addRow(self.translate("npc_visual_field_default"), self.default_animation)
-        for facing in ("down", "up", "left", "right"):
-            form.addRow(facing.capitalize(), self.facings[facing])
 
-        hint = QLabel(self.translate("npc_visual_hint"), self)
-        hint.setWordWrap(True)
+        import_button = QPushButton(self.translate("npc_import_sheet"), self)
+        import_button.clicked.connect(self._import_spritesheet)
+
+        sequences_group = QGroupBox(self.translate("npc_sequences_group"), self)
+        sequences_layout = QGridLayout(sequences_group)
+        for row_index, (key, label) in enumerate(self._ROWS):
+            name = QLabel(label, sequences_group)
+            summary = QLabel(self.translate("npc_sequence_empty"), sequences_group)
+            summary.setProperty("muted", True)
+            edit_button = QPushButton(self.translate("npc_sequence_edit"), sequences_group)
+            edit_button.clicked.connect(
+                lambda unused=False, k=key: self._edit_sequence(k))
+            clear_button = QPushButton(self.translate("npc_sequence_clear"), sequences_group)
+            clear_button.clicked.connect(
+                lambda unused=False, k=key: self._clear_sequence(k))
+            sequences_layout.addWidget(name, row_index, 0)
+            sequences_layout.addWidget(summary, row_index, 1)
+            sequences_layout.addWidget(edit_button, row_index, 2)
+            sequences_layout.addWidget(clear_button, row_index, 3)
+            self.summaries[key] = summary
+            self.edit_buttons[key] = edit_button
+            self.clear_buttons[key] = clear_button
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
-        layout.addWidget(hint)
+        layout.addWidget(import_button)
+        layout.addWidget(sequences_group)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
             self,
@@ -126,34 +159,62 @@ class NpcVisualDialog(QDialog):
             self.setWindowTitle(self.translate("npc_visual_edit"))
             self.visual_id.setText(visual_id)
             self.visual_id.setEnabled(False)
-            if data:
-                self.marker_color.load(data.get("markerColor"))
-                idle = data.get("idle") if isinstance(data.get("idle"), dict) else {}
-                self.default_animation.setText(str(idle.get("defaultAnimation") or ""))
-                for facing, edit in self.facings.items():
-                    edit.setText(str(idle.get(facing) or ""))
+            try:
+                marker, sequences = self.service.visual_request_for(
+                    workspace, visual_id, asset_root)
+                self.marker_color.load(marker)
+                self.sequences.update(sequences)
+            except ValueError:
+                pass
         else:
             self.setWindowTitle(self.translate("npc_visual_create"))
+        self._refresh_summaries()
 
-    def _collect(self) -> dict[str, object]:
-        idle: dict[str, str] = {}
-        if self.default_animation.text().strip():
-            idle["defaultAnimation"] = self.default_animation.text().strip()
-        for facing, edit in self.facings.items():
-            if edit.text().strip():
-                idle[facing] = edit.text().strip()
-        return {
-            "id": self.visual_id.text().strip(),
-            "markerColor": self.marker_color.value(),
-            "idle": idle,
-        }
+    def _import_spritesheet(self) -> None:
+        from .spritesheet_import_dialog import SpritesheetImportDialog
+
+        dialog = SpritesheetImportDialog(
+            self.workspace, self.asset_root, self.translate, self)
+        dialog.exec()
+        self._refresh_summaries()
+
+    def _edit_sequence(self, key: str) -> None:
+        from .player_library_widget import FrameSequenceDialog
+
+        dialog = FrameSequenceDialog(
+            self.workspace, self.asset_root, self.translate,
+            self.translate("npc_sequence_edit"),
+            initial=self.sequences.get(key), parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_spec:
+            self.sequences[key] = dialog.result_spec
+        self._refresh_summaries()
+
+    def _clear_sequence(self, key: str) -> None:
+        self.sequences.pop(key, None)
+        self._refresh_summaries()
+
+    def _refresh_summaries(self) -> None:
+        for key, summary in self.summaries.items():
+            spec = self.sequences.get(key)
+            if spec is None:
+                summary.setText(self.translate("npc_sequence_empty"))
+            else:
+                summary.setText(
+                    self.translate("npc_sequence_summary").format(
+                        frames=len(spec.frame_indices),
+                        size=f"{spec.frame_width}x{spec.frame_height}",
+                        image=spec.image_id))
 
     def _save(self) -> None:
+        visual_id = self.visual_id.text().strip()
+        request = NpcVisualRequest(
+            visual_id=visual_id,
+            marker_color=self.marker_color.value(),
+            sequences=dict(self.sequences),
+        )
         try:
-            if self.existing_id:
-                self.service.configure_visual(self.existing_id, self._collect())
-            else:
-                self.service.create_visual_set(self.visual_id.text().strip(), self._collect())
+            self.service.save_visual(
+                self.workspace, request, editing=bool(self.existing_id))
         except ValueError as error:
             QMessageBox.warning(self, "NPC", str(error))
             return
@@ -260,27 +321,23 @@ class NpcEditorDialog(QDialog):
 
     def _edit_visual(self) -> None:
         selected = self.visual_set.currentData()
-        visual_id = str(selected.get("id")) if isinstance(selected, dict) else None
+        visual_id = (str(selected.get("id"))
+                     if isinstance(selected, dict) and selected.get("id") else None)
+        editing = (visual_id is not None
+                   and self.workspace.find("npcVisuals", visual_id) is not None)
         dialog = NpcVisualDialog(
-            self.workspace, self.translate,
-            visual_id=visual_id,
-            data=selected if isinstance(selected, dict) else None,
+            self.workspace, self.asset_root, self.translate,
+            visual_id=visual_id if editing else None,
             parent=self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._load_visuals()
-            new_id = (dialog.visual_id.text().strip()
-                      if not self.existing_id_filter(visual_id) else visual_id)
-            index = self.visual_set.findData(
-                self.service.find_visual(new_id) or {"id": new_id})
-            if index >= 0:
-                self.visual_set.setCurrentIndex(index)
-
-    def existing_id_filter(self, visual_id: str | None) -> bool:
-        return visual_id is not None and self.service.find_visual(visual_id) is not None \
-            and any(str(v.get("id")) == visual_id
-                    for v in self.service.visual_sets()
-                    if self.workspace.find("npcVisuals", str(v.get("id"))))
+            target = visual_id if editing else dialog.visual_id.text().strip()
+            for candidate in range(self.visual_set.count()):
+                entry = self.visual_set.itemData(candidate)
+                if isinstance(entry, dict) and entry.get("id") == target:
+                    self.visual_set.setCurrentIndex(candidate)
+                    break
 
     def _load(self, definition: ContentDefinition) -> None:
         data = definition.data
