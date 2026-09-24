@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -230,9 +231,11 @@ class NpcEditorDialog(QDialog):
         translator: Translator,
         definition: ContentDefinition | None = None,
         parent: QWidget | None = None,
+        asset_root: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.workspace = workspace
+        self.asset_root: Path | None = asset_root
         self.translate = translator
         self.definition = definition
         self.service = NpcAuthoringService(workspace)
@@ -687,7 +690,8 @@ class NpcLibraryWidget(QWidget):
     def create_npc(self) -> None:
         if self.workspace is None:
             return
-        dialog = NpcEditorDialog(self.workspace, self.translate, parent=self)
+        dialog = NpcEditorDialog(self.workspace, self.translate, parent=self,
+                                 asset_root=self.asset_root)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.changed.emit()
             self.status_changed.emit(self.translate("npc_created"))
@@ -698,7 +702,8 @@ class NpcLibraryWidget(QWidget):
         if definition is None:
             return
         dialog = NpcEditorDialog(
-            self.workspace, self.translate, definition=definition, parent=self)
+            self.workspace, self.translate, definition=definition, parent=self,
+            asset_root=self.asset_root)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.changed.emit()
             self.status_changed.emit(self.translate("npc_configured"))
