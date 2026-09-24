@@ -252,6 +252,9 @@ class NpcEditorDialog(QDialog):
         self.dialogue = QComboBox(self)
         for dialogue in self.service.dialogues():
             self.dialogue.addItem(dialogue.definition_id, dialogue.definition_id)
+        self.dialogue_library_button = QPushButton(
+            self.translate("dialogue_open_library"), self)
+        self.dialogue_library_button.clicked.connect(self._open_dialogue_library)
 
         self.interaction_x = QSpinBox(self)
         self.interaction_y = QSpinBox(self)
@@ -279,7 +282,12 @@ class NpcEditorDialog(QDialog):
         visual_holder = QWidget(self)
         visual_holder.setLayout(visual_row)
         form.addRow(self.translate("npc_field_visual"), visual_holder)
-        form.addRow(self.translate("npc_field_dialogue"), self.dialogue)
+        dialogue_row = QHBoxLayout()
+        dialogue_row.addWidget(self.dialogue, 1)
+        dialogue_row.addWidget(self.dialogue_library_button)
+        dialogue_holder = QWidget(self)
+        dialogue_holder.setLayout(dialogue_row)
+        form.addRow(self.translate("npc_field_dialogue"), dialogue_holder)
         form.addRow(self.translate("npc_field_interaction"), self._interaction_row())
         form.addRow("", self.enabled)
         form.addRow(self.translate("npc_field_tags"), self.tags)
@@ -341,6 +349,26 @@ class NpcEditorDialog(QDialog):
                 if isinstance(entry, dict) and entry.get("id") == target:
                     self.visual_set.setCurrentIndex(candidate)
                     break
+
+    def _open_dialogue_library(self) -> None:
+        from .dialogue_library_widget import DialogueLibraryWidget
+
+        self._dialogue_window = DialogueLibraryWidget(
+            self.workspace, self.translate)
+        self._dialogue_window.setWindowModality(Qt.WindowModality.NonModal)
+        self._dialogue_window.setWindowFlag(Qt.WindowType.Window, True)
+        self._dialogue_window.resize(900, 560)
+        self._dialogue_window.changed.connect(self._reload_dialogues)
+        self._dialogue_window.show()
+
+    def _reload_dialogues(self) -> None:
+        current = self.dialogue.currentData()
+        self.dialogue.clear()
+        for dialogue in self.service.dialogues():
+            self.dialogue.addItem(dialogue.definition_id, dialogue.definition_id)
+        if current:
+            index = self.dialogue.findData(current)
+            self.dialogue.setCurrentIndex(max(index, 0))
 
     def _load(self, definition: ContentDefinition) -> None:
         data = definition.data
