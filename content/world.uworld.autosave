@@ -53,7 +53,7 @@
         },
         {
           "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
+          "sourceIndex": 69,
           "flags": 0
         },
         {
@@ -63,77 +63,7 @@
         },
         {
           "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 66,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 67,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 85,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 86,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 90,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 89,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 91,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 128,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 93,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 109,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 108,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 94,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 87,
-          "flags": 0
-        },
-        {
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 88,
+          "sourceIndex": 70,
           "flags": 0
         }
       ],
@@ -142,78 +72,78 @@
           "name": "Ground",
           "visible": true,
           "cells": [
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            10,
-            null
+            1,
+            1,
+            7,
+            4,
+            7,
+            7,
+            4,
+            7,
+            1,
+            7,
+            9,
+            10,
+            10,
+            10,
+            8,
+            9,
+            8,
+            1,
+            1,
+            9,
+            8,
+            8,
+            8,
+            10,
+            10,
+            10,
+            4,
+            4,
+            9,
+            10,
+            9,
+            10,
+            8,
+            10,
+            8,
+            7,
+            4,
+            10,
+            10,
+            10,
+            8,
+            8,
+            8,
+            9,
+            1,
+            7,
+            9,
+            8,
+            10,
+            8,
+            9,
+            10,
+            8,
+            1,
+            1,
+            8,
+            9,
+            9,
+            10,
+            8,
+            10,
+            9,
+            1,
+            1,
+            7,
+            4,
+            4,
+            4,
+            1,
+            7,
+            4,
+            1
           ]
         },
         {
@@ -296,6 +226,16 @@
         }
       ],
       "collision": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
         0,
         0,
         0,
@@ -303,6 +243,8 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
         0,
         0,
@@ -310,6 +252,8 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
         0,
         0,
@@ -317,6 +261,8 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
         0,
         0,
@@ -324,6 +270,8 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
         0,
         0,
@@ -331,6 +279,8 @@
         0,
         0,
         0,
+        1,
+        1,
         0,
         0,
         0,
@@ -338,49 +288,67 @@
         0,
         0,
         0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
       ],
       "playerSpawns": [
         {
           "id": "player.start",
           "position": {
-            "x": 64,
-            "y": 112
+            "x": 48,
+            "y": 96
           },
           "facing": "down"
         }
       ],
-      "enemies": [],
-      "npcs": [],
+      "enemies": [
+        {
+          "id": 14,
+          "definitionId": "enemy.evil_soldier",
+          "position": {
+            "x": 104,
+            "y": 88
+          },
+          "facing": "down"
+        },
+        {
+          "id": 15,
+          "definitionId": "enemy.skull",
+          "position": {
+            "x": 96,
+            "y": 24
+          },
+          "facing": "down"
+        }
+      ],
+      "npcs": [
+        {
+          "id": 16,
+          "definitionId": "npc.keeper",
+          "position": {
+            "x": 64,
+            "y": 32
+          },
+          "facing": "down"
+        },
+        {
+          "id": 17,
+          "definitionId": "npc.trader",
+          "position": {
+            "x": 24,
+            "y": 32
+          },
+          "facing": "down"
+        }
+      ],
       "objects": [
         {
           "id": 1,
@@ -400,14 +368,103 @@
           "id": 2,
           "definitionId": "object.breaking_vase",
           "position": {
-            "x": 72,
-            "y": 96
+            "x": 80,
+            "y": 80
+          },
+          "initialContents": [],
+          "persistence": "persistent"
+        },
+        {
+          "id": 8,
+          "definitionId": "object.bank_access",
+          "position": {
+            "x": 96,
+            "y": 48
+          },
+          "initialContents": [],
+          "persistence": "persistent"
+        },
+        {
+          "id": 9,
+          "definitionId": "object.chest",
+          "position": {
+            "x": 41,
+            "y": 71
+          },
+          "initialContents": [],
+          "persistence": "persistent"
+        },
+        {
+          "id": 10,
+          "definitionId": "object.crate",
+          "position": {
+            "x": 24,
+            "y": 88
           },
           "initialContents": [],
           "persistence": "persistent"
         }
       ],
-      "pickups": [],
+      "pickups": [
+        {
+          "id": 12,
+          "definitionId": "pickup.heart",
+          "visualId": "visual.pickup.heart",
+          "position": {
+            "x": 64,
+            "y": 64
+          },
+          "collectionBounds": {
+            "x": -5,
+            "y": -5,
+            "width": 10,
+            "height": 10
+          },
+          "payload": {
+            "kind": "health",
+            "amount": 2
+          }
+        },
+        {
+          "id": 13,
+          "definitionId": "pickup.life_potion",
+          "visualId": "visual.item.life_potion",
+          "position": {
+            "x": 41,
+            "y": 51
+          },
+          "collectionBounds": {
+            "x": -5,
+            "y": -5,
+            "width": 10,
+            "height": 10
+          },
+          "payload": {
+            "kind": "item",
+            "itemId": "item.life_potion",
+            "quantity": 1
+          }
+        },
+        {
+          "id": 18,
+          "definitionId": "pickup.money",
+          "visualId": "visual.pickup.money",
+          "position": {
+            "x": 80,
+            "y": 96
+          },
+          "collectionBounds": {
+            "x": -5,
+            "y": -5,
+            "width": 10,
+            "height": 10
+          },
+          "payload": {
+            "kind": "currency",
+            "amount": 1
+          }
+        }
+      ],
       "links": [],
       "regions": [],
       "worldRules": [],
@@ -535,7 +592,248 @@
           }
         }
       ],
-      "collisionBindings": []
+      "collisionBindings": [
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 1,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 2,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 3,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 4,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 5,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 6,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 7,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 0,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 1,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 1,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 2,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 2,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 3,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 3,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 4,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 4,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 5,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 5,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 6,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 6,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 0,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 1,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 2,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 3,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 4,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 5,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 6,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 79,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 7,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 80,
+          "flags": 0
+        },
+        {
+          "layer": 0,
+          "x": 8,
+          "y": 7,
+          "tilesetId": "tileset.imported",
+          "sourceIndex": 78,
+          "flags": 0
+        }
+      ]
     }
   ]
 }

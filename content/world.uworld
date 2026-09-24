@@ -226,16 +226,6 @@
         }
       ],
       "collision": [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
         0,
         0,
         0,
@@ -243,8 +233,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -252,8 +240,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -261,8 +247,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -270,8 +254,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -279,8 +261,6 @@
         0,
         0,
         0,
-        1,
-        1,
         0,
         0,
         0,
@@ -288,23 +268,43 @@
         0,
         0,
         0,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ],
       "playerSpawns": [
         {
           "id": "player.start",
           "position": {
-            "x": 32,
-            "y": 96
+            "x": 55,
+            "y": 101
           },
           "facing": "down"
         }
@@ -329,26 +329,7 @@
           "facing": "down"
         }
       ],
-      "npcs": [
-        {
-          "id": 16,
-          "definitionId": "npc.keeper",
-          "position": {
-            "x": 40,
-            "y": 24
-          },
-          "facing": "down"
-        },
-        {
-          "id": 17,
-          "definitionId": "npc.trader",
-          "position": {
-            "x": 24,
-            "y": 32
-          },
-          "facing": "down"
-        }
-      ],
+      "npcs": [],
       "objects": [
         {
           "id": 1,
@@ -368,8 +349,8 @@
           "id": 2,
           "definitionId": "object.breaking_vase",
           "position": {
-            "x": 80,
-            "y": 80
+            "x": 89,
+            "y": 70
           },
           "initialContents": [],
           "persistence": "persistent"
@@ -378,8 +359,8 @@
           "id": 8,
           "definitionId": "object.bank_access",
           "position": {
-            "x": 104,
-            "y": 32
+            "x": 96,
+            "y": 48
           },
           "initialContents": [],
           "persistence": "persistent"
@@ -388,8 +369,8 @@
           "id": 9,
           "definitionId": "object.chest",
           "position": {
-            "x": 24,
-            "y": 64
+            "x": 41,
+            "y": 71
           },
           "initialContents": [],
           "persistence": "persistent"
@@ -398,8 +379,8 @@
           "id": 10,
           "definitionId": "object.crate",
           "position": {
-            "x": 24,
-            "y": 88
+            "x": 29,
+            "y": 98
           },
           "initialContents": [],
           "persistence": "persistent"
@@ -411,8 +392,8 @@
           "definitionId": "pickup.heart",
           "visualId": "visual.pickup.heart",
           "position": {
-            "x": 32,
-            "y": 40
+            "x": 64,
+            "y": 64
           },
           "collectionBounds": {
             "x": -5,
@@ -430,8 +411,8 @@
           "definitionId": "pickup.life_potion",
           "visualId": "visual.item.life_potion",
           "position": {
-            "x": 24,
-            "y": 48
+            "x": 41,
+            "y": 51
           },
           "collectionBounds": {
             "x": -5,
@@ -450,8 +431,8 @@
           "definitionId": "pickup.money",
           "visualId": "visual.pickup.money",
           "position": {
-            "x": 88,
-            "y": 104
+            "x": 80,
+            "y": 96
           },
           "collectionBounds": {
             "x": -5,
@@ -592,248 +573,7 @@
           }
         }
       ],
-      "collisionBindings": [
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 1,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 2,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 3,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 4,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 5,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 6,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 7,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 0,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 1,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 1,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 2,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 2,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 3,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 3,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 4,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 4,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 5,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 5,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 6,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 6,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 0,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 1,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 2,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 3,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 4,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 5,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 6,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 71,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 7,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 70,
-          "flags": 0
-        },
-        {
-          "layer": 0,
-          "x": 8,
-          "y": 7,
-          "tilesetId": "tileset.imported",
-          "sourceIndex": 69,
-          "flags": 0
-        }
-      ]
+      "collisionBindings": []
     }
   ]
 }
