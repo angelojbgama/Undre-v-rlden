@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -69,6 +70,7 @@ class MainWindow(QMainWindow):
         self.translator = Translator(self.preferences.language)
         self.project = project or WorldProject.new()
         self.workspace = workspace
+        self._sync_workspace_project()
         self.default_project_path = (
             self.workspace.root.parent / "world.uworld"
             if self.workspace and self.workspace.root.name == "definitions"
@@ -77,6 +79,7 @@ class MainWindow(QMainWindow):
         self.asset_root = asset_root or (Path(self.preferences.asset_root) if self.preferences.asset_root else None)
         self.toolchain = toolchain or CppToolchain(asset_root=self.asset_root)
         self.playtest = PlaytestService(self.toolchain)
+        self._playtest_was_running = False
         self.import_service = ImportService()
         self.semantic_catalog = TileSemanticCatalog(self.workspace)
         self.command_coordinator = CommandCoordinator()
@@ -100,6 +103,12 @@ class MainWindow(QMainWindow):
         self.autosave_timer.setInterval(60_000)
         self.autosave_timer.timeout.connect(self._autosave)
         self.autosave_timer.start()
+        # Detects a playtest game process that exited on its own (crash or
+        # natural end) so the toolbar icon resets and the exit code surfaces.
+        self.playtest_timer = QTimer(self)
+        self.playtest_timer.setInterval(1_000)
+        self.playtest_timer.timeout.connect(self._watch_playtest)
+        self.playtest_timer.start()
         QGuiApplication.styleHints().colorSchemeChanged.connect(
             self._system_scheme_changed
         )
@@ -648,6 +657,7 @@ class MainWindow(QMainWindow):
             )
 
     def _map_content_changed(self) -> None:
+        self._update_title()
         self.command_coordinator.mark("map")
         self._refresh_map_content()
 
@@ -1540,6 +1550,35 @@ class MainWindow(QMainWindow):
         self._refresh_all()
         self._refresh_diagnostics(list(diagnostics) + list(migration.diagnostics if migration else []))
 
+    def _check_autosave_recovery(self, path: Path) -> Path:
+        """Offer the newer autosave snapshot before opening a project.
+
+        The autosave is written while authoring; if the Studio (or machine)
+        died after the last manual save, the snapshot is the user's most
+        recent work and opening the stale file would silently drop it.
+        Choosing to keep the saved file leaves the autosave untouched.
+        """
+        autosave_path = path.with_name(path.name + ".autosave")
+        if not autosave_path.is_file() or not path.is_file():
+            return path
+        try:
+            if autosave_path.stat().st_mtime <= path.stat().st_mtime:
+                return path
+        except OSError:
+            return path
+        answer = QMessageBox.question(
+            self, self.translator("autosave_recovery_title"),
+            self.translator("autosave_recovery_question").format(path=path.name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            try:
+                shutil.copyfile(autosave_path, path)
+                self.set_status(self.translator("autosave_restored").format(path=path.name))
+            except OSError as error:
+                self.show_error(str(error))
+        return path
+
     def _remember_recent_project(self, path_text: str) -> None:
         entries = [entry for entry in self.preferences.recent_projects if entry != path_text]
         entries.insert(0, path_text)
@@ -1550,6 +1589,7 @@ class MainWindow(QMainWindow):
             return
         self.project = WorldProject.new()
         self.project.path = self.default_project_path
+        self._sync_workspace_project()
         self._refresh_all(); self.set_status(self.translator("new_blank_project"))
 
     def new_map(self) -> None:
@@ -1596,10 +1636,11 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Open Authored Project", "", "Authored (*.uworld *.umap)")
         if not path: return
         if not self._confirm_unsaved(): return
-        project, diagnostics = WorldProject.open(Path(path))
+        project, diagnostics = WorldProject.open(self._check_autosave_recovery(Path(path)))
         if project is None:
             self._refresh_diagnostics(diagnostics); return
         self.project = project
+        self._sync_workspace_project()
         self.preferences.last_project = path
         self._remember_recent_project(path)
         save_preferences(self.preferences)
@@ -1633,6 +1674,7 @@ class MainWindow(QMainWindow):
                 return
             self.project.save()
             if self.workspace: self.workspace.save_all()
+            self._update_title()
             self.set_status(self.translator("saved"))
         except (OSError, ValueError) as error:
             self.show_error(str(error))
@@ -1658,6 +1700,7 @@ class MainWindow(QMainWindow):
                 self.save_as()
                 return
             self.project.save()
+            self._update_title()
             self.set_status("All authored documents saved")
         except (OSError, ValueError) as error:
             self.show_error(str(error))
@@ -1702,11 +1745,29 @@ class MainWindow(QMainWindow):
 
     def _update_playtest_icon(self) -> None:
         """Mirror the playtest state on the toolbar icon (play/stop)."""
-        running = self.playtest.process is not None and self.playtest.process.poll() is None
-        self.actions["playtest"].setIcon(icon("stop" if running else "playtest"))
+        self.actions["playtest"].setIcon(icon("stop" if self.playtest.is_running() else "playtest"))
+
+    def _watch_playtest(self) -> None:
+        running = self.playtest.is_running()
+        if self._playtest_was_running and not running:
+            self._update_playtest_icon()
+            exit_code = self.playtest.last_exit_code
+            if exit_code:
+                self._refresh_diagnostics([Diagnostic(
+                    "error", f"playtest game exited with code {exit_code}", code="playtest_exit")])
+                self.set_status(self.translator("playtest_crashed").format(code=exit_code))
+            else:
+                self.set_status(self.translator("playtest_exited"))
+        self._playtest_was_running = running
+
+    def _sync_workspace_project(self) -> None:
+        """Keep the rename back reference and dirty title in step with the
+        currently opened WorldProject."""
+        if self.workspace is not None:
+            self.workspace.world_project = self.project
 
     def toggle_playtest(self) -> None:
-        if self.playtest.process and self.playtest.process.poll() is None:
+        if self.playtest.is_running():
             self.playtest.stop()
             self._update_playtest_icon()
             self.set_status(self.translator("playtest_stopped"))

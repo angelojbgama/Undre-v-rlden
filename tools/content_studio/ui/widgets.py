@@ -825,16 +825,42 @@ class ContentBrowser(QWidget):
             except ValueError as error:
                 QMessageBox.warning(self, "Create Definition", str(error))
 
+    def _map_placement_usages(self, definition_id: str) -> list[str]:
+        """Map documents reference definitions by string ids; deleting a
+        referenced definition would silently break export and playtest."""
+        usages: list[str] = []
+        if self.project is None:
+            return usages
+        for document in self.project.maps:
+            for category in ("enemies", "npcs", "objects", "pickups"):
+                for entry in document.data.get(category, []) or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    if entry.get("definitionId") == definition_id or entry.get("visualId") == definition_id:
+                        usages.append(f"{document.map_id}:{category}")
+        return usages
+
     def _delete(self) -> None:
         if self.workspace and self._selected and self._selected.origin == "project":
+            deleted = self._selected
+            usages = [f"{definition.category}:{definition.definition_id}"
+                      for definition in self.workspace.find_usages(deleted.definition_id)]
+            usages.extend(self._map_placement_usages(deleted.definition_id))
+            if usages:
+                QMessageBox.warning(
+                    self, self.translate("delete"),
+                    self.translate("definition_in_use").format(
+                        definition_id=deleted.definition_id,
+                        usages=", ".join(sorted(set(usages)))),
+                )
+                return
             answer = QMessageBox.question(
                 self, self.translate("delete"),
-                self.translate("delete_definition_confirm").format(definition_id=self._selected.definition_id),
+                self.translate("delete_definition_confirm").format(definition_id=deleted.definition_id),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-            deleted = self._selected
             terrain_reference = None
             if deleted.category == "tileSemantics":
                 try:

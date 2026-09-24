@@ -37,9 +37,9 @@ $(BUILD_DIR)/tests: $(COMMON_OBJECTS) $(TEST_OBJECT)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(BUILD_DIR)/playtest_runner: $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT)
+$(BUILD_DIR)/playtest_runner: $(COMMON_OBJECTS) $(GAME_OBJECT) $(RUNNER_OBJECT) $(OBJ_DIR)/linux/engine/platform/linux/linux_image_decoder.o
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $^ -lpng -o $@
 
 $(BUILD_DIR)/game: $(COMMON_OBJECTS) $(GAME_OBJECT) $(LINUX_OBJECTS)
 	@mkdir -p $(@D)

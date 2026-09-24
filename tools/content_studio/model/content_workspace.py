@@ -38,6 +38,10 @@ class ContentWorkspace:
         self.diagnostics = diagnostics or []
         self._base_diagnostics = list(self.diagnostics)
         self.history = CommandHistory()
+        # Optional back reference to the open WorldProject (set by the main
+        # window) so renames also rewrite definitionId placements inside map
+        # documents.  Services that only touch content files never need it.
+        self.world_project: object | None = None
         self._definitions: list[ContentDefinition] = []
         self._rebuild_index()
 
@@ -366,6 +370,17 @@ class ContentWorkspace:
                 replace(content_file.data)
                 if content_file.data != before:
                     content_file.dirty = True
+            project = self.world_project
+            if project is not None:
+                # Map placements store definitionId strings too; rewriting
+                # only the workspace files would leave them stale and break
+                # export/playtest with missing_definition errors.
+                for document in getattr(project, "maps", []):
+                    before = copy.deepcopy(document.data)
+                    replace(document.data)
+                    if document.data != before:
+                        document.dirty = True
+                        project.dirty = True
 
         self.mutate("Rename Definition", operation)
         result = self.find(definition.category, new_definition_id)

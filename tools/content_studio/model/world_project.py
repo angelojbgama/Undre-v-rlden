@@ -88,6 +88,24 @@ class WorldProject:
             self.active_index = self.maps.index(active)
         if map_id == self.entry_map_id:
             self.entry_map_id = replacement_entry_id
+        # Inbound references to the removed map must not survive as silent
+        # dangling links/transitions; export would only fail much later.
+        for document in self.maps:
+            changed = False
+            links = document.data.get("links")
+            if isinstance(links, list):
+                kept = [link for link in links
+                        if not (isinstance(link, dict) and link.get("targetMapId") == map_id)]
+                if len(kept) != len(links):
+                    document.data["links"] = kept
+                    changed = True
+            for entry in document.data.get("objects", []) or []:
+                if (isinstance(entry, dict) and isinstance(entry.get("transition"), dict)
+                        and entry["transition"].get("targetMapId") == map_id):
+                    entry.pop("transition", None)
+                    changed = True
+            if changed:
+                document.dirty = True
         self.dirty = True
 
     def set_entry_map(self, map_id: str) -> None:

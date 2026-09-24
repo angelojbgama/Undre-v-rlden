@@ -16,6 +16,8 @@ from .world_export_service import WorldExportService
 # informational and must not present themselves as warnings (audit S2).
 _SEVERITY_LINE = re.compile(r"^\[(?P<severity>error|warning|info)\]\s*(?P<message>.*)$")
 _SUMMARY_LINE = re.compile(r"^(?:files|definitions|maps):\s*\d+$", re.IGNORECASE)
+_CPP_TOOL_TIMEOUT_SECONDS = 120
+_PROCESS_STOP_TIMEOUT_SECONDS = 5
 
 
 def find_cpp_tool(repository_root: Path, name: str) -> Path | None:
@@ -58,8 +60,12 @@ class CppToolchain:
 
     @staticmethod
     def _run(command: list[str], cwd: Path | None = None) -> ToolResult:
+        # Bounded so a hung native tool cannot freeze the Studio forever.
         try:
-            completed = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+            completed = subprocess.run(command, cwd=cwd, text=True, capture_output=True,
+                                       check=False, timeout=_CPP_TOOL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            return ToolResult(124, "", f"tool timed out after {_CPP_TOOL_TIMEOUT_SECONDS} seconds: {command[0]}", command)
         except OSError as error:
             return ToolResult(127, "", str(error), command)
         return ToolResult(completed.returncode, completed.stdout, completed.stderr, command)
@@ -128,6 +134,7 @@ class PlaytestService:
         self.toolchain = toolchain
         self._temporary_roots: list[Path] = []
         self.process: subprocess.Popen[str] | None = None
+        self.last_exit_code: int | None = None
 
     def start(self, project: object, content_workspace: object | None,
               asset_root: Path | None = None) -> tuple[bool, list[Diagnostic]]:
@@ -138,6 +145,8 @@ class PlaytestService:
             return False, [Diagnostic("error", "playtest requires a WorldProject", code="playtest_input")]
         if not isinstance(content_workspace, ContentWorkspace):
             return False, [Diagnostic("error", "playtest requires an authored content workspace", code="playtest_input")]
+        # A second start must never orphan the previous game process.
+        self.stop()
         active_map = project.active_map
         spawns = active_map.data.get("playerSpawns", [])
         if not isinstance(spawns, list) or not any(isinstance(value, dict) for value in spawns):
@@ -169,12 +178,30 @@ class PlaytestService:
         except ToolchainError as error:
             self.stop()
             return False, [Diagnostic("error", str(error), code="playtest_launch")]
+        self.last_exit_code = None
         return True, []
 
+    def is_running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
     def stop(self) -> None:
-        if self.process is not None and self.process.poll() is None:
-            self.process.terminate()
-        self.process = None
+        process, self.process = self.process, None
+        if process is not None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=_PROCESS_STOP_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    try:
+                        process.wait(timeout=_PROCESS_STOP_TIMEOUT_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        pass
+            exit_code = getattr(process, "returncode", None)
+            if exit_code is not None:
+                self.last_exit_code = exit_code
+        # Temp dirs are only removed once the game released its files;
+        # otherwise Windows silently keeps the directories forever.
         for root in self._temporary_roots:
             import shutil as _shutil
             _shutil.rmtree(root, ignore_errors=True)
