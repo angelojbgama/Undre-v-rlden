@@ -187,6 +187,11 @@ private:
     void resolveProjectileDrops();
     void resolveProjectileExplosions();
     void updateObjectHazard(maps::PersistentObject& persistent);
+    // Consumable throwables (authored ItemUseKind::throwProjectile): spawns
+    // the item's projectile toward the player facing and consumes one unit.
+    // Returns false when the slot item is not a throwable (falls through to
+    // the regular quickslot use path).
+    [[nodiscard]] bool useQuickSlotItem(std::size_t slot);
     void detonateProjectileExplosion(const gameplay::ProjectileExplosion& explosion,
                                      core::WorldPointI center);
     void resolveEncounterDoors();

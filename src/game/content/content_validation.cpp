@@ -931,6 +931,14 @@ ContentValidationReport ContentValidator::validate(const AuthoredContentPack& pa
         }
         if (hasVisualSchema && !contains(staticSprites, value.visualId))
             error(report, ContentKind::item, value.id, "unknown_reference", "item static sprite does not exist", "visualId");
+        if (value.use && value.use->kind == gameplay::ItemUseKind::throwProjectile) {
+            if (value.use->amount <= 0)
+                error(report, ContentKind::item, value.id, "invalid_value",
+                      "throwable item damage must be positive", "use.amount");
+            if (value.use->projectileId.empty() || !contains(projectiles, value.use->projectileId))
+                error(report, ContentKind::item, value.id, "unknown_reference",
+                      "throwable item projectile does not exist", "use.projectileId");
+        }
     }
     for (const auto& value : pack.objects) {
         // Scenery objects intentionally have no gameplay capability. Their visual is

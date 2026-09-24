@@ -74,8 +74,11 @@ bool itemCategory(const JsonValue& v, std::string_view p, Context& c, gameplay::
     else { c.error(v, std::string(p), "unknown ItemCategory"); return false; } return true;
 }
 bool itemUseKind(const JsonValue& v, std::string_view p, Context& c, gameplay::ItemUseKind& out) {
-    std::string s; if (!stringValue(v, p, c, s)) return false; if (s != "restoreHealth") { c.error(v, std::string(p), "unknown ItemUseKind"); return false; }
-    out = gameplay::ItemUseKind::restoreHealth; return true;
+    std::string s; if (!stringValue(v, p, c, s)) return false;
+    if (s == "restoreHealth") out = gameplay::ItemUseKind::restoreHealth;
+    else if (s == "throwProjectile") out = gameplay::ItemUseKind::throwProjectile;
+    else { c.error(v, std::string(p), "unknown ItemUseKind"); return false; }
+    return true;
 }
 bool equipmentSlot(const JsonValue& v, std::string_view p, Context& c, AuthoredEquipmentSlot& out) {
     std::string s; if (!stringValue(v, p, c, s)) return false; if (s == "armor") out = AuthoredEquipmentSlot::armor;
@@ -96,11 +99,16 @@ bool color(const JsonValue& v, std::string_view p, Context& c, core::ColorRGBA8&
     return unsignedField(v,*o,"r",p,c,out.r) && unsignedField(v,*o,"g",p,c,out.g) && unsignedField(v,*o,"b",p,c,out.b) && unsignedField(v,*o,"a",p,c,out.a);
 }
 bool itemUse(const JsonValue& v, std::string_view p, Context& c, gameplay::ItemUseDefinition& out) {
-    const JsonObject* o = nullptr; if (!object(v,p,c,o)) return false; allowed(*o,{"kind","amount"},p,c);
+    const JsonObject* o = nullptr; if (!object(v,p,c,o)) return false; allowed(*o,{"kind","amount","projectileId"},p,c);
     const auto* k = required(v,*o,"kind",p,c); gameplay::ItemUseKind kind{}; int amount{};
     const bool ko = k && itemUseKind(*k,pathOf(p,"kind"),c,kind); const bool ao = signedField(v,*o,"amount",p,c,amount);
-    if (ko && ao) out = gameplay::ItemUseDefinition{kind, static_cast<int>(amount)};
-    return ko && ao;
+    gameplay::ItemUseDefinition decoded{};
+    decoded.kind = kind; decoded.amount = static_cast<int>(amount);
+    if (const auto* pr = findField(*o, "projectileId")) {
+        if (!idField(*pr, *o, "projectileId", pathOf(p, "projectileId"), c, decoded.projectileId)) return false;
+    }
+    if (ko && ao) { out = decoded; return true; }
+    return false;
 }
 bool equipment(const JsonValue& v, std::string_view p, Context& c, AuthoredEquipment& out) {
     const JsonObject* o = nullptr; if (!object(v,p,c,o)) return false; allowed(*o,{"slot","modifiers"},p,c);

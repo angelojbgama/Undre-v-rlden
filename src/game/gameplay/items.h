@@ -13,11 +13,15 @@
 namespace underworld::game::gameplay {
 
 enum class ItemCategory { consumable, equipment, key, misc };
-enum class ItemUseKind { restoreHealth };
+enum class ItemUseKind { restoreHealth, throwProjectile };
 
 struct ItemUseDefinition final {
     ItemUseKind kind{ItemUseKind::restoreHealth};
+    // restoreHealth: health restored. throwProjectile: direct-hit damage
+    // (area damage is authored on the projectile explosion, if any).
     int amount{};
+    // throwProjectile only: the projectile spawned toward the player facing.
+    simulation::DefinitionId projectileId{};
 };
 
 struct ItemDefinition final {

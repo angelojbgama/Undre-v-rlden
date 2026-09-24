@@ -828,6 +828,31 @@ void GameSession::resolveObjectDestructionReward(const maps::PersistentObject& p
     }
 }
 
+bool GameSession::useQuickSlotItem(std::size_t slot) {
+    if (!playerItems_ || !mapSession_ || !mapSession_->world() ||
+        projectileCatalog_ == nullptr) {
+        return false;
+    }
+    const auto& binding = playerItems_->quickSlots().binding(slot);
+    if (!binding) { return false; }
+    const auto* definition = itemCatalog_->find(*binding);
+    if (definition == nullptr || !definition->use ||
+        definition->use->kind != gameplay::ItemUseKind::throwProjectile ||
+        definition->use->projectileId.empty()) {
+        return false;
+    }
+    const auto* projectile = projectileCatalog_->find(definition->use->projectileId);
+    if (projectile == nullptr) { return false; }
+    // One consumable unit per throw; nothing spawns without stock.
+    if (!playerItems_->inventory().items().consume(*binding)) { return true; }
+    static_cast<void>(projectiles_->spawn(
+        gameplay::AttackKey{player_.entityHandle(), nextContactAttackInstance_++},
+        player_.combatant().faction, projectile->id, player_.feetPosition(),
+        player_.facing(), {definition->use->amount, 8}, {}));
+    events_.emit(simulation::ItemConsumed{player_.entityHandle(), {}, *binding, 1});
+    return true;
+}
+
 void GameSession::updateObjectHazard(maps::PersistentObject& persistent) {
     auto& object = persistent.instance;
     if (!object.definition().hazard || !mapSession_ || !mapSession_->world()) { return; }

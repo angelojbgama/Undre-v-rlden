@@ -2722,6 +2722,36 @@ void testProjectileAmmoAndDrops() {
         expect(!content::compileContent(invalid).registry,
                "content validation rejects a hazard projectile that does not exist");
     }
+    // Authored throwable consumable (TNT-style item use): compiles and
+    // validates the projectile reference and positive damage.
+    {
+        auto pack = content::makeCombatAuthoredContent();
+        auto item = std::find_if(pack.items.begin(), pack.items.end(),
+            [&](const auto& value) { return value.id == simulation::DefinitionId{"item.arrow"}; });
+        if (item != pack.items.end()) {
+            item->use = gameplay::ItemUseDefinition{gameplay::ItemUseKind::throwProjectile,
+                                                    2,
+                                                    simulation::DefinitionId{"projectile.player.arrow"}};
+            const auto compiled = content::compileContent(pack);
+            expect(compiled.registry &&
+                       compiled.registry->items()
+                               .require(simulation::DefinitionId{"item.arrow"})
+                               .use->kind == gameplay::ItemUseKind::throwProjectile,
+                   "authored throwable item compiles with its projectile");
+        }
+    }
+    {
+        auto invalid = content::makeCombatAuthoredContent();
+        auto item = std::find_if(invalid.items.begin(), invalid.items.end(),
+            [&](const auto& value) { return value.id == simulation::DefinitionId{"item.arrow"}; });
+        if (item != invalid.items.end()) {
+            item->use = gameplay::ItemUseDefinition{gameplay::ItemUseKind::throwProjectile,
+                                                    2,
+                                                    simulation::DefinitionId{"projectile.missing"}};
+            expect(!content::compileContent(invalid).registry,
+                   "content validation rejects a throwable referencing an unknown projectile");
+        }
+    }
 
     {
         const auto json = content::encodeAuthoredContentJson(content::makeCombatAuthoredContent());
