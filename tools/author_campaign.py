@@ -198,9 +198,13 @@ def add_definitions(workspace: ContentWorkspace) -> None:
         "anim.enemy.slime.hurt", "image.enemy.slime.death",
         [frame(0, 0, 32, 32, 16, 31, 12)], False))
     bite_clips = directional("anim.enemy.slime.idle")
+    # The slime art has no walk sheet; the idle loop doubles as the move
+    # clip (authored choice — the runtime requires resolved move clips and
+    # rejects the visual set without one).
     upsert(workspace, "enemyVisuals", {
         "id": "visual.enemy.slime",
         "idle": directional("anim.enemy.slime.idle"),
+        "move": directional("anim.enemy.slime.idle"),
         "hurt": directional("anim.enemy.slime.hurt"),
         "death": directional("anim.enemy.slime.death"),
         "actions": [{"visualActionId": "visual.action.slime.bite", "clips": bite_clips}],
@@ -408,6 +412,7 @@ def add_definitions(workspace: ContentWorkspace) -> None:
     upsert(workspace, "enemyVisuals", {
         "id": "visual.enemy.slime.champion",
         "idle": directional("anim.enemy.slime.idle"),
+        "move": directional("anim.enemy.slime.idle"),
         "hurt": directional("anim.enemy.slime.hurt"),
         "death": directional("anim.enemy.slime.death"),
         "actions": [],

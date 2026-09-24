@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import copy
 import re
+import struct
+from pathlib import Path
 
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
@@ -27,6 +29,31 @@ from ..model.types import ContentDefinition
 _ENEMY_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.]+$")
 _MAX_HEALTH = 100000
 _MAX_SPEED = 100000
+
+# Clip slots of an EnemyVisualSet: the first three are required with all
+# four facings; hurt/dead are optional but, when present, must also be
+# complete (mirrors the C++ validateClips).
+_VISUAL_CLIP_SLOTS = (
+    ("idle", True),
+    ("move", True),
+    ("death", True),
+    ("hurt", False),
+    ("dead", False),
+)
+_FACINGS = ("down", "up", "left", "right")
+
+
+def _png_size(path):
+    """Width/height of a PNG via its IHDR, or None when unreadable."""
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(24)
+    except OSError:
+        return None
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", header[16:24])
+    return int(width), int(height)
 
 
 class EnemyAuthoringService:
@@ -76,6 +103,13 @@ class EnemyAuthoringService:
             raise ValueError(f"enemy already exists: {normalized_id}")
 
         payload = dict(data)
+        authored_id = payload.get("id")
+        if isinstance(authored_id, str) and authored_id and authored_id != normalized_id:
+            # Same contract as configure(): the payload id and the argument
+            # must agree, otherwise the stored definition surprises callers.
+            raise ValueError(
+                f"enemy id does not match the created definition: "
+                f"{authored_id} != {normalized_id}")
         payload["id"] = normalized_id
         normalized = self._validate(payload)
 
@@ -117,6 +151,145 @@ class EnemyAuthoringService:
             )
 
         workspace.delete_definition(definition)
+
+    def verify_visual(
+        self, enemy_id: str, asset_root: Path | None = None,
+    ) -> list[dict[str, str]]:
+        """Check that the enemy's sprite chain is correct and coherent.
+
+        Walks visualSetId -> EnemyVisualSet clips -> animations -> images
+        and reports diagnostics dicts (``severity``/``message``/``path``):
+        facing coverage per clip slot (idle/move/death need all four),
+        animation/image references that do not resolve, image files missing
+        on disk (when a root is resolvable), frame source rects outside the
+        image, zero-duration frames and out-of-frame anchors (warnings).
+        """
+        workspace = self._require_workspace()
+        diagnostics: list[dict[str, str]] = []
+
+        def error(message: str, path: str) -> None:
+            diagnostics.append({"severity": "error", "message": message, "path": path})
+
+        def warn(message: str, path: str) -> None:
+            diagnostics.append({"severity": "warning", "message": message, "path": path})
+
+        definition = self.find(enemy_id)
+        if definition is None:
+            error(f"unknown enemy: {enemy_id}", enemy_id)
+            return diagnostics
+
+        visual_set_id = definition.data.get("visualSetId")
+        visual_set = (workspace.find("enemyVisuals", str(visual_set_id))
+                      if isinstance(visual_set_id, str) else None)
+        if visual_set is None:
+            error(f"enemy visual set does not exist: {visual_set_id}", "visualSetId")
+            return diagnostics
+
+        def image_size(image_id: str):
+            if image_id in image_cache:
+                return image_cache[image_id]
+            image_definition = workspace.find("visualImages", image_id)
+            path = self._visual_image_path(image_definition, asset_root)
+            size = _png_size(path) if path is not None else None
+            image_cache[image_id] = size
+            return size
+
+        image_cache: dict[str, tuple[int, int] | None] = {}
+
+        def check_clip(slot: str, clip_data: object, path: str, required: bool) -> None:
+            if not isinstance(clip_data, dict):
+                if required:
+                    error(f"{slot} clip is missing", path)
+                return
+            for facing in _FACINGS:
+                animation_id = clip_data.get(facing)
+                facing_path = f"{path}.{facing}"
+                if not isinstance(animation_id, str) or not animation_id:
+                    if required:
+                        error(f"{slot} clip has no {facing} facing", facing_path)
+                    continue
+                animation = workspace.find("animations", animation_id)
+                if animation is None:
+                    error(f"animation does not exist: {animation_id}", facing_path)
+                    continue
+                frames = animation.data.get("frames")
+                if not isinstance(frames, list) or not frames:
+                    error(f"animation has no frames: {animation_id}", facing_path)
+                    continue
+                image_id = animation.data.get("imageId")
+                image_id = image_id if isinstance(image_id, str) else ""
+                image_definition = (workspace.find("visualImages", image_id)
+                                    if image_id else None)
+                if image_definition is None:
+                    error(f"visual image does not exist: {image_id or '(empty)'}",
+                          facing_path)
+                    continue
+                image_path = self._visual_image_path(image_definition, asset_root)
+                if image_path is None:
+                    # No asset root resolvable (headless contexts): disk and
+                    # bounds checks are skipped rather than guessed.
+                    continue
+                if not image_path.is_file():
+                    error(f"image file is missing: {image_path}", facing_path)
+                    continue
+                size = image_size(image_id)
+                if size is not None:
+                    width, height = size
+                    for index, frame in enumerate(frames):
+                        if not isinstance(frame, dict):
+                            continue
+                        source = frame.get("source")
+                        if not isinstance(source, dict):
+                            continue
+                        right = int(source.get("x", 0)) + int(source.get("width", 0))
+                        bottom = int(source.get("y", 0)) + int(source.get("height", 0))
+                        if (int(source.get("width", 0)) <= 0
+                                or int(source.get("height", 0)) <= 0
+                                or right > width or bottom > height):
+                            error(
+                                f"frame {index} source rect is outside the "
+                                f"image {width}x{height}: {animation_id}",
+                                f"{facing_path}.frames[{index}]")
+                for index, frame in enumerate(frames):
+                    if not isinstance(frame, dict):
+                        continue
+                    if frame.get("durationTicks", 0) in (None, 0):
+                        warn(f"frame {index} has zero duration: {animation_id}",
+                             f"{facing_path}.frames[{index}]")
+                    anchor = frame.get("anchor")
+                    source = frame.get("source")
+                    if isinstance(anchor, dict) and isinstance(source, dict):
+                        inside = (0 <= int(anchor.get("x", 0)) <= int(source.get("width", 0))
+                                  and 0 <= int(anchor.get("y", 0)) <= int(source.get("height", 0)))
+                        if not inside:
+                            warn(f"frame {index} anchor sits outside the frame: {animation_id}",
+                                 f"{facing_path}.frames[{index}]")
+
+        for slot, required in _VISUAL_CLIP_SLOTS:
+            check_clip(slot, visual_set.data.get(slot), slot, required)
+        for index, action in enumerate(visual_set.data.get("actions", []) or []):
+            if isinstance(action, dict):
+                check_clip(f"actions[{index}]", action.get("clips"),
+                           f"actions[{index}].clips", required=True)
+        return diagnostics
+
+    def _visual_image_path(
+        self, image_definition, asset_root,
+    ):
+        """Mirror of StudioVisualResolver path semantics without Qt."""
+        if image_definition is None:
+            return None
+        relative = image_definition.data.get("relativePath")
+        if not isinstance(relative, str) or not relative:
+            return None
+        root_name = image_definition.data.get("root", "gameAssets")
+        if root_name == "contentWorkspace":
+            root = self.workspace.root if self.workspace is not None else None
+        else:
+            root = asset_root
+        if root is None:
+            return None
+        return Path(root) / relative
 
     def blank_enemy(self, enemy_id: str) -> dict[str, object]:
         """A valid-by-construction starter enemy bound to real references."""

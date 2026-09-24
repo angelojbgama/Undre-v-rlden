@@ -159174,6 +159174,12 @@
         "left": "anim.enemy.slime.idle",
         "right": "anim.enemy.slime.idle"
       },
+      "move": {
+        "down": "anim.enemy.slime.idle",
+        "up": "anim.enemy.slime.idle",
+        "left": "anim.enemy.slime.idle",
+        "right": "anim.enemy.slime.idle"
+      },
       "hurt": {
         "down": "anim.enemy.slime.hurt",
         "up": "anim.enemy.slime.hurt",
@@ -159201,6 +159207,12 @@
     {
       "id": "visual.enemy.slime.champion",
       "idle": {
+        "down": "anim.enemy.slime.idle",
+        "up": "anim.enemy.slime.idle",
+        "left": "anim.enemy.slime.idle",
+        "right": "anim.enemy.slime.idle"
+      },
+      "move": {
         "down": "anim.enemy.slime.idle",
         "up": "anim.enemy.slime.idle",
         "left": "anim.enemy.slime.idle",

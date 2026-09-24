@@ -224,6 +224,11 @@ std::string_view scenarioStartupMap(std::string_view scenario) {
         scenario == "npc_dialogue") {
         return "map.6";
     }
+    if (scenario == "slime") {
+        // The corridor room holds the slime family; booting it also proves
+        // its visual sets (which the runtime validates on map entry).
+        return "map.2";
+    }
     return "map.1";
 }
 
@@ -613,42 +618,25 @@ bool fightToDeath(ScenarioContext& context, std::string_view definition,
             if (victim == current.enemies.end()) { return true; }
             const int distanceX = victim->x - current.playerX;
             const int distanceY = victim->y - current.playerY;
-            // Split gang-ups: when two or more hostiles crowd the player,
-            // retreat from the nearest one until the authored disengage
-            // range splits the fight back into 1v1 exchanges.
-            int crowd = 0;
-            int nearestX = 0;
-            int nearestY = 0;
-            int nearestSquared = std::numeric_limits<int>::max();
-            for (const auto& actor : current.enemies) {
-                const int deltaX = actor.x - current.playerX;
-                const int deltaY = actor.y - current.playerY;
-                const int squared = deltaX * deltaX + deltaY * deltaY;
-                if (squared <= 48 * 48) { ++crowd; }
-                if (squared < nearestSquared) {
-                    nearestSquared = squared;
-                    nearestX = actor.x;
-                    nearestY = actor.y;
-                }
-            }
-            platform::InputState input;
-            if (crowd >= 2) {
-                input.moveRight = nearestX < current.playerX;
-                input.moveLeft = nearestX > current.playerX;
-                input.moveDown = nearestY < current.playerY;
-                input.moveUp = nearestY > current.playerY;
-            } else {
-                input.moveRight = distanceX > 0;
-                input.moveLeft = distanceX < 0;
-                input.moveDown = distanceY > 0;
-                input.moveUp = distanceY < 0;
-            }
-            // Slash once inside the authored sword reach; shoot the bow while
-            // a retreating ranged enemy keeps its distance.
             const bool inSwordReach = std::abs(distanceX) <= 26 &&
                                       std::abs(distanceY) <= 26;
-            input.primaryAttackPressed = inSwordReach && index % 24 == 0;
-            input.secondaryAttackPressed = !inSwordReach && index % 24 == 0;
+            // Every authored enemy is slower than the player, so the driver
+            // fights like a player: hold or regain distance from the victim
+            // and plink with the bow; trade sword swings only when something
+            // closes in anyway (cornered). Gang-ups dissolve because the
+            // retreat outruns every authored chase speed.
+            platform::InputState input;
+            if (!inSwordReach) {
+                const bool tooClose = std::abs(distanceX) < 40 &&
+                                      std::abs(distanceY) < 40;
+                input.moveRight = tooClose && distanceX < 0;
+                input.moveLeft = tooClose && distanceX > 0;
+                input.moveDown = tooClose && distanceY < 0;
+                input.moveUp = tooClose && distanceY > 0;
+                input.secondaryAttackPressed = index % 16 == 0;
+            } else {
+                input.primaryAttackPressed = index % 24 == 0;
+            }
             if (!context.step(input)) { return false; }
         }
     }
@@ -1294,7 +1282,8 @@ bool runContentAction(ScenarioContext& context, std::string_view definition,
                       bool attackObject = false) {
     if (!runBaseline(context)) { return false; }
     const auto initial = context.snapshot();
-    if (definition == "enemy.evil_soldier" || definition == "enemy.skull") {
+    if (definition == "enemy.evil_soldier" || definition == "enemy.skull" ||
+        definition == "enemy.slime") {
         const auto found = std::find_if(initial.enemies.begin(), initial.enemies.end(),
                                         [&](const auto& actor) { return actor.definitionId == definition; });
         if (!context.require(found != initial.enemies.end(), "expected enemy is absent")) { return false; }
@@ -1403,6 +1392,7 @@ ScenarioResult runScenario(const std::filesystem::path& root, const RunnerOption
     else if (name == "collision") { passed = runCollision(context); }
     else if (name == "melee_combat") { passed = runContentAction(context, "enemy.evil_soldier"); }
     else if (name == "ranged_combat") { passed = runContentAction(context, "enemy.skull"); }
+    else if (name == "slime") { passed = runContentAction(context, "enemy.slime"); }
     else if (name == "chest") { passed = runContentAction(context, "object.chest"); }
     else if (name == "crate") { passed = runContentAction(context, "object.crate", true); }
     else if (name == "pickup_money") { passed = runPickup(context, "pickup.money"); }
@@ -1455,7 +1445,7 @@ const std::vector<std::string> allScenarios{
     "startup", "movement", "collision", "inventory", "quick_slot",
     "inventory_navigation", "save_load", "title_start", "game_over",
     "presentation_feedback",
-    "melee_combat", "ranged_combat", "chest", "crate",
+    "melee_combat", "ranged_combat", "slime", "chest", "crate",
     "pickup_money", "pickup_heart", "pickup_life_potion",
     "npc_dialogue", "rewards_loot"};
 

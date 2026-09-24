@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
         self.player_library.changed.connect(self._content_changed)
         self.player_library.status_changed.connect(self.set_status)
         self.enemy_library = EnemyLibraryWidget(
-            self.workspace, self.translator)
+            self.workspace, self.translator, asset_root=self.asset_root)
         self.enemy_library.changed.connect(self._content_changed)
         self.enemy_library.status_changed.connect(self.set_status)
         self.attack_library = AttackLibraryWidget(
@@ -616,7 +616,7 @@ class MainWindow(QMainWindow):
             self.workspace, self.asset_root,
             self.project.active_map.tile_size)
         self.player_library.set_context(self.workspace, self.asset_root)
-        self.enemy_library.set_context(self.workspace)
+        self.enemy_library.set_context(self.workspace, self.asset_root)
         self.attack_library.set_context(self.workspace, self.asset_root)
         self.item_library.set_context(
             self.workspace, self.asset_root, self.project)

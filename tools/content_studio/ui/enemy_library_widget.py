@@ -22,11 +22,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pathlib import Path
+
+from PySide6.QtGui import QPixmap
+
 from ..model.content_workspace import ContentWorkspace
 from ..model.types import ContentDefinition
 from ..services.enemy_authoring_service import EnemyAuthoringService
 from ..services.localization import Translator
 from .icon_registry import icon
+from .studio_visual_resolver import StudioVisualResolver
 from .widgets import PayloadListWidget
 
 
@@ -200,6 +205,169 @@ class EnemyEditorDialog(QDialog):
         self.accept()
 
 
+class EnemySpritePreview(QWidget):
+    """Live sprite strips for the selected enemy's visual set.
+
+    Renders idle / hurt / death thumbnails (first frames, down facing) plus
+    a diagnostics list from ``EnemyAuthoringService.verify_visual`` so the
+    author can confirm the art is present, sliced and anchored coherently
+    before placing the enemy.
+    """
+
+    _CLIP_ORDER = ("idle", "hurt", "death", "move")
+
+    def __init__(
+        self,
+        workspace: ContentWorkspace | None,
+        asset_root: Path | None,
+        translator: Translator,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.workspace = workspace
+        self.asset_root = asset_root
+        self.translate = translator
+        self.resolver = StudioVisualResolver()
+        self.resolver.set_context(workspace, asset_root)
+        self.current_enemy_id: str | None = None
+
+        from PySide6.QtWidgets import QLabel
+
+        self.strip_labels: dict[str, QLabel] = {}
+        self.diagnostics = QLabel(self)
+        self.diagnostics.setWordWrap(True)
+        self.diagnostics.setTextFormat(Qt.TextFormat.RichText)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        for clip in self._CLIP_ORDER:
+            label = QLabel(self)
+            label.setMinimumHeight(40)
+            label.setProperty("muted", True)
+            self.strip_labels[clip] = label
+            layout.addWidget(label)
+        layout.addWidget(self.diagnostics, 1)
+        self.clear()
+
+    def set_context(
+        self, workspace: ContentWorkspace | None, asset_root: Path | None,
+    ) -> None:
+        self.workspace = workspace
+        self.asset_root = asset_root
+        self.resolver.set_context(workspace, asset_root)
+        self.clear()
+
+    def clear(self) -> None:
+        self.current_enemy_id = None
+        for label in self.strip_labels.values():
+            label.clear()
+        self.diagnostics.setText("")
+
+    def show_enemy(
+        self, enemy_id: str, visual_set_id: object,
+        diagnostics: list[dict[str, str]] | None = None,
+    ) -> None:
+        self.current_enemy_id = enemy_id
+        visual_set = (self.workspace.find("enemyVisuals", str(visual_set_id))
+                      if self.workspace is not None and isinstance(visual_set_id, str)
+                      else None)
+        for clip in self._CLIP_ORDER:
+            label = self.strip_labels[clip]
+            strip = self._render_clip(visual_set, clip)
+            if strip is None:
+                label.clear()
+            else:
+                label.setPixmap(strip)
+        if diagnostics is None:
+            diagnostics = (self.service_diagnostics(enemy_id)
+                           if hasattr(self, "service_diagnostics") else [])
+        self._show_diagnostics(diagnostics)
+
+    def service_diagnostics(self, enemy_id: str) -> list[dict[str, str]]:
+        return []
+
+    def _render_clip(self, visual_set, clip: str):
+        if visual_set is None or self.workspace is None:
+            return None
+        clip_data = visual_set.data.get(clip)
+        if not isinstance(clip_data, dict):
+            return None
+        animation_id = clip_data.get("down")
+        if not isinstance(animation_id, str) or not animation_id:
+            return None
+        animation = self.workspace.find("animations", animation_id)
+        if animation is None:
+            return None
+        frames = animation.data.get("frames")
+        if not isinstance(frames, list) or not frames:
+            return None
+
+        from PySide6.QtGui import QPainter
+        from PySide6.QtCore import Qt as QtCore
+
+        thumbnails = QPixmap()
+        painter: QPainter | None = None
+
+        cell = 32
+        count = min(len(frames), 6)
+        try:
+            return self._compose_strip(animation_id, frames, count, cell)
+        except Exception:
+            if painter is not None:
+                painter.end()
+            return None
+
+    def _compose_strip(self, animation_id, frames, count, cell):
+        from PySide6.QtGui import QPainter
+        from PySide6.QtCore import Qt as QtCore
+
+        thumbnails = QPixmap()
+        painter: QPainter | None = None
+        for index in range(count):
+            resolved = self.resolver.resolve_animation_frame(animation_id, index)
+            if resolved is None or resolved.image.isNull():
+                return None
+            source = frames[index].get("source", {}) if isinstance(frames[index], dict) else {}
+            width = int(source.get("width", resolved.image.width()) or resolved.image.width())
+            height = int(source.get("height", resolved.image.height()) or resolved.image.height())
+            if thumbnails.isNull():
+                thumbnails = QPixmap(cell * count, cell)
+                thumbnails.fill(QtCore.transparent)
+                painter = QPainter(thumbnails)
+            source = frames[index].get("source")
+            if isinstance(source, dict):
+                frame_image = resolved.image.copy(
+                    int(source.get("x", 0)), int(source.get("y", 0)),
+                    max(1, int(source.get("width", 1))),
+                    max(1, int(source.get("height", 1))))
+            else:
+                frame_image = resolved.image
+            scaled = frame_image.scaled(
+                cell - 4, cell - 4,
+                QtCore.AspectRatioMode.KeepAspectRatio,
+                QtCore.TransformationMode.FastTransformation)
+            if painter is not None:
+                painter.drawPixmap(index * cell + 2, 2, QPixmap.fromImage(scaled))
+        if painter is not None:
+            painter.end()
+            painter = None
+        return thumbnails
+
+    def _show_diagnostics(self, diagnostics: list[dict[str, str]]) -> None:
+        if not diagnostics:
+            self.diagnostics.setText(
+                f"<span style='color:#7ee787'>✓ {self.translate('enemy_visual_ok')}</span>")
+            return
+        rows = []
+        for diagnostic in diagnostics[:12]:
+            color = "#f85149" if diagnostic["severity"] == "error" else "#d29922"
+            icon_sign = "✗" if diagnostic["severity"] == "error" else "⚠"
+            rows.append(
+                f"<span style='color:{color}'>{icon_sign} "
+                f"{diagnostic['message']} <i>({diagnostic['path']})</i></span>")
+        self.diagnostics.setText("<br>".join(rows))
+
+
 class EnemyLibraryWidget(QWidget):
     """Search, author and inspect enemy definitions."""
 
@@ -211,9 +379,11 @@ class EnemyLibraryWidget(QWidget):
         workspace: ContentWorkspace | None,
         translator: Translator | None = None,
         parent: QWidget | None = None,
+        asset_root: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.workspace = workspace
+        self.asset_root: Path | None = asset_root
         self.translate = translator or Translator()
         self.service = EnemyAuthoringService(workspace)
 
@@ -262,9 +432,17 @@ class EnemyLibraryWidget(QWidget):
         list_layout.addWidget(self.enemies_list, 1)
         list_layout.addLayout(button_row)
 
+        self.preview = EnemySpritePreview(workspace, self.asset_root, self.translate)
+
+        right_panel = QWidget(self)
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(self.details)
+        right_layout.addWidget(self.preview)
+
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.addWidget(list_panel)
-        splitter.addWidget(self.details)
+        splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 1)
 
         layout = QVBoxLayout(self)
@@ -274,13 +452,19 @@ class EnemyLibraryWidget(QWidget):
 
     # -- context -----------------------------------------------------------
 
-    def set_context(self, workspace: ContentWorkspace | None) -> None:
+    def set_context(
+        self, workspace: ContentWorkspace | None,
+        asset_root: Path | None = None,
+    ) -> None:
         self.workspace = workspace
+        self.asset_root = asset_root
         self.service.set_context(workspace)
+        self.preview.set_context(workspace, asset_root)
         self.refresh()
 
     def retranslate(self, translator: Translator) -> None:
         self.translate = translator
+        self.preview.translate = translator
         self.search.setPlaceholderText(self.translate("enemy_search"))
         self.create_button.setToolTip(self.translate("enemy_create"))
         self.configure_button.setToolTip(self.translate("enemy_configure"))
@@ -290,6 +474,9 @@ class EnemyLibraryWidget(QWidget):
     # -- population --------------------------------------------------------
 
     def refresh(self) -> None:
+        # Art may have changed on disk since the last pass; drop cached
+        # source images so previews reflect the current files.
+        self.preview.resolver.invalidate()
         self.enemies_list.blockSignals(True)
         self.enemies_list.clear()
         query = self.search.text() if hasattr(self, "search") else ""
@@ -308,8 +495,23 @@ class EnemyLibraryWidget(QWidget):
         definition = current.data(Qt.ItemDataRole.UserRole) if current else None
         if definition is None:
             self.details.setText(self.translate("enemy_none"))
+            self.preview.clear()
             return
         self._show_details(definition)
+        self._refresh_preview(definition)
+
+    def _refresh_preview(self, definition: ContentDefinition) -> None:
+        diagnostics = self.service.verify_visual(
+            definition.definition_id, self.asset_root)
+        self.preview.show_enemy(
+            definition.definition_id,
+            definition.data.get("visualSetId"),
+            diagnostics,
+        )
+        errors = [d for d in diagnostics if d["severity"] == "error"]
+        if errors:
+            self.status_changed.emit(
+                self.translate("enemy_visual_problems").format(count=len(errors)))
 
     def _show_details(self, definition: ContentDefinition) -> None:
         data = definition.data
